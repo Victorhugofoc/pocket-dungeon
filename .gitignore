@@ -1,0 +1,14 @@
+# Godot
+.godot/
+/android/
+*.translation
+export_presets.cfg.bak
+
+# Builds e relatórios gerados
+/builds/
+/reports/
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
