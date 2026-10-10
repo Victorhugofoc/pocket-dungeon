@@ -14,7 +14,7 @@
 	{
 		"id": "isca",
 		"title": "A isca",
-		"goal": 0,
+		"goal": 2,
 		"intro": "Dois Ladinos vão atrás de tesouro. Se pegarem o baú, vão embora sem atacar o Coração.",
 		"hint": "Escave o ramo da direita e use a Sala de Tesouro como isca, longe da sua defesa.",
 		"power": "fechar_porta",
@@ -39,7 +39,7 @@
 	{
 		"id": "correria",
 		"title": "Correria",
-		"goal": 0,
+		"goal": 2,
 		"intro": "Ladinos e Arqueiras apressados: chegam rápido e em bando.",
 		"hint": "O Corredor Estreito faz passar um de cada vez; a Brasa queima o grupo inteiro.",
 		"power": "desabamento",

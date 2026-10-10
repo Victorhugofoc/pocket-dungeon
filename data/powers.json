@@ -1,8 +1,8 @@
 [
-	{ "id": "fechar_porta", "name": "Fechar Porta", "unlock": "start", "cost": 4, "target": "branch", "effects": [{ "id": "block_branch", "duration_ticks": 60 }] },
-	{ "id": "furia", "name": "Fúria", "unlock": "start", "cost": 5, "target": "room", "effects": [{ "id": "ally_haste", "attack_speed_bp": 5000, "duration_ticks": 50, "scope": "room" }] },
-	{ "id": "desabamento", "name": "Desabamento", "unlock": "start", "cost": 7, "target": "room", "effects": [{ "id": "damage", "damage_type": "physical", "amount": 30, "scope": "room_enemies" }, { "id": "stun", "duration_ticks": 10 }] },
-	{ "id": "ressurgir", "name": "Ressurgir", "unlock": "meta", "cost": 6, "target": "room", "effects": [{ "id": "revive_strongest", "hp_bp": 5000 }] },
-	{ "id": "tremor", "name": "Tremor", "unlock": "meta", "cost": 3, "target": "room", "effects": [{ "id": "push_back" }] },
-	{ "id": "medo", "name": "Medo", "unlock": "meta", "cost": 5, "target": "room", "effects": [{ "id": "fear", "duration_ticks": 30, "count": 1 }] }
+	{ "id": "fechar_porta", "desc": "Fecha a entrada de um ramo por 6 s: quem ainda não entrou desvia para o outro caminho. Só funciona com os dois ramos abertos.", "name": "Fechar Porta", "unlock": "start", "cost": 4, "target": "branch", "effects": [{ "id": "block_branch", "duration_ticks": 60 }] },
+	{ "id": "furia", "desc": "Os monstros de uma sala atacam 50% mais rápido por 5 s.", "name": "Fúria", "unlock": "start", "cost": 5, "target": "room", "effects": [{ "id": "ally_haste", "attack_speed_bp": 5000, "duration_ticks": 50, "scope": "room" }] },
+	{ "id": "desabamento", "desc": "Causa 30 de dano e atordoa por 1 s todos os invasores de uma sala.", "name": "Desabamento", "unlock": "start", "cost": 7, "target": "room", "effects": [{ "id": "damage", "damage_type": "physical", "amount": 30, "scope": "room_enemies" }, { "id": "stun", "duration_ticks": 10 }] },
+	{ "id": "ressurgir", "desc": "Revive o monstro mais forte que morreu numa sala, com metade da vida.", "name": "Ressurgir", "unlock": "meta", "cost": 6, "target": "room", "effects": [{ "id": "revive_strongest", "hp_bp": 5000 }] },
+	{ "id": "tremor", "desc": "Empurra os invasores de uma sala de volta para a sala anterior.", "name": "Tremor", "unlock": "meta", "cost": 3, "target": "room", "effects": [{ "id": "push_back" }] },
+	{ "id": "medo", "desc": "Um invasor da sala foge de medo por 3 s.", "name": "Medo", "unlock": "meta", "cost": 5, "target": "room", "effects": [{ "id": "fear", "duration_ticks": 30, "count": 1 }] }
 ]

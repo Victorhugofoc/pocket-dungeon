@@ -1,18 +1,18 @@
 [
 	{
-		"id": "espinhos", "name": "Espinhos", "unlock": "start", "trigger": "first_enter",
+		"id": "espinhos", "desc": "Causa 20 de dano físico no primeiro invasor que entrar na sala.", "name": "Espinhos", "unlock": "start", "trigger": "first_enter",
 		"effects": [{ "id": "damage", "damage_type": "physical", "amount": [20, 34, 58] }]
 	},
 	{
-		"id": "rede", "name": "Rede", "unlock": "start", "trigger": "first_enter",
+		"id": "rede", "desc": "Prende o primeiro invasor que entrar por 2 s: ele fica parado (mas ainda ataca). Separa o líder do grupo.", "name": "Rede", "unlock": "start", "trigger": "first_enter",
 		"effects": [{ "id": "root", "duration_ticks": [20, 28, 36] }]
 	},
 	{
-		"id": "brasa", "name": "Brasa", "unlock": "start", "trigger": "first_enter",
+		"id": "brasa", "desc": "O chão pega fogo por 3 s: 4 de dano de fogo por segundo em todos os invasores da sala.", "name": "Brasa", "unlock": "start", "trigger": "first_enter",
 		"effects": [{ "id": "fire_zone", "dmg_per_sec": [4, 7, 12], "duration_ticks": 30 }]
 	},
 	{
-		"id": "alarme", "name": "Alarme", "unlock": "start", "trigger": "first_enter",
+		"id": "alarme", "desc": "Quando o primeiro invasor entra, os monstros desta sala e das vizinhas atacam 30% mais rápido por 4 s.", "name": "Alarme", "unlock": "start", "trigger": "first_enter",
 		"effects": [{ "id": "ally_haste", "attack_speed_bp": [3000, 4500, 6000], "duration_ticks": 40, "scope": "room_and_adjacent" }]
 	}
 ]

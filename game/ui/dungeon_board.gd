@@ -3,9 +3,9 @@ extends Node2D
 ## durante a onda, as unidades da CombatSim. Também responde "o que está
 ## neste ponto da tela" para a interação por toque.
 
-const ROOM_SIZE := Vector2(148, 90)
-const ORIGIN := Vector2(105, 205)
-const STEP := Vector2(165, 104)
+const ROOM_SIZE := Vector2(150, 80)
+const ORIGIN := Vector2(105, 200)
+const STEP := Vector2(165, 94)
 
 const C := {
 	"rock": Color("2a2228"), "tunnel": Color("3b3138"), "room": Color("4a3c45"),
@@ -36,6 +36,8 @@ var sim: CombatSim = null
 var highlight: Dictionary = {}
 ## [{"path": [slots], "label": String, "color": Color}]
 var routes: Array = []
+## Peça selecionada na preparação ({"slot", "kind", "index"} ou {}).
+var selected: Dictionary = {}
 var font: Font
 
 var _floaters: Array = []
@@ -78,7 +80,7 @@ func slot_at(pos: Vector2) -> String:
 
 ## Posição de cada monstro posicionado (preparação), na mesma disposição do combate.
 func monster_pos(slot: String, index: int, count: int) -> Vector2:
-	return slot_center(slot) + Vector2((index - (count - 1) / 2.0) * 46, 6)
+	return slot_center(slot) + Vector2((index - (count - 1) / 2.0) * 46, 12)
 
 
 ## Peça posicionada sob o ponto: {"slot", "kind", "index"} ou {}.
@@ -95,7 +97,7 @@ func piece_at(pos: Vector2) -> Dictionary:
 		for i in c.traps.size():
 			if pos.x < r.position.x + 10 + (i + 1) * 70:
 				return {"slot": slot, "kind": "trap", "index": i}
-	if c.room != null and pos.y < r.position.y + 20:
+	if c.room != null:
 		return {"slot": slot, "kind": "room", "index": 0}
 	return {}
 
@@ -152,9 +154,12 @@ func _draw() -> void:
 	for e in db.layout.edges:
 		if dungeon.passable(e[0]) and dungeon.passable(e[1]):
 			draw_line(slot_center(e[0]), slot_center(e[1]), C.edge, 6.0)
+	# Camadas: fundo das salas, rotas, texto e peças por cima.
+	for s in db.layout.slots:
+		_draw_slot_bg(s.id)
+	_draw_routes()
 	for s in db.layout.slots:
 		_draw_slot(s.id)
-	_draw_routes()
 	if sim == null:
 		_draw_static_pieces()
 	else:
@@ -171,22 +176,29 @@ func _draw() -> void:
 		_text(f.pos + Vector2(0, -30 * f.age), f.text, f.size, c, true)
 
 
+func _draw_slot_bg(slot: String) -> void:
+	var r := slot_rect(slot)
+	var c: Dictionary = dungeon.contents[slot]
+	if dungeon.slot_state[slot] == "rock":
+		draw_rect(r, C.rock)
+		return
+	var fill: Color = C.room if c.room != null else C.tunnel
+	if dungeon.slot_kind[slot] == "heart":
+		fill = C.heart
+	if sim != null and sim._is_blocked(slot):
+		fill = C.blocked
+	draw_rect(r, fill)
+	draw_rect(r, C.line, false, 2.0)
+
+
 func _draw_slot(slot: String) -> void:
 	var r := slot_rect(slot)
 	var state: String = dungeon.slot_state[slot]
 	var kind: String = dungeon.slot_kind[slot]
 	var c: Dictionary = dungeon.contents[slot]
 	if state == "rock":
-		draw_rect(r, C.rock)
 		_text(r.get_center() + Vector2(0, 4), "rocha", 11, C.dim, true)
 	else:
-		var fill: Color = C.room if c.room != null else C.tunnel
-		if kind == "heart":
-			fill = C.heart
-		if sim != null and sim._is_blocked(slot):
-			fill = C.blocked
-		draw_rect(r, fill)
-		draw_rect(r, C.line, false, 2.0)
 		var title := ""
 		match kind:
 			"heart":
@@ -196,6 +208,14 @@ func _draw_slot(slot: String) -> void:
 			_:
 				title = "%s %d" % [db.rooms[c.room.id].name, c.room.level] if c.room != null else "%s (vazio)" % slot
 		_text(r.position + Vector2(6, 15), title, 11, C.text)
+		if c.room != null or kind == "heart":
+			var cap: int = dungeon.capacity(slot)
+			var sockets: int = dungeon.trap_sockets(slot)
+			var info := "monstros %d/%d" % [c.monsters.size(), cap] if kind == "heart" else \
+					"monstros %d/%d · armadilhas %d/%d" % [c.monsters.size(), cap, c.traps.size(), sockets]
+			if kind == "heart":
+				info = "Guardião %d/1" % c.monsters.size()
+			_text(r.position + Vector2(6, 28), info, 9, C.dim)
 		var traps: Array = sim._traps.get(slot, []) if sim != null else c.traps
 		for i in traps.size():
 			var t: Dictionary = traps[i]
@@ -215,6 +235,16 @@ func _draw_slot(slot: String) -> void:
 					draw_rect(r.grow(-3), Color(1, 0.4, 0.1, 0.2))
 	if highlight.has(slot):
 		draw_rect(r.grow(3), highlight[slot], false, 3.0)
+	if not selected.is_empty() and selected.slot == slot:
+		match selected.kind:
+			"room":
+				draw_rect(r.grow(6), Color.WHITE, false, 3.0)
+			"monster":
+				var n: int = c.monsters.size()
+				draw_rect(Rect2(monster_pos(slot, selected.index, n) - Vector2(18, 18), Vector2(36, 36)), Color.WHITE, false, 2.5)
+			"trap":
+				var tp := r.position + Vector2(4 + selected.index * 70, r.size.y - 18)
+				draw_rect(Rect2(tp, Vector2(66, 16)), Color.WHITE, false, 2.0)
 	for fl in _flashes:
 		if fl.slot == slot:
 			var col: Color = fl.color
@@ -227,14 +257,12 @@ func _draw_routes() -> void:
 		var rt: Dictionary = routes[i]
 		var off := Vector2((i - (routes.size() - 1) / 2.0) * 14, 0)
 		var col: Color = rt.color
-		col.a = 0.75
+		col.a = 0.6
 		for j in rt.path.size() - 1:
-			var a := slot_center(rt.path[j]) + off
 			var b := slot_center(rt.path[j + 1]) + off
-			draw_dashed_line(a, b, col, 3.0, 8.0)
-		if rt.path.size() > 2:
-			var mid := slot_center(rt.path[2]) + off + Vector2(0, -ROOM_SIZE.y / 2 - 8)
-			_text(mid, rt.label, 11, rt.color, true)
+			if rt.path[j + 1] == db.layout.heart:
+				b.y -= ROOM_SIZE.y / 2  # termina na porta do Coração, sem cobrir o texto
+			draw_dashed_line(slot_center(rt.path[j]) + off, b, col, 3.0, 7.0)
 
 
 func _draw_static_pieces() -> void:

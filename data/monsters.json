@@ -1,6 +1,6 @@
 [
 	{
-		"id": "slime", "name": "Slime", "family": "gosma", "role": "tanque", "unlock": "start",
+		"id": "slime", "desc": "Tanque. Recebe 25% menos dano físico. No nível 3 vira Rei Slime (divide-se em 2 ao morrer) ou Slime Ácido (corrói armadura).", "name": "Slime", "family": "gosma", "role": "tanque", "unlock": "start",
 		"hp": 60, "atk": 6, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 0,
 		"traits": [{ "id": "damage_reduction", "damage_type": "physical", "bp": 2500 }],
 		"variants": {
@@ -9,7 +9,7 @@
 		}
 	},
 	{
-		"id": "golem", "name": "Golem", "family": "gosma", "role": "tanque", "unlock": "start",
+		"id": "golem", "desc": "Tanque pesado e lento. Provoca: os invasores atacam ele primeiro.", "name": "Golem", "family": "gosma", "role": "tanque", "unlock": "start",
 		"hp": 90, "atk": 8, "attack_ticks": 20, "range": "melee", "damage_type": "physical", "armor": 2,
 		"traits": [{ "id": "taunt" }, { "id": "knockback_immune" }],
 		"variants": {
@@ -18,7 +18,7 @@
 		}
 	},
 	{
-		"id": "morcego", "name": "Morcego", "family": "besta", "role": "controle", "unlock": "start",
+		"id": "morcego", "desc": "Controle. A cada 5 s atordoa um invasor por 1 s (ele não ataca nem anda).", "name": "Morcego", "family": "besta", "role": "controle", "unlock": "start",
 		"hp": 32, "atk": 4, "attack_ticks": 7, "range": "melee", "damage_type": "physical", "armor": 0,
 		"traits": [{ "id": "stun_pulse", "every_ticks": 50, "duration_ticks": 10 }],
 		"variants": {
@@ -27,7 +27,7 @@
 		}
 	},
 	{
-		"id": "aranha", "name": "Aranha", "family": "besta", "role": "controle", "unlock": "start",
+		"id": "aranha", "desc": "Controle. Cada ataque aplica veneno (ignora armadura) e deixa o alvo lento.", "name": "Aranha", "family": "besta", "role": "controle", "unlock": "start",
 		"hp": 35, "atk": 5, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 0,
 		"traits": [
 			{ "id": "poison_on_hit", "dmg_per_sec": 3, "duration_ticks": 40 },
@@ -39,7 +39,7 @@
 		}
 	},
 	{
-		"id": "goblin", "name": "Goblin", "family": "goblinoide", "role": "dano", "unlock": "start",
+		"id": "goblin", "desc": "Dano. Ataca rápido e causa +50% de dano em alvos atordoados ou lentos. Frágil.", "name": "Goblin", "family": "goblinoide", "role": "dano", "unlock": "start",
 		"hp": 30, "atk": 9, "attack_ticks": 7, "range": "melee", "damage_type": "physical", "armor": 0,
 		"traits": [{ "id": "bonus_vs_impaired", "bp": 5000 }],
 		"variants": {
@@ -48,7 +48,7 @@
 		}
 	},
 	{
-		"id": "bruxo", "name": "Bruxo", "family": "goblinoide", "role": "suporte", "unlock": "start",
+		"id": "bruxo", "desc": "Suporte. Ataque mágico à distância (ignora armadura) e +15% de dano para os aliados da sala.", "name": "Bruxo", "family": "goblinoide", "role": "suporte", "unlock": "start",
 		"hp": 30, "atk": 7, "attack_ticks": 12, "range": "ranged", "damage_type": "magic", "armor": 0,
 		"traits": [{ "id": "ally_damage_aura", "bp": 1500 }],
 		"variants": {
@@ -57,7 +57,7 @@
 		}
 	},
 	{
-		"id": "esqueleto", "name": "Esqueleto", "family": "morto_vivo", "role": "tanque", "unlock": "meta",
+		"id": "esqueleto", "desc": "Tanque. Revive uma vez com 30% da vida.", "name": "Esqueleto", "family": "morto_vivo", "role": "tanque", "unlock": "meta",
 		"hp": 45, "atk": 7, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 1,
 		"traits": [{ "id": "revive_once", "hp_bp": 3000 }],
 		"variants": {
@@ -66,7 +66,7 @@
 		}
 	},
 	{
-		"id": "espectro", "name": "Espectro", "family": "morto_vivo", "role": "controle", "unlock": "meta",
+		"id": "espectro", "desc": "Controle. Passa pela linha de frente e ataca quem está atrás.", "name": "Espectro", "family": "morto_vivo", "role": "controle", "unlock": "meta",
 		"hp": 30, "atk": 6, "attack_ticks": 10, "range": "melee", "damage_type": "magic", "armor": 0,
 		"traits": [{ "id": "backline_strike" }],
 		"variants": {

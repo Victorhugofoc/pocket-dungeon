@@ -11,9 +11,12 @@ static func build(db: Db, sim: CombatSim) -> Dictionary:
 	var invaders: Array = []
 	var culprits: Array = []
 	var monsters: Array = []
+	var journeys := _journeys(sim)
 	for u in sim.units:
 		if u.side == "invader" and not u.summoned:
-			invaders.append({"uid": u.uid, "id": u.id, "name": u.name, "outcome": u.state, "slot": u.slot})
+			var j: Dictionary = journeys.get(u.uid, {"steps": [], "killer": ""})
+			invaders.append({"uid": u.uid, "id": u.id, "name": u.name, "outcome": u.state, "slot": u.slot,
+					"elite": u.elite, "steps": j.steps, "killer": j.killer})
 			if u.heart_damage > 0:
 				culprits.append({"uid": u.uid, "name": u.name, "amount": u.heart_damage})
 		elif u.side == "monster" and u.damage_dealt > 0:
@@ -27,6 +30,38 @@ static func build(db: Db, sim: CombatSim) -> Dictionary:
 		"culprits": culprits,
 		"tips": _tips(db, sim),
 	}
+
+
+## Caminho de cada invasor: [{"slot", "secs"}] (segundos parado/andando em cada
+## slot, arredondados) e o nome de quem deu o golpe final.
+static func _journeys(sim: CombatSim) -> Dictionary:
+	var tps: int = sim.bal.ticks_per_second
+	var enters := {}   # uid -> [[slot, tick]]
+	var ends := {}     # uid -> tick
+	var killer := {}   # uid -> nome
+	for e in sim.events:
+		match e.type:
+			"spawn":
+				enters[e.u] = [[sim.db.layout.entrance, e.t]]
+			"enter", "push":
+				if enters.has(e.u):
+					enters[e.u].append([e.slot, e.t])
+			"death", "heart_hit", "loot", "flee":
+				if not ends.has(e.u):
+					ends[e.u] = e.t
+				if e.type == "death" and e.has("killer"):
+					var k: Object = sim._unit(e.killer)
+					if k != null:
+						killer[e.u] = k.name
+	var out := {}
+	for uid in enters:
+		var list: Array = enters[uid]
+		var steps := []
+		for i in list.size():
+			var until: int = list[i + 1][1] if i + 1 < list.size() else ends.get(uid, sim.tick)
+			steps.append({"slot": list[i][0], "secs": int(round(float(until - list[i][1]) / tps))})
+		out[uid] = {"steps": steps, "killer": killer.get(uid, "")}
+	return out
 
 
 static func _tips(db: Db, sim: CombatSim) -> Array:
@@ -47,7 +82,7 @@ static func _tips(db: Db, sim: CombatSim) -> Array:
 	if escaped.any(func(u): return u.id == "mago"):
 		tips.append("Um Mago passou: atordoamento (Morcego) e Espinhos derrubam alvos frágeis antes do dano em área.")
 	if sim.units.any(func(u): return u.state == "looted"):
-		tips.append("O baú foi saqueado: proteja a Sala de Tesouro com um monstro, ou deixe-a como isca de propósito.")
+		tips.append("Um Ladino levou o baú: você perde o ouro dele, mas esse Ladino foi embora sem atacar o Coração. Com um monstro na Sala de Tesouro, o baú fica protegido.")
 	if escaped.any(func(u): return u.move_speed >= 70):
 		tips.append("Invasores rápidos passaram: Rede e Corredor Estreito seguram quem corre.")
 	if escaped.size() > 0 and tips.is_empty():

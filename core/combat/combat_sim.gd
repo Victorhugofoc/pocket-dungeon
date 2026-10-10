@@ -789,6 +789,8 @@ func power_target_error(target: String) -> String:
 		return "nenhum poder equipado"
 	if not dungeon.slot_state.has(target):
 		return "alvo inválido"
+	if not dungeon.passable(target):
+		return "isso é rocha"
 	for e in power.effects:
 		if e.id == "block_branch":
 			if dungeon.slot_kind[target] != "slot" or not dungeon.passable(target):

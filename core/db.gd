@@ -193,6 +193,7 @@ func _validate() -> void:
 		var m: Dictionary = monsters[id]
 		var p := "monsters.%s" % id
 		_check_unit(m, p)
+		_require(m, "desc", TYPE_STRING, p)
 		_check_enum(m, "role", Traits.ROLES, p)
 		_check_enum(m, "unlock", Traits.UNLOCKS, p)
 		if _require(m, "variants", TYPE_DICTIONARY, p):
@@ -210,6 +211,7 @@ func _validate() -> void:
 		var r: Dictionary = rooms[id]
 		var p := "rooms.%s" % id
 		_require(r, "name", TYPE_STRING, p)
+		_require(r, "desc", TYPE_STRING, p)
 		_check_enum(r, "unlock", Traits.UNLOCKS, p)
 		_check_levels(r.get("capacity"), balance.max_room_level, "%s.capacity" % p)
 		_require(r, "trap_sockets", TYPE_INT, p)
@@ -218,6 +220,7 @@ func _validate() -> void:
 		var t: Dictionary = traps[id]
 		var p := "traps.%s" % id
 		_require(t, "name", TYPE_STRING, p)
+		_require(t, "desc", TYPE_STRING, p)
 		_check_enum(t, "unlock", Traits.UNLOCKS, p)
 		_check_enum(t, "trigger", Traits.TRAP_TRIGGERS, p)
 		_check_effects(t.get("effects", []), p, balance.max_trap_level)
@@ -251,6 +254,7 @@ func _validate() -> void:
 		var pw: Dictionary = powers[id]
 		var p := "powers.%s" % id
 		_require(pw, "name", TYPE_STRING, p)
+		_require(pw, "desc", TYPE_STRING, p)
 		_require(pw, "cost", TYPE_INT, p)
 		_check_enum(pw, "unlock", Traits.UNLOCKS, p)
 		_check_effects(pw.get("effects", []), p, 1)

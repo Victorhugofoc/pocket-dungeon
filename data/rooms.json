@@ -1,26 +1,26 @@
 [
 	{
-		"id": "camara", "name": "Câmara", "unlock": "start",
+		"id": "camara", "desc": "Sala comum: cabe 2 monstros (3 no nível 3) e 1 armadilha.", "name": "Câmara", "unlock": "start",
 		"capacity": [2, 2, 3], "trap_sockets": 1,
 		"traits": []
 	},
 	{
-		"id": "covil", "name": "Covil", "unlock": "start",
+		"id": "covil", "desc": "Cabe só 1 monstro, mas ele fica 40% mais forte (vida e ataque). Sem armadilha.", "name": "Covil", "unlock": "start",
 		"capacity": [1, 1, 1], "trap_sockets": 0,
 		"traits": [{ "id": "occupant_stat_bonus", "bp": [4000, 7000, 10000] }]
 	},
 	{
-		"id": "galeria", "name": "Galeria de Armadilhas", "unlock": "start",
+		"id": "galeria", "desc": "1 monstro e 2 armadilhas; as armadilhas daqui ficam 30% mais fortes.", "name": "Galeria de Armadilhas", "unlock": "start",
 		"capacity": [1, 1, 1], "trap_sockets": 2,
 		"traits": [{ "id": "trap_power_bonus", "bp": [3000, 6000, 10000] }]
 	},
 	{
-		"id": "tesouro", "name": "Sala de Tesouro", "unlock": "start",
+		"id": "tesouro", "desc": "Tem um baú que vale ouro no fim da onda se ninguém pegar. Atrai os Ladinos: se a sala estiver sem monstros, eles pegam o baú e vão embora sem atacar o Coração (você perde o ouro do baú).", "name": "Sala de Tesouro", "unlock": "start",
 		"capacity": [1, 1, 1], "trap_sockets": 1,
 		"traits": [{ "id": "treasure_chest", "gold": [3, 5, 8] }]
 	},
 	{
-		"id": "corredor", "name": "Corredor Estreito", "unlock": "start",
+		"id": "corredor", "desc": "Os invasores passam um de cada vez (só o da frente luta) e ficam 20% mais lentos. Cabe 1 monstro.", "name": "Corredor Estreito", "unlock": "start",
 		"capacity": [1, 1, 1], "trap_sockets": 1,
 		"traits": [{ "id": "single_file" }, { "id": "room_slow", "bp": [2000, 3000, 4000] }]
 	}
