@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Covil"
 config/description="Roguelite de defesa de masmorra com merge."
-run/main_scene="res://game/main.tscn"
+run/main_scene="res://game/debug/combat_viewer.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [display]

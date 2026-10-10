@@ -154,7 +154,7 @@ O grupo pode se dividir. Esse é o principal recurso espacial do jogo: usar a Sa
 | **Corredor Estreito** | 1 monstro | 1 | invasores passam **um por vez** (só o da frente luta) e ficam 20% mais lentos | lentidão 20% / 30% / 40% |
 | **Coração** (fixo) | 1 Guardião | 0 | ponto final; o Guardião luta antes que o Coração sofra dano | sem merge; evolui pela meta |
 
-**Regra da Sala de Tesouro:** se um invasor chega a uma Sala de Tesouro sem monstros vivos, ele **pega o baú e volta para a superfície**. Não causa dano ao Coração, mas você perde o ouro do baú. Ela é isca e risco ao mesmo tempo.
+**Regra da Sala de Tesouro:** se um **Ladino** chega a uma Sala de Tesouro sem monstros vivos, ele **pega o baú e volta para a superfície** (D-010). As outras classes ignoram o baú: querem o Coração. Não causa dano ao Coração, mas você perde o ouro do baú. Ela é isca e risco ao mesmo tempo.
 
 ### 4.4 Armadilhas (MVP: 4)
 

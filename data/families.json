@@ -1,0 +1,6 @@
+[
+	{ "id": "gosma", "name": "Gosma", "synergy_min": 2, "bonus_traits": [{ "id": "start_shield", "bp": 2000 }] },
+	{ "id": "besta", "name": "Besta", "synergy_min": 2, "bonus_traits": [{ "id": "haste", "bp": 2500 }] },
+	{ "id": "goblinoide", "name": "Goblinoide", "synergy_min": 2, "bonus_traits": [{ "id": "gold_on_kill", "amount": 1 }] },
+	{ "id": "morto_vivo", "name": "Morto-vivo", "synergy_min": 2, "bonus_traits": [{ "id": "lifesteal", "bp": 1500 }] }
+]

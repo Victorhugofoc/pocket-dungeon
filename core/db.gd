@@ -21,6 +21,7 @@ var bosses: Dictionary = {}
 var powers: Dictionary = {}
 var pacts: Dictionary = {}
 var wave_themes: Dictionary = {}
+var families: Dictionary = {}
 
 var errors: Array[String] = []
 
@@ -92,6 +93,7 @@ func _load_all(dir: String) -> void:
 	powers = _index(_read(dir, "powers.json"), "powers")
 	pacts = _index(_read(dir, "pacts.json"), "pacts")
 	wave_themes = _index(_read(dir, "wave_themes.json"), "wave_themes")
+	families = _index(_read(dir, "families.json"), "families")
 	if errors.is_empty():
 		_validate()
 
@@ -240,6 +242,13 @@ func _validate() -> void:
 		var pc: Dictionary = pacts[id]
 		_require(pc, "name", TYPE_STRING, "pacts.%s" % id)
 		_require(pc, "effects", TYPE_DICTIONARY, "pacts.%s" % id)
+	for id in _sorted(families):
+		var f: Dictionary = families[id]
+		var p := "families.%s" % id
+		if not id in Traits.FAMILIES:
+			errors.append("%s: família desconhecida" % p)
+		_require(f, "synergy_min", TYPE_INT, p)
+		_check_traits(f.get("bonus_traits", []), p, 1)
 	for id in _sorted(wave_themes):
 		var th: Dictionary = wave_themes[id]
 		var p := "wave_themes.%s" % id

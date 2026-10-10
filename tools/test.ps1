@@ -1,4 +1,4 @@
-# Roda a suíte de testes headless. Uso: .\tools\test.ps1 [filtro]
+﻿# Roda a suíte de testes headless. Uso: .\tools\test.ps1 [filtro]
 # O executável da Godot é de subsistema GUI: sem redirecionar, a saída se perde
 # no console. Por isso toda saída passa por um pipe.
 # Erros de script em tempo de execução (chamada inválida, índice fora do
@@ -16,7 +16,7 @@ $code = $LASTEXITCODE
 $lines
 $scriptErrors = @($lines | Where-Object { $_ -match "SCRIPT ERROR|^ERROR:" }).Count
 if ($scriptErrors -gt 0) {
-    "*** $scriptErrors erro(s) de script na saída: a suíte NÃO passou ***"
+    "*** $scriptErrors erro(s) de script na saida: a suite NAO passou ***"
     exit 1
 }
 exit $code

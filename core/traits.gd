@@ -32,6 +32,9 @@ const TRAITS := {
 	"revive_once": ["hp_bp"],
 	"backline_strike": [],
 	"fear_on_hit": ["every_ticks", "duration_ticks"],
+	# Bônus de sinergia de família (data/families.json)
+	"start_shield": ["bp"],
+	"haste": ["bp"],
 	# Aventureiros e chefes
 	"target_lowest_hp": [],
 	"disarm_first_trap": [],
@@ -39,8 +42,6 @@ const TRAITS := {
 	"resist": ["damage_type", "bp"],
 	"loot_carrier": ["gold"],
 	"heal_allies": ["hp_per_sec"],
-	"ignore_first_guarded_room": [],
-	"slow_immune_on_enter": ["duration_ticks"],
 	"room_effect_shield": [],
 	"frost_aura": ["bp"],
 	"blink_past_room": ["every_ticks"],
