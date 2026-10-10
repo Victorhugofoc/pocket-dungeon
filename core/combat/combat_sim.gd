@@ -628,10 +628,10 @@ func _hit(u: Object, t: Object) -> void:
 		return
 	if u.has("poison_on_hit"):
 		var stacks: int = u.tp("poison_stacks", "max") if u.has("poison_stacks") else 1
-		_status(t, "poison", {"dps": u.tp("poison_on_hit", "dmg_per_sec"),
+		_status(t, "poison", {"dps": _dot_dps(u, u.tp("poison_on_hit", "dmg_per_sec")),
 				"duration": u.tp("poison_on_hit", "duration_ticks"), "max": stacks}, u)
 	if u.has("burn_on_hit"):
-		_status(t, "burn", {"dps": u.tp("burn_on_hit", "dmg_per_sec"),
+		_status(t, "burn", {"dps": _dot_dps(u, u.tp("burn_on_hit", "dmg_per_sec")),
 				"duration": u.tp("burn_on_hit", "duration_ticks"), "max": u.tp("burn_on_hit", "max_stacks")}, u)
 	if u.has("slow_on_hit"):
 		_status(t, "slow", {"bp": u.tp("slow_on_hit", "bp"), "duration": u.tp("slow_on_hit", "duration_ticks")}, u)
@@ -644,6 +644,11 @@ func _hit(u: Object, t: Object) -> void:
 
 
 # --- Dano, cura, status, morte ---------------------------------------------------
+
+## Dano por segundo de veneno/queimadura escala com o nível de quem aplica (D-018).
+func _dot_dps(u: Object, base: int) -> int:
+	return Db.scale_bp(base, bal.level_mult_bp[clampi(u.level, 1, bal.level_mult_bp.size()) - 1])
+
 
 ## Aplica dano já com armadura, reduções e escudo. Retorna o dano efetivo.
 func _damage(t: Object, amount: int, dtype: String, src: Object, crit: bool, source: String) -> int:

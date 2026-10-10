@@ -1,0 +1,64 @@
+[
+	{
+		"id": "primeira_defesa",
+		"title": "Primeira defesa",
+		"goal": 0,
+		"intro": "Dois Guerreiros com armadura. Eles param na primeira sala que tiver monstros.",
+		"hint": "Monstros precisam de uma sala. Veneno (Aranha) ignora armadura.",
+		"power": "desabamento",
+		"digs": 0,
+		"party": [{ "id": "guerreiro", "modifiers": [] }, { "id": "guerreiro", "modifiers": [] }],
+		"pieces": [["room", "camara", 1], ["monster", "golem", 1], ["monster", "aranha", 2], ["monster", "goblin", 1], ["trap", "espinhos", 1]],
+		"solution": [["a1", 0], ["a1", 1], ["a1", 2], ["coracao", 3], ["a1", 4]]
+	},
+	{
+		"id": "isca",
+		"title": "A isca",
+		"goal": 0,
+		"intro": "Dois Ladinos vão atrás de tesouro. Se pegarem o baú, vão embora sem atacar o Coração.",
+		"hint": "Escave o ramo da direita e use a Sala de Tesouro como isca, longe da sua defesa.",
+		"power": "fechar_porta",
+		"digs": 1,
+		"party": [{ "id": "guerreiro", "modifiers": [] }, { "id": "ladino", "modifiers": [] }, { "id": "ladino", "modifiers": [] }, { "id": "arqueira", "modifiers": [] }],
+		"pieces": [["room", "tesouro", 1], ["room", "camara", 1], ["monster", "golem", 2], ["monster", "aranha", 2], ["monster", "goblin", 1], ["trap", "rede", 1]],
+		"dig_solution": ["c1"],
+		"solution": [["c1", 0], ["d1", 1], ["d1", 2], ["d1", 3], ["coracao", 4], ["d1", 5]]
+	},
+	{
+		"id": "couraca",
+		"title": "Couraça",
+		"goal": 0,
+		"intro": "Três Guerreiros blindados: golpes físicos quase não passam da armadura.",
+		"hint": "Dano mágico (Bruxo), veneno (Aranha) e o Slime Ácido furam armadura.",
+		"power": "desabamento",
+		"digs": 0,
+		"party": [{ "id": "guerreiro", "modifiers": ["blindado"] }, { "id": "guerreiro", "modifiers": ["blindado"] }, { "id": "guerreiro", "modifiers": ["blindado"] }],
+		"pieces": [["room", "camara", 2], ["room", "covil", 1], ["monster", "slime", 3, "b"], ["monster", "aranha", 2], ["monster", "bruxo", 2], ["monster", "goblin", 2], ["monster", "golem", 2], ["room", "camara", 1]],
+		"solution": [["a1", 0], ["b1", 1], ["d1", 7], ["a1", 2], ["a1", 3], ["b1", 4], ["coracao", 6], ["d1", 5]]
+	},
+	{
+		"id": "correria",
+		"title": "Correria",
+		"goal": 0,
+		"intro": "Ladinos e Arqueiras apressados: chegam rápido e em bando.",
+		"hint": "O Corredor Estreito faz passar um de cada vez; a Brasa queima o grupo inteiro.",
+		"power": "desabamento",
+		"digs": 0,
+		"party": [{ "id": "ladino", "modifiers": ["apressado"] }, { "id": "ladino", "modifiers": ["apressado"] }, { "id": "arqueira", "modifiers": ["apressado"] }, { "id": "ladino", "modifiers": ["apressado"] }, { "id": "arqueira", "modifiers": ["apressado"] }],
+		"pieces": [["room", "corredor", 2], ["room", "camara", 1], ["monster", "golem", 2], ["monster", "goblin", 2], ["monster", "morcego", 2], ["monster", "aranha", 1], ["trap", "brasa", 2], ["trap", "rede", 1]],
+		"solution": [["a1", 0], ["b1", 1], ["a1", 2], ["b1", 3], ["b1", 4], ["coracao", 5], ["b1", 6], ["a1", 7]]
+	},
+	{
+		"id": "varok",
+		"title": "O Matador de Chefes",
+		"goal": 0,
+		"intro": "Varok vem sozinho: vida enorme e dano dobrado contra o seu monstro mais forte.",
+		"hint": "Não aposte tudo num monstro só. Veneno e várias salas desgastam um chefe.",
+		"power": "desabamento",
+		"digs": 1,
+		"party": [{ "boss": "varok" }],
+		"pieces": [["room", "camara", 2], ["room", "camara", 2], ["room", "covil", 2], ["monster", "aranha", 3, "a"], ["monster", "aranha", 3, "a"], ["monster", "goblin", 2], ["monster", "slime", 3, "a"], ["monster", "golem", 2], ["monster", "bruxo", 2], ["trap", "espinhos", 2]],
+		"dig_solution": [],
+		"solution": [["a1", 0], ["b1", 1], ["d1", 2], ["a1", 3], ["a1", 6], ["b1", 4], ["b1", 5], ["d1", 8], ["coracao", 7], ["a1", 9]]
+	}
+]

@@ -42,7 +42,7 @@
 	{
 		"id": "varok", "name": "Varok, Matador de Chefes", "threat": 12,
 		"question": "Sua defesa depende de um único monstro forte?",
-		"hp": 900, "atk": 40, "attack_ticks": 20, "range": "melee", "damage_type": "physical", "armor": 8,
+		"hp": 750, "atk": 34, "attack_ticks": 20, "range": "melee", "damage_type": "physical", "armor": 8,
 		"move_speed": 35, "route_pref": "most_monsters",
 		"traits": [{ "id": "bonus_vs_strongest", "bp": 10000 }, { "id": "knockback_immune" }],
 		"escorts": []
