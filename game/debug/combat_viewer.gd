@@ -243,8 +243,11 @@ func _on_event(e: Dictionary) -> void:
 			_float(_slot_center(e.target), db.powers[e.id].name + "!", COLORS.mana, 22)
 			_flashes.append({"slot": e.target, "age": 0.0})
 		"power_failed":
-			_log_line("Mana insuficiente (%d de %d)" % [e.mana, sim.power_cost])
-			_float(_slot_center(e.target), "falta mana %d/%d" % [e.mana, sim.power_cost], Color("ff6b6b"), 16)
+			var why: String = e.get("reason", "mana insuficiente")
+			if why == "mana insuficiente":
+				why = "falta mana %d/%d" % [e.mana, sim.power_cost]
+			_log_line("Poder recusado: %s" % why)
+			_float(_slot_center(e.target), why, Color("ff6b6b"), 13)
 		"blink":
 			_log_line("%s: Passo da Tempestade" % u.name)
 			_float(where + Vector2(0, -24), "Passo!", CLASS_COLORS.kaelen, 15)
@@ -297,8 +300,11 @@ func _unit_target_pos(u: Object) -> Vector2:
 		return _slot_center(db.layout.entrance) + Vector2(0, -60)
 	var pos := center
 	if u.path_index + 1 < u.path.size():
-		var nxt := _slot_center(u.path[u.path_index + 1])
-		pos = center.lerp(nxt, float(u.progress) / db.balance.room_length)
+		var next_slot: String = u.path[u.path_index + 1]
+		var frac: float = float(u.progress) / db.balance.room_length
+		if sim._is_blocked(next_slot):
+			frac = minf(frac, 0.5)  # esperando diante da porta fechada
+		pos = center.lerp(_slot_center(next_slot), frac)
 	return pos + Vector2(((u.uid % 5) - 2) * 9, -18 + (u.uid % 3) * 6)
 
 

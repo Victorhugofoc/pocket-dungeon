@@ -230,6 +230,17 @@ func test_close_door_reroutes_invader() -> void:
 	assert_false("b1" in entered)
 
 
+func test_close_door_refuses_chokepoint() -> void:
+	# d1 é passagem obrigatória; b1 sem o ramo C aberto também.
+	for target in ["d1", "b1"]:
+		var opts := {"power": "fechar_porta", "commands": [{"t": 45, "target": target}]}
+		var sim := _run(_d(), [_inv("guerreiro")], 1, opts)
+		var failed := _events(sim, "power_failed")
+		assert_eq(failed.size(), 1, target)
+		assert_true("caminho alternativo" in failed[0].reason, failed[0].reason)
+		assert_eq(sim.result.heart_damage, 2, "o invasor não pode ficar travado")
+
+
 func test_power_fails_without_mana() -> void:
 	var opts := {"power": "desabamento", "commands": [{"t": 5, "target": "a1"}]}
 	var sim := _run(_d(), [_inv("guerreiro")], 1, opts)

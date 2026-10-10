@@ -266,8 +266,11 @@ func _emit(type: String, data: Dictionary = {}) -> void:
 func _process_commands() -> void:
 	while not commands.is_empty() and commands[0].t <= tick:
 		var cmd: Dictionary = commands.pop_front()
-		if power.is_empty() or mana < power_cost:
-			_emit("power_failed", {"target": cmd.target, "mana": mana})
+		var reason := power_target_error(cmd.target)
+		if reason == "" and mana < power_cost:
+			reason = "mana insuficiente"
+		if reason != "":
+			_emit("power_failed", {"target": cmd.target, "mana": mana, "reason": reason})
 			continue
 		mana -= power_cost
 		_emit("power", {"id": power.id, "target": cmd.target})
@@ -772,6 +775,26 @@ func _summon(parent: Object, unit_id: String, hp: int, atk: int) -> void:
 
 
 # --- Poderes -------------------------------------------------------------------
+
+## "" se o poder equipado pode ser usado em `target`; senão o motivo (sem gastar mana).
+## Fechar Porta só vale onde existe outro caminho até o Coração: fechar uma
+## passagem obrigatória travaria os invasores até o tempo acabar.
+func power_target_error(target: String) -> String:
+	if power.is_empty():
+		return "nenhum poder equipado"
+	if not dungeon.slot_state.has(target):
+		return "alvo inválido"
+	for e in power.effects:
+		if e.id == "block_branch":
+			if dungeon.slot_kind[target] != "slot" or not dungeon.passable(target):
+				return "só dá para fechar a entrada de um ramo"
+			var passable := {}
+			for s in dungeon.slot_state:
+				passable[s] = dungeon.passable(s) and not _is_blocked(s) and s != target
+			if Pathing.all_paths(dungeon.adjacency, passable, db.layout.entrance, db.layout.heart).is_empty():
+				return "não há caminho alternativo: fechar aqui travaria a masmorra"
+	return ""
+
 
 func _apply_power(target: String) -> void:
 	for e in power.effects:
