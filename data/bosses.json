@@ -1,23 +1,50 @@
 [
 	{
-		"id": "cavaleira", "name": "Cavaleira Implacável", "threat": 10,
-		"hp": 400, "atk": 18, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 5,
+		"id": "frostine", "name": "Frostine, Guardiã do Gelo", "threat": 10,
+		"question": "Você tem dano sustentado que fura armadura?",
+		"hp": 450, "atk": 12, "attack_ticks": 10, "range": "melee", "damage_type": "magic", "armor": 8,
+		"move_speed": 40, "route_pref": "most_monsters",
+		"traits": [{ "id": "frost_aura", "bp": 3000 }, { "id": "slow_on_hit", "bp": 2000, "duration_ticks": 20 }],
+		"escorts": [{ "class": "guerreiro", "count": 1 }, { "class": "arqueira", "count": 1 }]
+	},
+	{
+		"id": "kaelen", "name": "Kaelen, Duelista da Tempestade", "threat": 10,
+		"question": "Sua defesa tem profundidade e controle?",
+		"hp": 260, "atk": 20, "attack_ticks": 7, "range": "melee", "damage_type": "magic", "armor": 0,
+		"move_speed": 65, "route_pref": "shortest",
+		"traits": [{ "id": "blink_past_room", "every_ticks": 80 }, { "id": "crit", "chance_bp": 2000, "mult_bp": 20000 }],
+		"escorts": [{ "class": "ladino", "count": 2 }]
+	},
+	{
+		"id": "aurelius", "name": "Aurelius, Sábio Arcano", "threat": 10,
+		"question": "Você tem burst e efeitos em sequência?",
+		"hp": 240, "atk": 22, "attack_ticks": 15, "range": "ranged", "damage_type": "magic", "armor": 0,
 		"move_speed": 45, "route_pref": "shortest",
-		"traits": [{ "id": "ignore_first_guarded_room" }, { "id": "slow_immune_on_enter", "duration_ticks": 30 }],
+		"traits": [{ "id": "aoe_attack" }, { "id": "room_effect_shield" }, { "id": "regen", "hp_per_sec": 4 }],
+		"escorts": [{ "class": "mago", "count": 1 }, { "class": "guerreiro", "count": 1 }]
+	},
+	{
+		"id": "ignis", "name": "Ignis, o Inferno", "threat": 10,
+		"question": "Seus monstros sobrevivem a fogo em área?",
+		"hp": 320, "atk": 16, "attack_ticks": 12, "range": "ranged", "damage_type": "fire", "armor": 4,
+		"move_speed": 40, "route_pref": "most_monsters",
+		"traits": [{ "id": "aoe_attack" }, { "id": "burn_on_hit", "dmg_per_sec": 3, "duration_ticks": 40, "max_stacks": 3 }, { "id": "resist", "damage_type": "fire", "bp": 10000 }],
 		"escorts": [{ "class": "guerreiro", "count": 2 }]
 	},
 	{
-		"id": "rei_ratos", "name": "Rei dos Ratos", "threat": 8,
-		"hp": 150, "atk": 10, "attack_ticks": 7, "range": "melee", "damage_type": "physical", "armor": 1,
-		"move_speed": 70, "route_pref": "treasure",
-		"traits": [{ "id": "swarm_haste_on_ally_death", "bp": 1000 }],
-		"escorts": [{ "class": "ladino", "count": 8, "hp_bp": 6000 }]
+		"id": "zephyr", "name": "Zephyr, o Pistoleiro", "threat": 10,
+		"question": "Você protege seus suportes e aguenta um bando?",
+		"hp": 220, "atk": 14, "attack_ticks": 6, "range": "ranged", "damage_type": "physical", "armor": 3,
+		"move_speed": 55, "route_pref": "treasure",
+		"traits": [{ "id": "target_backline" }, { "id": "crit", "chance_bp": 1500, "mult_bp": 20000 }],
+		"escorts": [{ "class": "ladino", "count": 6, "hp_bp": 6000 }]
 	},
 	{
-		"id": "arquimago", "name": "Arquimago Exilado", "threat": 10,
-		"hp": 220, "atk": 22, "attack_ticks": 15, "range": "ranged", "damage_type": "magic", "armor": 0,
-		"move_speed": 45, "route_pref": "shortest",
-		"traits": [{ "id": "aoe_attack" }, { "id": "room_effect_shield" }, { "id": "summon", "unit": "clone_arcano", "every_ticks": 80, "max": 2 }],
-		"escorts": [{ "class": "mago", "count": 1 }, { "class": "guerreiro", "count": 1 }]
+		"id": "varok", "name": "Varok, Matador de Chefes", "threat": 12,
+		"question": "Sua defesa depende de um único monstro forte?",
+		"hp": 900, "atk": 40, "attack_ticks": 20, "range": "melee", "damage_type": "physical", "armor": 8,
+		"move_speed": 35, "route_pref": "most_monsters",
+		"traits": [{ "id": "bonus_vs_strongest", "bp": 10000 }, { "id": "knockback_immune" }],
+		"escorts": []
 	}
 ]

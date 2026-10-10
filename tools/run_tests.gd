@@ -20,6 +20,11 @@ func _init() -> void:
 	var start := Time.get_ticks_msec()
 	for f in files:
 		var script: GDScript = load("res://tests/" + f)
+		if script == null or not script.can_instantiate():
+			failed += 1
+			total += 1
+			print("FALHOU %s: o script não compila" % f)
+			continue
 		var suite: Object = script.new()
 		var names: Array[String] = []
 		for m in suite.get_method_list():

@@ -41,7 +41,7 @@ func test_content_counts_match_mvp_scope() -> void:
 	assert_eq(db.traps.size(), 4)
 	assert_eq(db.adventurers.size(), 4)
 	assert_eq(db.modifiers.size(), 6)
-	assert_eq(db.bosses.size(), 3)
+	assert_eq(db.bosses.size(), 6)
 	assert_eq(db.powers.size(), 6)
 	assert_eq(db.pacts.size(), 6)
 	assert_eq(db.wave_themes.size(), 6)

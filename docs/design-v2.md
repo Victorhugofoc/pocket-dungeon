@@ -237,13 +237,16 @@ Cada modificador muda uma decisão, não só os números:
 - A cada onda, sorteia-se um **tema** (blindados, rápidos, enxame, ladrões, arcanos, misto). O tema define os pesos das classes e dos modificadores.
 - **Regra de variedade:** o mesmo tema não pode aparecer em duas ondas seguidas.
 - **Onda 4 (Elite):** todos os invasores recebem 1 modificador.
-- **Onda 8 (Herói-Chefe):** um entre 3 heróis, cada um sendo uma pergunta de design:
+- **Onda 8 (Herói-Chefe):** um entre os **6 heróis de Dungeon Reign**, o outro jogo do estúdio (D-009). Lá eles são os heróis jogáveis; aqui vêm invadir o seu Covil. Cada um é uma pergunta de design:
 
-| Herói-Chefe | Mecânica | Pergunta |
-|---|---|---|
-| **Cavaleira Implacável** | Atravessa a primeira sala com monstros sem lutar; imune a lentidão por 3 s ao entrar em cada sala | Você tem profundidade de defesa? |
-| **Rei dos Ratos** | Vem com 8 Ladinos frágeis; quando um morre, os outros ficam mais rápidos | Você tem dano em área? |
-| **Arquimago Exilado** | Escudo que anula o 1º efeito de cada sala; conjura cópias | Você tem interrupção e efeitos em sequência? |
+| Herói-Chefe | Escolta | Mecânica | Pergunta |
+|---|---|---|---|
+| **Frostine**, Guardiã do Gelo | Guerreiro + Arqueira | muita armadura; aura que deixa os monstros da sala 30% mais lentos para atacar | Você tem dano sustentado que fura armadura? |
+| **Kaelen**, Duelista da Tempestade | 2 Ladinos | rápido; a cada 8 s atravessa uma sala sem lutar (Passo da Tempestade); críticos | Sua defesa tem profundidade e controle? |
+| **Aurelius**, Sábio Arcano | Mago + Guerreiro | dano em área; escudo que anula o 1º efeito de cada sala; regeneração | Você tem burst e efeitos em sequência? |
+| **Ignis**, o Inferno | 2 Guerreiros | fogo em área com queimadura acumulável; imune a fogo (Brasa e Piromante não funcionam) | Seus monstros sobrevivem a fogo em área? |
+| **Zephyr**, o Pistoleiro | bando de 6 Ladinos frágeis | à distância, mira primeiro na retaguarda (suportes); críticos | Você protege seus suportes e aguenta um bando? |
+| **Varok**, Matador de Chefes | sozinho | vida enorme; dano dobrado contra o monstro mais forte | Sua defesa depende de um único monstro forte? |
 
 O herói da onda 8 é **revelado na onda 5**, para dar tempo de planejar.
 
@@ -422,7 +425,7 @@ O objetivo do primeiro lançamento é **validação e portfólio**. A receita é
 
 ### Incluído
 
-- 1 bioma; runs de 8 ondas; 3 Heróis-Chefe;
+- 1 bioma; runs de 8 ondas; 6 Heróis-Chefe (heróis de Dungeon Reign);
 - 6 slots escaváveis + Coração, com bifurcação;
 - 5 salas, 4 armadilhas, 8 espécies (6 + 2 da meta), 4 classes, 5 modificadores;
 - bancada, loja, merge (monstros 1→4, salas e armadilhas 1→3), bifurcação no nível 3;
