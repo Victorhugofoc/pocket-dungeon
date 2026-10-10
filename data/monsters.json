@@ -10,7 +10,7 @@
 	},
 	{
 		"id": "golem", "name": "Golem", "family": "gosma", "role": "tanque", "unlock": "start",
-		"hp": 120, "atk": 10, "attack_ticks": 20, "range": "melee", "damage_type": "physical", "armor": 2,
+		"hp": 90, "atk": 8, "attack_ticks": 20, "range": "melee", "damage_type": "physical", "armor": 2,
 		"traits": [{ "id": "taunt" }, { "id": "knockback_immune" }],
 		"variants": {
 			"a": { "id": "golem_runa", "name": "Golem de Runa", "traits": [{ "id": "reflect", "bp": 2000 }] },
@@ -19,8 +19,8 @@
 	},
 	{
 		"id": "morcego", "name": "Morcego", "family": "besta", "role": "controle", "unlock": "start",
-		"hp": 25, "atk": 4, "attack_ticks": 7, "range": "melee", "damage_type": "physical", "armor": 0,
-		"traits": [{ "id": "stun_pulse", "every_ticks": 60, "duration_ticks": 10 }],
+		"hp": 32, "atk": 4, "attack_ticks": 7, "range": "melee", "damage_type": "physical", "armor": 0,
+		"traits": [{ "id": "stun_pulse", "every_ticks": 50, "duration_ticks": 10 }],
 		"variants": {
 			"a": { "id": "enxame", "name": "Enxame", "traits": [{ "id": "multi_target", "count": 3 }] },
 			"b": { "id": "vampiro", "name": "Vampiro", "traits": [{ "id": "lifesteal", "bp": 4000 }] }

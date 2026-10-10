@@ -54,6 +54,13 @@ var _leader_path: Array = []
 var _gold: int = 0
 var _kills: int = 0
 var _elite_kills: int = 0
+## Índice de unidades vivas por sala, reconstruído quando algo muda de lugar ou estado.
+var _by_slot: Dictionary = {}
+var _index_dirty: bool = true
+## Propriedades fixas das salas durante a onda.
+var _single_file: Dictionary = {}
+var _room_slow: Dictionary = {}
+const _NO_UNITS: Array = []
 
 
 func _init(p_db: Db, p_dungeon: Dungeon, party: Array, seed: int, opts: Dictionary = {}) -> void:
@@ -115,6 +122,10 @@ func _setup_dungeon() -> void:
 			var rdef: Dictionary = db.rooms[room.id]
 			for t in rdef.traits:
 				match t.id:
+					"single_file":
+						_single_file[slot] = true
+					"room_slow":
+						_room_slow[slot] = Db.lv(t.bp, room.level)
 					"occupant_stat_bonus":
 						stat_bp = Db.lv(t.bp, room.level)
 					"trap_power_bonus":
@@ -241,6 +252,7 @@ func _add_unit(u: Object) -> void:
 	u.uid = _next_uid
 	_next_uid += 1
 	units.append(u)
+	_mark()
 
 
 func _emit(type: String, data: Dictionary = {}) -> void:
@@ -266,6 +278,7 @@ func _spawn() -> void:
 	while not _spawn_queue.is_empty() and _spawn_queue[0].at <= tick:
 		var u: Object = _spawn_queue.pop_front().unit
 		u.spawned = true
+		_mark()
 		u.path = _choose_path(u, u.slot)
 		if _leader_path.is_empty():
 			_leader_path = u.path
@@ -306,7 +319,8 @@ func _is_blocked(slot: String) -> bool:
 func _per_second() -> void:
 	if not power.is_empty() and tick > 0:
 		mana = mini(mana + bal.mana_per_second, bal.mana_max)
-	for u in _snapshot():
+	for i in units.size():
+		var u: Object = units[i]
 		if not u.is_alive() or not u.spawned:
 			continue
 		for p in u.poison:
@@ -335,7 +349,8 @@ func _per_second() -> void:
 # --- Movimento ------------------------------------------------------------------
 
 func _move_invaders() -> void:
-	for u in _snapshot():
+	for i in units.size():
+		var u: Object = units[i]
 		if u.side != "invader" or not u.spawned or not u.is_alive():
 			continue
 		if _arrival_checks(u):
@@ -379,6 +394,7 @@ func _arrival_checks(u: Object) -> bool:
 
 func _enter(u: Object, slot: String) -> void:
 	u.slot = slot
+	_mark()
 	u.path_index += 1
 	u.arrived_tick = tick
 	u.effect_shield = u.has("room_effect_shield")
@@ -406,11 +422,7 @@ func _move_speed(u: Object) -> int:
 	var slow := 0
 	if u.is_slowed(tick):
 		slow += u.slow_bp
-	var room: Variant = dungeon.contents[u.slot].room
-	if room != null:
-		for t in db.rooms[room.id].traits:
-			if t.id == "room_slow":
-				slow += Db.lv(t.bp, room.level)
+	slow += _room_slow.get(u.slot, 0)
 	return maxi(1, Db.scale_bp(u.move_speed, maxi(1000, 10000 - slow)))
 
 
@@ -419,6 +431,7 @@ func _hit_heart(u: Object) -> void:
 	heart_hp = maxi(0, heart_hp - dmg)
 	u.heart_damage += dmg
 	u.state = "escaped"
+	_mark()
 	_emit("heart_hit", {"u": u.uid, "amount": dmg, "heart_hp": heart_hp})
 
 
@@ -426,6 +439,7 @@ func _loot(u: Object) -> void:
 	var gold: int = _chests[u.slot]
 	_chests.erase(u.slot)
 	u.state = "looted"
+	_mark()
 	_emit("loot", {"u": u.uid, "slot": u.slot, "gold": gold})
 
 
@@ -469,7 +483,8 @@ func _haste_monsters(slot: String, scope: String, bp: int, duration: int) -> voi
 # --- Ataques ---------------------------------------------------------------------
 
 func _act() -> void:
-	for u in _snapshot():
+	for i in units.size():
+		var u: Object = units[i]
 		if not u.is_alive() or not u.spawned:
 			continue
 		var foes := _targetable_foes(u)
@@ -494,7 +509,7 @@ func _targetable_foes(u: Object) -> Array:
 		return []
 	var foe_side := "invader" if u.side == "monster" else "monster"
 	var foes := _units_in(u.slot, foe_side)
-	if foe_side == "invader":
+	if foe_side == "invader" and _is_single_file(u.slot):
 		foes = foes.filter(func(f): return _is_front_of_queue(f))
 	return foes
 
@@ -509,13 +524,7 @@ func _is_front_of_queue(inv: Object) -> bool:
 
 
 func _is_single_file(slot: String) -> bool:
-	var room: Variant = dungeon.contents[slot].room
-	if room == null:
-		return false
-	for t in db.rooms[room.id].traits:
-		if t.id == "single_file":
-			return true
-	return false
+	return _single_file.has(slot)
 
 
 func _timed_abilities(u: Object, foes: Array) -> void:
@@ -712,6 +721,7 @@ func _die(t: Object, killer: Object) -> void:
 		_emit("revive", {"u": t.uid, "hp": t.hp})
 		return
 	t.state = "dead"
+	_mark()
 	var data := {"u": t.uid}
 	if killer != null:
 		data["killer"] = killer.uid
@@ -786,6 +796,7 @@ func _apply_power(target: String) -> void:
 						continue
 					inv.path_index -= 1
 					inv.slot = inv.path[inv.path_index]
+					_mark()
 					inv.progress = 0
 					inv.arrived_tick = tick
 					_emit("push", {"u": inv.uid, "slot": inv.slot})
@@ -797,6 +808,7 @@ func _apply_power(target: String) -> void:
 						best = m
 				if best != null:
 					best.state = "active"
+					_mark()
 					best.hp = maxi(1, Db.scale_bp(best.max_hp, e.hp_bp))
 					best.cooldown = best.attack_ticks
 					_emit("revive", {"u": best.uid, "hp": best.hp})
@@ -817,6 +829,7 @@ func _check_end() -> void:
 	for u in units:
 		if u.side == "invader" and u.is_alive():
 			u.state = "fled"
+			_mark()
 			_emit("flee", {"u": u.uid})
 	finished = true
 	_build_result()
@@ -861,23 +874,28 @@ func events_hash() -> String:
 
 # --- Utilidades -------------------------------------------------------------------
 
-func _snapshot() -> Array:
-	return units.duplicate()
+## Marca o índice por sala como desatualizado (unidade mudou de sala ou de estado).
+func _mark() -> void:
+	_index_dirty = true
 
 
+## Unidades vivas e em cena de um lado numa sala, em ordem de uid.
+## O array é compartilhado: quem chama não deve modificá-lo.
 func _units_in(slot: String, side: String) -> Array:
-	var out := []
-	for u in units:
-		if u.side == side and u.slot == slot and u.is_alive() and u.spawned:
-			out.append(u)
-	return out
+	if _index_dirty:
+		_by_slot.clear()
+		for u in units:
+			if u.is_alive() and u.spawned:
+				if not _by_slot.has(u.slot):
+					_by_slot[u.slot] = {"monster": [], "invader": []}
+				_by_slot[u.slot][u.side].append(u)
+		_index_dirty = false
+	var entry: Variant = _by_slot.get(slot)
+	return _NO_UNITS if entry == null else entry[side]
 
 
 func _has_monsters(slot: String) -> bool:
-	for u in units:
-		if u.side == "monster" and u.slot == slot and u.is_alive():
-			return true
-	return false
+	return not _units_in(slot, "monster").is_empty()
 
 
 func _unit(uid: int) -> Object:

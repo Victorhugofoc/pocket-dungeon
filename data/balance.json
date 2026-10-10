@@ -38,6 +38,7 @@
 
 	"wave_budget_base": 6,
 	"wave_budget_per_wave": 3,
+	"elite_budget_bp": 8000,
 	"modifier_chance_base_bp": 1000,
 	"modifier_chance_per_wave_bp": 500,
 

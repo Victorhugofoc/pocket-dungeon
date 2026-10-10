@@ -42,6 +42,8 @@ static func _party(db: Db, rng: Rng, theme_id: String, wave: int) -> Array:
 	var budget: int = bal.wave_budget_base + bal.wave_budget_per_wave * wave
 	var mod_chance: int = bal.modifier_chance_base_bp + bal.modifier_chance_per_wave_bp * wave
 	var elite: bool = wave == bal.elite_wave
+	if elite:
+		budget = Db.scale_bp(budget, bal.elite_budget_bp)
 	var party: Array = []
 	while party.size() < bal.max_party_size:
 		var classes := {}

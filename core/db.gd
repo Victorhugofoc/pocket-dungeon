@@ -176,7 +176,7 @@ const BALANCE_INT_KEYS := [
 	"ticks_per_second", "room_length", "wave_time_limit_ticks", "heart_hp", "waves_per_run",
 	"elite_wave", "boss_wave", "boss_reveal_wave", "max_monster_level", "max_room_level",
 	"max_trap_level", "variant_level", "bench_size", "shop_offers", "shop_level2_from_wave",
-	"shop_level2_chance_bp", "max_party_size",
+	"shop_level2_chance_bp", "max_party_size", "elite_budget_bp",
 	"reroll_cost", "sell_refund_bp", "start_gold", "income_base", "gold_per_kill",
 	"gold_per_elite_kill", "interest_per", "interest_max", "mana_per_second", "mana_max",
 	"wave_budget_base", "wave_budget_per_wave", "modifier_chance_base_bp",
