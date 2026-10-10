@@ -55,6 +55,7 @@ var paused := false
 var _acc := 0.0
 var _event_cursor := 0
 var _floaters: Array = []      ## [{"pos", "text", "color", "age", "size"}]
+var _flashes: Array = []       ## [{"slot", "age"}] clarão de poder numa sala
 var _log: Array = []           ## linhas mais recentes no fim
 var _display_pos: Dictionary = {}  ## uid -> Vector2 (suavizado)
 var _font: Font
@@ -192,6 +193,9 @@ func _process(delta: float) -> void:
 	for f in _floaters:
 		f.age += delta
 	_floaters = _floaters.filter(func(f): return f.age < 1.2)
+	for fl in _flashes:
+		fl.age += delta
+	_flashes = _flashes.filter(func(fl): return fl.age < 0.7)
 	queue_redraw()
 
 
@@ -236,9 +240,11 @@ func _on_event(e: Dictionary) -> void:
 			_log_line("%s levou o baú (%d de ouro)" % [u.name, e.gold])
 		"power":
 			_log_line("Poder: %s em %s" % [db.powers[e.id].name, e.target])
-			_float(_slot_center(e.target), db.powers[e.id].name, COLORS.mana, 18)
+			_float(_slot_center(e.target), db.powers[e.id].name + "!", COLORS.mana, 22)
+			_flashes.append({"slot": e.target, "age": 0.0})
 		"power_failed":
-			_log_line("Mana insuficiente (%d)" % e.mana)
+			_log_line("Mana insuficiente (%d de %d)" % [e.mana, sim.power_cost])
+			_float(_slot_center(e.target), "falta mana %d/%d" % [e.mana, sim.power_cost], Color("ff6b6b"), 16)
 		"blink":
 			_log_line("%s: Passo da Tempestade" % u.name)
 			_float(where + Vector2(0, -24), "Passo!", CLASS_COLORS.kaelen, 15)
@@ -336,9 +342,15 @@ func _draw_header() -> void:
 			"PAUSADO" if paused else ""], 14, COLORS.heart)
 	if not sim.power.is_empty():
 		var w := 200.0
-		draw_rect(Rect2(14, 62, w, 10), COLORS.hp_bg)
-		draw_rect(Rect2(14, 62, w * sim.mana / db.balance.mana_max, 10), COLORS.mana)
-		_text(Vector2(222, 72), "%s  mana %d (custo %d)" % [sim.power.name, sim.mana, sim.power_cost], 12, COLORS.mana)
+		var ready: bool = sim.mana >= sim.power_cost
+		var fill: Color = COLORS.mana if ready else Color("4a5a78")
+		draw_rect(Rect2(14, 62, w, 12), COLORS.hp_bg)
+		draw_rect(Rect2(14, 62, w * sim.mana / db.balance.mana_max, 12), fill)
+		var cost_x: float = 14 + w * sim.power_cost / db.balance.mana_max
+		draw_line(Vector2(cost_x, 58), Vector2(cost_x, 78), Color.WHITE, 2.0)
+		var label := "%s: PRONTO, toque numa sala" % sim.power.name if ready \
+				else "%s: mana %d/%d" % [sim.power.name, sim.mana, sim.power_cost]
+		_text(Vector2(222, 73), label, 12, COLORS.mana if ready else COLORS.dim)
 
 
 func _draw_slot(slot: String) -> void:
@@ -376,6 +388,9 @@ func _draw_slot(slot: String) -> void:
 	for z in sim._zones:
 		if z.slot == slot and z.until > sim.tick:
 			draw_rect(rect.grow(-3), Color(1, 0.4, 0.1, 0.18))
+	for fl in _flashes:
+		if fl.slot == slot:
+			draw_rect(rect.grow(4), Color(0.6, 0.8, 1.0, 0.7 * (1.0 - fl.age / 0.7)))
 
 
 func _draw_unit(u: Object) -> void:

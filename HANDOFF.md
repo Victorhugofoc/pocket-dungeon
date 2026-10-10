@@ -18,7 +18,7 @@ Leia este arquivo antes de qualquer coisa. Ele substitui o histórico das conver
 1. ~~1.1 Esqueleto + RNG + testes~~
 2. ~~1.2 Dados do MVP + carregador validado~~
 3. ~~1.3 Grafo da masmorra, escavação e escolha de rota~~
-4. ~~1.4 Simulação de combate + visualizador de debug~~ (aguardando o usuário avaliar a legibilidade)
+4. ~~1.4 Simulação de combate + visualizador de debug~~ (legibilidade avaliada: PT-01)
 5. **1.5 Run:** estado, economia, loja, bancada, merge, gerador de ondas, poderes, relatório.
 6. 1.6 Bots (random, greedy, counter) + `sim_runner.gd` + primeira rodada de balanceamento. Gate da Fase 1.
 
@@ -26,7 +26,7 @@ Leia este arquivo antes de qualquer coisa. Ele substitui o histórico das conver
 - Escolher o nome definitivo (candidatos no design).
 - Pesquisa de concorrentes (Legend of Keepers, Dungeon Maker).
 - Assets do Dungeon Reign (`C:\Users\victo\Documents\GitHub\dungeon-idle\assets`) foram gerados pelo Claude: podem ser reaproveitados. São pixel art; avaliar tamanho e paleta na Fase 5.
-- Avaliação do usuário sobre a legibilidade do combate no visualizador.
+- Legibilidade do combate avaliada (PT-01 em `docs/playtest-notas.md`): regras entendidas depois de explicadas; o feedback do poder foi corrigido; o resto vira backlog da Fase 2.
 
 ## Versões jogáveis previstas
 - **0.1** (fim da Fase 1): nada para jogar; só simulador + relatório dos bots.
