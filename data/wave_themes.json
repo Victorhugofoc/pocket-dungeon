@@ -1,0 +1,8 @@
+[
+	{ "id": "blindados", "name": "Blindados", "class_weights": { "guerreiro": 5, "arqueira": 2, "mago": 1, "ladino": 1 }, "modifier_weights": { "blindado": 6, "devoto": 1 } },
+	{ "id": "rapidos", "name": "Rápidos", "class_weights": { "guerreiro": 1, "arqueira": 3, "mago": 1, "ladino": 5 }, "modifier_weights": { "apressado": 6 } },
+	{ "id": "enxame", "name": "Enxame", "class_weights": { "guerreiro": 1, "arqueira": 3, "mago": 0, "ladino": 6 }, "modifier_weights": { "apressado": 2, "abastado": 2 } },
+	{ "id": "ladroes", "name": "Ladrões", "class_weights": { "guerreiro": 1, "arqueira": 1, "mago": 1, "ladino": 6 }, "modifier_weights": { "abastado": 5, "apressado": 1 } },
+	{ "id": "arcanos", "name": "Arcanos", "class_weights": { "guerreiro": 2, "arqueira": 1, "mago": 5, "ladino": 1 }, "modifier_weights": { "devoto": 3, "resistente_fogo": 2 } },
+	{ "id": "misto", "name": "Misto", "class_weights": { "guerreiro": 3, "arqueira": 3, "mago": 3, "ladino": 3 }, "modifier_weights": { "blindado": 1, "apressado": 1, "resistente_fogo": 1, "resistente_veneno": 1, "abastado": 1, "devoto": 1 } }
+]

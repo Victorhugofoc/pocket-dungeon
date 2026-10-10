@@ -1,0 +1,8 @@
+[
+	{ "id": "ganancia", "name": "Ganância", "unlock": "meta", "effects": { "start_gold_add": 5, "heart_hp_add": -3 } },
+	{ "id": "escavadores", "name": "Escavadores", "unlock": "meta", "effects": { "first_dig_free": true, "income_base_add": -1 } },
+	{ "id": "ninhada", "name": "Ninhada", "unlock": "meta", "effects": { "bench_size_add": 1, "shop_offers_add": -1 } },
+	{ "id": "sangue_frio", "name": "Sangue Frio", "unlock": "meta", "effects": { "start_mana_add": 3, "power_cost_add": 1 } },
+	{ "id": "fortaleza", "name": "Fortaleza", "unlock": "meta", "effects": { "heart_hp_add": 5, "interest_max_override": 0 } },
+	{ "id": "cacador_tesouros", "name": "Caçador de Tesouros", "unlock": "meta", "effects": { "treasure_gold_mult_bp": 20000, "treasure_lures_all": true } }
+]

@@ -1,0 +1,77 @@
+[
+	{
+		"id": "slime", "name": "Slime", "family": "gosma", "role": "tanque", "unlock": "start",
+		"hp": 60, "atk": 6, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 0,
+		"traits": [{ "id": "damage_reduction", "damage_type": "physical", "bp": 2500 }],
+		"variants": {
+			"a": { "id": "rei_slime", "name": "Rei Slime", "traits": [{ "id": "split_on_death", "count": 2, "hp_bp": 3500 }] },
+			"b": { "id": "slime_acido", "name": "Slime Ácido", "traits": [{ "id": "armor_shred_on_hit", "amount": 1, "max": 5 }] }
+		}
+	},
+	{
+		"id": "golem", "name": "Golem", "family": "gosma", "role": "tanque", "unlock": "start",
+		"hp": 120, "atk": 10, "attack_ticks": 20, "range": "melee", "damage_type": "physical", "armor": 2,
+		"traits": [{ "id": "taunt" }, { "id": "knockback_immune" }],
+		"variants": {
+			"a": { "id": "golem_runa", "name": "Golem de Runa", "traits": [{ "id": "reflect", "bp": 2000 }] },
+			"b": { "id": "golem_cerco", "name": "Golem de Cerco", "traits": [{ "id": "aoe_attack" }] }
+		}
+	},
+	{
+		"id": "morcego", "name": "Morcego", "family": "besta", "role": "controle", "unlock": "start",
+		"hp": 25, "atk": 4, "attack_ticks": 7, "range": "melee", "damage_type": "physical", "armor": 0,
+		"traits": [{ "id": "stun_pulse", "every_ticks": 60, "duration_ticks": 10 }],
+		"variants": {
+			"a": { "id": "enxame", "name": "Enxame", "traits": [{ "id": "multi_target", "count": 3 }] },
+			"b": { "id": "vampiro", "name": "Vampiro", "traits": [{ "id": "lifesteal", "bp": 4000 }] }
+		}
+	},
+	{
+		"id": "aranha", "name": "Aranha", "family": "besta", "role": "controle", "unlock": "start",
+		"hp": 35, "atk": 5, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 0,
+		"traits": [
+			{ "id": "poison_on_hit", "dmg_per_sec": 3, "duration_ticks": 40 },
+			{ "id": "slow_on_hit", "bp": 1500, "duration_ticks": 30 }
+		],
+		"variants": {
+			"a": { "id": "viuva", "name": "Viúva", "traits": [{ "id": "poison_stacks", "max": 3 }] },
+			"b": { "id": "tecela", "name": "Tecelã", "traits": [{ "id": "root_on_hit", "every_ticks": 50, "duration_ticks": 15 }] }
+		}
+	},
+	{
+		"id": "goblin", "name": "Goblin", "family": "goblinoide", "role": "dano", "unlock": "start",
+		"hp": 30, "atk": 9, "attack_ticks": 7, "range": "melee", "damage_type": "physical", "armor": 0,
+		"traits": [{ "id": "bonus_vs_impaired", "bp": 5000 }],
+		"variants": {
+			"a": { "id": "saqueador", "name": "Saqueador", "traits": [{ "id": "gold_on_kill", "amount": 1 }] },
+			"b": { "id": "berserker", "name": "Berserker", "traits": [{ "id": "berserk", "threshold_bp": 5000, "attack_speed_bp": 5000 }] }
+		}
+	},
+	{
+		"id": "bruxo", "name": "Bruxo", "family": "goblinoide", "role": "suporte", "unlock": "start",
+		"hp": 30, "atk": 7, "attack_ticks": 12, "range": "ranged", "damage_type": "magic", "armor": 0,
+		"traits": [{ "id": "ally_damage_aura", "bp": 1500 }],
+		"variants": {
+			"a": { "id": "necromante", "name": "Necromante", "traits": [{ "id": "summon", "unit": "esqueleto_menor", "every_ticks": 80, "max": 2 }] },
+			"b": { "id": "piromante", "name": "Piromante", "traits": [{ "id": "aoe_attack" }, { "id": "damage_type_override", "damage_type": "fire" }] }
+		}
+	},
+	{
+		"id": "esqueleto", "name": "Esqueleto", "family": "morto_vivo", "role": "tanque", "unlock": "meta",
+		"hp": 45, "atk": 7, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 1,
+		"traits": [{ "id": "revive_once", "hp_bp": 3000 }],
+		"variants": {
+			"a": { "id": "cavaleiro_ossos", "name": "Cavaleiro de Ossos", "traits": [{ "id": "taunt" }] },
+			"b": { "id": "arqueiro_ossos", "name": "Arqueiro de Ossos", "traits": [{ "id": "range_override", "range": "ranged" }] }
+		}
+	},
+	{
+		"id": "espectro", "name": "Espectro", "family": "morto_vivo", "role": "controle", "unlock": "meta",
+		"hp": 30, "atk": 6, "attack_ticks": 10, "range": "melee", "damage_type": "magic", "armor": 0,
+		"traits": [{ "id": "backline_strike" }],
+		"variants": {
+			"a": { "id": "banshee", "name": "Banshee", "traits": [{ "id": "stun_pulse", "every_ticks": 50, "duration_ticks": 10 }] },
+			"b": { "id": "assombracao", "name": "Assombração", "traits": [{ "id": "fear_on_hit", "every_ticks": 60, "duration_ticks": 20 }] }
+		}
+	}
+]

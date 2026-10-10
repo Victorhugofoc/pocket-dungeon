@@ -1,0 +1,43 @@
+{
+	"ticks_per_second": 10,
+	"room_length": 1000,
+	"wave_time_limit_ticks": 600,
+
+	"heart_hp": 20,
+	"waves_per_run": 8,
+	"elite_wave": 4,
+	"boss_wave": 8,
+	"boss_reveal_wave": 5,
+
+	"level_mult_bp": [10000, 17000, 28900, 49130],
+	"max_monster_level": 4,
+	"max_room_level": 3,
+	"max_trap_level": 3,
+	"variant_level": 3,
+
+	"bench_size": 6,
+	"shop_offers": 4,
+	"shop_level2_from_wave": 5,
+	"reroll_cost": 1,
+	"sell_refund_bp": 5000,
+
+	"start_gold": 10,
+	"income_base": 5,
+	"gold_per_kill": 1,
+	"gold_per_elite_kill": 2,
+	"interest_per": 5,
+	"interest_max": 2,
+	"cost": { "monster": 3, "trap": 3, "room": 4 },
+	"dig_costs": [3, 5, 7],
+
+	"mana_per_second": 1,
+	"mana_max": 10,
+
+	"wave_budget_base": 6,
+	"wave_budget_per_wave": 3,
+	"modifier_chance_base_bp": 1000,
+	"modifier_chance_per_wave_bp": 500,
+
+	"souls_per_wave": 2,
+	"souls_win_bonus": 5
+}

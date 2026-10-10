@@ -1,0 +1,18 @@
+[
+	{
+		"id": "espinhos", "name": "Espinhos", "unlock": "start", "trigger": "first_enter",
+		"effects": [{ "id": "damage", "damage_type": "physical", "amount": [20, 34, 58] }]
+	},
+	{
+		"id": "rede", "name": "Rede", "unlock": "start", "trigger": "first_enter",
+		"effects": [{ "id": "root", "duration_ticks": [20, 28, 36] }]
+	},
+	{
+		"id": "brasa", "name": "Brasa", "unlock": "start", "trigger": "first_enter",
+		"effects": [{ "id": "fire_zone", "dmg_per_sec": [4, 7, 12], "duration_ticks": 30 }]
+	},
+	{
+		"id": "alarme", "name": "Alarme", "unlock": "start", "trigger": "first_enter",
+		"effects": [{ "id": "ally_haste", "attack_speed_bp": [3000, 4500, 6000], "duration_ticks": 40, "scope": "room_and_adjacent" }]
+	}
+]

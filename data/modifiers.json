@@ -1,0 +1,8 @@
+[
+	{ "id": "blindado", "name": "Blindado", "gen_cost": 2, "threat_add": 0, "stats": { "armor_add": 5 }, "traits": [] },
+	{ "id": "apressado", "name": "Apressado", "gen_cost": 2, "threat_add": 0, "stats": { "move_speed_bp": 5000 }, "traits": [] },
+	{ "id": "resistente_fogo", "name": "Resistente a fogo", "gen_cost": 1, "threat_add": 0, "stats": {}, "traits": [{ "id": "resist", "damage_type": "fire", "bp": 7500 }] },
+	{ "id": "resistente_veneno", "name": "Resistente a veneno", "gen_cost": 1, "threat_add": 0, "stats": {}, "traits": [{ "id": "resist", "damage_type": "poison", "bp": 7500 }] },
+	{ "id": "abastado", "name": "Abastado", "gen_cost": 1, "threat_add": 1, "stats": {}, "traits": [{ "id": "loot_carrier", "gold": 3 }] },
+	{ "id": "devoto", "name": "Devoto", "gen_cost": 3, "threat_add": 0, "stats": {}, "traits": [{ "id": "heal_allies", "hp_per_sec": 3 }] }
+]

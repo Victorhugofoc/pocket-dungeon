@@ -1,0 +1,27 @@
+[
+	{
+		"id": "camara", "name": "Câmara", "unlock": "start",
+		"capacity": [2, 2, 3], "trap_sockets": 1,
+		"traits": []
+	},
+	{
+		"id": "covil", "name": "Covil", "unlock": "start",
+		"capacity": [1, 1, 1], "trap_sockets": 0,
+		"traits": [{ "id": "occupant_stat_bonus", "bp": [4000, 7000, 10000] }]
+	},
+	{
+		"id": "galeria", "name": "Galeria de Armadilhas", "unlock": "start",
+		"capacity": [1, 1, 1], "trap_sockets": 2,
+		"traits": [{ "id": "trap_power_bonus", "bp": [3000, 6000, 10000] }]
+	},
+	{
+		"id": "tesouro", "name": "Sala de Tesouro", "unlock": "start",
+		"capacity": [1, 1, 1], "trap_sockets": 1,
+		"traits": [{ "id": "treasure_chest", "gold": [3, 5, 8] }]
+	},
+	{
+		"id": "corredor", "name": "Corredor Estreito", "unlock": "start",
+		"capacity": [1, 1, 1], "trap_sockets": 1,
+		"traits": [{ "id": "single_file" }, { "id": "room_slow", "bp": [2000, 3000, 4000] }]
+	}
+]

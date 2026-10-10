@@ -1,0 +1,8 @@
+[
+	{ "id": "fechar_porta", "name": "Fechar Porta", "unlock": "start", "cost": 4, "target": "branch", "effects": [{ "id": "block_branch", "duration_ticks": 60 }] },
+	{ "id": "furia", "name": "Fúria", "unlock": "start", "cost": 5, "target": "room", "effects": [{ "id": "ally_haste", "attack_speed_bp": 5000, "duration_ticks": 50, "scope": "room" }] },
+	{ "id": "desabamento", "name": "Desabamento", "unlock": "start", "cost": 7, "target": "room", "effects": [{ "id": "damage", "damage_type": "physical", "amount": 30, "scope": "room_enemies" }, { "id": "stun", "duration_ticks": 10 }] },
+	{ "id": "ressurgir", "name": "Ressurgir", "unlock": "meta", "cost": 6, "target": "room", "effects": [{ "id": "revive_strongest", "hp_bp": 5000 }] },
+	{ "id": "tremor", "name": "Tremor", "unlock": "meta", "cost": 3, "target": "room", "effects": [{ "id": "push_back" }] },
+	{ "id": "medo", "name": "Medo", "unlock": "meta", "cost": 5, "target": "room", "effects": [{ "id": "fear", "duration_ticks": 30, "count": 1 }] }
+]

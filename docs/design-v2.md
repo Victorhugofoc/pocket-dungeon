@@ -124,9 +124,11 @@ Hub (escolher Pacto + Poder) → Onda 1 → Loja → Onda 2 → Loja → Onda 3 
 ```
 
 - **6 slots escaváveis** (A1, B1, B2, C1, C2, D1) mais o **Coração** (fixo).
-- **Início da run:** A1, B1, B2 e D1 já vêm escavados. O ramo C é rocha.
-- **Escavar** custa ouro (3 → 5 → 7). Escavar C1 e C2 **abre o segundo caminho**. Isso divide os invasores, mas também dá opções a eles. É uma decisão tática, não um upgrade automático.
-- Um slot escavado vazio é um corredor: os invasores passam por ele sem obstáculo.
+- Cada slot está em um de três estados: **rocha** (intransponível), **túnel** (passagem sem sala) ou **sala** (aceita uma sala).
+- **Início da run:** A1, B1 e D1 são salas; B2 é túnel; C1 e C2 são rocha.
+- **Escavar** custa ouro (3 → 5 → 7, pela ordem em que se escava) e transforma um túnel ou uma rocha em sala. São 3 escavações possíveis: B2, C1 e C2.
+- Escavar C1 ou C2 **abre o segundo caminho**: o outro slot do ramo vira túnel automaticamente. Isso divide os invasores, mas também dá opções a eles. É uma decisão tática, não um upgrade automático (D-008).
+- Um slot de sala sem sala posicionada funciona como túnel: os invasores passam por ele sem obstáculo.
 
 ### 4.2 Escolha de rota dos invasores
 

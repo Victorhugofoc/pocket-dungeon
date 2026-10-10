@@ -1,0 +1,26 @@
+[
+	{
+		"id": "guerreiro", "name": "Guerreiro", "gen_cost": 3, "threat": 2,
+		"hp": 100, "atk": 8, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 3,
+		"move_speed": 40, "route_pref": "most_monsters",
+		"traits": []
+	},
+	{
+		"id": "arqueira", "name": "Arqueira", "gen_cost": 3, "threat": 2,
+		"hp": 50, "atk": 10, "attack_ticks": 10, "range": "ranged", "damage_type": "physical", "armor": 0,
+		"move_speed": 50, "route_pref": "fewest_traps",
+		"traits": [{ "id": "target_lowest_hp" }]
+	},
+	{
+		"id": "mago", "name": "Mago", "gen_cost": 4, "threat": 3,
+		"hp": 40, "atk": 14, "attack_ticks": 15, "range": "ranged", "damage_type": "magic", "armor": 0,
+		"move_speed": 50, "route_pref": "shortest",
+		"traits": [{ "id": "aoe_attack" }]
+	},
+	{
+		"id": "ladino", "name": "Ladino", "gen_cost": 2, "threat": 1,
+		"hp": 45, "atk": 7, "attack_ticks": 7, "range": "melee", "damage_type": "physical", "armor": 0,
+		"move_speed": 75, "route_pref": "treasure",
+		"traits": [{ "id": "disarm_first_trap" }, { "id": "loots_treasure" }]
+	}
+]

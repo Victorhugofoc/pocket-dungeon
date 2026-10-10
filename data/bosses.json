@@ -1,0 +1,23 @@
+[
+	{
+		"id": "cavaleira", "name": "Cavaleira Implacável", "threat": 10,
+		"hp": 400, "atk": 18, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 5,
+		"move_speed": 45, "route_pref": "shortest",
+		"traits": [{ "id": "ignore_first_guarded_room" }, { "id": "slow_immune_on_enter", "duration_ticks": 30 }],
+		"escorts": [{ "class": "guerreiro", "count": 2 }]
+	},
+	{
+		"id": "rei_ratos", "name": "Rei dos Ratos", "threat": 8,
+		"hp": 150, "atk": 10, "attack_ticks": 7, "range": "melee", "damage_type": "physical", "armor": 1,
+		"move_speed": 70, "route_pref": "treasure",
+		"traits": [{ "id": "swarm_haste_on_ally_death", "bp": 1000 }],
+		"escorts": [{ "class": "ladino", "count": 8, "hp_bp": 6000 }]
+	},
+	{
+		"id": "arquimago", "name": "Arquimago Exilado", "threat": 10,
+		"hp": 220, "atk": 22, "attack_ticks": 15, "range": "ranged", "damage_type": "magic", "armor": 0,
+		"move_speed": 45, "route_pref": "shortest",
+		"traits": [{ "id": "aoe_attack" }, { "id": "room_effect_shield" }, { "id": "summon", "unit": "clone_arcano", "every_ticks": 80, "max": 2 }],
+		"escorts": [{ "class": "mago", "count": 1 }, { "class": "guerreiro", "count": 1 }]
+	}
+]

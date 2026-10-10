@@ -1,0 +1,17 @@
+[
+	{
+		"id": "esqueleto_menor", "name": "Esqueleto Menor", "family": "morto_vivo",
+		"hp": 20, "atk": 4, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 0,
+		"traits": []
+	},
+	{
+		"id": "blob", "name": "Blob", "family": "gosma",
+		"hp": 1, "atk": 3, "attack_ticks": 10, "range": "melee", "damage_type": "physical", "armor": 0,
+		"traits": []
+	},
+	{
+		"id": "clone_arcano", "name": "Clone Arcano", "family": "invasor",
+		"hp": 40, "atk": 8, "attack_ticks": 15, "range": "ranged", "damage_type": "magic", "armor": 0,
+		"traits": []
+	}
+]
