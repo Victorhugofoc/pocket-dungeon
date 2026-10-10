@@ -7,9 +7,19 @@ const Scenarios := preload("res://game/debug/scenarios.gd")
 const Sim := preload("res://core/combat/combat_sim.gd")
 
 
-func test_viewer_script_compiles() -> void:
-	var script: GDScript = load("res://game/debug/combat_viewer.gd")
-	assert_true(script != null and script.can_instantiate())
+func test_all_game_scripts_compile() -> void:
+	var dirs := ["res://game"]
+	var count := 0
+	while not dirs.is_empty():
+		var dir: String = dirs.pop_back()
+		for sub in DirAccess.get_directories_at(dir):
+			dirs.append(dir.path_join(sub))
+		for f in DirAccess.get_files_at(dir):
+			if f.ends_with(".gd"):
+				var script: GDScript = load(dir.path_join(f))
+				assert_true(script != null and script.can_instantiate(), "não compila: " + dir.path_join(f))
+				count += 1
+	assert_true(count >= 6, "esperava pelo menos 6 scripts em game/, achei %d" % count)
 
 
 func test_all_scenarios_build_and_finish() -> void:

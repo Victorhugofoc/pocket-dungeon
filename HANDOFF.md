@@ -16,16 +16,17 @@ Leia este arquivo antes de qualquer coisa. Ele substitui o histórico das conver
 - GitHub: `https://github.com/Victorhugofoc/pocket-dungeon`. **O push é feito pelo usuário no GitHub Desktop**; eu só faço commit.
 - MCP do Godot não carrega nas sessões do Code (erro de protocolo). Não é necessário.
 
-## Próximo: Fase 2 — graybox jogável (versão 0.2, primeiro protótipo jogável)
-Objetivo: montar a masmorra e assistir à onda, no navegador. Backlog da Fase 2 que saiu do PT-01 (`docs/playtest-notas.md`):
-- onda começa pausada com uma frase descrevendo a montagem e o grupo; nomes por extenso; seta da rota de cada invasor; legenda fixa; destaque nos momentos decisivos; botão de poder explícito.
-- preparação mínima: arrastar peças para os slots, escavar.
-- relatório de onda na tela (já existe em `core/run/wave_report.gd`) e replay da última onda.
-- exportar para web (precisa dos export templates 4.7.2 da Godot: pedir ao usuário para instalar pelo editor, Editor → Manage Export Templates).
-Gate: 4 de 5 pessoas dizem em uma frase por que perderam a onda (plano, Fase 2).
+## Fase 2 — versão 0.2 (desafios) IMPLEMENTADA, aguardando playtest
+- Modo desafios (D-019): `game/proto/challenges.json` (5 desafios com solução testada), `game/screens/menu.tscn` (cena principal), `game/screens/challenge_screen.gd` (preparação por toque → onda → relatório), `game/ui/dungeon_board.gd` (tabuleiro: salas, peças, rotas previstas tracejadas, unidades, efeitos).
+- Backlog do PT-01 atendido: onda começa pausada, nomes por extenso, rotas previstas, legenda, botão de poder com alvos destacados (recusa com motivo), câmera lenta em armadilha/Coração/baú/Passo, relatório com cada invasor + dicas, "Rever a onda" (replay com os mesmos comandos), "Ajustar e tentar".
+- Abrir: `.\tools\play.ps1`. Roteiro do teste para o usuário: `docs/roteiro-teste-0.2.md`.
+- Capturas: `godot --path . --quit-after 3000 res://game/screens/challenge_screen.tscn -- --shot <png> --challenge N [--solution] [--tick T] [--report]`.
+- Conferir desafios depois de mudar balanceamento: `godot --headless --path . --script res://tools/check_challenges.gd` (também coberto por `tests/test_challenges.gd`).
+- **Falta:** export web (export templates 4.7.2 não instalados; `export_presets.cfg` já pronto, inclui os .json). Depois: `godot --headless --path . --export-release "Web" builds/web/index.html` e testar no navegador embutido (servidor local) antes de subir no itch.
+- Gate da Fase 2: 4 de 5 pessoas dizem em uma frase por que perderam a onda.
 
 ## Pendências de balanceamento (não bloqueiam a Fase 2)
-Varok forte demais (17% no counter); Golem/Slime únicos tanques; Galeria e Rede fracas; onda 4 ainda pesada. Ver `docs/balanceamento.md`.
+Varok enfraquecido e veneno escalando com nível (D-018) — **rodar os bots de novo** para medir; Golem/Slime únicos tanques; Galeria e Rede fracas; onda 4 ainda pesada. Ver `docs/balanceamento.md`.
 
 ## Pendências com o usuário
 - Nome definitivo (candidatos no design).
