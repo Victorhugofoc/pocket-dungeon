@@ -18,6 +18,9 @@
 	"bench_size": 6,
 	"shop_offers": 4,
 	"shop_level2_from_wave": 5,
+	"shop_level2_chance_bp": 2000,
+	"shop_kind_weights": { "monster": 6, "trap": 2, "room": 2 },
+	"max_party_size": 8,
 	"reroll_cost": 1,
 	"sell_refund_bp": 5000,
 

@@ -147,6 +147,18 @@ func remove_trap(slot: String, index: int) -> Variant:
 	return list.pop_at(index) if index >= 0 and index < list.size() else null
 
 
+# --- Save ---------------------------------------------------------------------
+
+func to_dict() -> Dictionary:
+	return {"slot_state": slot_state.duplicate(), "digs_done": digs_done, "contents": contents.duplicate(true)}
+
+
+func load_dict(d: Dictionary) -> void:
+	slot_state = d.slot_state.duplicate()
+	digs_done = d.digs_done
+	contents = d.contents.duplicate(true)
+
+
 # --- Informação para a escolha de rota ------------------------------------
 
 ## slot -> {"monsters": int, "traps": int, "treasure": bool}, a partir do que

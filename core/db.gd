@@ -69,6 +69,21 @@ func monster_at(id: String, level: int, variant: String = "") -> Dictionary:
 	return out
 
 
+## Converte recursivamente floats inteiros em int (dados vindos de JSON, como saves).
+static func to_ints(v: Variant) -> Variant:
+	match typeof(v):
+		TYPE_FLOAT:
+			return int(v)
+		TYPE_ARRAY:
+			return v.map(func(x): return Db.to_ints(x))
+		TYPE_DICTIONARY:
+			var d := {}
+			for k in v:
+				d[k] = Db.to_ints(v[k])
+			return d
+	return v
+
+
 ## value * bp / 10000, arredondado para o inteiro mais próximo.
 static func scale_bp(value: int, bp: int) -> int:
 	return (value * bp + 5000) / 10000
@@ -161,6 +176,7 @@ const BALANCE_INT_KEYS := [
 	"ticks_per_second", "room_length", "wave_time_limit_ticks", "heart_hp", "waves_per_run",
 	"elite_wave", "boss_wave", "boss_reveal_wave", "max_monster_level", "max_room_level",
 	"max_trap_level", "variant_level", "bench_size", "shop_offers", "shop_level2_from_wave",
+	"shop_level2_chance_bp", "max_party_size",
 	"reroll_cost", "sell_refund_bp", "start_gold", "income_base", "gold_per_kill",
 	"gold_per_elite_kill", "interest_per", "interest_max", "mana_per_second", "mana_max",
 	"wave_budget_base", "wave_budget_per_wave", "modifier_chance_base_bp",
@@ -272,9 +288,10 @@ func _validate_balance() -> void:
 		errors.append("balance.variant_level fora do intervalo de níveis")
 	if balance.elite_wave >= balance.boss_wave or balance.boss_wave != balance.waves_per_run:
 		errors.append("balance: onda de elite deve vir antes da onda do chefe, que é a última")
-	if _require(balance, "cost", TYPE_DICTIONARY, "balance"):
-		for k in ["monster", "trap", "room"]:
-			_require(balance.cost, k, TYPE_INT, "balance.cost")
+	for dict_key in ["cost", "shop_kind_weights"]:
+		if _require(balance, dict_key, TYPE_DICTIONARY, "balance"):
+			for k in ["monster", "trap", "room"]:
+				_require(balance[dict_key], k, TYPE_INT, "balance." + dict_key)
 
 
 func _validate_layout() -> void:
