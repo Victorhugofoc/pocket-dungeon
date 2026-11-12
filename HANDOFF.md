@@ -1,39 +1,36 @@
-# Covil — handoff
+# Dungeon Reign RPG — handoff
 
-Leia este arquivo antes de qualquer coisa. Ele substitui o histórico das conversas anteriores.
+Leia este arquivo antes de qualquer coisa.
 
-## Estado atual
-- **Fase 1 (núcleo de simulação headless) CONCLUÍDA, gate aprovado (D-016)** — versão 0.1.
-  - `core/rng.gd`: RNG determinístico (xoshiro128** 32 bits), validado contra `tools/rng_ref.py`.
-  - `core/db.gd` + `core/traits.gd` + `data/*.json`: conteúdo do MVP com validação rigorosa (D-007).
-  - `core/dungeon.gd` (escavação D-008, posicionamento) e `core/combat/pathing.gd` (rotas por classe).
-  - `core/combat/combat_sim.gd` + `unit.gd`: combate determinístico completo (regras D-011), ~12 ms por onda.
-  - `core/run/`: `RunState` (loja, bancada, merge, escavação, ondas, Almas, save), `wave_generator.gd`, `wave_report.gd`, `pieces.gd` (regras D-013).
-  - Heróis-Chefe = os 6 heróis de Dungeon Reign (D-009).
-  - Bots (`tools/bots/`): random, generic, counter (D-015). Rodar: `.\tools\run_bots.ps1 -Runs 200 -Procs 14` (~4 min; 16 núcleos no PC do usuário). Histórico em `docs/balanceamento.md`.
-  - Visualizador de debug: `game/debug/combat_viewer.tscn` (cena principal provisória). `.\tools\viewer.ps1 [cenário]`. Captura: `godot --path . --quit-after 900 res://game/debug/combat_viewer.tscn -- --shot <png> --scenario N --tick T` (sempre com `--quit-after`).
-  - 94 testes (`.\tools\test.ps1`; qualquer `SCRIPT ERROR` conta como falha).
-- GitHub: `https://github.com/Victorhugofoc/pocket-dungeon`. **O push é feito pelo usuário no GitHub Desktop**; eu só faço commit.
-- MCP do Godot não carrega nas sessões do Code (erro de protocolo). Não é necessário.
+## O que é
+O projeto anterior deste repo (Covil, Godot) foi descartado por decisão do usuário; o histórico continua no git até o commit `47749e3`.
+Agora o repo é um RPG de ação em three.js para PC, com o conteúdo do Dungeon Reign (`Victorhugofoc/dungeon-idle`).
 
-## Fase 2 — versão 0.2 (desafios) IMPLEMENTADA, aguardando playtest
-- Modo desafios (D-019): `game/proto/challenges.json` (5 desafios com solução testada), `game/screens/menu.tscn` (cena principal), `game/screens/challenge_screen.gd` (preparação por toque → onda → relatório), `game/ui/dungeon_board.gd` (tabuleiro: salas, peças, rotas previstas tracejadas, unidades, efeitos).
-- Backlog do PT-01 atendido: onda começa pausada, nomes por extenso, rotas previstas, legenda, botão de poder com alvos destacados (recusa com motivo), câmera lenta em armadilha/Coração/baú/Passo, relatório com cada invasor + dicas, "Rever a onda" (replay com os mesmos comandos), "Ajustar e tentar".
-- Abrir: `.\tools\play.ps1`. Roteiro do teste para o usuário: `docs/roteiro-teste-0.2.md`.
-- Capturas: `godot --path . --quit-after 3000 res://game/screens/challenge_screen.tscn -- --shot <png> --challenge N [--solution] [--tick T] [--report]`.
-- Conferir desafios depois de mudar balanceamento: `godot --headless --path . --script res://tools/check_challenges.gd` (também coberto por `tests/test_challenges.gd`).
-- **Falta:** export web (export templates 4.7.2 não instalados; `export_presets.cfg` já pronto, inclui os .json). Depois: `godot --headless --path . --export-release "Web" builds/web/index.html` e testar no navegador embutido (servidor local) antes de subir no itch.
-- Gate da Fase 2: 4 de 5 pessoas dizem em uma frase por que perderam a onda.
+## Estado atual — protótipo 0.1 (jogável do início ao chefe final)
+- **Heróis:** os 9 do Dungeon Reign, cada um com ataque e técnica próprios (`src/data/heroes.ts`).
+- **Zonas:** 4 mapas abertos procedurais de 240x240 (Bosque, Cripta, Vulcão, Vazio), cada um com ~24 acampamentos, caminho até a arena e um chefe (Bloodfang, Gravekeeper, Ember Matriarch, Hollow King). Viajar gera um mapa novo.
+- **Inimigos:** 10 tipos com 5 comportamentos (corpo a corpo, à distância, investida, invocador, morteiro), mais campeões.
+- **Chefes:** 7 padrões telegrafados (pancada, investida, nova, leque, invocação, meteoros, espiral) e fúria aos 30% de vida.
+- **Progressão persistente:** nível (até 60), 4 atributos, equipamentos em 3 espaços com 5 raridades e 16 afixos, 20 relíquias (1 de 3 por chefe; chance pequena em campeões). Save em `localStorage`.
+- **Sem assets:** personagens de blocos animados por código, cenário instanciado, partículas, sons sintetizados.
+- 21 testes do núcleo (`npm test`).
 
-## Pendências de balanceamento (não bloqueiam a Fase 2)
-Varok enfraquecido e veneno escalando com nível (D-018) — **rodar os bots de novo** para medir; Golem/Slime únicos tanques; Galeria e Rede fracas; onda 4 ainda pesada. Ver `docs/balanceamento.md`.
+## O que NÃO foi validado
+- Só foi testado em navegador headless com renderização por software (roda sem erros, mas a ~2–25 fps, o que não diz nada sobre desempenho real). **Falta jogar numa máquina com GPU.**
+- Balanceamento é primeira passada, nunca jogado de ponta a ponta por uma pessoa: curva de XP, vida/dano por nível e chefes em `src/data/tuning.ts` e `src/data/enemies.ts`.
+
+## Limitações conhecidas
+- Árvores entre a câmera e o herói tapam a visão (há só um anel no chão visível através delas). Falta esmaecer o que oclui.
+- Sem gamepad, sem tela de opções (volume, teclas), sem música.
+- Não dá para vender ou desmontar item (só descartar); não há ouro nem loja.
+- Os heróis têm 1 técnica cada; as spells do Dungeon Reign (Fireball, Blade Orbit...) não foram portadas.
+- Inimigos do original ainda não portados: shieldbearer, hexer, plaguebearer, warden, leaper. Chefes: faltam 9 dos 13.
+
+## Próximos passos sugeridos (confirmar com o usuário)
+1. Usuário joga e diz se andar e bater é divertido (é a pergunta que decide o projeto).
+2. Ajustar sensação de combate e balanceamento com base nisso.
+3. Depois: mais habilidades por herói (spells), loja/ouro, mais chefes e zonas, dificuldade pós-final.
 
 ## Pendências com o usuário
-- Nome definitivo (candidatos no design).
-- Pesquisa de concorrentes (Legend of Keepers, Dungeon Maker).
-- Assets do Dungeon Reign (`C:\Users\victo\Documents\GitHub\dungeon-idle\assets`) foram gerados pelo Claude: podem ser reaproveitados (pixel art; avaliar na Fase 5).
-
-## Versões jogáveis previstas
-- **0.1** (Fase 1, feita): simulador + bots.
-- **0.2** (fim da Fase 2): primeiro protótipo jogável no navegador, em graybox.
-- **0.3** (fim da Fase 3): run completa no itch para playtest externo.
+- Nome definitivo do jogo ("Dungeon Reign RPG" é provisório).
+- Onde hospedar a versão jogável (GitHub Pages, itch.io).
