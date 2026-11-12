@@ -5,5 +5,5 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 export default defineConfig({
   base: "./",
   plugins: process.env.SINGLE ? [viteSingleFile()] : [],
-  build: { assetsInlineLimit: process.env.SINGLE ? 100_000_000 : 4096, outDir: process.env.SINGLE ? "dist-single" : "dist", chunkSizeWarningLimit: 2000 },
+  build: { outDir: process.env.SINGLE ? "dist-single" : "dist", chunkSizeWarningLimit: 2000 },
 });

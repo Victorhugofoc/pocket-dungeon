@@ -8,10 +8,10 @@ import { RELICS } from "../data/relics";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game } from "../game/game";
-import { visual, VISUAL_LABEL, type VisualMode } from "../game/visual";
 
 const ICON: Record<Slot, string> = { weapon: "⚔️", armor: "🛡️", trinket: "📿" };
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
+const QUALITY = ["baixa", "média", "alta"];
 const RELIC_RARITY: Record<string, string> = { incomum: "Incomum", raro: "Rara", epico: "Épica" };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", html = ""): HTMLElementTagNameMap[K] {
@@ -99,6 +99,9 @@ export class Ui {
       e.preventDefault();
       if (this.overlayKind === "inv") this.close();
       else this.showInventory();
+    } else if (k === "F3") {
+      e.preventDefault();
+      this.r.perf.classList.toggle("hidden");
     } else if (k === "KeyM") {
       if (this.overlayKind === "travel") this.close();
       else this.showTravel();
@@ -125,7 +128,7 @@ export class Ui {
       const h = HEROES[this.selectedHero];
       panel.innerHTML = `
         <h1>DUNGEON REIGN</h1>
-        <p class="tag">RPG de ação · protótipo 0.1 · mapas procedurais, um herói, loot e chefes</p>
+        <p class="tag">RPG de ação · protótipo 0.2 · mapas procedurais, um herói, loot e chefes</p>
         ${save ? `<div class="continue"><button class="primary" data-act="continue" style="padding:12px 30px;font-size:16px">
           Continuar — ${HEROES[save.heroId]?.name ?? "?"} nível ${save.level}</button></div>` : ""}
         <div class="section">${save ? "Ou comece um novo herói (apaga o save atual)" : "Escolha seu herói"}</div>
@@ -140,10 +143,6 @@ export class Ui {
           <p><b>Técnica (botão direito) — ${h.technique.name}:</b> ${h.technique.text}</p>
           <p style="color:var(--muted)">${statLines(h.stats).replace(/<div class="st">/g, "").replace(/<\/div>/g, " · ").replace(/ · $/, "")}</p>
         </div>
-        <div class="title-actions">
-          ${(["sprites", "blocos"] as VisualMode[]).map((m) => `<button data-visual="${m}" ${visual.mode === m ? 'class="primary"' : ""}>${VISUAL_LABEL[m]}</button>`).join("")}
-        </div>
-        <p class="tag" style="margin:8px 0 0">Dois visuais para comparar. No jogo, a tecla V troca na hora.</p>
         <div class="title-actions"><button class="primary" data-act="new">Começar com ${h.name}</button></div>`;
     };
     render();
@@ -152,12 +151,6 @@ export class Ui {
       const card = t.closest<HTMLElement>("[data-hero]");
       if (card) {
         this.selectedHero = card.dataset.hero!;
-        render();
-        return;
-      }
-      const vis = t.closest<HTMLElement>("[data-visual]")?.dataset.visual as VisualMode | undefined;
-      if (vis) {
-        this.game.setVisual(vis);
         render();
         return;
       }
@@ -192,9 +185,10 @@ export class Ui {
       <div id="vignette"></div>
       <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><div class="points hidden" data-r="points"></div></div>
       <canvas id="minimap" width="176" height="176"></canvas>
-      <div class="hud-help">I inventário · M mapa · Esc pausa<br><b>V troca o visual</b></div>
+      <div class="hud-help">I inventário · M mapa · Esc pausa<br>F3 desempenho</div>
       <div id="bossbar" class="hidden" data-r="boss"><h3 data-r="bossName"></h3><div class="bar"><i data-r="bossFill"></i><span data-r="bossText"></span></div></div>
       <div id="hint" class="hidden" data-r="hint">E — entrar no portal</div>
+      <div id="perf" class="hidden" data-r="perf"></div>
       <div id="toasts"></div>
       <div class="hud-bottom">
         <div class="skills">
@@ -248,6 +242,9 @@ export class Ui {
       r.bossText.textContent = `${Math.ceil(boss.hp)} / ${boss.maxHp}`;
     }
     r.hint.classList.toggle("hidden", !g.nearPortal || !!this.overlay);
+    if (this.frameN % 15 === 0 && !r.perf.classList.contains("hidden")) {
+      r.perf.textContent = `${Math.round(g.fps)} fps · qualidade ${QUALITY[g.quality]} · ${g.pipeline.bufferSize.x}×${g.pipeline.bufferSize.y}`;
+    }
     if (this.frameN++ % 5 === 0) this.drawMinimap();
   }
 
@@ -470,14 +467,18 @@ export class Ui {
         <kbd>E</kbd><span>Entrar no portal (depois do chefe)</span>
         <kbd>I / Tab</kbd><span>Inventário e atributos</span>
         <kbd>M</kbd><span>Mapa do reino (viajar entre zonas)</span>
-        <kbd>V</kbd><span>Trocar o visual (sprites / blocos)</span>
+        <kbd>Roda do mouse</kbd><span>Aproximar ou afastar a câmera</span>
+        <kbd>F3</kbd><span>Mostrar quadros por segundo</span>
       </div>
-      <div class="row end"><button data-act="mute">${g.audio.muted ? "Ligar som" : "Desligar som"}</button>
+      <div class="row end"><button data-act="quality">Qualidade: ${QUALITY[g.quality]}</button><button data-act="mute">${g.audio.muted ? "Ligar som" : "Desligar som"}</button>
         <button data-act="title">Sair para o título</button><button class="primary" data-act="close">Continuar</button></div>`;
     panel.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
       if (act === "close") this.close();
-      else if (act === "mute") {
+      else if (act === "quality") {
+        g.setQuality((g.quality + 2) % 3);
+        this.showPause();
+      } else if (act === "mute") {
         g.audio.muted = !g.audio.muted;
         this.showPause();
       } else if (act === "title") this.showTitle();

@@ -16,7 +16,6 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
   font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; font-size: 14px; user-select: none; }
 #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
-#game.pixelated { image-rendering: pixelated; }
 #texts, #ui { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
 #ui > * { pointer-events: auto; }
 button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
@@ -72,6 +71,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 #bossbar .bar > i { background: #c7302b; }
 #hint { position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--gold);
   border-radius: 8px; padding: 8px 16px; font-weight: 700; }
+#perf { position: absolute; left: 16px; top: 96px; font: 600 12px ui-monospace, monospace; color: #c8ffd0; text-shadow: 0 1px 2px #000; }
 #toasts { position: absolute; left: 16px; bottom: 18px; display: flex; flex-direction: column; gap: 4px; width: 340px; }
 .toast { background: rgba(14, 16, 24, 0.82); border-left: 3px solid currentColor; padding: 5px 10px; border-radius: 4px; font-weight: 600;
   font-size: 13px; }

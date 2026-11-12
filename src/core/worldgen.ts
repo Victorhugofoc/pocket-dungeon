@@ -126,7 +126,7 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
     const x = rDecor.range(-half + 2, half - 2);
     const z = rDecor.range(-half + 2, half - 2);
     const rot = rDecor.range(0, Math.PI * 2);
-    if (solid && blocked(x, z, r)) continue;
+    if (blocked(x, z, solid ? r : 0)) continue;
     obstacles.push({ x, z, r, kind, scale, rot, solid });
   }
   // borda: muralha de obstáculos sólidos

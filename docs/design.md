@@ -6,7 +6,7 @@ RPG de ação para PC em que você joga com um herói só, explora mapas abertos
 ## Decisões do usuário
 - Plataforma: PC (teclado e mouse).
 - Progressão persistente (um save contínuo), não runs.
-- Tecnologia: three.js no navegador, tudo procedural, sem assets.
+- Tecnologia: three.js no navegador. Toda a arte é gerada por código, em 3D estilizado; os sprites do Dungeon Reign são só referência de design.
 - Conteúdo: heróis, inimigos, chefes e relíquias do Dungeon Reign.
 
 ## Loop

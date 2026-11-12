@@ -1,7 +1,7 @@
 // Personagens procedurais feitos de blocos, animados por código (sem assets).
 import * as THREE from "three";
 import type { BodyKind } from "../data/enemies";
-import { animateSprite, disposeSprite, tintSprite, type SpriteState } from "./sprites";
+import { animateChar, type CharState } from "./chars";
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 const ORB = new THREE.OctahedronGeometry(0.5, 1);
@@ -42,8 +42,8 @@ export interface Rig {
   kind: BodyKind;
   height: number;
   phase: number;
-  /** presente quando o personagem é um sprite 2D em vez de blocos */
-  sprite?: SpriteState;
+  /** personagem articulado (chars.ts) */
+  char?: CharState;
 }
 
 export function mat(color: number, emissive = 0x000000, emissiveIntensity = 1): THREE.MeshStandardMaterial {
@@ -228,7 +228,7 @@ export interface AnimState {
 }
 
 export function animateRig(rig: Rig, a: AnimState): void {
-  if (rig.sprite) return animateSprite(rig, a);
+  if (rig.char) return animateChar(rig, a);
   const t = a.t + rig.phase;
   const inner = rig.inner;
   if (a.dead > 0) {
@@ -293,14 +293,12 @@ const WHITE = new THREE.Color(0xffffff);
 
 /** k = 1 branco total, 0 normal. */
 export function flashRig(rig: Rig, k: number): void {
-  if (rig.sprite) return tintSprite(rig, 0xffffff, k * 0.85);
   for (let i = 0; i < rig.mats.length; i++) {
     rig.mats[i].emissive.copy(rig.baseEmissive[i]).lerp(WHITE, k * 0.85);
   }
 }
 
 export function tintRig(rig: Rig, color: number, k: number): void {
-  if (rig.sprite) return tintSprite(rig, color, k * 0.7);
   const c = new THREE.Color(color);
   for (let i = 0; i < rig.mats.length; i++) {
     rig.mats[i].emissive.copy(rig.baseEmissive[i]).lerp(c, k);
@@ -309,6 +307,5 @@ export function tintRig(rig: Rig, color: number, k: number): void {
 
 export function disposeRig(rig: Rig): void {
   rig.root.removeFromParent();
-  if (rig.sprite) disposeSprite(rig);
   for (const m of rig.mats) m.dispose();
 }

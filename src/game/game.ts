@@ -16,7 +16,9 @@ import { Fx } from "./fx";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
-import { setVisualMode, visual, VISUAL_LABEL, type VisualMode } from "./visual";
+import { nextShot } from "./chars";
+import { Pipeline } from "./render";
+import { U } from "./shared";
 import { buildWorld, type WorldView } from "./world";
 
 export interface GameEvents {
@@ -118,6 +120,10 @@ export class Game {
   private hemi: THREE.HemisphereLight;
   private lastFrame = 0;
   private marker: THREE.Mesh | null = null;
+  pipeline!: Pipeline;
+  private moteAcc = 0;
+  zoom = 1;
+  private proj = new THREE.Vector3();
   private storage = safeStorage();
   fps = 60;
 
@@ -125,20 +131,20 @@ export class Game {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
     this.camera = new THREE.PerspectiveCamera(38, 1, 1, 400);
+    this.pipeline = new Pipeline(this.renderer, this.scene, this.camera);
     this.fx = new Fx(this.scene, textLayer);
     this.input = new Input(canvas);
 
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x334433, 1);
     this.sun = new THREE.DirectionalLight(0xffffff, 2);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(4096, 4096);
     const sc = this.sun.shadow.camera;
-    sc.left = -46; sc.right = 46; sc.top = 46; sc.bottom = -46; sc.near = 1; sc.far = 160;
-    this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = 0.04;
+    sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 160;
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.05;
+    this.sun.shadow.radius = 2.5;
     this.scene.add(this.hemi, this.sun, this.sun.target);
 
     window.addEventListener("resize", () => this.resize());
@@ -149,16 +155,9 @@ export class Game {
   private resize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    if (visual.mode === "sprites") {
-      // render em baixa resolução, ampliado sem suavizar, para o cenário 3D casar com o pixel art
-      const k = Math.max(1, h / 540);
-      this.renderer.setPixelRatio(1);
-      this.renderer.setSize(Math.round(w / k), Math.round(h / k), false);
-    } else {
-      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      this.renderer.setSize(w, h, false);
-    }
-    this.canvas.classList.toggle("pixelated", visual.mode === "sprites");
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality === 0 ? 1 : 1.5));
+    this.renderer.setSize(w, h, false);
+    this.pipeline.setSize(w, h, this.renderer.getPixelRatio());
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -185,16 +184,17 @@ export class Game {
     this.enterZone(save.zone, false);
   }
 
-  /** troca o modo visual com o jogo rodando (reconstrói herói e inimigos) */
-  setVisual(mode: VisualMode): void {
-    setVisualMode(mode);
+  /** 0 baixo, 1 médio, 2 alto: sombras, bloom e resolução */
+  quality = 2;
+
+  setQuality(q: number): void {
+    this.quality = q;
+    this.sun.castShadow = q > 0;
+    this.sun.shadow.mapSize.set(q === 2 ? 4096 : 2048, q === 2 ? 4096 : 2048);
+    this.sun.shadow.map?.dispose();
+    this.sun.shadow.map = null;
+    this.pipeline.bloom.enabled = q > 0;
     this.resize();
-    if (!this.started) return;
-    if (this.player.rig) disposeRig(this.player.rig);
-    this.player.rig = characterRig(this.hero.id, "hero");
-    this.scene.add(this.player.rig.root);
-    for (const e of this.enemies) e.rebuildRig(this);
-    this.events.toast(`Visual: ${VISUAL_LABEL[mode]}`, "#9be4ff");
   }
 
   stop(): void {
@@ -228,7 +228,8 @@ export class Game {
     this.grid = new ObstacleGrid(this.layout.obstacles);
     this.world = buildWorld(this.scene, zone, this.layout);
     this.scene.background = new THREE.Color(zone.sky);
-    this.scene.fog = new THREE.Fog(zone.fog, 48, 125);
+    this.scene.fog = new THREE.Fog(zone.fog, 42, 120);
+    this.pipeline.setGrade(zone);
     this.hemi.color.set(zone.ambient);
     this.hemi.groundColor.set(zone.ground[2]);
     this.hemi.intensity = zone.ambientIntensity;
@@ -782,6 +783,7 @@ export class Game {
     const a = this.hero.auto;
     p.attackCd = 1 / (a.rate * this.stats.attackSpeed);
     p.attackAnim = 0;
+    if (p.rig) nextShot(p.rig);
     if (a.kind === "projectile") {
       this.firePlayer(p.facing, a, a.damage);
       this.audio.play("shoot");
@@ -1026,7 +1028,7 @@ export class Game {
       if (p.attackAnim >= 1) p.attackAnim = -1;
     }
     animateRig(rig, { t: this.time, move: p.moveAmt, attack: p.attackAnim, windup: 0, dead: 0 });
-    if ((p.dashT > 0 || p.rush) && !rig.sprite) rig.inner.rotation.x = 0.5;
+    if (p.dashT > 0 || p.rush) rig.inner.rotation.x = 0.5;
     if (p.flash > 0) {
       p.flash = Math.max(0, p.flash - dt * 6);
       flashRig(rig, p.flash);
@@ -1152,12 +1154,38 @@ export class Game {
     const sh = this.fx.shake * this.fx.shake * 0.9;
     const sx = (Math.random() - 0.5) * sh;
     const sz = (Math.random() - 0.5) * sh;
-    // com sprites a câmera fica mais baixa, para os personagens aparecerem de corpo inteiro
-    const sprites = visual.mode === "sprites";
-    this.camera.position.set(this.camTarget.x + sx, sprites ? 17.5 : 21, this.camTarget.z + (sprites ? 18.5 : 15.5) + sz);
+    // roda do mouse aproxima/afasta
+    this.zoom = Math.max(0.55, Math.min(1.25, this.zoom + this.input.takeWheel() * 0.0009));
+    this.camera.position.set(this.camTarget.x + sx, 19.5 * this.zoom, this.camTarget.z + 16 * this.zoom + sz);
     this.camera.lookAt(this.camTarget.x + sx, 0.8, this.camTarget.z + sz);
-    this.sun.position.set(p.x + 28, 52, p.z + 24);
-    this.sun.target.position.set(p.x, 0, p.z);
+    this.sun.position.set(this.camTarget.x + 30, 50, this.camTarget.z + 14);
+    this.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z - 4);
+    this.camera.updateMatrixWorld();
+
+    // uniforms do cenário: vento, grama e o "buraco" no que tapa o herói
+    U.uTime.value = this.time;
+    U.uCenter.value.set(this.camTarget.x, this.camTarget.z - 8);
+    U.uHero.value.set(p.x, 0, p.z);
+    const size = this.pipeline.bufferSize;
+    this.proj.set(p.x, 1.1, p.z).project(this.camera);
+    U.uFadePos.value.set((this.proj.x * 0.5 + 0.5) * size.x, (this.proj.y * 0.5 + 0.5) * size.y);
+    U.uFadeRadius.value = size.y * 0.085;
+    U.uFadeDepth.value = this.proj.z * 0.5 + 0.5 - 0.0004;
+
+    // partículas de ambiente (pólen, brasas, centelhas) e fogueira
+    const motes = this.zone.motes;
+    this.moteAcc += dt * motes.rate;
+    while (this.moteAcc >= 1) {
+      this.moteAcc--;
+      this.fx.spark(this.camTarget.x + (Math.random() - 0.5) * 44, 0.3 + Math.random() * 3.5, this.camTarget.z - 6 + (Math.random() - 0.5) * 34,
+        motes.color, 0.05 + Math.random() * 0.05, 2 + Math.random() * 2, motes.rise * (0.5 + Math.random()));
+    }
+    const fire = this.world?.group.userData.fire as THREE.Group | undefined;
+    if (fire) {
+      (fire.userData.light as THREE.PointLight).intensity = 40 + Math.sin(this.time * 11) * 6 + Math.sin(this.time * 23) * 4;
+      for (let i = 0; i < 3; i++) fire.children[i].scale.y = (1 - i * 0.2) * (1 + Math.sin(this.time * (9 + i * 3) + i) * 0.18);
+      if (Math.random() < dt * 14) this.fx.spark(fire.position.x + (Math.random() - 0.5) * 0.4, 0.9, fire.position.z + (Math.random() - 0.5) * 0.4, 0xffa040, 0.07, 0.9, 1.8);
+    }
     if (this.world?.portal.visible) {
       const portal = this.world.portal;
       portal.children[0].rotation.z += dt * 0.8;
@@ -1167,15 +1195,15 @@ export class Game {
 
   private frame(t: number): void {
     requestAnimationFrame((n) => this.frame(n));
-    const raw = Math.min(0.05, (t - this.lastFrame) / 1000 || 0.016);
+    const real = (t - this.lastFrame) / 1000 || 0.016;
+    const raw = Math.min(0.05, real);
     this.lastFrame = t;
-    this.fps += (1 / Math.max(raw, 0.001) - this.fps) * 0.05;
+    this.fps += (1 / Math.max(real, 0.001) - this.fps) * 0.05;
     if (!this.started) {
       this.input.endFrame();
       return;
     }
     if (!this.paused) {
-      if (this.input.wasPressed("KeyV")) this.setVisual(visual.mode === "sprites" ? "blocos" : "sprites");
       let dt = raw;
       if (this.hitstop > 0) {
         this.hitstop -= raw;
@@ -1197,6 +1225,6 @@ export class Game {
       }
     }
     this.input.endFrame();
-    this.renderer.render(this.scene, this.camera);
+    this.pipeline.render();
   }
 }

@@ -15,18 +15,26 @@ Agora o repo é um RPG de ação em three.js para PC, com o conteúdo do Dungeon
 - **Sem assets:** personagens de blocos animados por código, cenário instanciado, partículas, sons sintetizados.
 - 21 testes do núcleo (`npm test`).
 
-## Comparação de visual em andamento (decisão pendente do usuário)
-O usuário achou que os bonecos de blocos não lembram a arte do Dungeon Reign. Há dois modos no jogo, trocados com a tecla **V** ou na tela de título (`src/game/visual.ts`):
-- **sprites** (`src/game/sprites.ts`): as folhas de pixel art do Dungeon Reign como sprites em pé no cenário 3D, câmera mais baixa e render em ~540 linhas ampliado sem suavizar. As folhas foram copiadas para `src/assets/sprites/` e o manifesto `src/data/sprites.ts` é gerado a partir de `dungeon-idle` (5 linhas: parado, andando, atacando, dano, morrendo).
-- **blocos** (`src/game/looks.ts`): cada personagem remodelado em blocos à mão (cores e peças marcantes).
-Quando o usuário escolher, remover o modo descartado e atualizar `CLAUDE.md` (hoje diz "sem assets") e `docs/design.md`.
+## Direção de arte decidida: tudo por código, em 3D
+O usuário testou sprites x blocos e decidiu: arte **gerada por código**, num nível bem acima dos blocos iniciais (referência dele: um simulador de voo procedural em three.js). Os modos de sprites e de blocos foram removidos.
+Primeira passada feita (0.2):
+- **Render** (`render.ts`): HDR + MSAA, bloom, correção de cor por zona, vinheta. Qualidade baixa/média/alta na pausa; F3 mostra fps.
+- **Cenário** (`world.ts`, `flora.ts`): chão com shader procedural e máscara de terra batida, ~70 mil lâminas de grama com vento que o herói amassa, árvores/pinheiros/pedras/túmulos/pilares/cristais modelados por código em 3 variantes, flores, fogueira, partículas de ambiente por zona.
+- **Recorte**: o que fica entre a câmera e o herói some num círculo pontilhado (`shared.ts`).
+- **Personagens** (`chars.ts`): os 9 heróis, 10 inimigos e 4 chefes modelados a partir dos sprites do Dungeon Reign, com esqueleto (cotovelo, joelho, capa, cauda) e animação por estilo (golpe, tiro, magia, estocada, arremesso).
+- Roda do mouse dá zoom.
+
+Próximas passadas de arte, em ordem de retorno:
+1. Efeitos de combate (projéteis, impactos, técnicas) ainda são cubos e anéis simples.
+2. Relevo: o chão é plano. Colinas, penhascos na borda, água.
+3. Polimento dos personagens (rostos, mãos, Ember Matriarch e Bloodfang) e animações de dano/esquiva.
+4. Interface: ícones desenhados por código no lugar de emoji.
 
 ## O que NÃO foi validado
-- Só foi testado em navegador headless com renderização por software (roda sem erros, mas a ~2–25 fps, o que não diz nada sobre desempenho real). **Falta jogar numa máquina com GPU.**
+- Eu só testo em navegador headless com renderização por software: confirma que renderiza certo, não o desempenho. O usuário jogou a 0.1 e achou a jogabilidade boa; **a 0.2 (visual novo) ainda não foi medida numa GPU real** (pedir o fps do F3).
 - Balanceamento é primeira passada, nunca jogado de ponta a ponta por uma pessoa: curva de XP, vida/dano por nível e chefes em `src/data/tuning.ts` e `src/data/enemies.ts`.
 
 ## Limitações conhecidas
-- Árvores entre a câmera e o herói tapam a visão (há só um anel no chão visível através delas). Falta esmaecer o que oclui.
 - Sem gamepad, sem tela de opções (volume, teclas), sem música.
 - Não dá para vender ou desmontar item (só descartar); não há ouro nem loja.
 - Os heróis têm 1 técnica cada; as spells do Dungeon Reign (Fireball, Blade Orbit...) não foram portadas.

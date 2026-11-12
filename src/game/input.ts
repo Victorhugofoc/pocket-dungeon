@@ -8,6 +8,13 @@ export class Input {
   lmb = false;
   rmb = false;
   rmbPressed = false;
+  private wheel = 0;
+
+  takeWheel(): number {
+    const w = this.wheel;
+    this.wheel = 0;
+    return w;
+  }
 
   constructor(private canvas: HTMLElement) {
     window.addEventListener("keydown", (e) => {
@@ -35,6 +42,10 @@ export class Input {
       if (e.button === 2) this.rmb = false;
     });
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      this.wheel += e.deltaY;
+    }, { passive: false });
   }
 
   isDown(code: string): boolean {
