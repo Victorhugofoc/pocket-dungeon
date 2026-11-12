@@ -8,6 +8,7 @@ import { RELICS } from "../data/relics";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game } from "../game/game";
+import { visual, VISUAL_LABEL, type VisualMode } from "../game/visual";
 
 const ICON: Record<Slot, string> = { weapon: "⚔️", armor: "🛡️", trinket: "📿" };
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
@@ -139,6 +140,10 @@ export class Ui {
           <p><b>Técnica (botão direito) — ${h.technique.name}:</b> ${h.technique.text}</p>
           <p style="color:var(--muted)">${statLines(h.stats).replace(/<div class="st">/g, "").replace(/<\/div>/g, " · ").replace(/ · $/, "")}</p>
         </div>
+        <div class="title-actions">
+          ${(["sprites", "blocos"] as VisualMode[]).map((m) => `<button data-visual="${m}" ${visual.mode === m ? 'class="primary"' : ""}>${VISUAL_LABEL[m]}</button>`).join("")}
+        </div>
+        <p class="tag" style="margin:8px 0 0">Dois visuais para comparar. No jogo, a tecla V troca na hora.</p>
         <div class="title-actions"><button class="primary" data-act="new">Começar com ${h.name}</button></div>`;
     };
     render();
@@ -147,6 +152,12 @@ export class Ui {
       const card = t.closest<HTMLElement>("[data-hero]");
       if (card) {
         this.selectedHero = card.dataset.hero!;
+        render();
+        return;
+      }
+      const vis = t.closest<HTMLElement>("[data-visual]")?.dataset.visual as VisualMode | undefined;
+      if (vis) {
+        this.game.setVisual(vis);
         render();
         return;
       }
@@ -181,7 +192,7 @@ export class Ui {
       <div id="vignette"></div>
       <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><div class="points hidden" data-r="points"></div></div>
       <canvas id="minimap" width="176" height="176"></canvas>
-      <div class="hud-help">I inventário · M mapa · Esc pausa</div>
+      <div class="hud-help">I inventário · M mapa · Esc pausa<br><b>V troca o visual</b></div>
       <div id="bossbar" class="hidden" data-r="boss"><h3 data-r="bossName"></h3><div class="bar"><i data-r="bossFill"></i><span data-r="bossText"></span></div></div>
       <div id="hint" class="hidden" data-r="hint">E — entrar no portal</div>
       <div id="toasts"></div>
@@ -459,6 +470,7 @@ export class Ui {
         <kbd>E</kbd><span>Entrar no portal (depois do chefe)</span>
         <kbd>I / Tab</kbd><span>Inventário e atributos</span>
         <kbd>M</kbd><span>Mapa do reino (viajar entre zonas)</span>
+        <kbd>V</kbd><span>Trocar o visual (sprites / blocos)</span>
       </div>
       <div class="row end"><button data-act="mute">${g.audio.muted ? "Ligar som" : "Desligar som"}</button>
         <button data-act="title">Sair para o título</button><button class="primary" data-act="close">Continuar</button></div>`;

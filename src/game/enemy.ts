@@ -2,7 +2,8 @@
 import { TUNING } from "../data/tuning";
 import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
 import type { StatusKind } from "../data/heroes";
-import { animateRig, buildRig, flashRig, tintRig, type Rig } from "./models";
+import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
+import { characterRig } from "./rigs";
 import type { Game } from "./game";
 
 export interface Dot {
@@ -10,13 +11,6 @@ export interface Dot {
   dps: number;
   until: number;
 }
-
-const BOSS_LOOK: Record<string, { horns?: boolean; crown?: boolean; weapon: "club" | "staff" | "none" | "mace" }> = {
-  bloodfang: { horns: true, weapon: "club" },
-  gravekeeper: { weapon: "staff" },
-  ember_matriarch: { horns: true, weapon: "none" },
-  hollow_king: { crown: true, weapon: "staff" },
-};
 
 export class Enemy {
   x: number;
@@ -84,19 +78,23 @@ export class Enemy {
     this.xp = this.summoned ? 0 : Math.round(def.xp * xpLevel * (isBoss ? TUNING.boss.xpMult : champ ? champ.xp : 1));
     if (isBoss) this.windupDur = 0.55;
 
-    if (this.boss) {
-      const look = BOSS_LOOK[this.boss.id] ?? { weapon: "none" as const };
-      this.rig = buildRig({ body: this.boss.body, color: this.boss.color, accent: this.boss.accent, glow: this.boss.glow,
-        scale: this.boss.scale, weapon: look.weapon, horns: look.horns, crown: look.crown });
-    } else {
-      const d = this.def!;
-      const weapon = d.id === "archer" ? "bow" : d.id === "orc" || d.id === "berserker" ? "club" : d.id === "assassin" ? "daggers"
-        : d.id === "goblin" ? "sword" : d.body === "robed" ? "staff" : "none";
-      this.rig = buildRig({ body: d.body, color: d.color, accent: d.accent, scale: d.scale * (champ ? champ.scale : 1),
-        weapon, glow: this.champion ? 0xffc83d : undefined, horns: d.id === "berserker" || d.id === "orc",
-        hood: d.id === "assassin", hat: d.id === "spellcaster", crown: this.champion && d.body !== "bug" && d.body !== "slime" });
-    }
+    this.rig = this.makeRig();
     this.rig.root.position.set(x, 0, z);
+    game.scene.add(this.rig.root);
+  }
+
+  private makeRig(): Rig {
+    return characterRig(this.boss ? this.boss.id : this.def!.id, this.boss ? "boss" : "enemy", this.champion);
+  }
+
+  /** troca o modelo quando o modo visual muda */
+  rebuildRig(game: Game): void {
+    const visible = this.rig.root.visible;
+    disposeRig(this.rig);
+    this.rig = this.makeRig();
+    this.rig.root.position.set(this.x, 0, this.z);
+    this.rig.root.rotation.y = this.facing;
+    this.rig.root.visible = visible;
     game.scene.add(this.rig.root);
   }
 

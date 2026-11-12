@@ -1,6 +1,7 @@
 // Personagens procedurais feitos de blocos, animados por código (sem assets).
 import * as THREE from "three";
 import type { BodyKind } from "../data/enemies";
+import { animateSprite, disposeSprite, tintSprite, type SpriteState } from "./sprites";
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 const ORB = new THREE.OctahedronGeometry(0.5, 1);
@@ -20,6 +21,10 @@ export interface RigOptions {
   hat?: boolean;
   hood?: boolean;
   skin?: number;
+  /** cor das pernas e detalhes escuros (padrão: cor principal escurecida) */
+  legs?: number;
+  /** sem capuz/enfeite padrão na cabeça (corpo de manto) */
+  bare?: boolean;
 }
 
 export interface Rig {
@@ -37,13 +42,15 @@ export interface Rig {
   kind: BodyKind;
   height: number;
   phase: number;
+  /** presente quando o personagem é um sprite 2D em vez de blocos */
+  sprite?: SpriteState;
 }
 
-function mat(color: number, emissive = 0x000000, emissiveIntensity = 1): THREE.MeshStandardMaterial {
+export function mat(color: number, emissive = 0x000000, emissiveIntensity = 1): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.05, flatShading: true, emissive, emissiveIntensity });
 }
 
-function box(m: THREE.Material, w: number, h: number, d: number, x = 0, y = 0, z = 0): THREE.Mesh {
+export function box(m: THREE.Material, w: number, h: number, d: number, x = 0, y = 0, z = 0): THREE.Mesh {
   const mesh = new THREE.Mesh(BOX, m);
   mesh.scale.set(w, h, d);
   mesh.position.set(x, y, z);
@@ -114,7 +121,7 @@ export function buildRig(o: RigOptions): Rig {
   const inner = new THREE.Group();
   root.add(inner);
   const main = mat(o.color);
-  const dark = mat(darken(o.color, 0.6));
+  const dark = mat(o.legs ?? darken(o.color, 0.6));
   const accent = mat(o.accent);
   const skin = mat(o.skin ?? o.color);
   const metal = mat(0xb9c2cc);
@@ -164,7 +171,7 @@ export function buildRig(o: RigOptions): Rig {
     head.add(box(skin, 0.46, 0.46, 0.46));
     head.add(box(eye, 0.09, 0.09, 0.04, -0.11, 0.02, 0.23), box(eye, 0.09, 0.09, 0.04, 0.11, 0.02, 0.23));
     if (o.crown) head.add(box(glow, 0.5, 0.16, 0.5, 0, 0.31, 0), box(glow, 0.1, 0.2, 0.1, 0, 0.46, 0));
-    else head.add(box(dark, 0.56, 0.3, 0.56, 0, 0.2, -0.04));
+    else if (!o.bare) head.add(box(dark, 0.56, 0.3, 0.56, 0, 0.2, -0.04));
     if (o.hat) head.add(box(accent, 0.34, 0.34, 0.34, 0, 0.48, -0.04), box(accent, 0.18, 0.26, 0.18, 0, 0.74, -0.06));
     body.add(head);
     rig.armL = limb(main, 0.2, 0.7, -0.47, 1.5);
@@ -221,6 +228,7 @@ export interface AnimState {
 }
 
 export function animateRig(rig: Rig, a: AnimState): void {
+  if (rig.sprite) return animateSprite(rig, a);
   const t = a.t + rig.phase;
   const inner = rig.inner;
   if (a.dead > 0) {
@@ -285,12 +293,14 @@ const WHITE = new THREE.Color(0xffffff);
 
 /** k = 1 branco total, 0 normal. */
 export function flashRig(rig: Rig, k: number): void {
+  if (rig.sprite) return tintSprite(rig, 0xffffff, k * 0.85);
   for (let i = 0; i < rig.mats.length; i++) {
     rig.mats[i].emissive.copy(rig.baseEmissive[i]).lerp(WHITE, k * 0.85);
   }
 }
 
 export function tintRig(rig: Rig, color: number, k: number): void {
+  if (rig.sprite) return tintSprite(rig, color, k * 0.7);
   const c = new THREE.Color(color);
   for (let i = 0; i < rig.mats.length; i++) {
     rig.mats[i].emissive.copy(rig.baseEmissive[i]).lerp(c, k);
@@ -299,5 +309,6 @@ export function tintRig(rig: Rig, color: number, k: number): void {
 
 export function disposeRig(rig: Rig): void {
   rig.root.removeFromParent();
+  if (rig.sprite) disposeSprite(rig);
   for (const m of rig.mats) m.dispose();
 }

@@ -14,7 +14,9 @@ import { Audio } from "./audio";
 import { Enemy, enemyDef } from "./enemy";
 import { Fx } from "./fx";
 import { Input } from "./input";
-import { animateRig, buildRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
+import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
+import { characterRig } from "./rigs";
+import { setVisualMode, visual, VISUAL_LABEL, type VisualMode } from "./visual";
 import { buildWorld, type WorldView } from "./world";
 
 export interface GameEvents {
@@ -121,7 +123,6 @@ export class Game {
 
   constructor(private canvas: HTMLCanvasElement, textLayer: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -148,7 +149,16 @@ export class Game {
   private resize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.renderer.setSize(w, h, false);
+    if (visual.mode === "sprites") {
+      // render em baixa resolução, ampliado sem suavizar, para o cenário 3D casar com o pixel art
+      const k = Math.max(1, h / 540);
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(Math.round(w / k), Math.round(h / k), false);
+    } else {
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      this.renderer.setSize(w, h, false);
+    }
+    this.canvas.classList.toggle("pixelated", visual.mode === "sprites");
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -159,8 +169,7 @@ export class Game {
     this.hero = HEROES[save.heroId];
     if (this.player.rig) disposeRig(this.player.rig);
     const h = this.hero;
-    this.player.rig = buildRig({ body: "humanoid", color: h.color, accent: h.accent, scale: 1, weapon: h.weapon, glow: h.color,
-      skin: 0xf0c8a0, hat: h.id === "zephyr", hood: h.id === "umbra" || h.id === "vesper", crown: h.id === "seraph" });
+    this.player.rig = characterRig(h.id, "hero");
     this.scene.add(this.player.rig.root);
     this.marker?.removeFromParent();
     this.marker = new THREE.Mesh(
@@ -174,6 +183,18 @@ export class Game {
     this.player.hp = this.stats.maxHp;
     this.started = true;
     this.enterZone(save.zone, false);
+  }
+
+  /** troca o modo visual com o jogo rodando (reconstrói herói e inimigos) */
+  setVisual(mode: VisualMode): void {
+    setVisualMode(mode);
+    this.resize();
+    if (!this.started) return;
+    if (this.player.rig) disposeRig(this.player.rig);
+    this.player.rig = characterRig(this.hero.id, "hero");
+    this.scene.add(this.player.rig.root);
+    for (const e of this.enemies) e.rebuildRig(this);
+    this.events.toast(`Visual: ${VISUAL_LABEL[mode]}`, "#9be4ff");
   }
 
   stop(): void {
@@ -1005,7 +1026,7 @@ export class Game {
       if (p.attackAnim >= 1) p.attackAnim = -1;
     }
     animateRig(rig, { t: this.time, move: p.moveAmt, attack: p.attackAnim, windup: 0, dead: 0 });
-    if (p.dashT > 0 || p.rush) rig.inner.rotation.x = 0.5;
+    if ((p.dashT > 0 || p.rush) && !rig.sprite) rig.inner.rotation.x = 0.5;
     if (p.flash > 0) {
       p.flash = Math.max(0, p.flash - dt * 6);
       flashRig(rig, p.flash);
@@ -1131,7 +1152,9 @@ export class Game {
     const sh = this.fx.shake * this.fx.shake * 0.9;
     const sx = (Math.random() - 0.5) * sh;
     const sz = (Math.random() - 0.5) * sh;
-    this.camera.position.set(this.camTarget.x + sx, 21, this.camTarget.z + 15.5 + sz);
+    // com sprites a câmera fica mais baixa, para os personagens aparecerem de corpo inteiro
+    const sprites = visual.mode === "sprites";
+    this.camera.position.set(this.camTarget.x + sx, sprites ? 17.5 : 21, this.camTarget.z + (sprites ? 18.5 : 15.5) + sz);
     this.camera.lookAt(this.camTarget.x + sx, 0.8, this.camTarget.z + sz);
     this.sun.position.set(p.x + 28, 52, p.z + 24);
     this.sun.target.position.set(p.x, 0, p.z);
@@ -1152,6 +1175,7 @@ export class Game {
       return;
     }
     if (!this.paused) {
+      if (this.input.wasPressed("KeyV")) this.setVisual(visual.mode === "sprites" ? "blocos" : "sprites");
       let dt = raw;
       if (this.hitstop > 0) {
         this.hitstop -= raw;

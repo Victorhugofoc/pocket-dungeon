@@ -15,6 +15,12 @@ Agora o repo é um RPG de ação em three.js para PC, com o conteúdo do Dungeon
 - **Sem assets:** personagens de blocos animados por código, cenário instanciado, partículas, sons sintetizados.
 - 21 testes do núcleo (`npm test`).
 
+## Comparação de visual em andamento (decisão pendente do usuário)
+O usuário achou que os bonecos de blocos não lembram a arte do Dungeon Reign. Há dois modos no jogo, trocados com a tecla **V** ou na tela de título (`src/game/visual.ts`):
+- **sprites** (`src/game/sprites.ts`): as folhas de pixel art do Dungeon Reign como sprites em pé no cenário 3D, câmera mais baixa e render em ~540 linhas ampliado sem suavizar. As folhas foram copiadas para `src/assets/sprites/` e o manifesto `src/data/sprites.ts` é gerado a partir de `dungeon-idle` (5 linhas: parado, andando, atacando, dano, morrendo).
+- **blocos** (`src/game/looks.ts`): cada personagem remodelado em blocos à mão (cores e peças marcantes).
+Quando o usuário escolher, remover o modo descartado e atualizar `CLAUDE.md` (hoje diz "sem assets") e `docs/design.md`.
+
 ## O que NÃO foi validado
 - Só foi testado em navegador headless com renderização por software (roda sem erros, mas a ~2–25 fps, o que não diz nada sobre desempenho real). **Falta jogar numa máquina com GPU.**
 - Balanceamento é primeira passada, nunca jogado de ponta a ponta por uma pessoa: curva de XP, vida/dano por nível e chefes em `src/data/tuning.ts` e `src/data/enemies.ts`.
