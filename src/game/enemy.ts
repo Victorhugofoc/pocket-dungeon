@@ -41,6 +41,9 @@ export class Enemy {
   attackAnim = -1;
   moveAmt = 0;
   flash = 0;
+  /** velocidade de empurrão (decai sozinha) */
+  kx = 0;
+  kz = 0;
   slowUntil = 0;
   slowPower = 0;
   stunUntil = 0;
@@ -123,7 +126,14 @@ export class Enemy {
     const rig = this.rig;
 
     if (this.dead) {
-      this.deadT += dt * 2.6;
+      this.deadT += dt * 2.0;
+      // o corpo ainda desliza com o último empurrão
+      this.x += this.kx * dt;
+      this.z += this.kz * dt;
+      const kd = Math.exp(-dt * 6);
+      this.kx *= kd;
+      this.kz *= kd;
+      rig.root.position.set(this.x, 0, this.z);
       animateRig(rig, { t: now, move: 0, attack: -1, windup: 0, dead: this.deadT });
       if (this.deadT >= 1.25) this.remove = true;
       return;
@@ -190,6 +200,11 @@ export class Enemy {
       if (c.t >= c.dur) this.charging = null;
     }
 
+    this.x += this.kx * dt;
+    this.z += this.kz * dt;
+    const kdec = Math.exp(-dt * 9);
+    this.kx *= kdec;
+    this.kz *= kdec;
     game.grid.resolve(this, this.radius);
     const lim = game.layout.size / 2 - 6;
     this.x = Math.max(-lim, Math.min(lim, this.x));

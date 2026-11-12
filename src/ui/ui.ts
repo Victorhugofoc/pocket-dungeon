@@ -128,7 +128,7 @@ export class Ui {
       const h = HEROES[this.selectedHero];
       panel.innerHTML = `
         <h1>DUNGEON REIGN</h1>
-        <p class="tag">RPG de ação · protótipo 0.2 · mapas procedurais, um herói, loot e chefes</p>
+        <p class="tag">RPG de ação · protótipo 0.3 · mapas procedurais, um herói, loot e chefes</p>
         ${save ? `<div class="continue"><button class="primary" data-act="continue" style="padding:12px 30px;font-size:16px">
           Continuar — ${HEROES[save.heroId]?.name ?? "?"} nível ${save.level}</button></div>` : ""}
         <div class="section">${save ? "Ou comece um novo herói (apaga o save atual)" : "Escolha seu herói"}</div>

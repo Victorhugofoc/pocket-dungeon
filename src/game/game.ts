@@ -16,7 +16,7 @@ import { Fx } from "./fx";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
-import { nextShot } from "./chars";
+import { kickRig, nextShot } from "./chars";
 import { Pipeline } from "./render";
 import { U } from "./shared";
 import { buildWorld, type WorldView } from "./world";
@@ -158,6 +158,7 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality === 0 ? 1 : 1.5));
     this.renderer.setSize(w, h, false);
     this.pipeline.setSize(w, h, this.renderer.getPixelRatio());
+    this.fx.setPointScale(this.pipeline.bufferSize.y / (2 * Math.tan((this.camera.fov * Math.PI) / 360)));
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -301,7 +302,9 @@ export class Game {
   private addProjectile(pr: Omit<Projectile, "mesh" | "hit">): void {
     const mesh = this.projPool.pop() ?? new THREE.Mesh(PROJ_GEO);
     mesh.material = this.projMat(pr.color);
-    mesh.scale.setScalar(pr.r);
+    // projétil alongado na direção do voo
+    mesh.scale.set(pr.r * 0.75, pr.r * 0.75, pr.r * 2.4);
+    mesh.rotation.y = Math.atan2(pr.vx, pr.vz);
     mesh.position.set(pr.x, 1.15, pr.z);
     this.scene.add(mesh);
     this.projectiles.push({ ...pr, mesh, hit: new Set() });
@@ -369,12 +372,13 @@ export class Game {
         }
       }
       if (dead) {
-        this.fx.burst(pr.x, 1.1, pr.z, pr.color, 4, 3, 0.1, 0.25);
+        this.fx.impact(pr.x, 1.15, pr.z, pr.color, 0.7);
         this.freeProjectile(pr);
         this.projectiles.splice(i, 1);
       } else {
         pr.mesh.position.set(pr.x, 1.15, pr.z);
-        if (Math.random() < 0.5) this.fx.spark(pr.x, 1.15, pr.z, pr.color, pr.r * 0.6, 0.22, 0);
+        // rastro de cometa
+        this.fx.glow(pr.x, 1.15, pr.z, pr.color, pr.r * (pr.friendly ? 5 : 6.5), 0.2, -pr.vx * 0.06, 0, -pr.vz * 0.06);
       }
     }
   }
@@ -437,6 +441,19 @@ export class Game {
       this.fx.text(e.x, top, e.z, String(amount), opts.dot === "poison" ? "poison" : "burn");
     } else {
       e.flash = 1;
+      // empurrão: o corpo cede como mola e é jogado para trás
+      const hp0 = this.player;
+      let kdx = e.x - hp0.x, kdz = e.z - hp0.z;
+      const kd = Math.hypot(kdx, kdz) || 1;
+      kdx /= kd;
+      kdz /= kd;
+      const power = Math.min(1, 0.22 + (amount / e.maxHp) * 2.2) * (opts.crit ? 1.35 : 1) * (this.hero.auto.kind === "melee" ? 1.5 : 1);
+      kickRig(e.rig, kdx, kdz, e.isBoss ? power * 0.5 : power);
+      if (!e.isBoss) {
+        e.kx += kdx * power * TUNING.enemy.knockback;
+        e.kz += kdz * power * TUNING.enemy.knockback;
+      }
+      this.fx.impact(e.x - kdx * e.radius, e.rig.height * 0.55, e.z - kdz * e.radius, opts.crit ? 0xffe066 : this.hero.auto.color, opts.crit ? 1.5 : 1);
       this.fx.text(e.x, top, e.z, String(amount) + (opts.crit ? "!" : ""), opts.crit ? "crit" : "dmg");
       this.fx.burst(e.x, e.rig.height * 0.6, e.z, opts.crit ? 0xffe066 : 0xffffff, opts.crit ? 9 : 4, 5, 0.13, 0.3);
       this.audio.play(opts.crit ? "crit" : "hit");
@@ -613,6 +630,7 @@ export class Game {
     amount = Math.max(1, Math.round(amount));
     p.hp -= amount;
     p.flash = 1;
+    if (p.rig) kickRig(p.rig, -Math.sin(p.facing), -Math.cos(p.facing), 0.7);
     p.hurtT = 1;
     p.iframes = 0.12;
     this.fx.text(p.x, 2.6, p.z, "-" + amount, "hurt");
@@ -632,6 +650,7 @@ export class Game {
   explode(x: number, z: number, r: number, dmg: number, color: number, source: string): void {
     this.fx.shockwave(x, z, r, color);
     this.fx.burst(x, 0.4, z, color, 16, 7, 0.18, 0.5);
+    this.fx.flashLight(x, 1.5, z, color, 60, 0.4);
     this.fx.addShake(0.15);
     const p = this.player;
     if (Math.hypot(p.x - x, p.z - z) < r + 0.3) this.hurtPlayer(dmg, source);
@@ -808,10 +827,6 @@ export class Game {
         if (Math.abs(da) > arc && d > e.radius + 0.8) continue;
         this.hitEnemy(e, a.damage, a.status);
         hits++;
-        if (!e.isBoss && !e.dead) {
-          e.x += Math.sin(p.facing) * 0.35;
-          e.z += Math.cos(p.facing) * 0.35;
-        }
       }
       if (hits) this.fx.addShake(0.08);
     }

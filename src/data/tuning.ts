@@ -39,6 +39,8 @@ export const TUNING = {
     aggroRadius: 15,
     leashRadius: 34,
     activeRadius: 70,
+    /** velocidade (unidades/s) do empurrão de um golpe de força 1 */
+    knockback: 8,
     champion: { hp: 4.2, damage: 1.5, speed: 1.1, scale: 1.35, xp: 4.5 },
     /** distância (px do Dungeon Idle) -> unidades do mundo */
     pxToUnit: 1 / 16,

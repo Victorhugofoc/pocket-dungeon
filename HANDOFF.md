@@ -24,8 +24,15 @@ Primeira passada feita (0.2):
 - **Personagens** (`chars.ts`): os 9 heróis, 10 inimigos e 4 chefes modelados a partir dos sprites do Dungeon Reign, com esqueleto (cotovelo, joelho, capa, cauda) e animação por estilo (golpe, tiro, magia, estocada, arremesso).
 - Roda do mouse dá zoom.
 
+Segunda passada (0.3), depois do retorno "parece Roblox, movimento de boneco de palito, sem física":
+- **Anatomia e acabamento** (`chars.ts`): membros afunilados, peito mais largo que a cintura, queixo/nariz/orelhas, mãos e pés maiores, postura por peso (pesados andam curvados), contorno escuro e luz de recorte.
+- **Movimento com física** (`animateChar`): passada ligada à distância real percorrida, pernas na direção em que o corpo anda, molas para inclinação na aceleração, capa/cauda/saia, atraso da cabeça e do antebraço; golpe com antecipação e passagem do ponto; `kickRig` faz o corpo ceder ao apanhar e define para onde cai ao morrer.
+- **Empurrão real**: inimigos ganham velocidade de recuo ao apanhar (`TUNING.enemy.knockback`).
+- **Efeitos** (`fx.ts`): pontos de luz aditivos (faíscas, rastro de projétil, clarão de impacto), meia-lua do golpe por shader, luz pontual em explosões.
+Nada disso foi visto em movimento por mim (só quadros parados); o usuário precisa confirmar.
+
 Próximas passadas de arte, em ordem de retorno:
-1. Efeitos de combate (projéteis, impactos, técnicas) ainda são cubos e anéis simples.
+1. Efeitos das técnicas dos heróis e dos ataques de chefe (telegrafias ainda são discos vermelhos lisos).
 2. Relevo: o chão é plano. Colinas, penhascos na borda, água.
 3. Polimento dos personagens (rostos, mãos, Ember Matriarch e Bloodfang) e animações de dano/esquiva.
 4. Interface: ícones desenhados por código no lugar de emoji.
