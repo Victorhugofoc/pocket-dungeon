@@ -33,6 +33,7 @@ export class Ui {
   private mapCtx!: CanvasRenderingContext2D;
   private frameN = 0;
   private selectedHero: string = HERO_ORDER[0];
+  private confirmNew = "";
   private storage = safeStorage();
   private r: Record<string, HTMLElement> = {};
 
@@ -152,7 +153,14 @@ export class Ui {
       const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
       if (act === "continue" && save) this.begin(save);
       else if (act === "new") {
-        if (save && !confirm("Começar um novo herói apaga o save atual. Continuar?")) return;
+        // confirmação em dois cliques (sem confirm(): alguns ambientes bloqueiam diálogos)
+        if (save && this.confirmNew !== this.selectedHero) {
+          this.confirmNew = this.selectedHero;
+          const b = t.closest<HTMLElement>("[data-act]")!;
+          b.textContent = "Isso apaga o save atual. Clique de novo para confirmar";
+          b.classList.add("danger");
+          return;
+        }
         deleteSave(this.storage);
         this.begin(newSave(this.selectedHero, (Math.random() * 0xffffffff) >>> 0));
       }
