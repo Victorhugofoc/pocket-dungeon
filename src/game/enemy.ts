@@ -70,7 +70,7 @@ export class Enemy {
     const hpScale = Math.pow(T.hpPerLevel, level - 1);
     const dmgScale = Math.pow(T.damagePerLevel, level - 1);
     const champ = this.champion ? T.champion : null;
-    this.maxHp = this.hp = Math.round(def.hp * hpScale * (champ ? champ.hp : 1) * (this.summoned ? 0.75 : 1));
+    this.maxHp = this.hp = Math.round(def.hp * hpScale * (champ ? champ.hp : 1) * (this.summoned ? 0.75 : 1) * (isBoss ? TUNING.boss.hpMult : 1));
     this.dmg = def.damage * dmgScale * (champ ? champ.damage : 1);
     this.speed = def.speed * (champ ? champ.speed : 1);
     this.radius = def.radius * (champ ? 1.2 : 1);

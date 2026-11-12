@@ -44,6 +44,8 @@ export const TUNING = {
     pxToUnit: 1 / 16,
   },
   boss: {
+    /** multiplicador global da vida dos chefes (0.55 depois do 1º playtest: "o boss tem muita vida") */
+    hpMult: 0.55,
     enrageAt: 0.3,
     enrageCooldownMult: 0.65,
     xpMult: 22,
