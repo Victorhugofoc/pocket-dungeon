@@ -2,3 +2,18 @@ node_modules
 dist
 dist-single
 *.log
+
+# Restos locais do projeto antigo (Covil, Godot): não fazem parte deste jogo
+.godot/
+/android/
+/builds/
+/reports/
+*.import
+*.uid
+*.translation
+export_presets.cfg.bak
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
