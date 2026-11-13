@@ -1,57 +1,93 @@
 # Dungeon Reign RPG — handoff
 
-Leia este arquivo antes de qualquer coisa.
+Leia este arquivo antes de qualquer coisa. Ele substitui o histórico das conversas anteriores.
+
+## PRÓXIMA CONVERSA — o que fazer primeiro
+O usuário pediu, nesta ordem:
+
+1. **Montar um plano detalhado de todas as melhorias do jogo** (documento em `docs/`, aprovado por ele antes de implementar).
+2. **A primeira etapa do plano é arte: personagens mais legíveis.** Usar os sprites do Dungeon Reign como referência e escrever um **design de modelo 3D por personagem**, para depois gerar por código. O design vem antes do código.
+
+Como fazer a etapa 2 (sugestão, confirmar com o usuário):
+- Anexar o repo `Victorhugofoc/dungeon-idle` em modo leitura. As referências estão em `assets/characters/<herói>/<herói>_sheet.png`, `assets/enemies/{basic,ranged,elite,special,bosses}/*_sheet.png` (quadros de 96×96; chefes 192×160; linha 0 = parado). Montar uma folha de contato com o primeiro quadro de cada um é barato e basta para ler os designs.
+- Para cada personagem, uma ficha curta: silhueta (o que o identifica de longe e de cima), 3 a 5 peças marcantes, paleta (3 a 5 cores do sprite), proporções, arma e como segura, estilo de ataque, o que se mexe sozinho (capa, cauda, cabelo).
+- **Legibilidade é o critério.** A câmera é alta e os personagens ocupam ~60 a 90 px de altura na tela. O que conta: silhueta distinta, cabeça/chapéu/ombros/arma exagerados, contraste com o chão de cada bioma, cor de time (herói x inimigo x campeão x chefe). Detalhe fino de rosto não aparece.
+- Só depois refazer `src/game/chars.ts` seguindo as fichas, conferindo cada personagem por captura (ver "Como conferir arte").
+
+Retorno do usuário que motiva isso (em ordem):
+- Blocos iniciais: "não parecem em nada com o Dungeon Reign".
+- 0.2 (modelos articulados): "melhorou, mas os mobs ainda não têm um visual bacana, parece tudo meio Roblox demais, não tem física nos movimentos, parecem stick man".
+- 0.3 (anatomia + molas): **ainda não avaliada por ele.** Perguntar o que achou antes de planejar em cima.
 
 ## O que é
-O projeto anterior deste repo (Covil, Godot) foi descartado por decisão do usuário; o histórico continua no git até o commit `47749e3`.
-Agora o repo é um RPG de ação em three.js para PC, com o conteúdo do Dungeon Reign (`Victorhugofoc/dungeon-idle`).
+RPG de ação para PC no navegador (three.js + TypeScript + Vite). Um herói, mapas abertos procedurais, loot, relíquias, um chefe por zona até o chefe final. Formato de referência: Minecraft Dungeons. Conteúdo vem do Dungeon Reign (`dungeon-idle`, LÖVE/Lua).
 
-## Estado atual — protótipo 0.1 (jogável do início ao chefe final)
-- **Heróis:** os 9 do Dungeon Reign, cada um com ataque e técnica próprios (`src/data/heroes.ts`).
-- **Zonas:** 4 mapas abertos procedurais de 240x240 (Bosque, Cripta, Vulcão, Vazio), cada um com ~24 acampamentos, caminho até a arena e um chefe (Bloodfang, Gravekeeper, Ember Matriarch, Hollow King). Viajar gera um mapa novo.
-- **Inimigos:** 10 tipos com 5 comportamentos (corpo a corpo, à distância, investida, invocador, morteiro), mais campeões.
-- **Chefes:** 7 padrões telegrafados (pancada, investida, nova, leque, invocação, meteoros, espiral) e fúria aos 30% de vida.
-- **Progressão persistente:** nível (até 60), 4 atributos, equipamentos em 3 espaços com 5 raridades e 16 afixos, 20 relíquias (1 de 3 por chefe; chance pequena em campeões). Save em `localStorage`.
-- **Sem assets:** personagens de blocos animados por código, cenário instanciado, partículas, sons sintetizados.
+O projeto anterior deste repo (Covil, Godot) foi descartado; o histórico está no git até `47749e3`.
+
+## Decisões do usuário (não reabrir sem ele pedir)
+- Plataforma: PC, teclado e mouse.
+- Progressão persistente (um save contínuo), não runs.
+- **Toda a arte é gerada por código, em 3D.** Sem sprites nem modelos importados. Ele testou sprites do Dungeon Reign no cenário 3D e blocos; descartou os dois. Referência de ambição dele: um simulador de voo procedural em three.js com terreno e nuvens volumétricas.
+- Ele faz o PR e o merge; eu só faço commit e push no branch de trabalho.
+- Conversa longa gasta muito contexto: preferir sessões curtas com handoff atualizado.
+
+## Estado atual — versão 0.3 (jogável do início ao chefe final)
+- **Heróis:** os 9 do Dungeon Reign, um por save, cada um com ataque e técnica próprios (`src/data/heroes.ts`).
+- **Zonas:** 4 mapas de 240×240 gerados por seed (Bosque, Cripta, Vulcão, Vazio), ~24 acampamentos, caminho até a arena, chefe (Bloodfang, Gravekeeper, Ember Matriarch, Hollow King). Viajar gera mapa novo.
+- **Inimigos:** 10 tipos, 5 comportamentos (corpo a corpo, à distância, investida, invocador, morteiro), campeões.
+- **Chefes:** 7 padrões telegrafados e fúria aos 30% de vida. Vida já reduzida em 45% a pedido (`TUNING.boss.hpMult`).
+- **Progressão:** nível até 60, 4 atributos, equipamento em 3 espaços com 5 raridades e 16 afixos, 20 relíquias (1 de 3 por chefe). Save em `localStorage`.
+- **Arte por código:** personagens articulados com contorno e luz de recorte, animação por molas, chão com shader, grama com vento, flora em 3 variantes, bloom e correção de cor por zona, partículas de luz.
 - 21 testes do núcleo (`npm test`).
 
-## Direção de arte decidida: tudo por código, em 3D
-O usuário testou sprites x blocos e decidiu: arte **gerada por código**, num nível bem acima dos blocos iniciais (referência dele: um simulador de voo procedural em three.js). Os modos de sprites e de blocos foram removidos.
-Primeira passada feita (0.2):
-- **Render** (`render.ts`): HDR + MSAA, bloom, correção de cor por zona, vinheta. Qualidade baixa/média/alta na pausa; F3 mostra fps.
-- **Cenário** (`world.ts`, `flora.ts`): chão com shader procedural e máscara de terra batida, ~70 mil lâminas de grama com vento que o herói amassa, árvores/pinheiros/pedras/túmulos/pilares/cristais modelados por código em 3 variantes, flores, fogueira, partículas de ambiente por zona.
-- **Recorte**: o que fica entre a câmera e o herói some num círculo pontilhado (`shared.ts`).
-- **Personagens** (`chars.ts`): os 9 heróis, 10 inimigos e 4 chefes modelados a partir dos sprites do Dungeon Reign, com esqueleto (cotovelo, joelho, capa, cauda) e animação por estilo (golpe, tiro, magia, estocada, arremesso).
-- Roda do mouse dá zoom.
+Retorno do usuário sobre jogabilidade (jogou a 0.1): "a gameplay aparentemente está legal, mas o boss tem muita vida" (corrigido).
 
-Segunda passada (0.3), depois do retorno "parece Roblox, movimento de boneco de palito, sem física":
-- **Anatomia e acabamento** (`chars.ts`): membros afunilados, peito mais largo que a cintura, queixo/nariz/orelhas, mãos e pés maiores, postura por peso (pesados andam curvados), contorno escuro e luz de recorte.
-- **Movimento com física** (`animateChar`): passada ligada à distância real percorrida, pernas na direção em que o corpo anda, molas para inclinação na aceleração, capa/cauda/saia, atraso da cabeça e do antebraço; golpe com antecipação e passagem do ponto; `kickRig` faz o corpo ceder ao apanhar e define para onde cai ao morrer.
-- **Empurrão real**: inimigos ganham velocidade de recuo ao apanhar (`TUNING.enemy.knockback`).
-- **Efeitos** (`fx.ts`): pontos de luz aditivos (faíscas, rastro de projétil, clarão de impacto), meia-lua do golpe por shader, luz pontual em explosões.
-Nada disso foi visto em movimento por mim (só quadros parados); o usuário precisa confirmar.
+## Mapa do código
+| Onde | O quê |
+|---|---|
+| `src/core/` | Lógica pura, testada: `rng`, `stats`, `items`, `worldgen`, `save` |
+| `src/data/` | Conteúdo e balanceamento: `heroes`, `enemies` (inclui chefes), `zones`, `relics`, `tuning` |
+| `src/game/game.ts` | Loop, herói, combate, loot, progressão, troca de zona |
+| `src/game/enemy.ts` | IA dos inimigos e padrões dos chefes |
+| `src/game/chars.ts` | **Personagens**: primitivas, `body()`, peças por personagem em `CAST`, `buildChar`, `animateChar` (molas), `kickRig` |
+| `src/game/flora.ts`, `world.ts` | Flora por código; chão, grama, montagem da zona |
+| `src/game/fx.ts` | Partículas, pontos de luz, telegrafias, meia-lua do golpe, números de dano |
+| `src/game/render.ts`, `shared.ts` | Pós-processamento; uniforms de vento e do recorte que revela o herói |
+| `src/game/models.ts` | Interface `Rig` e o construtor antigo de blocos (só serve de fallback; pode ser removido) |
+| `src/ui/` | Interface em DOM: título, HUD, inventário, mapa, pausa |
 
-Próximas passadas de arte, em ordem de retorno:
-1. Efeitos das técnicas dos heróis e dos ataques de chefe (telegrafias ainda são discos vermelhos lisos).
-2. Relevo: o chão é plano. Colinas, penhascos na borda, água.
-3. Polimento dos personagens (rostos, mãos, Ember Matriarch e Bloodfang) e animações de dano/esquiva.
-4. Interface: ícones desenhados por código no lugar de emoji.
+## Como rodar e conferir
+- `npm install` · `npm run dev` · `npm test` · `npx tsc --noEmit`.
+- `SINGLE=1 npx vite build` gera `dist-single/index.html` (jogo inteiro em um arquivo).
+- **Como conferir arte:** `npx vite build && npx vite preview --port 4173`, depois Playwright com Chromium e `--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist`. No console há `__game`, `__rig(id, kind, champion)` e `__anim(rig, estado)` para montar um elenco parado e capturar; `__game.zoom` aproxima a câmera. Renderiza certo, mas a poucos quadros por segundo: **não serve para medir desempenho nem para ver movimento**.
+- Versão jogável publicada para o usuário: artifact `https://claude.ai/artifact/TtNw79t7ckCEh5csU4T8cc` (republicar passando essa URL; o arquivo publicado é o `dist-single/index.html` sem as tags `html/head/body`, só `<title>`, `<style>`, o corpo e o `<script>`).
 
 ## O que NÃO foi validado
-- Eu só testo em navegador headless com renderização por software: confirma que renderiza certo, não o desempenho. O usuário jogou a 0.1 e achou a jogabilidade boa; **a 0.2 (visual novo) ainda não foi medida numa GPU real** (pedir o fps do F3).
-- Balanceamento é primeira passada, nunca jogado de ponta a ponta por uma pessoa: curva de XP, vida/dano por nível e chefes em `src/data/tuning.ts` e `src/data/enemies.ts`.
+- **Movimento e sensação da 0.3:** só vi quadros parados. O usuário precisa dizer se a animação ainda parece de boneco.
+- **Desempenho numa GPU real:** nunca medido. Pedir o fps (F3) e a placa. O contorno desenha cada personagem duas vezes; a grama são ~70 mil lâminas; a pausa tem qualidade baixa/média/alta.
+- **Balanceamento:** primeira passada, nunca jogado de ponta a ponta. Números em `src/data/tuning.ts` e `enemies.ts`. O empurrão dos golpes (`TUNING.enemy.knockback`) é chute.
 
-## Limitações conhecidas
-- Sem gamepad, sem tela de opções (volume, teclas), sem música.
-- Não dá para vender ou desmontar item (só descartar); não há ouro nem loja.
-- Os heróis têm 1 técnica cada; as spells do Dungeon Reign (Fireball, Blade Orbit...) não foram portadas.
-- Inimigos do original ainda não portados: shieldbearer, hexer, plaguebearer, warden, leaper. Chefes: faltam 9 dos 13.
+## Insumos para o plano de melhorias
+Arte (o usuário quer começar por aqui):
+- Personagens mais legíveis, a partir de fichas de design (ver topo). Os mais fracos hoje: Ember Matriarch (aranha), rosto do Bloodfang, morcego e gosma.
+- Efeitos das técnicas dos heróis e dos ataques de chefe; as telegrafias ainda são discos vermelhos lisos.
+- Relevo: o chão é plano. Colinas, penhascos na borda do mapa, água.
+- Interface: ícones são emoji; itens e relíquias não têm ícone próprio.
+- Animações que faltam: levar dano com pose própria, esquiva, técnica de cada herói.
 
-## Próximos passos sugeridos (confirmar com o usuário)
-1. Usuário joga e diz se andar e bater é divertido (é a pergunta que decide o projeto).
-2. Ajustar sensação de combate e balanceamento com base nisso.
-3. Depois: mais habilidades por herói (spells), loja/ouro, mais chefes e zonas, dificuldade pós-final.
+Jogo:
+- Heróis têm 1 técnica cada; as spells do Dungeon Reign (Fireball, Blade Orbit...) não foram portadas.
+- Sem ouro, loja, nem desmontar item (só descartar).
+- Faltam 5 inimigos do original (shieldbearer, hexer, plaguebearer, warden, leaper) e 9 dos 13 chefes.
+- Nada depois do chefe final (dificuldades, zonas novas).
+- Sem gamepad, sem música, sem tela de opções de som e teclas.
+
+Técnico:
+- Sem CI e sem hospedagem (GitHub Pages ou itch.io a decidir).
+- `models.ts` ainda carrega o construtor de blocos antigo.
+- O `CLAUDE.md` antigo citava ferramentas do Windows do usuário; o atual só tem comandos `npm`.
 
 ## Pendências com o usuário
-- Nome definitivo do jogo ("Dungeon Reign RPG" é provisório).
-- Onde hospedar a versão jogável (GitHub Pages, itch.io).
+- O que achou da 0.3.
+- Nome definitivo do jogo ("Dungeon Reign RPG" é provisório) e se o repo `pocket-dungeon` continua sendo a casa dele.
+- Onde hospedar a versão jogável.
