@@ -185,9 +185,8 @@ export function animateChar(rig: Rig, a: AnimState): void {
     B.thighR!.rotation.set(-crouch * 0.6 + tr * fN - kneeR * 0.25, 0, 0.06 - tr * sN * 0.7);
     B.shinL!.rotation.x = crouch * 1.1 + kneeL;
     B.shinR!.rotation.x = crouch * 1.1 + kneeR;
-  } else if (B.skirt) {
-    B.skirt.rotation.set(-secF * 0.22 + kf * 0.3, 0, secS * 0.22);
   }
+  if (B.skirt) B.skirt.rotation.set(-secF * 0.22 + kf * 0.3, 0, secS * 0.22);
   c.legs.forEach((g, i) => {
     const lp = ph * 1.4 + (i % 2 ? Math.PI : 0) + Math.floor(i / 2) * 1.6;
     g.rotation.z = Math.max(0, Math.sin(lp)) * 0.24 * (i % 2 ? -1 : 1) * (0.2 + move);

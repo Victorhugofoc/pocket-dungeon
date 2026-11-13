@@ -19,9 +19,11 @@ Como chegamos no Bloodfang (não repetir os erros):
 - `M0-02`: `npm run refs` regrava `docs/ref/<id>.png` (37 sprites) e `_heroes.png`, `_enemies.png`, `_bosses.png` a partir do repo local do Dungeon Reign. A prévia já mostra a referência de qualquer id.
 - O Bloodfang tem cerca de 19,4 mil triângulos, acima do orçamento de 12 mil; reduzir segmentos na `M1-01`.
 
+- `M1-02`: **Gravekeeper refeito a partir do sprite e em uso no jogo; falta o usuário validar.** Receita em `cast-bosses.ts`. É bípede com saia de manto por cima das pernas (o osso `skirt` agora existe também em bípedes), para os sapatos pisarem por baixo da barra rasgada. Pá e lanterna são giradas pelo inverso da pose de descanso para ficarem na vertical do mundo (funções `rest` e `hang` na receita). Kit novo: `sculptTube`, `robeMesh` (saia com pregas e barra rasgada), `Builder.lights` (luz pontual presa a um osso) e `Builder.glowByVertex` (brilho na cor do vértice, para olhos verdes e lanterna âmbar no mesmo personagem). Conferido só na prévia; a luta na Cripta não foi jogada.
+
 Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e `furMaterial`, `CharState.hipY`.
 
-Próxima sessão (sugestão do roadmap): `M1-02` (Gravekeeper), o primeiro feito com o kit; ou `M0-03` antes.
+Próxima sessão (sugestão do roadmap): retorno do usuário sobre o Gravekeeper, depois `M1-04` (Hollow King) e `M1-03` (Ember Matriarch).
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.

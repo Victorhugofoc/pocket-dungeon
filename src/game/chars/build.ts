@@ -86,7 +86,13 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
   const inner = new THREE.Group();
   root.add(inner);
   const main = rimLight(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: b.rough, metalness: 0.05 }), 0.55);
-  const glow = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, emissive: b.glowColor, emissiveIntensity: 1.5 });
+  const glow = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, emissive: b.glowByVertex ? 0xffffff : b.glowColor, emissiveIntensity: 1.5 });
+  if (b.glowByVertex) {
+    glow.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vColor.rgb;");
+    };
+    glow.customProgramCacheKey = () => "glowVertex";
+  }
   const k = b.bulk;
   const bones: Partial<Record<Bone, THREE.Group>> = {};
   const mk = (name: Bone, parent: THREE.Object3D, x: number, y: number, z: number): THREE.Group => {
@@ -109,7 +115,8 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     if (b.form === "biped") {
       mk("shinL", mk("thighL", hips, -hx, -0.02, 0), 0, -b.dims.thigh, 0);
       mk("shinR", mk("thighR", hips, hx, -0.02, 0), 0, -b.dims.thigh, 0);
-    } else mk("skirt", hips, 0, 0, 0);
+    }
+    mk("skirt", hips, 0, 0, 0); // bípedes também podem vestir saia de manto por cima das pernas
   } else if (b.form === "bat") {
     mk("wingL", hips, -0.16, 0.05, 0);
     mk("wingR", hips, 0.16, 0.05, 0);
@@ -154,6 +161,11 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
       parent.add(mesh);
       if (material !== glow) parent.add(new THREE.Mesh(geo, OUTLINE));
     }
+  }
+  for (const l of b.lights) {
+    const light = new THREE.PointLight(l.color, l.intensity, l.distance, 1.7);
+    light.position.set(l.x, l.y, l.z);
+    bones[l.bone]?.add(light);
   }
   const scale = b.scale * scaleMult;
   root.scale.setScalar(scale);

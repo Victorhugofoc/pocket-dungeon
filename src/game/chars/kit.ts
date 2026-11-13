@@ -69,6 +69,10 @@ export class Builder {
   lean = 0.05;
   crouch = 0.14;
   armOut = 0.14;
+  /** luzes pontuais presas a um osso (lanterna, orbe) */
+  lights: { bone: Bone; x: number; y: number; z: number; color: number; intensity: number; distance: number }[] = [];
+  /** peças de `lit` brilham na própria cor do vértice em vez de `glowColor` (para dois brilhos de cores diferentes) */
+  glowByVertex = false;
 
   add(bone: Bone | string, ...g: G[]): this {
     const l = this.solid.get(bone) ?? [];
@@ -385,4 +389,56 @@ export function headBase(o: HeadOpts): G {
     x += Math.sign(n.x) * cheek * headMask.cheek(n);
     p.set(x, y + 0.02, z);
   }, o.tint);
+}
+
+/** esculpe um tubo aberto: `a` = ângulo em volta do eixo y (0 = frente), `t` = 0 no topo e 1 na barra */
+export function sculptTube(seg: number, rings: number, shape: (a: number, t: number, p: THREE.Vector3) => void, tint: (a: number, t: number, c: THREE.Color) => void): G {
+  const g = new THREE.CylinderGeometry(1, 1, 1, seg, rings, true);
+  const pos = g.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const p = new THREE.Vector3(), c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const a = Math.atan2(pos.getX(i), pos.getZ(i));
+    const t = 0.5 - pos.getY(i);
+    shape(a, t, p);
+    tint(a, t, c);
+    pos.setXYZ(i, p.x, p.y, p.z);
+    colors.set([c.r, c.g, c.b], i * 3);
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  return prep(g, true);
+}
+
+export interface RobeOpts {
+  color: number;
+  shade: number;
+  /** raio e altura na cintura e na barra, em relação ao osso */
+  rTop: number;
+  rHem: number;
+  yTop: number;
+  yHem: number;
+  /** achata na profundidade */
+  zScale?: number;
+  /** pregas verticais (fração do raio) e rasgos da barra (altura máxima do recorte; 0 = barra reta) */
+  folds?: number;
+  tatter?: number;
+  seg?: number;
+  rings?: number;
+}
+/** saia de manto como malha única: abre até a barra, com pregas e barra irregular */
+export function robeMesh(o: RobeOpts): G {
+  const { zScale = 0.85, folds = 0.06, tatter = 0, seg = 40, rings = 9 } = o;
+  const base = new THREE.Color(o.color), shade = new THREE.Color(o.shade);
+  const hash = (i: number) => { const s = Math.sin(i * 127.1 + 3.3) * 43758.5453; return s - Math.floor(s); };
+  const fold = (a: number) => Math.sin(a * 7 + Math.sin(a * 3) * 1.3);
+  return sculptTube(seg, rings, (a, t, p) => {
+    const col = Math.round(((a < 0 ? a + Math.PI * 2 : a) / (Math.PI * 2)) * seg) % seg;
+    const r = (o.rTop + (o.rHem - o.rTop) * Math.pow(t, 0.85)) * (1 + folds * t * fold(a));
+    const h = hash(col);
+    const y = o.yTop + (o.yHem - o.yTop) * t + tatter * (h > 0.45 ? h : h * 0.25) * ss(1 - 1.5 / rings, 1, t);
+    p.set(Math.sin(a) * r, y, Math.cos(a) * r * zScale);
+  }, (a, t, c) => {
+    c.copy(base).lerp(shade, Math.pow(t, 1.4) * 0.85);
+    c.multiplyScalar(1 - 0.22 * t * (0.5 - 0.5 * fold(a))); // fundo das pregas mais escuro
+  });
 }
