@@ -4,7 +4,7 @@ Leia este arquivo antes de qualquer coisa. Ele substitui o histórico das conver
 
 ## ESTADO EM 2026-11-13 (ler antes do resto)
 - **O plano de trabalho está em `docs/roadmap.md`.** Ele tem os marcos, as tarefas com critério de pronto, o método de modelagem, as fichas de design dos 37 personagens, as decisões pendentes e o registro de progresso. Seguir a rotina da seção 0.1 dele.
-- **Bloodfang redesenhado e em uso no jogo** (`bloodfang` em `src/game/chars.ts`). O usuário aprovou: "o preview nem ficou ruim, seria suficiente". É o modelo de referência para os outros 22 personagens, que continuam na versão antiga.
+- **Bloodfang redesenhado e em uso no jogo** (`bloodfang` em `src/game/chars/cast-bosses.ts`). O usuário aprovou: "o preview nem ficou ruim, seria suficiente". É o modelo de referência para os outros 22 personagens, que continuam na versão antiga.
 - **Prévia de personagens:** `npm run dev` e abrir `/preview.html` (`src/preview.ts`). Mostra o personagem, o Varok para escala e o sprite de referência (`docs/ref/<id>.png`). Parâmetros: `?view=close|game&anim=idle|walk|attack&yaw=<graus>&dist=<n>&a=<id>&b=<id>&freeze=<s>&ref=0`. Não entra no build do jogo.
 - **Repo do Dungeon Reign local:** `C:\Users\victo\Documents\GitHub\dungeon-idle` (só leitura). Sprites em `assets/characters` e `assets/enemies`; quadro 0 da folha é o parado (heróis e inimigos 96×96, chefes 192×160). Dados em `src/data/*.lua`.
 - **O sprite é a fonte do design.** Os painéis de conceito que o usuário gerou por IA batem com os 13 chefes, mas divergem do sprite em alguns.
@@ -14,9 +14,14 @@ Como chegamos no Bloodfang (não repetir os erros):
 2. Facetas, espinhos e cabeça maior: "pior, desproporcional, nada parecido com o conceito".
 3. Funcionou: medir as proporções no sprite e dar esqueleto próprio (`b.dims`), tronco e cabeça esculpidos como malha única (`sculpt`), membros como `lathe` com perfil de músculo, listras no shader (`b.fur`), e conferir sempre com o sprite ao lado.
 
-Recursos novos em `chars.ts`, opcionais: `Builder.dims`, `Builder.fur()` e `furMaterial`, `CharState.hipY`.
+**Feito depois do Bloodfang (branch `m0-kit-refs`):**
+- `M0-01`: `chars.ts` foi dividido em `src/game/chars/`: `kit.ts` (primitivas, `Builder`, `body()`, acessórios e a escultura: `sculpt`, `ss`, `bell`, `grp`, `muscleArm`, `muscleLeg`, `torsoMesh`, `headBase`, `headMask`), `cast-heroes.ts`, `cast-enemies.ts`, `cast-bosses.ts` (uma receita por personagem), `build.ts` (ossos, malhas, materiais, `buildChar`) e `animate.ts` (`animateChar`). Os padrões de `torsoMesh`, `headBase` e `muscle*` são as medidas do Bloodfang; personagem novo passa só o que muda. A geometria de todos os personagens ficou idêntica (hash antes e depois).
+- `M0-02`: `npm run refs` regrava `docs/ref/<id>.png` (37 sprites) e `_heroes.png`, `_enemies.png`, `_bosses.png` a partir do repo local do Dungeon Reign. A prévia já mostra a referência de qualquer id.
+- O Bloodfang tem cerca de 19,4 mil triângulos, acima do orçamento de 12 mil; reduzir segmentos na `M1-01`.
 
-Próxima sessão (sugestão do roadmap): `M0-01` (extrair o kit de modelagem) e `M0-02` (folhas de referência dos 37), depois `M1-02` (Gravekeeper).
+Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e `furMaterial`, `CharState.hipY`.
+
+Próxima sessão (sugestão do roadmap): `M1-02` (Gravekeeper), o primeiro feito com o kit; ou `M0-03` antes.
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.
@@ -71,7 +76,7 @@ Retorno do usuário sobre jogabilidade (jogou a 0.1): "a gameplay aparentemente 
 | `src/data/` | Conteúdo e balanceamento: `heroes`, `enemies` (inclui chefes), `zones`, `relics`, `tuning` |
 | `src/game/game.ts` | Loop, herói, combate, loot, progressão, troca de zona |
 | `src/game/enemy.ts` | IA dos inimigos e padrões dos chefes |
-| `src/game/chars.ts` | **Personagens**: primitivas, `body()`, peças por personagem em `CAST`, `buildChar`, `animateChar` (molas), `kickRig` |
+| `src/game/chars/` | **Personagens**: `kit.ts` (primitivas, `body()`, escultura), `cast-*.ts` (receita de cada um), `build.ts` (`buildChar`, `kickRig`), `animate.ts` (`animateChar`, molas) |
 | `src/game/flora.ts`, `world.ts` | Flora por código; chão, grama, montagem da zona |
 | `src/game/fx.ts` | Partículas, pontos de luz, telegrafias, meia-lua do golpe, números de dano |
 | `src/game/render.ts`, `shared.ts` | Pós-processamento; uniforms de vento e do recorte que revela o herói |

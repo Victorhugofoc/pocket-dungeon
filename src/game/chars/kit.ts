@@ -1,0 +1,388 @@
+// Personagens modelados por código: corpo articulado (quadril, tronco, cabeça, braços e pernas com cotovelo e joelho),
+// peças de roupa/arma por personagem e animação procedural. Os designs seguem os sprites do Dungeon Reign.
+import * as THREE from "three";
+import { merge, paint, prep, xf } from "../flora";
+
+export type G = THREE.BufferGeometry;
+export type Bone =
+  | "hips" | "torso" | "head" | "armL" | "armR" | "foreL" | "foreR" | "thighL" | "thighR" | "shinL" | "shinR"
+  | "cape" | "tail" | "wingL" | "wingR" | "skirt";
+export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "bite";
+export type Form = "biped" | "robed" | "bat" | "slime" | "spider";
+
+// ---------------------------------------------------------------- primitivas (já pintadas por vértice)
+export const dk = (c: number, f = 0.68) => new THREE.Color(c).multiplyScalar(f).getHex();
+export const lt = (c: number, f = 0.25) => new THREE.Color(c).lerp(new THREE.Color(0xffffff), f).getHex();
+
+export function sph(r: number, c: number, sx = 1, sy = 1, sz = 1, c2 = dk(c)): G {
+  const g = prep(new THREE.SphereGeometry(r, 12, 9), true);
+  g.scale(sx, sy, sz);
+  return paint(g, c2, c, -r * sy, r * sy);
+}
+export function cap(r: number, len: number, c: number, c2 = dk(c)): G {
+  const g = prep(new THREE.CapsuleGeometry(r, len, 4, 10), true);
+  return paint(g, c2, c, -len / 2 - r, len / 2 + r);
+}
+export function cyl(r0: number, r1: number, h: number, c: number, sides = 10, c2 = dk(c)): G {
+  const g = prep(new THREE.CylinderGeometry(r1, r0, h, sides), sides > 6);
+  return paint(g, c2, c, -h / 2, h / 2);
+}
+export function cone(r: number, h: number, c: number, sides = 10, c2 = dk(c)): G {
+  const g = prep(new THREE.ConeGeometry(r, h, sides), sides > 6);
+  return paint(g, c2, c, -h / 2, h / 2);
+}
+export function bx(w: number, h: number, d: number, c: number, c2 = dk(c, 0.8)): G {
+  const g = prep(new THREE.BoxGeometry(w, h, d), false);
+  return paint(g, c2, c, -h / 2, h / 2);
+}
+/** superfície de revolução: pontos [raio, y] de baixo para cima */
+export function lathe(pts: [number, number][], c: number, c2 = dk(c), seg = 14): G {
+  const g = prep(new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), seg), true);
+  const ys = pts.map((p) => p[1]);
+  return paint(g, c2, c, Math.min(...ys), Math.max(...ys));
+}
+export function torus(r: number, tube: number, c: number): G {
+  const g = prep(new THREE.TorusGeometry(r, tube, 6, 14), true);
+  g.rotateX(Math.PI / 2);
+  return paint(g, dk(c), c, -tube, tube);
+}
+export const at = xf;
+
+// ---------------------------------------------------------------- construtor
+export class Builder {
+  solid = new Map<Bone | string, G[]>();
+  glow = new Map<Bone | string, G[]>();
+  /** pelagem: mesma luz do corpo, com listras desenhadas no shader */
+  pelt = new Map<Bone | string, G[]>();
+  stripe = 0x140a0c;
+  /** proporções do esqueleto; shoulderX e hipX em 0 = calculados pelo `bulk` */
+  dims = { hipY: HIP_Y, headY: HEAD_Y, shoulderY: SHOULDER_Y, shoulderX: 0, arm: 0.34, hipX: 0, thigh: 0.42 };
+  style: Style = "swing";
+  poseR: [number, number] = [0.1, -0.3];
+  poseL: [number, number] = [0.1, -0.3];
+  form: Form = "biped";
+  bulk = 1;
+  scale = 1;
+  glowColor = 0xffffff;
+  rough = 0.72;
+  extraLegs = 0;
+  lean = 0.05;
+  crouch = 0.14;
+  armOut = 0.14;
+
+  add(bone: Bone | string, ...g: G[]): this {
+    const l = this.solid.get(bone) ?? [];
+    l.push(...g);
+    this.solid.set(bone, l);
+    return this;
+  }
+  lit(bone: Bone | string, ...g: G[]): this {
+    const l = this.glow.get(bone) ?? [];
+    l.push(...g);
+    this.glow.set(bone, l);
+    return this;
+  }
+  fur(bone: Bone | string, ...g: G[]): this {
+    const l = this.pelt.get(bone) ?? [];
+    l.push(...g);
+    this.pelt.set(bone, l);
+    return this;
+  }
+}
+
+export interface BodyOpts {
+  skin: number;
+  top: number;
+  bottom?: number;
+  boots?: number;
+  sleeve?: number;
+  hands?: number;
+  bulk?: number;
+  head?: number;
+  eyes?: number | null;
+  eyeGlow?: boolean;
+  /** manto até o chão em vez de pernas */
+  robe?: { color: number; hem?: number; flare?: number };
+}
+
+// medidas na escala 1 (altura ~2.0)
+export const HIP_Y = 0.92;
+export const TORSO_Y = 0.08;
+export const HEAD_Y = 0.6;
+export const SHOULDER_Y = 0.46;
+
+/** membro afunilado com pontas arredondadas, do pivô (y=0) para baixo */
+export function limb(r0: number, r1: number, len: number, c: number, bulge = 0): G {
+  const mid = Math.max(r0, r1) * (1 + bulge);
+  return lathe([[0, -len - r1 * 0.9], [r1 * 0.75, -len - r1 * 0.55], [r1, -len], [mid, -len * 0.42], [r0, -len * 0.08], [r0 * 0.8, r0 * 0.55], [0, r0 * 0.95]], c, dk(c, 0.62), 10);
+}
+
+export function body(b: Builder, o: BodyOpts): void {
+  const k = o.bulk ?? 1;
+  b.bulk = k;
+  const hs = o.head ?? 1;
+  const sleeve = o.sleeve ?? o.top;
+  const bottom = o.bottom ?? dk(o.top, 0.6);
+  // postura: quanto mais pesado, mais curvado e de braços abertos
+  b.lean = 0.05 + Math.max(0, k - 1) * 0.42;
+  b.crouch = 0.14 + Math.max(0, k - 1) * 0.35;
+  b.armOut = 0.14 + Math.max(0, k - 1) * 0.7;
+  // quadril e tronco (peito mais largo que a cintura)
+  b.add("hips", at(sph(0.2 * k, bottom, 1, 0.74, 0.84), 0, 0, 0));
+  const chest = lathe([[0.15, -0.04], [0.19, 0.06], [0.185, 0.18], [0.235, 0.32], [0.265, 0.43], [0.22, 0.52], [0.1, 0.57], [0, 0.58]], o.top, dk(o.top, 0.6), 12);
+  chest.scale(1.06 * k, 1, 0.78 * k);
+  b.add("torso", chest);
+  b.add("torso", at(cyl(0.07, 0.078, 0.1, o.skin), 0, 0.58, 0));
+  // cabeça: crânio, queixo, nariz e orelhas
+  b.add("head", at(sph(0.215 * hs, o.skin, 1, 1.04, 1), 0, 0.2 * hs, 0), at(sph(0.15 * hs, o.skin, 1, 0.8, 0.95), 0, 0.09 * hs, 0.05 * hs));
+  b.add("head", at(sph(0.035 * hs, dk(o.skin, 0.9)), 0, 0.16 * hs, 0.215 * hs));
+  for (const s of [-1, 1]) b.add("head", at(sph(0.05 * hs, dk(o.skin, 0.9), 0.5, 1, 0.8), s * 0.21 * hs, 0.19 * hs, 0));
+  if (o.eyes !== null) {
+    const ec = o.eyes ?? 0x1c1c22;
+    for (const s of [-1, 1]) {
+      const e = at(sph(0.036 * hs, ec, 1, 1.25, 0.6, ec), s * 0.082 * hs, 0.225 * hs, 0.192 * hs);
+      if (o.eyeGlow) b.lit("head", e);
+      else b.add("head", e, at(bx(0.085 * hs, 0.02 * hs, 0.03, dk(o.skin, 0.55)), s * 0.085 * hs, 0.275 * hs, 0.19 * hs, 0, 0, -s * 0.15));
+    }
+  }
+  // braços: ombro, braço e antebraço afunilados, mão grande
+  for (const [arm, fore] of [["armL", "foreL"], ["armR", "foreR"]] as const) {
+    b.add(arm, at(sph(0.105 * k, sleeve), 0, 0, 0), limb(0.09 * k, 0.07 * k, 0.32, sleeve));
+    b.add(fore, limb(0.066 * k, 0.078 * k, 0.24, sleeve, 0.08), at(sph(0.09 * Math.sqrt(k), o.hands ?? o.skin, 0.9, 1.15, 1), 0, -0.32, 0.01));
+  }
+  if (o.robe) {
+    b.form = "robed";
+    const fl = o.robe.flare ?? 1;
+    b.add("skirt", lathe([[0.5 * fl, -0.9], [0.44 * fl, -0.78], [0.3 * fl * k, -0.3], [0.22 * k, 0.05], [0.2 * k, 0.12]], o.robe.color, dk(o.robe.color, 0.55)));
+    if (o.robe.hem) b.add("skirt", at(torus(0.49 * fl, 0.035, o.robe.hem), 0, -0.86, 0));
+  } else {
+    const boots = o.boots ?? dk(bottom, 0.6);
+    for (const [th, sh] of [["thighL", "shinL"], ["thighR", "shinR"]] as const) {
+      b.add(th, limb(0.125 * k, 0.09 * k, 0.4, bottom, 0.04));
+      b.add(sh, limb(0.085 * k, 0.07 * k, 0.36, boots, 0.18), at(sph(0.1, boots, 1.0 * k, 0.7, 1.85), 0, -0.4, 0.075));
+    }
+  }
+}
+
+
+// ---------------------------------------------------------------- acessórios
+export const STEEL = 0xc2cad3, IRON = 0x8a929c, BONE = 0xe8dcc0, GOLD = 0xe8b93a, WOOD = 0x7a5230, LEATHER = 0x6b4a2e, BLACK = 0x22222a;
+
+export const hairCap = (c: number) => [at(sph(0.23, c, 1, 0.8, 1), 0, 0.26, -0.02)];
+export const hairLong = (c: number, len = 0.5) => [...hairCap(c), at(sph(0.2, c, 1, len / 0.2, 0.55), 0, 0.2 - len * 0.5, -0.13)];
+export const beard = (c: number, len = 0.3) => [at(cone(0.15, len, c, 8), 0, 0.08 - len / 2, 0.14, Math.PI + 0.25)];
+export const hood = (c: number) => [at(sph(0.26, c, 1, 1.02, 1.04), 0, 0.22, -0.03), at(cone(0.16, 0.26, c, 8), 0, 0.42, -0.14, -0.9)];
+export function cowboyHat(c: number, band: number): G[] {
+  return [at(cyl(0.36, 0.38, 0.03, c, 16), 0, 0.37, 0), at(cyl(0.2, 0.17, 0.2, c, 12), 0, 0.48, 0), at(cyl(0.205, 0.205, 0.045, band, 12), 0, 0.41, 0)];
+}
+export function wizardHat(c: number, band: number, tipDx = 0.14): G[] {
+  return [
+    at(lathe([[0.46, 0], [0.44, 0.03], [0.22, 0.06], [0.16, 0.3], [0.07, 0.55], [0.02, 0.72]], c), 0, 0.33, 0, -0.12),
+    at(sph(0.05, c), tipDx, 1.03, -0.16),
+    at(cyl(0.225, 0.2, 0.06, band, 12), 0, 0.41, -0.01),
+  ];
+}
+export function hornHelm(metal: number, horn: number): G[] {
+  const out = [at(sph(0.235, metal, 1, 0.82, 1.02), 0, 0.27, -0.01), at(bx(0.05, 0.16, 0.05, metal), 0, 0.2, 0.22)];
+  for (const s of [-1, 1]) out.push(at(cone(0.06, 0.3, horn, 7), s * 0.27, 0.42, 0, 0, 0, -s * 0.7));
+  return out;
+}
+export function cape(c: number, w = 0.3, len = 0.95): G[] {
+  // meia casca cilíndrica pendurada nos ombros
+  const g = prep(new THREE.CylinderGeometry(w, w * 1.35, len, 10, 3, true, Math.PI * 0.5, Math.PI), true);
+  paint(g, dk(c, 0.55), c, -len / 2, len / 2);
+  return [at(g, 0, -len / 2, 0.02)];
+}
+export const pauldron = (c: number, r = 0.15) => [at(sph(r, c, 1, 0.8, 1.05), 0, 0.04, 0)];
+export const belt = (c: number, k = 1, buckle = GOLD) => [at(cyl(0.215 * k, 0.215 * k, 0.07, c, 12), 0, 0.06, 0), at(bx(0.08, 0.08, 0.04, buckle), 0, 0.06, 0.2 * k)];
+
+// armas: presas ao antebraço; o cabo sai da mão (y = -0.31). `along` = aponta na direção do braço.
+export function staff(wood: number, len = 1.9): G[] {
+  return [at(cyl(0.028, 0.034, len, wood, 6), 0, -0.31, 0.25, Math.PI / 2)];
+}
+export function sword(len = 0.95, blade = STEEL, hilt = GOLD): G[] {
+  return [
+    at(bx(0.035, len, 0.1, blade, lt(blade)), 0, -0.4 - len / 2, 0),
+    at(cone(0.05, 0.14, blade, 4), 0, -0.4 - len - 0.06, 0, Math.PI),
+    at(bx(0.07, 0.05, 0.32, hilt), 0, -0.4, 0),
+    at(cyl(0.03, 0.03, 0.16, LEATHER, 6), 0, -0.32, 0),
+  ];
+}
+export function revolver(): G[] {
+  return [at(cyl(0.03, 0.026, 0.4, 0x9aa3ad, 8), 0, -0.56, 0.03), at(bx(0.07, 0.14, 0.09, 0x6b727c), 0, -0.4, 0.02), at(bx(0.05, 0.1, 0.14, LEATHER), 0, -0.33, -0.05)];
+}
+export function mace(): G[] {
+  const head = [at(sph(0.17, IRON), 0, -1.25, 0)];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    head.push(at(cone(0.045, 0.14, STEEL, 5), Math.cos(a) * 0.19, -1.25, Math.sin(a) * 0.19, 0, 0, 0).applyMatrix4(new THREE.Matrix4()));
+  }
+  return [at(cyl(0.035, 0.04, 0.95, WOOD, 7), 0, -0.72, 0), at(cyl(0.05, 0.05, 0.1, GOLD, 7), 0, -1.12, 0), ...head];
+}
+export const dagger = (c = STEEL) => [at(bx(0.025, 0.42, 0.07, c, lt(c)), 0, -0.6, 0), at(bx(0.05, 0.035, 0.16, BLACK), 0, -0.39, 0)];
+export function axe(len = 1.0, double = false): G[] {
+  const out = [at(cyl(0.032, 0.036, len, WOOD, 7), 0, -0.3 - len / 2, 0)];
+  for (const s of double ? [-1, 1] : [1]) {
+    const blade = prep(new THREE.CylinderGeometry(0.3, 0.3, 0.045, 10, 1, false, -0.9, 1.8), false);
+    paint(blade, IRON, STEEL, -0.3, 0.3);
+    out.push(at(blade, 0, -0.18 - len, s * 0.06, 0, s > 0 ? Math.PI / 2 : -Math.PI / 2, Math.PI / 2));
+  }
+  return out;
+}
+export function club(): G[] {
+  return [at(cyl(0.035, 0.11, 0.85, WOOD, 7), 0, -0.72, 0), at(sph(0.115, WOOD), 0, -1.14, 0)];
+}
+export function bow(): G[] {
+  const arc = prep(new THREE.TorusGeometry(0.5, 0.025, 5, 14, Math.PI * 0.9), true);
+  paint(arc, dk(WOOD), WOOD, -0.5, 0.5);
+  return [at(arc, 0, -0.31, 0.02, 0, Math.PI / 2, Math.PI * 0.55), at(cyl(0.006, 0.006, 0.95, 0xe8e0d0, 4), 0, -0.31, -0.06, Math.PI / 2)];
+}
+export function shield(face: number, rim: number): G[] {
+  const s = prep(new THREE.CylinderGeometry(0.4, 0.4, 0.06, 5), false);
+  paint(s, dk(face), face, -0.4, 0.4);
+  return [at(s, -0.11, -0.2, 0.02, 0, 0, Math.PI / 2, 1, 1, 1.25), at(sph(0.1, rim, 0.5, 1, 1), -0.16, -0.2, 0.02)];
+}
+
+export const SKIN = 0xe8bd98;
+export type Spec = (b: Builder) => void;
+
+// ---------------------------------------------------------------- escultura (método da seção 4 do roadmap)
+/** aplica a mesma transformação a uma lista de peças */
+export const grp = (list: G[], x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, s = 1): G[] => list.map((g) => at(g, x, y, z, rx, ry, rz, s));
+/** smoothstep entre `a` e `e` */
+export const ss = (a: number, e: number, x: number): number => { const t = Math.max(0, Math.min(1, (x - a) / (e - a))); return t * t * (3 - 2 * t); };
+/** sino de largura `w` centrado em 0 */
+export const bell = (x: number, w: number): number => Math.exp(-(x * x) / (w * w));
+
+export type Shape = (n: THREE.Vector3, p: THREE.Vector3) => void;
+export type Tint = (n: THREE.Vector3, c: THREE.Color) => void;
+
+/** esculpe uma esfera: `shape` leva a direção unitária `n` para a posição, `tint` dá a cor do vértice */
+export function sculpt(w: number, h: number, shape: Shape, tint: Tint): G {
+  const g = new THREE.SphereGeometry(1, w, h);
+  const pos = g.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const n = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    n.fromBufferAttribute(pos, i).normalize();
+    shape(n, p);
+    tint(n, c);
+    pos.setXYZ(i, p.x, p.y, p.z);
+    colors.set([c.r, c.g, c.b], i * 3);
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  return prep(g, true);
+}
+
+export interface MuscleOpts {
+  color: number;
+  shade?: number;
+  /** multiplica os raios do perfil */
+  girth?: number;
+  /** multiplica o comprimento; o osso (`b.dims.arm` / `b.dims.thigh`) deve acompanhar */
+  len?: number;
+}
+type Profile = [number, number][];
+const profile = (pts: Profile, o: MuscleOpts, seg: number): G =>
+  lathe(pts.map(([r, y]) => [r * (o.girth ?? 1), y * (o.len ?? 1)]), o.color, o.shade ?? dk(o.color), seg);
+
+const ARM_UPPER: Profile = [[0, -0.47], [0.125, -0.42], [0.15, -0.32], [0.185, -0.17], [0.18, -0.05], [0.14, 0.07], [0, 0.14]];
+const ARM_LOWER: Profile = [[0, -0.43], [0.1, -0.4], [0.115, -0.33], [0.165, -0.19], [0.175, -0.1], [0.125, 0.03], [0, 0.1]];
+const LEG_THIGH: Profile = [[0, -0.4], [0.12, -0.36], [0.16, -0.26], [0.2, -0.1], [0.17, 0.04], [0, 0.12]];
+const LEG_SHIN: Profile = [[0, -0.37], [0.08, -0.34], [0.085, -0.26], [0.13, -0.1], [0.11, 0.02], [0, 0.08]];
+
+/** braço com perfil de músculo, do pivô para baixo: bíceps e antebraço grosso (medidas do Bloodfang em girth = len = 1) */
+export function muscleArm(o: MuscleOpts): { upper: G; lower: G } {
+  return { upper: profile(ARM_UPPER, o, 14), lower: profile(ARM_LOWER, o, 14) };
+}
+/** perna com perfil de músculo: coxa grossa e panturrilha */
+export function muscleLeg(o: MuscleOpts): { thigh: G; shin: G } {
+  return { thigh: profile(LEG_THIGH, o, 14), shin: profile(LEG_SHIN, o, 12) };
+}
+
+export interface TorsoOpts {
+  /** cor de base, sombra (embaixo) e realce (peito) */
+  color: number;
+  shade: number;
+  light: number;
+  /** meia largura na cintura, ganho até o peito e recuo no pescoço */
+  waistW?: number;
+  chestW?: number;
+  neckW?: number;
+  /** o mesmo para a profundidade */
+  waistD?: number;
+  chestD?: number;
+  neckD?: number;
+  /** relevo: peitorais, linha e gomos do abdômen, trapézio */
+  pecs?: number;
+  abs?: number;
+  ribs?: number;
+  traps?: number;
+  /** base e altura em relação ao osso do tronco */
+  y0?: number;
+  height?: number;
+  seg?: [number, number];
+}
+/** tronco como malha única: cintura fina, peito largo com peitorais e trapézio. Padrões = Bloodfang. */
+export function torsoMesh(o: TorsoOpts): G {
+  const { waistW = 0.27, chestW = 0.34, neckW = 0.13, waistD = 0.2, chestD = 0.13, neckD = 0.06, pecs = 0.09, abs = 0.018, ribs = 0.012, traps = 0.11, y0 = -0.08, height = 0.8, seg = [30, 22] } = o;
+  const base = new THREE.Color(o.color), shade = new THREE.Color(o.shade), light = new THREE.Color(o.light);
+  return sculpt(seg[0], seg[1], (n, p) => {
+    const t = (n.y + 1) / 2;
+    const rho = Math.hypot(n.x, n.z) || 1e-6;
+    const s = n.x / rho, c = n.z / rho;
+    const r = Math.pow(rho, 0.45);
+    const W = waistW + chestW * ss(0.15, 0.72, t) - neckW * ss(0.84, 1, t);
+    const D = waistD + chestD * ss(0.2, 0.7, t) - neckD * ss(0.85, 1, t);
+    const front = Math.max(0, c), back = Math.max(0, -c);
+    let z = c * D * r;
+    z += pecs * bell(t - 0.7, 0.11) * front * (1 - 0.75 * bell(s, 0.13)) * r; // peitorais com sulco no meio
+    z -= abs * bell(s, 0.07) * front * (1 - ss(0.25, 0.6, t)); // linha do abdômen
+    z += ribs * front * bell(s, 0.34) * Math.cos(t * 40) * (1 - ss(0.45, 0.58, t));
+    z -= traps * back * bell(t - 0.8, 0.2) * r; // trapézio
+    p.set(s * W * r, y0 + t * height, z);
+  }, (n, c) => {
+    const t = (n.y + 1) / 2;
+    c.copy(shade).lerp(base, 0.25 + t * 0.75);
+    c.lerp(light, Math.max(0, n.z) * 0.45 * bell(t - 0.68, 0.22));
+  });
+}
+
+/** regiões da cabeça em função da direção `n`, para esculpir e para pintar (0..1) */
+export const headMask = {
+  muzzle: (n: THREE.Vector3): number => ss(0.25, 0.85, n.z) * bell(n.y + 0.18, 0.36) * bell(n.x, 0.55),
+  socket: (n: THREE.Vector3): number => bell(n.y - 0.16, 0.1) * bell(Math.abs(n.x) - 0.42, 0.16) * ss(0.4, 0.8, n.z),
+  cheek: (n: THREE.Vector3): number => ss(0.55, 0.95, Math.abs(n.x)) * (1 - ss(-0.5, 0.35, n.y)),
+};
+
+export interface HeadOpts {
+  /** raios do crânio */
+  w?: number;
+  h?: number;
+  d?: number;
+  /** focinho: quanto avança e quanto afina. 0 = rosto chato (humano) */
+  muzzle?: number;
+  muzzleNarrow?: number;
+  /** altura do céu da boca (corta o focinho reto por baixo); null = sem corte */
+  palate?: number | null;
+  /** arcada sobre os olhos, fundo das órbitas, bochechas para os lados */
+  brow?: number;
+  socket?: number;
+  cheek?: number;
+  seg?: [number, number];
+  /** cor por vértice; usar `headMask` para as regiões */
+  tint: Tint;
+}
+/** cabeça como malha única com focinho, arcada, órbitas e bochechas. Padrões = cabeça de tigre do Bloodfang. */
+export function headBase(o: HeadOpts): G {
+  const { w = 0.2, h = 0.185, d = 0.2, muzzle = 0.2, muzzleNarrow = 0.22, palate = -0.075, brow = 0.04, socket = 0.03, cheek = 0.075, seg = [48, 34] } = o;
+  return sculpt(seg[0], seg[1], (n, p) => {
+    const m = headMask.muzzle(n);
+    let x = n.x * w * (1 - muzzleNarrow * m), y = n.y * h, z = n.z * d + muzzle * m;
+    if (palate !== null) y += (Math.max(y, palate) - y) * ss(0.2, 0.5, n.z); // céu da boca reto
+    z += brow * bell(n.y - 0.38, 0.13) * ss(0.35, 0.8, n.z); // arcada
+    z -= socket * headMask.socket(n);
+    x += Math.sign(n.x) * cheek * headMask.cheek(n);
+    p.set(x, y + 0.02, z);
+  }, o.tint);
+}

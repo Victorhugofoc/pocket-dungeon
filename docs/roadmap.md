@@ -113,7 +113,7 @@ Até cerca de 12 mil triângulos para chefe, 6 mil para herói, 3 mil para inimi
 
 **M0-01 · Kit de modelagem compartilhado** · M
 - Objetivo: tirar de dentro do `bloodfang` o que os próximos vão reutilizar.
-- Arquivos: `src/game/chars.ts` (considerar dividir em `chars/kit.ts`, `chars/cast-*.ts`, `chars/animate.ts`; hoje passa de 1.100 linhas).
+- Arquivos: `src/game/chars/` (dividido em `kit.ts`, `cast-*.ts`, `build.ts`, `animate.ts`).
 - Passos: extrair `sculpt`, `ss`, `bell`, `grp`; criar `muscleArm`, `muscleLeg`, `torsoMesh(opts)` e `headBase(opts)` parametrizados; manter o Bloodfang visualmente idêntico.
 - Pronto quando: captura do Bloodfang antes e depois é igual; os outros personagens não mudam; tipos e testes passam.
 
@@ -564,10 +564,12 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`.
 |---|---|---|---|
 | Bloodfang redesenhado e no jogo | feito | 2026-11-13 | Método da seção 4 validado pelo usuário |
 | Prévia de personagens (`/preview.html`) | feito | 2026-11-13 | Base de `M0-03` |
-| M0-01 | pendente | | Próxima sugerida |
-| M0-02 | pendente | | |
+| M0-01 | feito | 2026-11-13 | `chars.ts` virou `src/game/chars/` (`kit`, `cast-heroes`, `cast-enemies`, `cast-bosses`, `build`, `animate`). Kit: `sculpt`, `ss`, `bell`, `grp`, `muscleArm`, `muscleLeg`, `torsoMesh`, `headBase`, `headMask`. Geometria dos 23 personagens idêntica bit a bit (hash antes e depois) |
+| M0-02 | feito | 2026-11-13 | `npm run refs` (`tools/make-refs.mjs`, usa `pngjs`): 37 sprites em `docs/ref/<id>.png` e 3 folhas de contato em ordem alfabética de id |
 | M0-03 | pendente | | |
 | M1-01 | pendente | | |
 | M16-01 | pendente | | Depende do usuário |
 
-Próxima sessão, sugestão: `M0-01` e `M0-02` juntas, depois `M1-02` (Gravekeeper).
+Medição feita na `M0-01`: o Bloodfang tem cerca de 19,4 mil triângulos (o dobro com o contorno), acima do orçamento de 12 mil da seção 4.3. Cabeça (48×34) e tronco (30×22) são os maiores; reduzir os segmentos na `M1-01` e conferir com a contagem da `M0-03`.
+
+Próxima sessão, sugestão: `M1-02` (Gravekeeper), primeiro personagem feito com o kit; ou `M0-03` antes, se a contagem de triângulos e o lineup fizerem falta.
