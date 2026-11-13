@@ -55,7 +55,7 @@ O projeto anterior deste repo (Covil, Godot) foi descartado; o histórico está 
 - Plataforma: PC, teclado e mouse.
 - Progressão persistente (um save contínuo), não runs.
 - **Toda a arte é gerada por código, em 3D.** Sem sprites nem modelos importados. Ele testou sprites do Dungeon Reign no cenário 3D e blocos; descartou os dois. Referência de ambição dele: um simulador de voo procedural em three.js com terreno e nuvens volumétricas.
-- Ele faz o PR e o merge; eu só faço commit e push no branch de trabalho.
+- Ele faz o push, o PR e o merge; eu só faço commit local no branch de trabalho (nunca `git push`).
 - Conversa longa gasta muito contexto: preferir sessões curtas com handoff atualizado.
 
 ## Estado do jogo — versão 0.3 mais o Bloodfang novo (jogável do início ao chefe final)

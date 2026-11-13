@@ -14,7 +14,7 @@ Escrito em 2026-11-13, sobre a versão 0.3 mais o redesenho do Bloodfang. Este d
 3. Fazer **uma** tarefa. Se ela crescer além do previsto, dividir e registrar as partes aqui antes de continuar.
 4. Conferir: `npx tsc --noEmit`, `npm test`, e no navegador (prévia ou jogo) quando a mudança for visível.
 5. Mostrar ao usuário o que ele precisa validar (toda tarefa marcada **[validar]**) antes de seguir para a próxima que dependa dela.
-6. Atualizar o status na seção 9, o `HANDOFF.md`, e fazer commit no branch de trabalho. O usuário faz PR e merge.
+6. Atualizar o status na seção 9, o `HANDOFF.md`, e fazer commit local no branch de trabalho. O usuário faz push, PR e merge.
 
 ### 0.2 Formato das tarefas
 - **ID:** `M<marco>-<nº>`. Não renumerar; tarefas novas ganham o próximo número do marco.
