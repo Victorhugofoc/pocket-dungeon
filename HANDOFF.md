@@ -2,7 +2,29 @@
 
 Leia este arquivo antes de qualquer coisa. Ele substitui o histórico das conversas anteriores.
 
-## PRÓXIMA CONVERSA — o que fazer primeiro
+## ESTADO EM 2026-11-13 (ler antes do resto)
+- **O plano de trabalho está em `docs/roadmap.md`.** Ele tem os marcos, as tarefas com critério de pronto, o método de modelagem, as fichas de design dos 37 personagens, as decisões pendentes e o registro de progresso. Seguir a rotina da seção 0.1 dele.
+- **Bloodfang redesenhado e em uso no jogo** (`bloodfang` em `src/game/chars.ts`). O usuário aprovou: "o preview nem ficou ruim, seria suficiente". É o modelo de referência para os outros 22 personagens, que continuam na versão antiga.
+- **Prévia de personagens:** `npm run dev` e abrir `/preview.html` (`src/preview.ts`). Mostra o personagem, o Varok para escala e o sprite de referência (`docs/ref/<id>.png`). Parâmetros: `?view=close|game&anim=idle|walk|attack&yaw=<graus>&dist=<n>&a=<id>&b=<id>&freeze=<s>&ref=0`. Não entra no build do jogo.
+- **Repo do Dungeon Reign local:** `C:\Users\victo\Documents\GitHub\dungeon-idle` (só leitura). Sprites em `assets/characters` e `assets/enemies`; quadro 0 da folha é o parado (heróis e inimigos 96×96, chefes 192×160). Dados em `src/data/*.lua`.
+- **O sprite é a fonte do design.** Os painéis de conceito que o usuário gerou por IA batem com os 13 chefes, mas divergem do sprite em alguns.
+
+Como chegamos no Bloodfang (não repetir os erros):
+1. Peças coladas em esferas, proporção de boneco: "amigável demais, redondo".
+2. Facetas, espinhos e cabeça maior: "pior, desproporcional, nada parecido com o conceito".
+3. Funcionou: medir as proporções no sprite e dar esqueleto próprio (`b.dims`), tronco e cabeça esculpidos como malha única (`sculpt`), membros como `lathe` com perfil de músculo, listras no shader (`b.fur`), e conferir sempre com o sprite ao lado.
+
+Recursos novos em `chars.ts`, opcionais: `Builder.dims`, `Builder.fur()` e `furMaterial`, `CharState.hipY`.
+
+Próxima sessão (sugestão do roadmap): `M0-01` (extrair o kit de modelagem) e `M0-02` (folhas de referência dos 37), depois `M1-02` (Gravekeeper).
+
+Decisões desta conversa:
+- **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.
+- **Modelos gerados por IA (Meshy, Hunyuan3D) foram considerados e descartados**; a arte segue por código.
+- Placa do usuário: Radeon RX 9060 XT. O fps real ainda não foi medido (`M16-01`).
+- As decisões D1 a D10 do roadmap estão sem resposta; as tarefas que dependem delas não começam antes.
+
+## Pedido original (parcialmente superado pelo bloco acima)
 O usuário pediu, nesta ordem:
 
 1. **Montar um plano detalhado de todas as melhorias do jogo** (documento em `docs/`, aprovado por ele antes de implementar).
@@ -31,7 +53,7 @@ O projeto anterior deste repo (Covil, Godot) foi descartado; o histórico está 
 - Ele faz o PR e o merge; eu só faço commit e push no branch de trabalho.
 - Conversa longa gasta muito contexto: preferir sessões curtas com handoff atualizado.
 
-## Estado atual — versão 0.3 (jogável do início ao chefe final)
+## Estado do jogo — versão 0.3 mais o Bloodfang novo (jogável do início ao chefe final)
 - **Heróis:** os 9 do Dungeon Reign, um por save, cada um com ataque e técnica próprios (`src/data/heroes.ts`).
 - **Zonas:** 4 mapas de 240×240 gerados por seed (Bosque, Cripta, Vulcão, Vazio), ~24 acampamentos, caminho até a arena, chefe (Bloodfang, Gravekeeper, Ember Matriarch, Hollow King). Viajar gera mapa novo.
 - **Inimigos:** 10 tipos, 5 comportamentos (corpo a corpo, à distância, investida, invocador, morteiro), campeões.
@@ -88,6 +110,7 @@ Técnico:
 - O `CLAUDE.md` antigo citava ferramentas do Windows do usuário; o atual só tem comandos `npm`.
 
 ## Pendências com o usuário
-- O que achou da 0.3.
+- As decisões D1 a D10 de `docs/roadmap.md` (seção 8).
+- Medir o fps no jogo com F3 (`M16-01`).
 - Nome definitivo do jogo ("Dungeon Reign RPG" é provisório) e se o repo `pocket-dungeon` continua sendo a casa dele.
 - Onde hospedar a versão jogável.
