@@ -1,7 +1,7 @@
 // Chefes. Método de modelagem: seção 4 de docs/roadmap.md; conferir em /preview.html com o sprite ao lado.
 import * as THREE from "three";
-import { paint, prep } from "../flora";
-import { type G, type Spec, at, bell, belt, body, bx, cap, cape, cone, cyl, dk, grp, hairLong, headBase, headMask, lathe, limb, muscleArm, muscleLeg, robeMesh, sculpt, sph, ss, staff, torsoMesh, torus, BONE, GOLD, IRON, LEATHER, TORSO_Y } from "./kit";
+import { displace, paint, prep } from "../flora";
+import { type G, type Spec, at, bell, belt, body, bx, cap, cape, cone, cyl, dk, grp, hairLong, headBase, headMask, lathe, limb, muscleArm, muscleLeg, hang, restArm, robeMesh, sculpt, sph, ss, staff, torsoMesh, torus, BONE, GOLD, IRON, LEATHER } from "./kit";
 
 export const BOSSES: Record<string, Spec> = {
   // ------------------------------------------------ chefes
@@ -199,17 +199,8 @@ export const BOSSES: Record<string, Spec> = {
       b.add(sh, limb(0.08, 0.065, 0.38, ROBE_D), at(sph(0.1, SHOE, 1.05, 0.65, 1.9), 0, -0.43, 0.08));
     }
 
-    // Pá e lanterna ficam na vertical do mundo na pose de descanso: desfaz a rotação de tronco, ombro e cotovelo.
-    const rest = (side: number, pose: [number, number]) => {
-      const armQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(b.lean, 0, 0)).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose[0], 0, side * b.armOut)));
-      const q = armQ.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose[1], 0, 0)));
-      const hand = new THREE.Vector3(0, -HAND, 0).applyQuaternion(q).add(new THREE.Vector3(0, -b.dims.arm, 0).applyQuaternion(armQ));
-      const y = b.dims.hipY - b.crouch * 0.1 + TORSO_Y + b.dims.shoulderY * Math.cos(b.lean) + hand.y;
-      return { inv: q.invert(), y };
-    };
-    const hang = (list: G[], inv: THREE.Quaternion) => list.map((g) => g.applyQuaternion(inv).translate(0, -HAND, 0));
-
-    const R = rest(1, b.poseR), Lq = rest(-1, b.poseL);
+    // Pá e lanterna ficam na vertical do mundo na pose de descanso.
+    const R = restArm(b, 1, HAND), Lq = restArm(b, -1, HAND);
 
     // ---- braços: manga larga com a sobra de pano caída, boca da manga escura e mão pálida
     for (const [arm, fore, inv] of [["armL", "foreL", Lq.inv], ["armR", "foreR", R.inv]] as const) {
@@ -232,7 +223,7 @@ export const BOSSES: Record<string, Spec> = {
       at(cyl(0.042, 0.042, 0.09, 0x3a3d42, 8), 0, -(L - 0.46), 0),
       at(bx(0.3, 0.3, 0.036, BLADE, 0x7a5a48), 0, -(L - 0.3), 0), at(tip, 0, -(L - 0.07), 0, Math.PI),
     ];
-    b.add("foreR", ...hang(shovel, R.inv));
+    b.add("foreR", ...hang(shovel, R.inv, HAND));
 
     // ---- lanterna pendurada na mão esquerda, com luz âmbar que chega ao chão
     const lantern = [
@@ -240,8 +231,8 @@ export const BOSSES: Record<string, Spec> = {
       at(cone(0.1, 0.09, RUST, 8, RUST_D), 0, -0.175, 0), at(cyl(0.1, 0.1, 0.05, RUST, 8, RUST_D), 0, -0.445, 0),
     ];
     for (let i = 0; i < 4; i++) lantern.push(at(bx(0.022, 0.22, 0.022, RUST, RUST_D), Math.cos(i * 1.571 + 0.785) * 0.085, -0.32, Math.sin(i * 1.571 + 0.785) * 0.085));
-    b.add("foreL", ...hang(lantern, Lq.inv));
-    b.lit("foreL", ...hang([at(cyl(0.072, 0.072, 0.2, AMBER, 8, AMBER), 0, -0.32, 0)], Lq.inv));
+    b.add("foreL", ...hang(lantern, Lq.inv, HAND));
+    b.lit("foreL", ...hang([at(cyl(0.072, 0.072, 0.2, AMBER, 8, AMBER), 0, -0.32, 0)], Lq.inv, HAND));
     const lp = new THREE.Vector3(0, -0.32, 0).applyQuaternion(Lq.inv);
     b.lights.push({ bone: "foreL", x: lp.x, y: lp.y - HAND, z: lp.z, color: 0xffa64a, intensity: 9, distance: 12 });
   },
@@ -261,20 +252,105 @@ export const BOSSES: Record<string, Spec> = {
     }
     b.lit("hips", at(sph(0.16, 0xff8a2a, 1, 0.4, 1.6), 0, 0.5, -0.95));
   },
+  // Redesenho a partir do sprite (docs/ref/hollow_king.png): lich de caveira coroado, gola de pelo, manto roxo aberto na frente
+  // com as costelas à mostra, cajado de crescente com orbe e mão esquerda em garra. Flutua (forma `robed`).
+  // Medidas do sprite (altura 113 px com a coroa): crânio 20 px, coroa 18 px, gola 52 px de largura, cinto a 43% da altura, cajado 122 px.
   hollow_king: (b) => {
-    body(b, { skin: BONE, top: 0x3a2a6a, sleeve: 0x4a3a80, hands: BONE, robe: { color: 0x33255f, hem: GOLD, flare: 1.1 }, eyes: 0x4ad9d0, eyeGlow: true, bulk: 1.15 });
-    b.scale = 2.2; b.style = "cast"; b.poseR = [-0.7, -0.9]; b.poseL = [-0.8, -1.1]; b.glowColor = 0x4ad9d0;
-    b.add("head", at(sph(0.13, BONE, 1.1, 0.7, 1), 0, 0.06, 0.08), at(bx(0.16, 0.04, 0.03, 0x2a2420), 0, 0.07, 0.19));
-    b.add("head", at(cyl(0.2, 0.22, 0.12, GOLD, 10), 0, 0.42, 0));
-    for (let i = 0; i < 7; i++) b.add("head", at(cone(0.04, 0.18, GOLD, 4), Math.cos((i / 7) * 6.283) * 0.2, 0.56, Math.sin((i / 7) * 6.283) * 0.2));
-    b.lit("head", at(sph(0.04, 0x4ad9d0), 0, 0.43, 0.21));
-    b.add("torso", at(torus(0.32, 0.1, 0xc8b8ee), 0, 0.5, 0), at(bx(0.1, 0.55, 0.03, GOLD), 0, 0.2, 0.2), at(bx(0.22, 0.04, 0.03, BONE), 0, 0.36, 0.215), at(bx(0.22, 0.04, 0.03, BONE), 0, 0.28, 0.215));
-    b.add("cape", ...cape(0x241a45, 0.4, 1.3));
-    b.add("foreR", ...staff(GOLD, 2.3));
-    const cres = prep(new THREE.TorusGeometry(0.22, 0.035, 5, 12, Math.PI * 1.3), true);
-    paint(cres, dk(GOLD), GOLD, -0.3, 0.3);
-    b.add("foreR", at(cres, 0, -0.31, 1.55, Math.PI / 2, 0, Math.PI * 0.85 + Math.PI));
-    b.lit("foreR", at(sph(0.11, 0x7af2ea), 0, -0.31, 1.58));
+    const ROBE = 0x4a2472, ROBE_D = 0x1d0f33, INNER = 0x2e2e74, GOLD_D = 0x9a6a1a, SKULL = 0xe4d5a2, SKULL_D = 0x8f7c50, FUR = 0x9a8ad0, FUR_D = 0x4e3e88;
+    const SOUL = 0x1fa8a0, VOID = 0x120a1c, SHAFT = 0x2c1a3c;
+    const HAND = 0.41;
+    b.form = "robed"; b.bulk = 1.15; b.scale = 2.2; b.style = "cast"; b.glowColor = 0x4ad9d0; b.rough = 0.8;
+    b.lean = 0.16; b.armOut = 0.45;
+    b.poseR = [-0.45, -0.9]; b.poseL = [-0.5, -1.7];
+    b.dims = { hipY: 0.9, headY: 0.56, shoulderY: 0.46, shoulderX: 0.33, arm: 0.36, hipX: 0, thigh: 0.42 };
+
+    // ---- crânio: malha única com órbitas fundas, cavidade do nariz e dentes pintados; mandíbula solta
+    const cSkull = new THREE.Color(SKULL), cSkullD = new THREE.Color(SKULL_D), cVoid = new THREE.Color(VOID);
+    const socket = (n: THREE.Vector3) => bell(n.y - 0.05, 0.2) * bell(Math.abs(n.x) - 0.4, 0.19) * ss(0.3, 0.7, n.z);
+    const nose = (n: THREE.Vector3) => bell(n.y + 0.34, 0.11) * bell(n.x, 0.11) * ss(0.5, 0.9, n.z);
+    b.add("head", at(sculpt(34, 26, (n, p) => {
+      const low = ss(-0.05, -0.9, n.y); // o rosto afina do meio para baixo
+      p.set(
+        n.x * 0.16 * (1 - 0.32 * low) + Math.sign(n.x) * 0.014 * bell(n.y + 0.22, 0.14) * ss(0.2, 0.7, n.z),
+        n.y * (n.y < 0 ? 0.15 : 0.18),
+        n.z * 0.18 * (1 - 0.18 * low) - 0.05 * socket(n) - 0.03 * nose(n) + 0.012 * bell(n.y - 0.3, 0.12) * ss(0.3, 0.8, n.z),
+      );
+    }, (n, c) => {
+      c.copy(cSkullD).lerp(cSkull, 0.4 + 0.6 * ss(-0.8, 0.6, n.y));
+      if (socket(n) > 0.42 || nose(n) > 0.45) c.copy(cVoid);
+      if (n.z > 0.25 && n.y < -0.56 && n.y > -0.8) c.copy(Math.sin(n.x * 42) > 0.55 ? cVoid : cSkull); // dentes de cima
+    }), 0, 0.12, 0.08));
+    b.add("head", at(sph(0.1, VOID, 0.85, 0.3, 1), 0, -0.035, 0.1), at(sph(0.105, SKULL, 0.95, 0.42, 1.1, SKULL_D), 0, -0.075, 0.1, 0.18));
+    for (let i = -2; i <= 2; i++) b.add("head", at(bx(0.02, 0.03, 0.02, SKULL, SKULL_D), i * 0.03, -0.045, 0.2 - Math.abs(i) * 0.012));
+    for (const s of [-1, 1]) b.lit("head", at(sph(0.015, SOUL, 1, 1, 0.6, SOUL), s * 0.064, 0.133, 0.2));
+    // coroa alta: aro e pontas, as da frente maiores, pedra turquesa
+    b.add("head", at(cyl(0.158, 0.17, 0.09, GOLD, 12, GOLD_D), 0, 0.27, 0.06));
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const h = i === 0 ? 0.3 : i % 2 ? 0.22 : 0.26;
+      b.add("head", at(cone(0.05, h, GOLD, 4, GOLD_D), Math.sin(a) * 0.165, 0.31 + h / 2, 0.06 + Math.cos(a) * 0.165, 0, a, 0, 1, 1, 0.45));
+    }
+    b.add("head", at(sph(0.03, 0x38d8cc, 1, 1, 0.6), 0, 0.275, 0.228));
+
+    // ---- tronco: manto aberto no peito, fundo escuro, esterno e costelas, debrum dourado e broches
+    const chest = lathe([[0.2, -0.06], [0.22, 0.1], [0.26, 0.28], [0.29, 0.4], [0.2, 0.5], [0.1, 0.56], [0, 0.57]], ROBE, ROBE_D, 14);
+    chest.scale(1.1, 1, 0.8);
+    b.add("torso", chest, at(sph(0.2, VOID, 0.72, 1.15, 0.3, VOID), 0, 0.23, 0.165), at(bx(0.04, 0.3, 0.03, SKULL, SKULL_D), 0, 0.26, 0.225));
+    b.add("torso", at(cyl(0.035, 0.04, 0.2, SKULL, 6, SKULL_D), 0, 0.52, 0.05));
+    for (const s of [-1, 1]) {
+      for (let i = 0; i < 4; i++) b.add("torso", at(bx(0.13 - i * 0.012, 0.03, 0.03, SKULL, SKULL_D), s * 0.075, 0.37 - i * 0.068, 0.215, 0, -s * 0.4, -s * 0.22));
+      b.add("torso", at(bx(0.035, 0.46, 0.03, GOLD, GOLD_D), s * 0.165, 0.2, 0.205, 0, -s * 0.3, s * 0.1));
+      b.add("torso", at(sph(0.05, GOLD, 1, 1, 0.6, GOLD_D), s * 0.15, 0.43, 0.2));
+      b.lit("torso", at(sph(0.026, SOUL, 1, 1, 0.6, SOUL), s * 0.15, 0.43, 0.235));
+    }
+    // gola de pelo: anel grosso e irregular, mais alto atrás
+    const gap = 0.62; // aberta na frente, deixando o peito à mostra
+    const fur = prep(displace(new THREE.TorusGeometry(0.31, 0.1, 8, 26, Math.PI * 2 - gap * 2).rotateZ(Math.PI / 2 + gap).rotateX(Math.PI / 2), 7, 0.05, 14), true);
+    paint(fur, FUR_D, FUR, -0.09, 0.1);
+    const collar = [fur, at(sph(0.1, FUR, 1, 1, 1, FUR_D), -Math.sin(gap) * 0.31, 0, Math.cos(gap) * 0.31), at(sph(0.1, FUR, 1, 1, 1, FUR_D), Math.sin(gap) * 0.31, 0, Math.cos(gap) * 0.31)];
+    b.add("torso", ...grp(collar.map((g) => g.scale(1.3, 0.9, 0.95)), 0, 0.44, -0.07, 0.22));
+
+    // ---- cinto com fivela dourada e saia aberta na frente: painel azul-escuro com debrum, barra em farrapos
+    b.add("hips", at(cyl(0.245, 0.24, 0.09, ROBE_D, 16), 0, 0.08, 0, 0, 0, 0, 1, 1, 0.84), at(bx(0.11, 0.1, 0.04, GOLD, GOLD_D), 0, 0.08, 0.2), at(bx(0.06, 0.05, 0.045, ROBE_D), 0, 0.08, 0.2));
+    b.add("skirt", robeMesh({ color: ROBE, shade: ROBE_D, rTop: 0.22, rHem: 0.5, yTop: 0.12, yHem: -0.9, tatter: 0.2, folds: 0.08, seg: 56, panel: { half: 0.5, color: INNER, trim: GOLD } }));
+    const lining = lathe([[0.4, -0.68], [0.3, -0.3], [0.2, 0.1]], VOID, VOID, 16);
+    lining.scale(1, 1, 0.85);
+    b.add("skirt", lining);
+
+    // ---- braços: manga em sino com punho dourado e pano caído; mãos de osso
+    const R = restArm(b, 1, HAND), Lq = restArm(b, -1, HAND);
+    for (const [arm, fore, inv, open] of [["armL", "foreL", Lq.inv, true], ["armR", "foreR", R.inv, false]] as const) {
+      b.add(arm, sph(0.11, ROBE, 1, 1, 1, ROBE_D), lathe([[0, -0.42], [0.1, -0.4], [0.115, -0.25], [0.11, -0.05], [0.08, 0.06], [0, 0.1]], ROBE, ROBE_D, 12));
+      b.add(fore, lathe([[0.14, -0.34], [0.145, -0.3], [0.11, -0.12], [0.095, 0], [0, 0.07]], ROBE, ROBE_D, 14));
+      b.add(fore, at(torus(0.142, 0.02, GOLD), 0, -0.325, 0), at(sph(0.13, VOID, 1, 0.1, 1, VOID), 0, -0.325, 0));
+      const drape = lathe([[0.015, -0.52], [0.1, -0.3], [0.135, -0.05], [0.09, 0.05], [0, 0.07]], ROBE, ROBE_D, 10);
+      drape.scale(1, 1, 0.5);
+      b.add(fore, drape.applyQuaternion(inv).translate(0, -0.26, 0));
+      // mão: palma chata e dedos finos; aberta em garra ou fechada no cajado
+      b.add(fore, at(cyl(0.022, 0.03, 0.1, SKULL, 5, SKULL_D), 0, -0.35, 0), at(sph(0.055, SKULL, 1, 1.05, 0.5, SKULL_D), 0, -HAND, 0));
+      for (let i = 0; i < 4; i++) {
+        const f = i - 1.5;
+        b.add(fore, at(cyl(0.011, 0.014, 0.125, SKULL, 5, SKULL_D), f * (open ? 0.05 : 0.03), -HAND - (open ? 0.1 : 0.07), open ? 0.035 : 0.05, open ? -0.6 : -1.3, 0, open ? f * 0.3 : 0));
+      }
+      b.add(fore, at(cyl(0.011, 0.014, 0.095, SKULL, 5, SKULL_D), open ? 0.085 : 0.05, -HAND - 0.01, 0.03, -0.5, 0, 1.0));
+    }
+
+    // ---- cajado na vertical: haste escura, crescente dourado com espigão e orbe turquesa que ilumina
+    const top = 0.47, len = R.y - 0.04;
+    const cres = prep(new THREE.TorusGeometry(0.2, 0.028, 6, 16, Math.PI).rotateZ(Math.PI), true);
+    paint(cres, GOLD_D, GOLD, -0.2, 0);
+    const staffG = [
+      at(cyl(0.035, 0.028, len + top, SHAFT, 6), 0, (top - len) / 2, 0),
+      at(cyl(0.05, 0.05, 0.07, GOLD, 8, GOLD_D), 0, top, 0), at(cyl(0.045, 0.045, 0.05, GOLD, 8, GOLD_D), 0, 0.02 - len, 0),
+      at(cres, 0, top + 0.27, 0), at(cone(0.032, 0.52, GOLD, 5, GOLD_D), 0, top + 0.32, 0),
+    ];
+    for (const s of [-1, 1]) staffG.push(at(cone(0.032, 0.24, GOLD, 5, GOLD_D), s * 0.235, top + 0.37, 0, 0, 0, -s * 0.32));
+    b.add("foreR", ...hang(staffG, R.inv, HAND));
+    b.lit("foreR", ...hang([at(sph(0.095, SOUL, 1, 1, 1, SOUL), 0, top + 0.3, 0)], R.inv, HAND));
+    const orb = new THREE.Vector3(0, top + 0.3, 0).applyQuaternion(R.inv);
+    b.lights.push({ bone: "foreR", x: orb.x, y: orb.y - HAND, z: orb.z, color: 0x4ad9d0, intensity: 8, distance: 12 });
+    // chama de alma sobre a mão esquerda
+    b.lit("foreL", ...hang([at(sph(0.055, SOUL, 1, 1.2, 1, SOUL), 0, 0.16, 0.04), at(cone(0.04, 0.16, SOUL, 6, SOUL), 0, 0.28, 0.04)], Lq.inv, HAND));
   },
 };
 

@@ -568,9 +568,10 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`.
 | M0-02 | feito | 2026-11-13 | `npm run refs` (`tools/make-refs.mjs`, usa `pngjs`): 37 sprites em `docs/ref/<id>.png` e 3 folhas de contato em ordem alfabética de id |
 | M0-03 | pendente | | |
 | M1-01 | pendente | | |
-| M1-02 | feito, falta validar | 2026-11-13 | Gravekeeper refeito do sprite e já no jogo: capuz esculpido com abertura preta e olhos acesos, pelerine, saia rasgada (`robeMesh`), pernas por baixo da saia, pá apoiada no chão, lanterna com luz pontual. Cerca de 6,6 mil triângulos. Conferido só na prévia (parado, andando, ataque, câmera do jogo); a luta na Cripta não foi jogada. Kit novo: `sculptTube`, `robeMesh`, `Builder.lights`, `Builder.glowByVertex`; bípedes ganharam o osso `skirt` |
+| M1-02 | feito | 2026-11-13 | Aprovado pelo usuário. | Gravekeeper refeito do sprite e já no jogo: capuz esculpido com abertura preta e olhos acesos, pelerine, saia rasgada (`robeMesh`), pernas por baixo da saia, pá apoiada no chão, lanterna com luz pontual. Cerca de 6,6 mil triângulos. Conferido só na prévia (parado, andando, ataque, câmera do jogo); a luta na Cripta não foi jogada. Kit novo: `sculptTube`, `robeMesh`, `Builder.lights`, `Builder.glowByVertex`; bípedes ganharam o osso `skirt` |
+| M1-04 | feito, falta validar | 2026-11-13 | Hollow King refeito do sprite e já no jogo: crânio esculpido com órbitas, nariz e dentes, coroa alta, gola de pelo aberta na frente, costelas à mostra, saia com painel azul e debrum dourado (`robeMesh` com `panel`), mãos de osso, cajado de crescente com orbe e luz turquesa, chama na mão esquerda. Cerca de 8,5 mil triângulos. Conferido só na prévia; a luta no Vazio não foi jogada. Kit: `restArm` e `hang` (objeto na vertical do mundo na pose de descanso) |
 | M16-01 | pendente | | Depende do usuário |
 
 Medição feita na `M0-01`: o Bloodfang tem cerca de 19,4 mil triângulos (o dobro com o contorno), acima do orçamento de 12 mil da seção 4.3. Cabeça (48×34) e tronco (30×22) são os maiores; reduzir os segmentos na `M1-01` e conferir com a contagem da `M0-03`.
 
-Próxima sessão, sugestão: ouvir o usuário sobre o Gravekeeper (`M1-02`); depois `M1-04` (Hollow King, que reaproveita `robeMesh` e o capuz/crânio esculpido) e `M1-03` (Ember Matriarch, em duas partes).
+Próxima sessão, sugestão: ouvir o usuário sobre o Hollow King (`M1-04`); depois `M1-03` (Ember Matriarch, em duas partes: abdômen e patas, torso e cabeça) e `M1-01` (acabamento do Bloodfang, incluindo cortar triângulos).

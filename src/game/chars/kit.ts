@@ -422,6 +422,8 @@ export interface RobeOpts {
   /** pregas verticais (fração do raio) e rasgos da barra (altura máxima do recorte; 0 = barra reta) */
   folds?: number;
   tatter?: number;
+  /** painel da frente em outra cor (manto aberto), com debrum nas bordas: meia largura em radianos */
+  panel?: { half: number; color: number; trim: number };
   seg?: number;
   rings?: number;
 }
@@ -439,6 +441,24 @@ export function robeMesh(o: RobeOpts): G {
     p.set(Math.sin(a) * r, y, Math.cos(a) * r * zScale);
   }, (a, t, c) => {
     c.copy(base).lerp(shade, Math.pow(t, 1.4) * 0.85);
+    if (o.panel) {
+      const d = Math.abs(a) - o.panel.half * (0.55 + 0.45 * t); // abre da cintura para a barra
+      if (d < 0) c.set(o.panel.color).multiplyScalar(1 - 0.45 * t);
+      else if (d < (Math.PI * 2) / seg * 1.01) c.set(o.panel.trim);
+    }
     c.multiplyScalar(1 - 0.22 * t * (0.5 - 0.5 * fold(a))); // fundo das pregas mais escuro
   });
 }
+
+/** Pose de descanso de um braço (`side`: 1 = direito, -1 = esquerdo): rotação que desfaz tronco, ombro e cotovelo, e altura da mão
+ * (a `hand` do cotovelo). Serve para deixar na vertical do mundo o que a mão segura. Chamar depois de definir pose, `dims` e `form`. */
+export function restArm(b: Builder, side: number, hand: number): { inv: THREE.Quaternion; y: number } {
+  const pose = side > 0 ? b.poseR : b.poseL;
+  const armQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(b.lean, 0, 0)).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose[0], 0, side * b.armOut)));
+  const q = armQ.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose[1], 0, 0)));
+  const p = new THREE.Vector3(0, -hand, 0).applyQuaternion(q).add(new THREE.Vector3(0, -b.dims.arm, 0).applyQuaternion(armQ));
+  const hip = b.form === "robed" ? b.dims.hipY + 0.06 : b.dims.hipY - b.crouch * 0.1;
+  return { inv: q.invert(), y: hip + TORSO_Y + b.dims.shoulderY * Math.cos(b.lean) + p.y };
+}
+/** pendura na mão peças modeladas na vertical do mundo, com a origem na mão */
+export const hang = (list: G[], inv: THREE.Quaternion, hand: number): G[] => list.map((g) => g.applyQuaternion(inv).translate(0, -hand, 0));
