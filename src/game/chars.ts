@@ -24,6 +24,8 @@ export interface CharState {
   crouch: number;
   armOut: number;
   weight: number;
+  /** altura do quadril em repouso */
+  hipY: number;
   phys: ReturnType<typeof newPhys>;
 }
 
@@ -69,6 +71,11 @@ const at = xf;
 class Builder {
   solid = new Map<Bone | string, G[]>();
   glow = new Map<Bone | string, G[]>();
+  /** pelagem: mesma luz do corpo, com listras desenhadas no shader */
+  pelt = new Map<Bone | string, G[]>();
+  stripe = 0x140a0c;
+  /** proporções do esqueleto; shoulderX e hipX em 0 = calculados pelo `bulk` */
+  dims = { hipY: HIP_Y, headY: HEAD_Y, shoulderY: SHOULDER_Y, shoulderX: 0, arm: 0.34, hipX: 0, thigh: 0.42 };
   style: Style = "swing";
   poseR: [number, number] = [0.1, -0.3];
   poseL: [number, number] = [0.1, -0.3];
@@ -92,6 +99,12 @@ class Builder {
     const l = this.glow.get(bone) ?? [];
     l.push(...g);
     this.glow.set(bone, l);
+    return this;
+  }
+  fur(bone: Bone | string, ...g: G[]): this {
+    const l = this.pelt.get(bone) ?? [];
+    l.push(...g);
+    this.pelt.set(bone, l);
     return this;
   }
 }
@@ -455,25 +468,192 @@ const CAST: Record<string, Spec> = {
     b.add("hips", at(bx(0.3, 0.06, 0.06, BONE), -0.3, 0.5, 0.3, 0.5, 0.7, 0.4), at(sph(0.07, BONE), 0.36, 0.3, 0.25), at(bx(0.2, 0.05, 0.05, BONE), 0.2, 0.75, -0.2, 0.2, 0.3, 1.0));
   },
   // ------------------------------------------------ chefes
+  // Redesenho a partir do sprite do Dungeon Reign (docs/ref/bloodfang.png); conferir em preview.html.
+  // Anatomia do sprite: tronco e cabeça esculpidos como malha única, membros com perfil de músculo, esqueleto próprio.
   bloodfang: (b) => {
-    body(b, { skin: 0xd9441e, top: 0xc82a2a, bottom: 0x5a3020, boots: 0xc82a2a, sleeve: 0xc82a2a, hands: 0xc82a2a, bulk: 1.6, head: 1.15, eyes: 0xffe14a, eyeGlow: true });
-    b.scale = 2.3; b.style = "swing"; b.poseR = [-0.5, -0.8]; b.poseL = [-0.3, -0.9]; b.glowColor = 0xffe14a;
-    // cabeça de tigre
-    b.add("head", at(sph(0.17, 0xf2ead8, 1.1, 0.8, 1.2), 0, 0.12, 0.17), at(sph(0.05, 0x2a1210), 0, 0.2, 0.39));
-    for (const s of [-1, 1]) {
-      b.add("head", at(cone(0.08, 0.16, 0xd9441e, 6), s * 0.16, 0.44, -0.02), at(cone(0.03, 0.12, 0xffffff, 5), s * 0.07, 0.03, 0.31, Math.PI));
-      b.add("head", at(bx(0.03, 0.12, 0.2, 0x1c1010), s * 0.2, 0.3, 0.02, 0, 0, s * 0.3), at(bx(0.03, 0.1, 0.16, 0x1c1010), s * 0.22, 0.17, 0.0));
+    const RED = 0xd8301e, RED_D = 0x7e1412, RED_L = 0xee5a3c, CREAM = 0xf6ecd8, CREAM_D = 0xbfa888, DARK = 0x160b0d, MOUTH = 0x4e0a12;
+    const COWL = 0x5a6884, COWL_D = 0x2a3448, HIDE = 0x5e3a22, CLAW = 0xf0e6d0, EYE = 0xffd23a, FANG = 0xfffaf0, BONE_D = 0x9c8862;
+    const grp = (list: G[], x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, s = 1) => list.map((g) => at(g, x, y, z, rx, ry, rz, s));
+    const ss = (a: number, e: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (e - a))); return t * t * (3 - 2 * t); };
+    const bell = (x: number, w: number) => Math.exp(-(x * x) / (w * w));
+    const col = (hex: number) => new THREE.Color(hex);
+    const cRed = col(RED), cRedD = col(RED_D), cRedL = col(RED_L), cCream = col(CREAM), cCreamD = col(CREAM_D), cDark = col(DARK);
+    /** esculpe uma esfera: `shape` leva a direção unitária `n` para a posição, `tint` dá a cor do vértice */
+    const sculpt = (w: number, h: number, shape: (n: THREE.Vector3, p: THREE.Vector3) => void, tint: (n: THREE.Vector3, c: THREE.Color) => void): G => {
+      const g = new THREE.SphereGeometry(1, w, h);
+      const pos = g.attributes.position;
+      const colors = new Float32Array(pos.count * 3);
+      const n = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
+      for (let i = 0; i < pos.count; i++) {
+        n.fromBufferAttribute(pos, i).normalize();
+        shape(n, p);
+        tint(n, c);
+        pos.setXYZ(i, p.x, p.y, p.z);
+        colors.set([c.r, c.g, c.b], i * 3);
+      }
+      g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      return prep(g, true);
+    };
+    b.bulk = 1.6; b.scale = 2.3; b.style = "swing"; b.glowColor = EYE; b.rough = 0.7;
+    b.lean = 0.3; b.crouch = 0.34; b.armOut = 0.3;
+    b.poseR = [-0.2, -0.95]; b.poseL = [-0.65, -0.7];
+    // pernas curtas, tronco longo, ombros largos e braços que chegam ao joelho
+    b.dims = { hipY: 0.8, headY: 0.7, shoulderY: 0.56, shoulderX: 0.56, arm: 0.42, hipX: 0.2, thigh: 0.36 };
+
+    // ---- tronco: cintura fina, peito largo com peitorais, trapézio alto
+    const torso = sculpt(30, 22, (n, p) => {
+      const t = (n.y + 1) / 2;
+      const rho = Math.hypot(n.x, n.z) || 1e-6;
+      const s = n.x / rho, c = n.z / rho;
+      const r = Math.pow(rho, 0.45);
+      const W = 0.27 + 0.34 * ss(0.15, 0.72, t) - 0.13 * ss(0.84, 1, t);
+      const D = 0.2 + 0.13 * ss(0.2, 0.7, t) - 0.06 * ss(0.85, 1, t);
+      const front = Math.max(0, c), back = Math.max(0, -c);
+      let z = c * D * r;
+      z += 0.09 * bell(t - 0.7, 0.11) * front * (1 - 0.75 * bell(s, 0.13)) * r; // peitorais com sulco no meio
+      z -= 0.018 * bell(s, 0.07) * front * (1 - ss(0.25, 0.6, t)); // linha do abdômen
+      z += 0.012 * front * bell(s, 0.34) * Math.cos(t * 40) * (1 - ss(0.45, 0.58, t));
+      z -= 0.11 * back * bell(t - 0.8, 0.2) * r; // trapézio
+      p.set(s * W * r, -0.08 + t * 0.8, z);
+    }, (n, c) => {
+      const t = (n.y + 1) / 2;
+      c.copy(cRedD).lerp(cRed, 0.25 + t * 0.75);
+      c.lerp(cRedL, Math.max(0, n.z) * 0.45 * bell(t - 0.68, 0.22));
+    });
+    b.fur("torso", torso);
+    // manto azul-cinza sobre os dois ombros, com colar de ossos
+    const cowl = lathe([[0.5, -0.07], [0.52, 0.0], [0.44, 0.08], [0.3, 0.14], [0.2, 0.16], [0.16, 0.15]], COWL, COWL_D, 18);
+    cowl.scale(1.12, 1, 0.74);
+    b.add("torso", at(cowl, 0, 0.6, -0.03, 0.1));
+    for (let i = -3; i <= 3; i++) {
+      const a = i * 0.42;
+      b.add("torso", at(sph(0.04, BONE, 0.75, 1.9, 0.75, BONE_D), Math.sin(a) * 0.54, 0.52 - Math.abs(i) * 0.006, Math.cos(a) * 0.4, 0.35, 0, Math.sin(a) * 0.5));
     }
-    // listras
-    for (const y of [0.16, 0.3, 0.44]) for (const s of [-1, 1]) b.add("torso", at(bx(0.2, 0.045, 0.3, 0x1c1010), s * 0.34, y, 0, 0, 0, s * 0.35));
-    for (const f of ["armL", "armR", "foreL", "foreR", "thighL", "thighR"]) b.add(f, at(torus(f.startsWith("thigh") ? 0.165 : 0.13, 0.022, 0x1c1010), 0, -0.14, 0), at(torus(f.startsWith("thigh") ? 0.16 : 0.125, 0.022, 0x1c1010), 0, -0.26, 0));
-    // caveira no ombro, gola e cinto
-    b.add("armL", at(sph(0.21, BONE, 1, 0.95, 1.05), 0, 0.12, 0), at(sph(0.05, 0x1c1010), -0.08, 0.13, 0.19), at(sph(0.05, 0x1c1010), 0.08, 0.13, 0.19), at(bx(0.16, 0.08, 0.1, BONE), 0, 0.0, 0.14));
-    b.add("torso", at(torus(0.3, 0.07, 0x4a5a7a), 0, 0.52, 0)).add("hips", ...belt(0x3a2018, 1.6, GOLD), at(lathe([[0.42, -0.34], [0.36, 0], [0.32, 0.06]], 0x5a3020), 0, 0, 0));
-    b.add("tail", at(cyl(0.05, 0.03, 0.9, 0xc82a2a, 6), 0, -0.4, -0.1, 0.5), at(sph(0.05, 0x1c1010), 0, -0.82, -0.32));
-    // cutelo
-    const blade = bx(0.05, 1.25, 0.42, 0xd9e0e8, 0xf2f6fa);
-    b.add("foreR", at(blade, 0, -1.1, 0.1), at(cyl(0.045, 0.045, 0.3, LEATHER, 6), 0, -0.36, 0), at(bx(0.1, 0.06, 0.5, IRON), 0, -0.5, 0.06));
+    // ---- caveira no ombro do braço da arma, do tamanho da cabeça
+    const skull: G[] = [
+      sph(0.27, BONE, 1, 0.95, 1.1, BONE_D),
+      at(sph(0.17, BONE, 1.05, 0.7, 0.9, BONE_D), 0, -0.2, 0.14),
+      at(sph(0.085, DARK, 1, 1.2, 0.5), -0.105, -0.02, 0.26), at(sph(0.085, DARK, 1, 1.2, 0.5), 0.105, -0.02, 0.26),
+      at(cone(0.035, 0.09, DARK, 3), 0, -0.13, 0.28),
+    ];
+    for (let i = -2; i <= 2; i++) skull.push(at(bx(0.04, 0.07, 0.04, CREAM, CREAM_D), i * 0.05, -0.3, 0.24));
+    b.add("torso", ...grp(skull, 0.62, 0.8, 0.0, -0.3, 0.3, -0.3, 0.82));
+
+    // ---- cabeça de tigre: malha única com focinho, arcada e bochechas; listras e manchas pintadas
+    const hy = -0.1, hz = 0.24, hs = 1.22;
+    const H = (g: G, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => at(g, x * hs, y * hs + hy, z * hs + hz, rx, ry, rz, hs);
+    const muzzle = (n: THREE.Vector3) => ss(0.25, 0.85, n.z) * bell(n.y + 0.18, 0.36) * bell(n.x, 0.55);
+    const socket = (n: THREE.Vector3) => bell(n.y - 0.16, 0.1) * bell(Math.abs(n.x) - 0.42, 0.16) * ss(0.4, 0.8, n.z);
+    const cheek = (n: THREE.Vector3) => ss(0.55, 0.95, Math.abs(n.x)) * (1 - ss(-0.5, 0.35, n.y));
+    const head = sculpt(48, 34, (n, p) => {
+      const m = muzzle(n);
+      let x = n.x * 0.2 * (1 - 0.22 * m), y = n.y * 0.185, z = n.z * 0.2 + 0.2 * m;
+      y += (Math.max(y, -0.075) - y) * ss(0.2, 0.5, n.z); // céu da boca reto
+      z += 0.04 * bell(n.y - 0.38, 0.13) * ss(0.35, 0.8, n.z); // arcada
+      z -= 0.03 * socket(n);
+      x += Math.sign(n.x) * 0.075 * cheek(n);
+      p.set(x, y + 0.02, z);
+    }, (n, c) => {
+      const m = muzzle(n), ax = Math.abs(n.x);
+      c.copy(cRedD).lerp(cRed, Math.min(1, 0.55 + n.y * 0.5));
+      let stripe = false;
+      if (n.z > 0) {
+        const r = Math.hypot(n.x, n.y - 0.1), a = Math.atan2(n.y - 0.1, n.x);
+        stripe = r > 0.52 && m < 0.3 && Math.sin(a * 10 + Math.sin(r * 9) * 0.8) > 0.45;
+        if (n.y > 0.4 && n.z > 0.15 && ax < 0.4 && Math.sin(n.x * 30) > 0.3) stripe = true; // testa
+      } else stripe = Math.sin(n.y * 15 + Math.sin(n.x * 5) * 0.9) > 0.4;
+      if ((m > 0.4 && n.y < 0.02) || cheek(n) > 0.3) { c.copy(cCreamD).lerp(cCream, 0.5 + n.y * 0.6 + n.z * 0.3); stripe = stripe && cheek(n) > 0.3 && Math.sin(n.y * 22) > 0.75; }
+      if (bell(n.y - 0.44, 0.07) * bell(ax - 0.4, 0.1) * ss(0.5, 0.8, n.z) > 0.45) { c.copy(cCream); stripe = false; } // mancha sobre o olho
+      if (stripe || socket(n) > 0.45) c.copy(cDark);
+      if (n.z > 0.93 && n.y > -0.14 && n.y < 0.1 && ax < 0.22) c.copy(cDark); // nariz
+    });
+    b.add("head", H(head, 0, 0, 0));
+    b.add("head", H(sph(0.1, MOUTH, 0.9, 0.7, 1.25), 0, -0.07, 0.17));
+    b.add("head", H(sph(0.1, CREAM, 0.95, 0.4, 1.55, CREAM_D), 0, -0.15, 0.15, 0.42)); // mandíbula caída
+    b.add("head", H(sph(0.05, 0xd8566a, 1, 0.4, 1.7), 0, -0.13, 0.2, 0.4));
+    for (let i = -1; i <= 1; i++) b.add("head", H(cone(0.014, 0.04, FANG, 5, CREAM), i * 0.03, -0.075, 0.345, Math.PI));
+    for (const s of [-1, 1]) {
+      b.add("head", H(cone(0.024, 0.11, FANG, 6, CREAM), s * 0.068, -0.105, 0.31, Math.PI), H(cone(0.019, 0.075, FANG, 6, CREAM), s * 0.052, -0.14, 0.27, 0.35));
+      b.lit("head", H(sph(0.026, EYE, 1.5, 0.8, 0.6, EYE), s * 0.084, 0.05, 0.19, 0, 0, s * 0.3));
+      b.add("head", H(sph(0.05, RED, 1, 1.15, 0.4, RED_D), s * 0.15, 0.175, -0.05, -0.3, 0, -s * 0.5), H(sph(0.04, DARK, 1, 1.15, 0.3), s * 0.15, 0.175, -0.07, -0.3, 0, -s * 0.5));
+      for (const [dy, len, up] of [[0.0, 0.15, 0.15], [-0.07, 0.17, -0.25]] as const) {
+        b.add("head", H(cone(0.045, len, CREAM, 6, CREAM_D), s * 0.26, dy, 0.0, 0, s * 0.55, -s * (Math.PI / 2 - up)));
+      }
+    }
+
+    // ---- braços: deltoide, bíceps, antebraço grosso com braçadeira, mão com garras
+    const upper = (): G => lathe([[0, -0.47], [0.125, -0.42], [0.15, -0.32], [0.185, -0.17], [0.18, -0.05], [0.14, 0.07], [0, 0.14]], RED, RED_D, 14);
+    const lower = (): G => lathe([[0, -0.43], [0.1, -0.4], [0.115, -0.33], [0.165, -0.19], [0.175, -0.1], [0.125, 0.03], [0, 0.1]], RED, RED_D, 14);
+    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
+      b.fur(arm, at(sph(0.23, RED, 1.05, 0.95, 1.05, RED_D), s * 0.02, 0.02, 0), upper());
+      b.fur(fore, lower());
+      b.add(fore, at(cyl(0.135, 0.158, 0.13, COWL, 12, COWL_D), 0, -0.29, 0));
+      for (let i = 0; i < 6; i++) b.add(fore, at(sph(0.022, CREAM_D), Math.cos(i * 1.047) * 0.15, -0.29, Math.sin(i * 1.047) * 0.15));
+      b.add(fore, at(sph(0.11, RED, 1.1, 0.95, 0.95, RED_D), 0, -0.48, 0.01));
+      for (let i = 0; i < 4; i++) {
+        const fx = (i - 1.5) * 0.058;
+        b.add(fore, at(cap(0.032, 0.07, RED, RED_D), fx, -0.57, 0.06, -0.7));
+        if (s < 0) b.add(fore, at(cone(0.022, 0.1, CLAW, 6, CREAM_D), fx, -0.64, 0.12, Math.PI - 0.75));
+      }
+    }
+
+    // ---- quadril: cinto com tachas e fivela, tanga
+    b.fur("hips", at(sph(0.3, RED, 1.08, 0.72, 0.86, RED_D), 0, 0, 0));
+    b.add("hips", at(cyl(0.335, 0.335, 0.1, HIDE, 16), 0, 0.1, 0, 0, 0, 0, 1, 1, 0.8), at(cyl(0.075, 0.075, 0.04, GOLD, 10), 0, 0.1, 0.275, Math.PI / 2));
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + 0.31;
+      b.add("hips", at(sph(0.03, CREAM_D), Math.sin(a) * 0.34, 0.1, Math.cos(a) * 0.272));
+    }
+    for (const s of [-1, 1]) {
+      const flap = lathe([[0.02, -0.52], [0.16, -0.3], [0.2, 0], [0.2, 0.04]], HIDE, dk(HIDE, 0.5), 4);
+      flap.rotateY(Math.PI / 4);
+      flap.scale(1, 1, 0.16);
+      b.add("hips", at(flap, 0, 0.03, s * 0.25, -s * 0.12));
+    }
+    // ---- pernas curtas: coxa grossa, canela com faixa, pata com garras
+    for (const [th, sh] of [["thighL", "shinL"], ["thighR", "shinR"]] as const) {
+      b.fur(th, lathe([[0, -0.4], [0.12, -0.36], [0.16, -0.26], [0.2, -0.1], [0.17, 0.04], [0, 0.12]], RED, RED_D, 14));
+      b.fur(sh, lathe([[0, -0.37], [0.08, -0.34], [0.085, -0.26], [0.13, -0.1], [0.11, 0.02], [0, 0.08]], RED, RED_D, 12));
+      b.add(sh, at(cyl(0.088, 0.1, 0.1, COWL, 10, COWL_D), 0, -0.26, 0));
+      b.add(sh, at(sph(0.095, RED, 1.05, 0.6, 1.8, RED_D), 0, -0.37, 0.08));
+      for (let i = -1; i <= 1; i++) b.add(sh, at(cone(0.026, 0.1, CLAW, 6, CREAM_D), i * 0.055, -0.385, 0.25, Math.PI / 2 + 0.3, 0, 0));
+    }
+
+    // ---- cauda anelada em S
+    const curve = new THREE.CatmullRomCurve3([[0, 0, 0], [0, -0.2, -0.28], [0, -0.46, -0.46], [0, -0.54, -0.76], [0, -0.36, -1.0], [0, -0.1, -1.05]].map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+    const tube = new THREE.TubeGeometry(curve, 30, 0.055, 8, false);
+    const uv = tube.attributes.uv;
+    const tc = new Float32Array(uv.count * 3);
+    for (let i = 0; i < uv.count; i++) {
+      const u = uv.getX(i);
+      const c = u > 0.9 || Math.floor(u * 30) % 4 === 3 ? cDark : cRed;
+      tc.set([c.r, c.g, c.b], i * 3);
+    }
+    tube.setAttribute("color", new THREE.BufferAttribute(tc, 3));
+    b.add("tail", prep(tube, true), at(sph(0.058, DARK), 0, -0.1, -1.05));
+
+    // ---- facão: dorso reto, barriga curva, ponta virada e fio serrilhado
+    const L = 1.25;
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.07, 0);
+    sh.lineTo(-0.09, -L * 0.7);
+    sh.quadraticCurveTo(-0.1, -L * 0.9, -0.2, -L);
+    sh.quadraticCurveTo(0.12, -L * 0.97, 0.24, -L * 0.78);
+    const teeth = 9;
+    for (let i = 0; i < teeth; i++) {
+      const v1 = -L * 0.78 + ((i + 1) / teeth) * L * 0.72;
+      const w = 0.24 - (i / teeth) * 0.1;
+      sh.lineTo(w - 0.045, v1 - 0.03);
+      sh.lineTo(w - 0.01, v1);
+    }
+    sh.lineTo(0.12, 0);
+    sh.closePath();
+    const blade = prep(new THREE.ExtrudeGeometry(sh, { depth: 0.045, bevelEnabled: false, curveSegments: 8 }), false);
+    blade.translate(0, 0, -0.022);
+    blade.rotateY(-Math.PI / 2);
+    paint(blade, 0xb9c3d6, 0xf6f8fc, -L, 0);
+    const knife = [blade, at(cyl(0.04, 0.04, 0.3, HIDE, 8), 0, 0.14, 0.02), at(bx(0.09, 0.05, 0.3, IRON), 0, 0, 0.03), at(sph(0.05, IRON), 0, 0.31, 0.02)];
+    b.add("foreR", ...grp(knife, 0, -0.62, 0.02, -0.35));
   },
   gravekeeper: (b) => {
     body(b, { skin: 0x0c1010, top: 0x5f645f, sleeve: 0x5f645f, hands: 0xb0b6a8, robe: { color: 0x4f544f, flare: 1.1 }, eyes: 0x73ffcc, eyeGlow: true, bulk: 1.15 });
@@ -548,6 +728,41 @@ function rimLight<T extends THREE.MeshStandardMaterial>(mat: T, strength: number
   return mat;
 }
 
+/** listras de tigre no espaço local de cada osso: faixas ao redor do membro, grossas nas costas e sumindo na frente */
+function furMaterial(stripe: number, rough: number): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: 0.02 });
+  const col = new THREE.Color(stripe);
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uStripe = { value: col };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vLp;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLp = position;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vLp;\nuniform vec3 uStripe;")
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+      float fAng = atan(vLp.x, vLp.z + 1e-4); // sem o desvio, o polo (x = z = 0) dá NaN e o bloom espalha um bloco preto
+      float fW = vLp.y * 8.5 + sin(fAng * 2.0 + vLp.y * 6.0) * 0.34 + sin(fAng * 5.0 + vLp.y * 3.0) * 0.12;
+      float fD = abs(fract(fW) - 0.5) * 2.0;
+      float fBack = smoothstep(-1.12, -0.25, -cos(fAng));
+      // membros (raio pequeno) são listrados em toda a volta; só o peito fica limpo
+      fBack = max(fBack, 0.8 * (1.0 - smoothstep(0.17, 0.205, length(vLp.xz))));
+      float fThick = 0.34 * fBack * (0.75 + 0.25 * sin(fAng * 3.0 + vLp.y * 11.0));
+      float fS = (1.0 - smoothstep(fThick - 0.1, fThick, fD)) * step(0.02, fThick);
+      diffuseColor.rgb = mix(diffuseColor.rgb, uStripe, fS);`,
+      )
+      .replace(
+        "#include <opaque_fragment>",
+        `float rim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.6);
+      outgoingLight += (diffuseColor.rgb * 0.9 + 0.1) * rim * 0.55;
+      #include <opaque_fragment>`,
+      );
+  };
+  mat.customProgramCacheKey = () => "fur";
+  return mat;
+}
+
 class Spring {
   x = 0;
   v = 0;
@@ -591,18 +806,19 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     bones[name] = g;
     return g;
   };
-  const hips = mk("hips", inner, 0, b.form === "bat" ? 1.1 : b.form === "slime" ? 0 : HIP_Y, 0);
+  const hips = mk("hips", inner, 0, b.form === "bat" ? 1.1 : b.form === "slime" ? 0 : b.dims.hipY, 0);
   if (b.form !== "bat" && b.form !== "slime") {
     const torso = mk("torso", hips, 0, TORSO_Y, 0);
-    mk("head", torso, 0, HEAD_Y, 0);
-    const sx = 0.27 * k + 0.07;
-    mk("foreL", mk("armL", torso, -sx, SHOULDER_Y, 0), 0, -0.34, 0);
-    mk("foreR", mk("armR", torso, sx, SHOULDER_Y, 0), 0, -0.34, 0);
+    mk("head", torso, 0, b.dims.headY, 0);
+    const sx = b.dims.shoulderX || 0.27 * k + 0.07;
+    const hx = b.dims.hipX || 0.13 * k;
+    mk("foreL", mk("armL", torso, -sx, b.dims.shoulderY, 0), 0, -b.dims.arm, 0);
+    mk("foreR", mk("armR", torso, sx, b.dims.shoulderY, 0), 0, -b.dims.arm, 0);
     mk("cape", torso, 0, 0.52, -0.2 * k);
     mk("tail", hips, 0, 0, -0.16 * k);
     if (b.form === "biped") {
-      mk("shinL", mk("thighL", hips, -0.13 * k, -0.02, 0), 0, -0.42, 0);
-      mk("shinR", mk("thighR", hips, 0.13 * k, -0.02, 0), 0, -0.42, 0);
+      mk("shinL", mk("thighL", hips, -hx, -0.02, 0), 0, -b.dims.thigh, 0);
+      mk("shinR", mk("thighR", hips, hx, -0.02, 0), 0, -b.dims.thigh, 0);
     } else mk("skirt", hips, 0, 0, 0);
   } else if (b.form === "bat") {
     mk("wingL", hips, -0.16, 0.05, 0);
@@ -628,7 +844,14 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
       legs.push(g);
     }
   }
-  for (const [map, material] of [[b.solid, main], [b.glow, glow]] as const) {
+  const mats = [main, glow];
+  const layers: [Map<Bone | string, G[]>, THREE.MeshStandardMaterial][] = [[b.solid, main], [b.glow, glow]];
+  if (b.pelt.size) {
+    const fur = furMaterial(b.stripe, b.rough);
+    mats.push(fur);
+    layers.push([b.pelt, fur]);
+  }
+  for (const [map, material] of layers) {
     for (const [name, list] of map) {
       const parent = bones[name as Bone];
       if (!parent) {
@@ -637,9 +860,9 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
       }
       const geo = merge(list);
       const mesh = new THREE.Mesh(geo, material);
-      mesh.castShadow = material === main;
+      mesh.castShadow = material !== glow;
       parent.add(mesh);
-      if (material === main) parent.add(new THREE.Mesh(geo, OUTLINE));
+      if (material !== glow) parent.add(new THREE.Mesh(geo, OUTLINE));
     }
   }
   const scale = b.scale * scaleMult;
@@ -649,9 +872,9 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
   const weight = Math.max(0.6, Math.sqrt(scale) * (0.7 + 0.3 * k));
   return {
     root, inner, body: inner, head: inner, armL: null, armR: null, legL: null, legR: null, wings: [],
-    mats: [main, glow], baseEmissive: [main.emissive.clone(), glow.emissive.clone()], kind: "humanoid", height, phase: Math.random() * 10,
+    mats, baseEmissive: mats.map((m) => m.emissive.clone()), kind: "humanoid", height, phase: Math.random() * 10,
     char: { bones, legs, style: b.style, poseR: b.poseR, poseL: b.poseL, form: b.form, shot: 0,
-      lean: b.lean, crouch: b.crouch, armOut: b.armOut, weight, phys: newPhys() },
+      lean: b.lean, crouch: b.crouch, armOut: b.armOut, weight, hipY: b.dims.hipY, phys: newPhys() },
   };
 }
 
@@ -782,9 +1005,9 @@ export function animateChar(rig: Rig, a: AnimState): void {
 
   // quadril: sobe e desce duas vezes por passada, gira e balança
   const crouch = c.crouch + 0.1 * run;
-  let hipY = HIP_Y - crouch * 0.1;
-  if (c.form === "robed") hipY = HIP_Y + 0.06 + Math.sin(t * 2.4) * 0.05 + Math.abs(cw) * 0.02 * move;
-  else if (c.form === "spider") hipY = HIP_Y + 0.25 + Math.sin(ph * 2) * 0.03 * move;
+  let hipY = c.hipY - crouch * 0.1;
+  if (c.form === "robed") hipY = c.hipY + 0.06 + Math.sin(t * 2.4) * 0.05 + Math.abs(cw) * 0.02 * move;
+  else if (c.form === "spider") hipY = c.hipY + 0.25 + Math.sin(ph * 2) * 0.03 * move;
   else hipY -= (0.5 - Math.abs(cw) * 0.5) * 0.1 * move * (1 + run * 0.6) * W;
   hips.position.set(sway * 0.025 + sw * 0.02 * sN, hipY, 0);
   hips.rotation.set(0, sw * 0.16 * fN + twist * 0.4, sway * 0.04 + Math.cos(ph) * 0.05 * move);
