@@ -1,12 +1,17 @@
-# Godot
+node_modules
+dist
+dist-single
+*.log
+
+# Restos locais do projeto antigo (Covil, Godot): não fazem parte deste jogo
 .godot/
 /android/
-*.translation
-export_presets.cfg.bak
-
-# Builds e relatórios gerados
 /builds/
 /reports/
+*.import
+*.uid
+*.translation
+export_presets.cfg.bak
 
 # Sistema
 .DS_Store
