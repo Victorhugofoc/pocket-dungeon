@@ -11,11 +11,18 @@ Vale para personagens (M1, M2, M3, M9, M10) e para zonas (marco M18). O usuário
    - Zona: poses fixas do marco M18 (`M18-01`).
 2. Chamar o subagente (ferramenta Agent) com o texto da seção abaixo, trocando `<...>`. Passar só caminhos de imagem. Não explicar o que mudou nem o que se espera dele.
 3. Corrigir o que veio como **grave** e **médio**, gerar as capturas de novo e repetir com um subagente **novo** (o anterior já conhece a versão velha).
-4. Parar quando sobrar só **menor**. Mostrar ao usuário as capturas e a última lista do crítico.
+4. Parar quando sobrar só **menor**, ou só **médio** de gosto que oscila entre rodadas (ver as lições abaixo). Mostrar ao usuário as capturas e a última lista do crítico.
 
-Decisões já tomadas com o usuário que fogem do sprite (por exemplo, a espada longa do Kaelen vem da ficha da seção 7.1 do roadmap) entram no texto do subagente na linha "Decisões fixas", para ele não apontar de novo. Se ainda assim apontar algo que contraria uma decisão do usuário, a decisão vale: registrar no roadmap e seguir.
+Decisões já tomadas com o usuário que fogem do sprite (por exemplo, a espada longa do Kaelen vem da ficha da seção 7.1 do roadmap) entram no texto do subagente na linha "Decisões fixas", para ele não apontar de novo. Se ainda assim apontar algo que contraria uma decisão do usuário, a decisão vale: registrar no roadmap e seguir. Se ele errar o que está vendo (achar que a espada é um cajado), é sinal de que a leitura não está clara; tratar como defeito.
 
-Calibração (2026-11-14, primeiro teste): no Kaelen, já aprovado, o crítico apontou o que o sprite tem e o modelo não (lâmina ciano no peito, franja sobre o olho, forro vermelho da capa, calça cinza) e um defeito real que tinha passado: no meio do golpe a espada some e o ombro direito salta. Na Vesper, sem validação, apontou a falta das asas e do abdômen separado atrás, o rosto escuro no lugar do pálido e o laranja dominando um manto que no sprite é escuro. É mais exigente que a validação do usuário até aqui. Se ele errar o que está vendo (achar que a espada é um cajado), é sinal de que a leitura não está clara; tratar como defeito.
+Calibração (2026-11-14, primeiro teste): no Kaelen, já aprovado, o crítico apontou o que o sprite tem e o modelo não (lâmina ciano no peito, franja sobre o olho, forro vermelho da capa, calça cinza) e um defeito real que tinha passado: no meio do golpe a espada some e o ombro direito salta. Na Vesper, sem validação, apontou a falta das asas e do abdômen separado atrás, o rosto escuro no lugar do pálido e o laranja dominando um manto que no sprite é escuro. É mais exigente que a validação do usuário até aqui.
+
+Primeira volta completa (Vesper, 2026-11-14, seis críticos): a maior gravidade caiu de grave para médio na quinta rodada. Lições:
+- Na primeira rodada ele acha o que importa (peças do sprite que faltam, rosto, cor dominante). Daí em diante as rodadas trazem cada vez mais gosto pessoal.
+- **Ele oscila** em medidas de gosto: asas "maiores e âmbar" numa rodada, "menores e claras" na seguinte; abdômen "mais alto" e depois "mais baixo". Quando um ponto inverte entre rodadas, fica onde está e sai da lista.
+- Peça fina vista de perfil vira "risco quebrado" para ele. Asa, lâmina e fita precisam de volume (lente achatada com contorno), não de chapa.
+- Listra pintada por vértice só sai reta se a borda seguir as linhas da malha (no `sculpt`, a latitude de `n.y`). Faixa diagonal sai serrilhada.
+- Parar quando sobrar só "médio" de gosto e mostrar ao usuário. Insistir até zerar os médios gasta rodadas sem ganho claro.
 
 ## Texto para o subagente (personagem)
 
