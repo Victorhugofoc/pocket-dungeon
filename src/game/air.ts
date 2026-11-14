@@ -100,7 +100,7 @@ export function buildShafts(zone: ZoneDef, layout: ZoneLayout): THREE.Mesh | nul
         float power = floor(vInfo.z) / 100.0;
         float dth = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
         // perfil em sino na largura e teto de brilho: nunca passa perto do limiar do bloom, nem somando sobre uma copa clara
-        float k = min(uIntensity * power * edge * along * streak * pulse * near, 0.16);
+        float k = min(uIntensity * power * edge * along * streak * pulse * near, min(0.16, uIntensity * 0.4));
         gl_FragColor = vec4(uColor * max(k + dth, 0.0), 1.0);
       }`,
     blending: THREE.AdditiveBlending,

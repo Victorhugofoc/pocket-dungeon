@@ -2,6 +2,9 @@
 
 export type ScatterKind = "pebble" | "leaf" | "tuft" | "twig" | "fern" | "shard";
 
+/** verdes da flora: base escura e topo claro de cada copa, pinheiro e arbusto */
+export interface Foliage { tree: [number, number][]; pine: [number, number]; bush: [number, number] }
+
 export type DecorKind = "tree" | "pine" | "deadTree" | "rock" | "bush" | "tomb" | "pillar" | "crystal" | "lavaRock" | "mushroom";
 
 export interface ZoneDef {
@@ -40,6 +43,10 @@ export interface ZoneDef {
   stains: [number, number, number][];
   /** correção de cor (render.ts): tom das sombras e das luzes (perto de branco), saturação e contraste */
   grade: { shadow: number; light: number; saturation: number; contrast: number };
+  /** verdes da flora (árvore, pinheiro, arbusto); sem isso, os verdes padrão */
+  foliage?: Foliage;
+  /** chapéu do cogumelo aceso, na cor de `glowDecor` (ou âmbar) */
+  capGlow?: boolean;
   /** sombra de nuvens passando pelo chão e pelos personagens: quanto escurece o sol (0..1), tamanho das nuvens (m), velocidade (m/s)
    * e cobertura (0..1, fração do chão na sombra); `drift`: quanto a força e a cor do sol variam devagar (0..1) */
   clouds: { strength: number; size: number; speed: number; cover: number; drift: number };
@@ -54,19 +61,21 @@ export const ZONES: Record<string, ZoneDef> = {
   bosque: {
     id: "bosque", name: "Bosque Sombrio", subtitle: "Onde os goblins montaram acampamento", level: 1, boss: "bloodfang",
     enemies: [["goblin", 5], ["swarm", 3], ["archer", 2], ["orc", 2], ["splitter", 1]],
-    ground: [0x3a7034, 0x4f8a3e, 0x2c5c30], path: 0x9a8257, fog: 0x9fc7a8, sky: 0x9fc7a8,
-    sun: 0xfff1d0, sunIntensity: 2.4, ambient: 0xa8d0ff, ambientIntensity: 1.1,
+    ground: [0x2f4e2c, 0x3a5a32, 0x243f27], path: 0x5e5242, fog: 0x31463f, sky: 0x31463f,
+    sun: 0xd2dcea, sunIntensity: 2.6, ambient: 0x82a2b0, ambientIntensity: 1.25,
     decor: [["tree", 10, true], ["pine", 6, true], ["rock", 2.4, true], ["bush", 6, false], ["mushroom", 2, false]],
-    decorCount: 950,
-    grass: { root: 0x2f6330, tip: 0x6fae4c, density: 1, height: 0.44 }, flowers: [0xffe14a, 0xffffff, 0xd98cff, 0xff8fa8], rockTop: 0x5f8f3e,
-    motes: { color: 0xffe080, lit: 0xfff0a0, rise: 0.25, rate: 60 },
-    shafts: { count: 130, color: 0xfff6e0, intensity: 0.3 },
-    scatter: [["tuft", 10, [0x3d7a35, 0x5a8f3a, 0x8f9a48]], ["leaf", 14, [0x8a5a2a, 0xa8742e, 0x6a7a2a, 0x7a4a24]], ["fern", 4.4, [0x2f6a30, 0x3f7f38]],
-      ["pebble", 3, [0x7a7262, 0x8a8070, 0x6a6458]], ["twig", 2.4, [0x5a3e28, 0x4a3422]]],
-    grade: { shadow: 0xb8cce0, light: 0xfff0d8, saturation: 1.0, contrast: 1.08 },
-    stains: [[0x223418, 16, 0.42], [0x7a8e3c, 11, 0.24], [0x2e4a26, 30, 0.45]],
+    decorCount: 950, glowDecor: 0xffa04a,
+    grass: { root: 0x203c24, tip: 0x557e40, density: 1, height: 0.44 }, flowers: [0xb8a040, 0xa8aca0, 0x8a68b0, 0xa86878], rockTop: 0x3f5a30,
+    motes: { color: 0xc8d890, lit: 0xffc860, rise: 0.25, rate: 60 },
+    shafts: { count: 130, color: 0xbfe2dc, intensity: 0.26 },
+    scatter: [["tuft", 10, [0x2a4e2a, 0x3a5e32, 0x56603a]], ["leaf", 14, [0x6a4a26, 0x7a5a2a, 0x4a5224, 0x5a3a20]], ["fern", 4.4, [0x22482a, 0x2c5830]],
+      ["pebble", 3, [0x5a5850, 0x66645a, 0x4c4a44]], ["twig", 2.4, [0x4a3424, 0x3a2a1e]]],
+    grade: { shadow: 0x98b4c8, light: 0xf4f0e4, saturation: 0.92, contrast: 1.06 },
+    foliage: { tree: [[0x15301f, 0x335e3c], [0x183622, 0x3a6640], [0x132e24, 0x305a40]], pine: [0x13322a, 0x2f5c44], bush: [0x183a24, 0x3c6438] },
+    capGlow: true,
+    stains: [[0x18281a, 16, 0.42], [0x4e5a30, 11, 0.24], [0x22381e, 30, 0.45]],
     clouds: { strength: 0.6, size: 58, speed: 1.8, cover: 0.5, drift: 0.1 },
-    haze: { start: 34, density: 0.013, mist: 0.24, mistHeight: 0.8, mistColor: 0xb4d2bc, mistSize: 10, mistSpeed: 0.7 },
+    haze: { start: 30, density: 0.015, mist: 0.36, mistHeight: 0.8, mistColor: 0x5c766c, mistSize: 10, mistSpeed: 0.7 },
   },
   cripta: {
     id: "cripta", name: "Campos da Cripta", subtitle: "Os mortos não descansam aqui", level: 6, boss: "gravekeeper",

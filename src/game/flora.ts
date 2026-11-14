@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { Rng } from "../core/rng";
-import type { DecorKind } from "../data/zones";
+import type { DecorKind, Foliage } from "../data/zones";
 
 export type MatKind = "solid" | "foliage" | "rock" | "glow";
 export interface DecorModel {
@@ -120,7 +120,12 @@ function rockGeo(rng: Rng, r: number, base: number, top: number): THREE.BufferGe
 export interface FloraPalette {
   glow: number;
   rockTop: number;
+  /** verdes da flora (base escura, topo claro); sem isso, os verdes de sempre */
+  foliage?: Foliage;
+  /** chapéu do cogumelo aceso (contraste quente em zona escura) */
+  capGlow?: boolean;
 }
+const DEFAULT_FOLIAGE: Foliage = { tree: [[0x2f6f2e, 0x6fbf4a], [0x35782f, 0x86cf55], [0x2a6433, 0x5fae4a]], pine: [0x1f4f30, 0x4f9a52], bush: [0x2a6a2c, 0x74c24e] };
 
 /** `variant` muda a semente: mesma espécie, silhueta diferente. */
 export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette): DecorModel {
@@ -128,12 +133,12 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
   switch (kind) {
     case "tree": {
       const h = rng.range(1.9, 2.5);
-      const solid = [trunk(rng, h, 0.3, 0.16, 0x6b4a2e)];
+      const solid = [trunk(rng, h, 0.3, 0.16, 0x58463a)];
       // um galho
-      const br = trunk(rng, 0.9, 0.09, 0.05, 0x6b4a2e, 0);
+      const br = trunk(rng, 0.9, 0.09, 0.05, 0x58463a, 0);
       solid.push(xf(br, 0, h * 0.62, 0, 0, rng.range(0, 6), rng.range(0.7, 1.0)));
       const fol: THREE.BufferGeometry[] = [];
-      const greens: [number, number][] = [[0x2f6f2e, 0x6fbf4a], [0x35782f, 0x86cf55], [0x2a6433, 0x5fae4a]];
+      const greens = (pal.foliage ?? DEFAULT_FOLIAGE).tree;
       const n = rng.int(5, 7);
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2 + rng.range(-0.3, 0.3);
@@ -153,7 +158,8 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
         const r = 1.35 - t * 0.85;
         let g: THREE.BufferGeometry = new THREE.ConeGeometry(r, 1.5 - t * 0.3, 9, 2);
         g = prep(displace(g, rng.range(0, 30), 0.12, 2.6), true);
-        paint(g, 0x1f4f30, 0x4f9a52, -0.7, 0.7, 0.08, rng);
+        const pc = (pal.foliage ?? DEFAULT_FOLIAGE).pine;
+        paint(g, pc[0], pc[1], -0.7, 0.7, 0.08, rng);
         fol.push(xf(g, 0, h + 0.6 + i * 0.78, 0, 0, rng.range(0, 3)));
       }
       return { parts: { solid: merge(solid), foliage: merge(fol) } };
@@ -175,7 +181,8 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
     }
     case "bush": {
       const fol: THREE.BufferGeometry[] = [];
-      for (let i = 0; i < 3; i++) fol.push(xf(blob(rng, rng.range(0.4, 0.6), 0x2a6a2c, 0x74c24e, 0.75), rng.range(-0.35, 0.35), rng.range(0.3, 0.45), rng.range(-0.35, 0.35)));
+      const bc = (pal.foliage ?? DEFAULT_FOLIAGE).bush;
+      for (let i = 0; i < 3; i++) fol.push(xf(blob(rng, rng.range(0.4, 0.6), bc[0], bc[1], 0.75), rng.range(-0.35, 0.35), rng.range(0.3, 0.45), rng.range(-0.35, 0.35)));
       // frutinhas
       const solid: THREE.BufferGeometry[] = [];
       if (variant % 2 === 0) {
@@ -189,7 +196,7 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
       return { parts: { foliage: merge(fol), ...(solid.length ? { solid: merge(solid) } : {}) } };
     }
     case "mushroom": {
-      const solid: THREE.BufferGeometry[] = [];
+      const solid: THREE.BufferGeometry[] = [], caps: THREE.BufferGeometry[] = [];
       const n = rng.int(1, 3);
       for (let i = 0; i < n; i++) {
         const s = rng.range(0.6, 1.1);
@@ -199,9 +206,9 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
         solid.push(xf(stem, x, 0.17 * s, z));
         const cap = prep(new THREE.SphereGeometry(0.24 * s, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), true);
         paint(cap, 0xa82a22, 0xe8483a, 0, 0.24 * s, 0.1, rng);
-        solid.push(xf(cap, x, 0.32 * s, z, 0, 0, 0, 1, 0.75, 1));
+        (pal.capGlow ? caps : solid).push(xf(cap, x, 0.32 * s, z, 0, 0, 0, 1, 0.75, 1));
       }
-      return { parts: { solid: merge(solid) } };
+      return { parts: { solid: merge(solid), ...(caps.length ? { glow: merge(caps) } : {}) } };
     }
     case "tomb": {
       const list: THREE.BufferGeometry[] = [];

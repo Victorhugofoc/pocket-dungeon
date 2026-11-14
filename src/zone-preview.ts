@@ -10,7 +10,7 @@ import { Pipeline } from "./game/render";
 import { characterRig } from "./game/rigs";
 import { U } from "./game/shared";
 import { SUN_OFFSET, stepMotes } from "./game/air";
-import { buildWorld, driftSun, setZoneAtmosphere } from "./game/world";
+import { buildWorld, driftSun, fireFlicker, setZoneAtmosphere } from "./game/world";
 
 const q = new URLSearchParams(location.search);
 const zone = ZONES[q.get("zone") ?? "bosque"] ?? ZONES.bosque;
@@ -125,7 +125,7 @@ function tick(dt: number): void {
   stepMotes(fx, zone, x, z, dt, moteAcc);
   const fire = world.group.userData.fire as THREE.Group | undefined;
   if (fire) {
-    (fire.userData.light as THREE.PointLight).intensity = 40 + Math.sin(time * 11) * 6 + Math.sin(time * 23) * 4;
+    (fire.userData.light as THREE.PointLight).intensity = fireFlicker(time);
     for (let i = 0; i < 3; i++) fire.children[i].scale.y = (1 - i * 0.2) * (1 + Math.sin(time * (9 + i * 3) + i) * 0.18);
     if (Math.random() < dt * 14) fx.spark(fire.position.x + (Math.random() - 0.5) * 0.4, 0.9, fire.position.z + (Math.random() - 0.5) * 0.4, 0xffa040, 0.07, 0.9, 1.8);
   }

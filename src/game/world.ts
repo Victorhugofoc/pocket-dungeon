@@ -284,7 +284,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     const mk = `${b.kind}:${b.variant}`;
     let model = models.get(mk);
     if (!model) {
-      models.set(mk, (model = buildDecor(b.kind, b.variant, { glow, rockTop: zone.rockTop })));
+      models.set(mk, (model = buildDecor(b.kind, b.variant, { glow, rockTop: zone.rockTop, foliage: zone.foliage, capGlow: zone.capGlow })));
       occlude(model.parts);
       for (const g of Object.values(model.parts)) disposables.push(g);
     }
@@ -321,7 +321,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     const fl = buildFlower();
     const n = 900;
     const stemMat = mats.foliage;
-    const petalMat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, emissive: 0xffffff, emissiveIntensity: zone.glowDecor ? 0.5 : 0.06 }), { wind: 0.25, windFrom: 0.1 });
+    const petalMat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, emissive: 0xffffff, emissiveIntensity: zone.capGlow ? 0.08 : zone.glowDecor ? 0.5 : 0.06 }), { wind: 0.25, windFrom: 0.1 });
     const stems = new THREE.InstancedMesh(fl.stem, stemMat, n);
     const petals = new THREE.InstancedMesh(fl.petals, petalMat, n);
     const half = layout.size / 2 - 6;
@@ -385,7 +385,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     s.castShadow = true;
     fire.add(s);
   }
-  const fireLight = new THREE.PointLight(0xff8a3a, 45, 18, 1.7);
+  const fireLight = new THREE.PointLight(0xff8a3a, FIRE_LIGHT, 22, 1.4);
   fireLight.position.y = 1.4;
   fire.add(fireLight);
   fire.userData.light = fireLight;
@@ -481,3 +481,7 @@ const smooth = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 };
+
+/** força média da luz da fogueira; `fireFlicker` faz ela oscilar */
+const FIRE_LIGHT = 70;
+export const fireFlicker = (time: number): number => FIRE_LIGHT * (1 + Math.sin(time * 11) * 0.12 + Math.sin(time * 23) * 0.08);

@@ -57,7 +57,9 @@ Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e 
 
 **`M18-06` feito:** sombra de contato no chão (canal G da máscara), oclusão por vértice na flora e correção de cor por zona (`grade` em `zones.ts`).
 
-Próxima sessão (sugestão): passadas por zona, começando por `M18-07` (Bosque sombrio, D11). Cada uma tem uma lista de pendências do crítico na linha da tarefa anterior do registro (seção 9 do roadmap). Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
+**`M18-07` feito, falta validar:** Bosque sombrio (D11), paleta de flora por zona, cogumelos acesos, fogueira mais forte. Pendências do crítico registradas no roadmap.
+
+Próxima sessão (sugestão): validação do Bosque pelo usuário, depois `M18-08` (Cripta). Cada passada tem as pendências do crítico nas linhas `M18-03` a `M18-06` do registro. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.

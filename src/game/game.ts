@@ -20,7 +20,7 @@ import { kickRig, nextShot } from "./chars";
 import { Pipeline } from "./render";
 import { U } from "./shared";
 import { SUN_OFFSET, stepMotes } from "./air";
-import { buildWorld, driftSun, setZoneAtmosphere, type WorldView } from "./world";
+import { buildWorld, driftSun, fireFlicker, setZoneAtmosphere, type WorldView } from "./world";
 
 export interface GameEvents {
   toast(msg: string, color?: string): void;
@@ -1208,7 +1208,7 @@ export class Game {
     stepMotes(this.fx, this.zone, this.camTarget.x, this.camTarget.z, dt, this.moteAcc);
     const fire = this.world?.group.userData.fire as THREE.Group | undefined;
     if (fire) {
-      (fire.userData.light as THREE.PointLight).intensity = 40 + Math.sin(this.time * 11) * 6 + Math.sin(this.time * 23) * 4;
+      (fire.userData.light as THREE.PointLight).intensity = fireFlicker(this.time);
       for (let i = 0; i < 3; i++) fire.children[i].scale.y = (1 - i * 0.2) * (1 + Math.sin(this.time * (9 + i * 3) + i) * 0.18);
       if (Math.random() < dt * 14) this.fx.spark(fire.position.x + (Math.random() - 0.5) * 0.4, 0.9, fire.position.z + (Math.random() - 0.5) * 0.4, 0xffa040, 0.07, 0.9, 1.8);
     }
