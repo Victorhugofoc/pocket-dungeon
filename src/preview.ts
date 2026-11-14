@@ -2,6 +2,7 @@
 // Open with `npm run dev` at /preview.html. URL params: ?view=close|game&anim=idle|walk|attack&yaw=<deg>&dist=<n>&a=<id>&b=<id to compare>&freeze=<s>&ref=0
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TUNING } from "./data/tuning";
 import { ZONES } from "./data/zones";
 import { hasChar } from "./game/chars";
 import { animateRig, type Rig } from "./game/models";
@@ -89,6 +90,7 @@ function setView(v: string): void {
 const bar = document.getElementById("bar")!;
 const buttons: [string, string, string][] = [
   ["anim", "idle", "Idle"], ["anim", "walk", "Walk"], ["anim", "attack", "Attack"],
+  ["anim", "roar", "Roar"], ["anim", "rage", "Rage"], ["anim", "death", "Boss death"],
   ["view", "close", "Close-up"], ["view", "game", "Game camera"],
 ];
 function refresh(): void {
@@ -120,7 +122,10 @@ function frame(now: number): void {
   const t = (now - t0) / 1000;
   for (const a of actors) {
     const r = a.rig.root;
-    let attack = -1, windup = 0;
+    let attack = -1, windup = 0, roar = -1, dead = 0;
+    // ?freeze=<seconds into the cycle> holds one instant of the attack, roar or death for screenshots
+    const hold = q.has("freeze") ? Number(q.get("freeze")) : null;
+    const lead = a === actors[0];
     if (state.anim === "walk") {
       // walk a small circle so the gait comes from real displacement
       const ang = t * 0.9;
@@ -136,7 +141,10 @@ function frame(now: number): void {
         else if (c < 1.25) attack = (c - 0.7) / 0.55;
       }
     }
-    animateRig(a.rig, { t, move: state.anim === "walk" ? 1 : 0, attack, windup, dead: 0 });
+    if (lead && state.anim === "roar") roar = Math.min(1, (hold ?? t % 2.6) / TUNING.boss.roarTime);
+    if (lead && state.anim === "death") dead = Math.min(1.25, ((hold ?? t % 4) / TUNING.boss.deathTime) * 1.25);
+    if (roar >= 1) roar = -1;
+    animateRig(a.rig, { t, move: state.anim === "walk" ? 1 : 0, attack, windup, dead, roar, rage: lead && state.anim === "rage" ? 1 : 0, bossDeath: true });
   }
   controls.update();
   pipeline.render();

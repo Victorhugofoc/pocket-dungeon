@@ -4,6 +4,7 @@ import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/
 import type { StatusKind } from "../data/heroes";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
+import { type BossRing, makeBossRing } from "./fx";
 import type { Game } from "./game";
 
 export interface Dot {
@@ -58,6 +59,13 @@ export class Enemy {
   lastPattern = -1;
   enraged = false;
   spiral: { left: number; timer: number; angle: number; p: BossPattern } | null = null;
+  /** rugido em curso (0..1) ou -1; o chefe não ataca enquanto ruge */
+  roarT = -1;
+  roarDur = 1;
+  /** fúria suavizada para a postura e o anel */
+  rage = 0;
+  private emberT = 0;
+  private ring: BossRing | null = null;
 
   constructor(game: Game, def: EnemyDef | BossDef, level: number, x: number, z: number, opts: { champion?: boolean; summoned?: boolean } = {}) {
     const T = TUNING.enemy;
@@ -84,6 +92,17 @@ export class Enemy {
     this.rig = this.makeRig();
     this.rig.root.position.set(x, 0, z);
     game.scene.add(this.rig.root);
+    if (this.boss) {
+      this.ring = makeBossRing(game.scene, this.boss.glow);
+      this.ring.update(x, z, this.radius * 1.9, 0, 0, 0.45);
+    }
+  }
+
+  /** tira da cena tudo o que é deste inimigo */
+  dispose(): void {
+    disposeRig(this.rig);
+    this.ring?.dispose();
+    this.ring = null;
   }
 
   private makeRig(): Rig {
@@ -126,7 +145,7 @@ export class Enemy {
     const rig = this.rig;
 
     if (this.dead) {
-      this.deadT += dt * 2.0;
+      this.deadT += this.boss ? (dt * 1.25) / TUNING.boss.deathTime : dt * 2.0;
       // o corpo ainda desliza com o último empurrão
       this.x += this.kx * dt;
       this.z += this.kz * dt;
@@ -134,7 +153,8 @@ export class Enemy {
       this.kx *= kd;
       this.kz *= kd;
       rig.root.position.set(this.x, 0, this.z);
-      animateRig(rig, { t: now, move: 0, attack: -1, windup: 0, dead: this.deadT });
+      animateRig(rig, { t: now, move: 0, attack: -1, windup: 0, dead: this.deadT, bossDeath: this.isBoss });
+      if (this.boss) this.dissolve(game, dt);
       if (this.deadT >= 1.25) this.remove = true;
       return;
     }
@@ -181,6 +201,7 @@ export class Enemy {
           ? Math.hypot(p.x - this.homeX, p.z - this.homeZ) > game.layout.bossRadius + 16
           : fromHome > TUNING.enemy.leashRadius && dist > TUNING.enemy.aggroRadius;
         if (!alive || leash) this.reset(game);
+        else if (this.boss && this.roarT >= 0) this.updateRoar(game, dt);
         else if (this.boss) this.updateBoss(game, dt, dist, speed);
         else this.updateBehavior(game, dt, dist, speed);
       }
@@ -223,14 +244,28 @@ export class Enemy {
     animateRig(rig, {
       t: now, move: stunned ? 0 : this.moveAmt, attack: this.attackAnim,
       windup: this.windupT >= 0 ? this.windupT / this.windupDur : this.casting > 0 ? 0.6 + Math.sin(now * 20) * 0.1 : 0, dead: 0,
+      rage: this.rage, roar: this.roarT,
     });
+    if (this.boss) {
+      this.rage += ((this.enraged ? 1 : 0) - this.rage) * Math.min(1, dt * 3);
+      this.ring?.update(this.x, this.z, this.radius * 1.9, now, this.rage, this.aggro ? 1 : 0.45);
+      if (this.enraged) {
+        // brasas subindo do corpo
+        this.emberT -= dt;
+        while (this.emberT <= 0) {
+          this.emberT += 0.07;
+          const a = Math.random() * Math.PI * 2, r = Math.random() * this.radius;
+          game.fx.glow(this.x + Math.cos(a) * r, 0.4 + Math.random() * rig.height * 0.8, this.z + Math.sin(a) * r, 0xff4a1a, 0.3, 0.7, 0, 2.2 + Math.random() * 1.5, 0, -1);
+        }
+      }
+    }
     if (this.flash > 0) {
       this.flash = Math.max(0, this.flash - dt * 7);
       flashRig(rig, this.flash);
     } else if (stunned) tintRig(rig, 0x8fdcff, 0.55);
     else if (this.dots.length) tintRig(rig, this.dots[0].kind === "poison" ? 0x5fd35f : 0xff7a1a, 0.35);
     else if (now < this.slowUntil) tintRig(rig, 0x8fdcff, 0.25);
-    else if (this.enraged) tintRig(rig, 0xff2a1a, 0.3 + Math.sin(now * 8) * 0.12);
+    else if (this.enraged) tintRig(rig, 0xff2a1a, 0.13 + Math.sin(now * 8) * 0.09);
     else flashRig(rig, 0);
   }
 
@@ -238,8 +273,10 @@ export class Enemy {
     if (this.aggro || this.dead) return;
     this.aggro = true;
     this.cd = Math.max(this.cd, 0.4 + Math.random() * 0.5);
-    if (this.isBoss) game.onBossAggro(this);
-    else {
+    if (this.isBoss) {
+      game.onBossAggro(this);
+      this.startRoar(TUNING.boss.roarTime);
+    } else {
       // alerta o grupo
       for (const e of game.enemies) {
         if (!e.aggro && !e.dead && !e.isBoss && Math.hypot(e.x - this.x, e.z - this.z) < 11) {
@@ -258,11 +295,53 @@ export class Enemy {
     this.spiral = null;
     this.hp = this.maxHp;
     this.enraged = false;
+    this.roarT = -1;
     this.dots.length = 0;
     if (this.isBoss) game.onBossReset(this);
     if (this.summoned) {
       this.dead = true;
       this.deadT = 1;
+    }
+  }
+
+  private startRoar(dur: number): void {
+    this.roarT = 0;
+    this.roarDur = dur;
+    this.windupT = -1;
+  }
+
+  /** Rugido: o chefe encara o herói e, no auge, solta uma onda no chão com tremor de câmera. */
+  private updateRoar(game: Game, dt: number): void {
+    const b = this.boss!;
+    this.face(game.player.x, game.player.z);
+    const before = this.roarT;
+    this.roarT += dt / this.roarDur;
+    if (before < 0.34 && this.roarT >= 0.34) {
+      game.fx.shockwave(this.x, this.z, 16, b.glow, 0.9);
+      game.fx.shockwave(this.x, this.z, 9, 0xffffff, 0.5);
+      game.fx.flashLight(this.x, this.rig.height * 0.7, this.z, b.glow, 60, 0.6);
+      game.fx.burst(this.x, this.rig.height * 0.8, this.z, b.glow, 26, 9, 0.2, 0.7);
+      game.fx.addShake(0.8);
+    }
+    if (this.roarT >= 1) this.roarT = -1;
+  }
+
+  /** Morte de chefe: o corpo acende na cor dele e solta partículas até sumir num clarão. */
+  private dissolve(game: Game, dt: number): void {
+    const b = this.boss!;
+    const k = Math.min(1, this.deadT / 1.25);
+    tintRig(this.rig, b.glow, 0.12 + 0.88 * k * k);
+    this.ring?.update(this.x, this.z, this.radius * 1.9 * (1 + k * 0.6), game.time, this.rage, 1 - k);
+    this.emberT -= dt;
+    while (this.emberT <= 0) {
+      this.emberT += 0.05 - 0.035 * k;
+      const a = Math.random() * Math.PI * 2, r = Math.random() * this.radius * 1.1;
+      game.fx.glow(this.x + Math.cos(a) * r, 0.2 + Math.random() * this.rig.height * (0.9 - 0.6 * k), this.z + Math.sin(a) * r, b.glow, 0.34, 0.9, Math.cos(a) * 0.6, 2.4 + Math.random() * 2, Math.sin(a) * 0.6, -1.5);
+    }
+    if (this.deadT >= 1.25) {
+      game.fx.burst(this.x, 1, this.z, b.glow, 60, 10, 0.24, 1);
+      game.fx.shockwave(this.x, this.z, 9, b.glow, 0.6);
+      game.fx.flashLight(this.x, 1.5, this.z, b.glow, 70, 0.5);
     }
   }
 
@@ -373,6 +452,8 @@ export class Enemy {
       game.fx.shockwave(this.x, this.z, 8, 0xff2a1a, 0.6);
       game.fx.text(this.x, this.rig.height + 1, this.z, "ENFURECIDO!", "crit");
       game.audio.play("boss");
+      this.startRoar(TUNING.boss.enrageRoarTime);
+      return;
     }
     if (this.spiral) {
       const s = this.spiral;

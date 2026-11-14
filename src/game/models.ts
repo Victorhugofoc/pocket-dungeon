@@ -225,6 +225,10 @@ export interface AnimState {
   /** 0..1 carregando um golpe (telegrafia) */
   windup: number;
   dead: number;
+  /** chefes: fúria 0..1 (postura e respiração), rugido 0..1 (ou -1) e morte própria (cai de joelhos e se desfaz) */
+  rage?: number;
+  roar?: number;
+  bossDeath?: boolean;
 }
 
 export function animateRig(rig: Rig, a: AnimState): void {

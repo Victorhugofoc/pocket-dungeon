@@ -166,7 +166,8 @@ export function animateChar(rig: Rig, a: AnimState): void {
   const ph = P.stride;
   const sw = Math.sin(ph) * move;
   const cw = Math.cos(ph);
-  const breathe = Math.sin(t * 2.1);
+  const rage = a.rage ?? 0;
+  const breathe = Math.sin(t * (2.1 + 3.6 * rage)); // em fúria respira mais rápido e mais fundo
   const sway = Math.sin(t * 0.9) * (1 - move); // troca de apoio parado
   const amp = 0.62 + 0.3 * run;
 
@@ -179,8 +180,9 @@ export function animateChar(rig: Rig, a: AnimState): void {
   hips.position.set(sway * 0.025 + sw * 0.02 * sN, hipY, 0);
   hips.rotation.set(0, sw * 0.16 * fN + twist * 0.4, sway * 0.04 + Math.cos(ph) * 0.05 * move);
   // tronco: inclina na direção do movimento, contragira os ombros, respira
-  torso.rotation.set(c.lean + (0.1 + 0.16 * run) * move * fN + breathe * 0.014, -sw * 0.24 * fN + twist, -sway * 0.03 - 0.1 * move * sN - Math.cos(ph) * 0.04 * move);
-  torso.scale.set(1 + breathe * 0.008, 1 + breathe * 0.014, 1 + breathe * 0.02);
+  torso.rotation.set(c.lean + 0.1 * rage + (0.1 + 0.16 * run) * move * fN + breathe * (0.014 + 0.03 * rage), -sw * 0.24 * fN + twist, -sway * 0.03 - 0.1 * move * sN - Math.cos(ph) * 0.04 * move);
+  const heave = 1 + 2.6 * rage;
+  torso.scale.set(1 + breathe * 0.008 * heave, 1 + breathe * 0.014 * heave, 1 + breathe * 0.02 * heave);
   // cabeça: olha em volta parado, estabiliza andando e atrasa no giro
   head.rotation.set(-c.lean * 0.8 - 0.07 * move + Math.sin(t * 0.7) * 0.03 * (1 - move), Math.sin(t * 0.43) * 0.16 * (1 - move) + sw * 0.1 - twist * 0.9, sway * 0.03);
 
@@ -188,8 +190,9 @@ export function animateChar(rig: Rig, a: AnimState): void {
   const armLag = P.armLag.step(sw, 90, 9, dt);
   const freeR = c.poseR[0] > -0.8 ? 1 : 0.18;
   const freeL = c.poseL[0] > -0.8 ? 1 : 0.18;
-  armR.rotation.set(c.poseR[0] - sw * 0.55 * amp * freeR * fN - secF * 0.12 * freeR, 0, c.armOut + Math.abs(sw) * 0.06);
-  armL.rotation.set(c.poseL[0] + sw * 0.55 * amp * freeL * fN - secF * 0.12 * freeL, 0, -c.armOut - Math.abs(sw) * 0.06);
+  const out = c.armOut + rage * (0.1 + breathe * 0.04);
+  armR.rotation.set(c.poseR[0] - sw * 0.55 * amp * freeR * fN - secF * 0.12 * freeR, 0, out + Math.abs(sw) * 0.06);
+  armL.rotation.set(c.poseL[0] + sw * 0.55 * amp * freeL * fN - secF * 0.12 * freeL, 0, -out - Math.abs(sw) * 0.06);
   foreR.rotation.set(c.poseR[1] - (0.25 * move + Math.max(0, -armLag) * 0.45) * freeR - run * 0.4 * freeR, 0, 0);
   foreL.rotation.set(c.poseL[1] - (0.25 * move + Math.max(0, armLag) * 0.45) * freeL - run * 0.4 * freeL, 0, 0);
 
@@ -210,10 +213,26 @@ export function animateChar(rig: Rig, a: AnimState): void {
     hips.rotation.set(0, twist * 0.25, 0);
     if (B.tail) B.tail.rotation.set(Math.sin(t * 1.3) * 0.025 + secF * 0.06, Math.sin(t * 0.9) * 0.03 + twist * 0.5, 0);
   }
-  if (c.legs.length) stepLegs(c, rig, hips.position, dt, vf, vs, a.dead);
   // peças soltas arrastam com a velocidade e oscilam como mola
   if (B.cape) B.cape.rotation.set(0.1 + secF + Math.sin(t * 3.1) * 0.04 * (1 + move), 0, -secS + leanS);
   if (B.tail && c.form !== "spider") B.tail.rotation.set(0.2 + secF * 0.6 + Math.sin(t * 2.6) * 0.12, Math.sin(t * 2.1) * 0.5 + twist * 2 - secS, 0);
+
+  // ---- rugido de chefe: encolhe puxando o ar, depois peito para fora, cabeça para trás e braços abertos, tremendo
+  const roar = a.roar ?? -1;
+  if (alive && roar >= 0) {
+    const inh = roar < 0.3 ? ease(roar / 0.3) : 1 - ease(Math.min(1, (roar - 0.3) / 0.12));
+    const ro = roar < 0.3 ? 0 : roar < 0.42 ? ease((roar - 0.3) / 0.12) : roar < 0.85 ? 1 : 1 - ease((roar - 0.85) / 0.15);
+    const tremor = ro * Math.sin(t * 55) * 0.022;
+    torso.rotation.x += 0.34 * inh - 0.4 * ro + tremor;
+    head.rotation.x += 0.25 * inh - 0.55 * ro + tremor;
+    hips.position.y += (-0.09 * inh + 0.03 * ro) * c.hipY;
+    armR.rotation.x += (0.4 - armR.rotation.x) * ro * 0.75 - 0.25 * inh;
+    armL.rotation.x += (0.4 - armL.rotation.x) * ro * 0.75 - 0.25 * inh;
+    armR.rotation.z += 0.7 * ro - 0.1 * inh;
+    armL.rotation.z -= 0.7 * ro - 0.1 * inh;
+    foreR.rotation.x += (-0.55 - foreR.rotation.x) * ro * 0.7;
+    foreL.rotation.x += (-0.55 - foreL.rotation.x) * ro * 0.7;
+  }
 
   // ---- golpe: preparo, ataque que passa do ponto e volta, corpo avança
   const wind = a.windup;
@@ -283,8 +302,31 @@ export function animateChar(rig: Rig, a: AnimState): void {
   }
   P.wasAttacking = p >= 0;
 
-  // ---- queda: tomba para onde o golpe empurrou, quica e fica no chão
-  if (!alive) {
+  // ---- morte de chefe: cambaleia, cai de joelhos, tomba para a frente e achata enquanto se desfaz
+  if (!alive && a.bossDeath) {
+    const k = a.dead;
+    const stag = ease(clamp(k / 0.22, 0, 1));
+    const kneel = ease(clamp((k - 0.18) / 0.3, 0, 1));
+    const slump = ease(clamp((k - 0.45) / 0.3, 0, 1));
+    const fade = ease(clamp((k - 0.8) / 0.45, 0, 1));
+    inner.rotation.set(0, 0, 0);
+    inner.position.set(0, 0, 0);
+    inner.scale.set(1 - fade * 0.35, 1 - fade * 0.9, 1 - fade * 0.35);
+    if (B.thighL && B.shinL) {
+      const thigh = -B.shinL.position.y;
+      hips.position.y += (thigh * 0.83 + 0.08 - hips.position.y) * kneel;
+      B.thighL.rotation.set(-0.6 * kneel, 0, -0.12 * kneel);
+      B.thighR!.rotation.set(-0.6 * kneel, 0, 0.12 * kneel);
+      B.shinL.rotation.x = 2.05 * kneel;
+      B.shinR!.rotation.x = 2.05 * kneel;
+    } else hips.position.y = c.hipY * (1 - (c.form === "spider" ? 0.6 : 0.42) * kneel);
+    torso.rotation.set(c.lean - 0.3 * stag * (1 - slump) + 0.8 * slump, 0.12 * stag * (1 - slump), 0);
+    head.rotation.set(-0.45 * stag * (1 - slump) + 0.55 * slump, 0, 0.1 * slump);
+    armR.rotation.set(c.poseR[0] * (1 - kneel) + 0.25 * slump, 0, c.armOut * (1 - slump) + 0.18 * slump);
+    armL.rotation.set(c.poseL[0] * (1 - kneel) + 0.25 * slump, 0, -c.armOut * (1 - slump) - 0.18 * slump);
+    foreR.rotation.x = c.poseR[1] * (1 - kneel) - 0.2 * kneel;
+    foreL.rotation.x = c.poseL[1] * (1 - kneel) - 0.2 * kneel;
+  } else if (!alive) {
     const k = Math.min(1, a.dead);
     const fall = k < 0.55 ? Math.pow(k / 0.55, 2) : 1 - 0.07 * Math.sin(((k - 0.55) / 0.45) * Math.PI);
     let ff = P.fallX * sn + P.fallZ * cs;
@@ -310,6 +352,8 @@ export function animateChar(rig: Rig, a: AnimState): void {
       B.shinR!.rotation.x = 0.3 * limp;
     }
   }
+  // por último: as patas seguem a altura final do corpo (rugido, morte)
+  if (c.legs.length) stepLegs(c, rig, hips.position, dt, vf, vs, a.dead);
 }
 
 const V = new THREE.Vector3();

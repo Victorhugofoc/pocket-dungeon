@@ -109,6 +109,8 @@ export class Game {
   started = false;
   paused = false;
   private hitstop = 0;
+  /** recompensa do chefe, entregue quando o corpo dele some */
+  private bossReward: (() => void) | null = null;
   private saveTimer = 0;
   private bagFullToast = 0;
   private lootRng = new Rng((Date.now() ^ 0x9e3779b9) >>> 0);
@@ -249,6 +251,7 @@ export class Game {
     this.enemies.push(this.boss);
     this.bossEngaged = false;
     this.bossDead = false;
+    this.bossReward = null;
 
     const p = this.player;
     p.x = this.layout.spawn.x;
@@ -263,7 +266,7 @@ export class Game {
   }
 
   private clearZone(): void {
-    for (const e of this.enemies) disposeRig(e.rig);
+    for (const e of this.enemies) e.dispose();
     this.enemies.length = 0;
     for (const pr of this.projectiles) this.freeProjectile(pr);
     this.projectiles.length = 0;
@@ -696,10 +699,6 @@ export class Game {
       s.zonesUnlocked.push(next);
       this.events.toast(`Nova zona liberada: ${ZONES[next].name}`, "#9be4ff");
     }
-    if (this.world) {
-      this.world.portal.visible = true;
-      this.world.portal.position.set(this.layout.boss.x, 0, this.layout.boss.z);
-    }
     this.persist();
     const pool = RELIC_IDS.filter((id) => !s.relics.includes(id));
     this.lootRng.shuffle(pool);
@@ -708,12 +707,19 @@ export class Game {
     const after = () => {
       if (final) this.events.victory();
     };
-    if (offer.length) {
-      setTimeout(() => this.events.relicChoice(offer, (id) => {
-        this.addRelic(id);
-        after();
-      }), 1400);
-    } else setTimeout(after, 1400);
+    // portal e escolha de relíquia só depois que o corpo do chefe se desfaz (a escolha pausa o jogo)
+    this.bossReward = () => {
+      if (this.world) {
+        this.world.portal.visible = true;
+        this.world.portal.position.set(this.layout.boss.x, 0, this.layout.boss.z);
+      }
+      if (offer.length) {
+        this.events.relicChoice(offer, (id) => {
+          this.addRelic(id);
+          after();
+        });
+      } else after();
+    };
   }
 
   // ---------------------------------------------------------------- inventário
@@ -1031,7 +1037,7 @@ export class Game {
     }
 
     // portal
-    this.nearPortal = this.bossDead && Math.hypot(p.x - this.layout.boss.x, p.z - this.layout.boss.z) < 2.6;
+    this.nearPortal = this.bossDead && this.world !== null && this.world.portal.visible && Math.hypot(p.x - this.layout.boss.x, p.z - this.layout.boss.z) < 2.6;
     if (this.nearPortal && input.wasPressed("KeyE")) this.events.openTravel();
 
     // visual
@@ -1115,9 +1121,14 @@ export class Game {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (e.remove) {
-        disposeRig(e.rig);
+        e.dispose();
         this.enemies.splice(i, 1);
-        if (e === this.boss) this.boss = null;
+        if (e === this.boss) {
+          this.boss = null;
+          const reward = this.bossReward;
+          this.bossReward = null;
+          if (reward) setTimeout(reward, 600);
+        }
         continue;
       }
       const near = Math.abs(e.x - p.x) < R && Math.abs(e.z - p.z) < R;
