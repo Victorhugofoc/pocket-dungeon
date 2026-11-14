@@ -1,6 +1,6 @@
 // Heróis. Os que têm o comentário "Redesenho" foram refeitos pelo método da seção 4 do roadmap; os outros são a versão antiga, a refazer em M2.
 import * as THREE from "three";
-import { type G, type Spec, at, beard, bell, belt, body, bx, cape, capeMesh, cone, cowboyHat, cyl, dagger, dk, dome, edge, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, lathe, limb, plateMesh, restArm, revolver, robeMesh, sculpt, sculptTube, sph, ss, staff, stud, sword, torus, tubeMesh, wizardHat, BLACK, BONE, GOLD, LEATHER, SKIN, WOOD } from "./kit";
+import { type G, type Spec, at, beard, bell, belt, body, bx, cape, capeMesh, cone, cowboyHat, cyl, dagger, dk, dome, edge, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, lathe, limb, muscleArm, plateMesh, restArm, revolver, robeMesh, sculpt, sculptTube, sph, ss, staff, stud, sword, torus, tubeMesh, wizardHat, BLACK, BONE, GOLD, LEATHER, SKIN, WOOD } from "./kit";
 
 export const HEROES: Record<string, Spec> = {
   // ------------------------------------------------ heróis
@@ -125,19 +125,123 @@ export const HEROES: Record<string, Spec> = {
     b.lit("foreR", at(sph(0.13, 0xe0b0ff), 0, -0.5, 0.05));
     b.add("foreR", at(torus(0.17, 0.018, GOLD), 0, -0.5, 0.05, 0.6));
   },
+  // Redesenho a partir do sprite (docs/ref/ignis.png): lutador de base baixa, cabelo vermelho espetado com pontas em chama, gi preto sem
+  // mangas aberto no peito, braços nus e fortes, faixa vermelha com pontas compridas, calça larga cinza e punho direito em chamas.
+  // Medidas do sprite (altura 80 px com o cabelo): cabeça 14 px, ombros 28 px, quadril a 45% da altura, pontas da faixa com 25 px.
   ignis: (b) => {
-    body(b, { skin: 0xe0a070, top: 0x2b2b30, bottom: 0x2b2b30, boots: 0x3a2a22, sleeve: 0xe0a070 });
-    b.glowColor = 0xff7a1a;
-    b.style = "thrust"; b.poseR = [-0.7, -1.2]; b.poseL = [-0.5, -1.3];
-    b.add("head", ...hairCap(0xe8331a));
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      b.add("head", at(cone(0.075, 0.34, i % 2 ? 0xff5a2a : 0xe8331a, 5), Math.cos(a) * 0.1, 0.5, Math.sin(a) * 0.1 - 0.02, Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5));
+    const FACE = 0xf0b888, FACE_D = 0xb06e48, FACE_L = 0xffd8a8, GI = 0x3d3c4a, GI_D = 0x1b1a23, GI_L = 0x6e6d82, RED = 0xd41c1c, RED_D = 0x6e0c10;
+    const HAIR = 0xe01a18, HAIR_D = 0x6a0a10, PANTS = 0x62626e, PANTS_D = 0x2e2e3a, BOOT = 0x5a2420, BOOT_D = 0x2c100e, BROW = 0x3a1410;
+    const FLAME = 0xff8a20, FLAME_Y = 0xffd860, FLAME_R = 0xe83010;
+    const col = (hex: number) => new THREE.Color(hex);
+    const cFace = col(FACE), cFaceD = col(FACE_D), cFaceL = col(FACE_L), cGi = col(GI), cGiD = col(GI_D), cGiL = col(GI_L);
+    const cHair = col(HAIR), cHairD = col(HAIR_D), cFlame = col(FLAME), cFlameY = col(FLAME_Y), cFlameR = col(FLAME_R);
+    const HAND = 0.3;
+    b.bulk = 1.05; b.style = "thrust"; b.rough = 0.74; b.glowByVertex = true; b.glowColor = FLAME;
+    b.lean = 0.14; b.crouch = 0.42; b.armOut = 0.2;
+    b.poseR = [-0.95, -1.15]; b.poseL = [-0.05, -1.7];
+    b.dims = { hipY: 0.93, headY: 0.58, shoulderY: 0.46, shoulderX: 0.3, arm: 0.33, hipX: 0.17, thigh: 0.44 };
+
+    // ---- rosto jovem e bravo: malha única de queixo afinado; olhos, sobrancelhas grossas e boca na camada sem contorno
+    b.add("head", at(sculpt(26, 20, (n, p) => {
+      const front = ss(0.3, 0.9, n.z);
+      const jaw = ss(0.05, -0.95, n.y);
+      p.set(
+        n.x * 0.152 * (1 - 0.3 * jaw),
+        n.y * 0.19 - 0.012 * jaw * front,
+        n.z * 0.162 * (1 - 0.1 * jaw) + 0.022 * bell(n.x, 0.11) * bell(n.y + 0.12, 0.13) * front - 0.012 * headMask.socket(n) + 0.012 * bell(n.x, 0.3) * ss(-0.55, -0.9, n.y) * front,
+      );
+    }, (n, c) => {
+      c.copy(cFaceD).lerp(cFace, ss(-1, -0.1, n.y) * (0.8 + 0.2 * Math.max(0, n.z)));
+    }), 0, 0.2, 0));
+    for (const s of [-1, 1]) {
+      b.flat("head", at(stud(0.025, 0xf6f3ec, 0xd9d3c6, 1.25, 0.8, 0.3), s * 0.056, 0.226, 0.14, 0, s * 0.3, 0));
+      b.flat("head", at(stud(0.015, 0x5a2a12, 0x5a2a12, 1, 1.1, 0.3), s * 0.056, 0.226, 0.147, 0, s * 0.3, 0));
+      b.flat("head", at(bx(0.07, 0.02, 0.016, BROW, BROW), s * 0.058, 0.258, 0.148, 0, s * 0.3, s * 0.3));
     }
-    b.add("hips", ...belt(0xc8281e, 1, 0xc8281e), at(bx(0.07, 0.36, 0.03, 0xc8281e), 0.12, -0.18, 0.18));
-    for (const f of ["foreL", "foreR"]) {
-      b.add(f, at(cyl(0.075, 0.075, 0.1, 0xc8281e, 8), 0, -0.2, 0));
-      b.lit(f, at(sph(0.1, 0xffa040), 0, -0.34, 0), at(cone(0.07, 0.22, 0xffd34d, 6), 0, -0.34, 0.1, 1.2));
+    b.flat("head", at(bx(0.045, 0.008, 0.01, 0x7a3a2c, 0x7a3a2c), 0, 0.116, 0.154));
+    // ---- cabelo: massa esculpida com pontas largas subindo como labaredas (vermelho escuro na raiz, laranja nas pontas) e mecha caída do lado
+    const spike = (n: THREE.Vector3) => Math.pow(Math.max(0, Math.sin(n.x * 6.5 + 0.9) * Math.sin(n.z * 6 + 0.4)), 0.7) * ss(-0.1, 0.6, n.y);
+    b.add("head", sculpt(32, 22, (n, p) => {
+      const hairline = 0.34 + 0.12 * Math.sin(n.x * 8 + 0.5) - 0.12 * ss(0.5, 0.9, Math.abs(n.x));
+      const face = ss(0.05, 0.35, n.z) * ss(hairline + 0.1, hairline - 0.06, n.y);
+      const nape = ss(-0.4, -0.8, n.y) * (n.z > -0.2 ? 1 : 0.3);
+      const sp = spike(n);
+      const k = (1.24 + 0.34 * sp) * (1 - 0.34 * face) * (1 - 0.4 * nape);
+      p.set(n.x * 0.158 * k, n.y * 0.185 * k + 0.225 + 0.1 * sp, n.z * 0.168 * k - 0.014 - 0.03 * sp);
+    }, (n, c) => {
+      const sp = spike(n);
+      c.copy(cHairD).lerp(cHair, ss(-0.5, 0.4, n.y)).lerp(cFlame, ss(0.45, 0.95, sp));
+    }));
+    // labaredas pequenas acesas saindo das pontas
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.05 + 0.3, r = 0.07 + (i % 2) * 0.04;
+      const base = new THREE.Vector3(Math.cos(a) * r, 0.5 + (i % 3) * 0.02, Math.sin(a) * r - 0.03);
+      b.lit("head", tubeMesh(5, 6, (t, o) => {
+        o.copy(base);
+        o.x += Math.cos(a) * 0.05 * t + 0.03 * Math.sin(t * 4 + i);
+        o.y += 0.17 * t;
+        o.z += Math.sin(a) * 0.05 * t - 0.04 * t * t;
+      }, (t) => 0.028 * Math.pow(Math.max(0, 1 - t), 0.8) + 0.002, (_a, t, c) => c.copy(cFlameY).lerp(cFlame, ss(0, 0.3, t)).lerp(cFlameR, ss(0.45, 1, t)), new THREE.Vector3(1, 0, 0.3)));
+    }
+
+    // ---- tronco nu e, por cima, o gi sem mangas: a mesma forma um pouco maior, afundada no V do peito e no pescoço para a pele aparecer
+    const trunk = (grow: (t: number, s: number, front: number) => number, tint: (t: number, s: number, front: number, c: THREE.Color) => void): G => sculpt(24, 18, (n, p) => {
+      const t = (n.y + 1) / 2, rho = Math.hypot(n.x, n.z) || 1e-6, s = n.x / rho, cz = n.z / rho, r = Math.pow(rho, 0.45), front = Math.max(0, cz);
+      const W = 0.165 + 0.085 * ss(0.15, 0.72, t) - 0.15 * ss(0.84, 1, t);
+      const D = 0.118 + 0.04 * ss(0.2, 0.7, t) - 0.06 * ss(0.85, 1, t);
+      const z = cz * D * r + 0.032 * bell(t - 0.7, 0.11) * front * (1 - 0.75 * bell(s, 0.13)) * r - 0.008 * bell(s, 0.07) * front * (1 - ss(0.25, 0.6, t));
+      const k = grow(t, s, front);
+      p.set(s * W * r * k, -0.08 + t * 0.72, z * k);
+    }, (n, c) => {
+      const t = (n.y + 1) / 2, rho = Math.hypot(n.x, n.z) || 1e-6;
+      tint(t, n.x / rho, Math.max(0, n.z / rho), c);
+    });
+    const vee = (t: number, s: number, front: number) => (front > 0 ? Math.abs(s) - (0.03 + 0.5 * ss(0.3, 0.92, t)) : 1); // < 0 dentro do V
+    b.add("torso", trunk(() => 1, (t, _s, front, c) => c.copy(cFaceD).lerp(cFace, 0.3 + 0.7 * t).lerp(cFaceL, front * 0.4 * bell(t - 0.68, 0.2))));
+    b.add("torso", trunk((t, s, front) => (t > 0.88 ? 0.88 : 0.88 + 0.19 * ss(-0.05, 0.04, vee(t, s, front))), (t, s, front, c) => {
+      c.copy(cGiD).lerp(cGi, 0.3 + 0.7 * t);
+      const v = vee(t, s, front);
+      if (v < 0.13) c.copy(cGiL); // gola
+    }));
+    b.add("torso", at(cyl(0.055, 0.062, 0.12, FACE, 8, FACE_D), 0, 0.61, 0));
+
+    // ---- braços nus com perfil de músculo; ombro do gi desfiado, atadura cinza e fita vermelha no pulso
+    const arm = muscleArm({ color: FACE, shade: FACE_D, girth: 0.52, len: 0.72 });
+    for (const [up, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
+      b.add(up, arm.upper.clone(), at(edge(lathe([[0.105, -0.04], [0.1, 0.01], [0.075, 0.07], [0, 0.095]], GI, GI_D, 10), GI_L, -0.06), s * 0.01, 0.02, 0, 0, 0, -s * 0.3));
+      b.add(fore, arm.lower.clone());
+      b.add(fore, edge(lathe([[0.062, -0.27], [0.068, -0.22], [0.08, -0.12], [0.078, -0.1]], 0x8a8a98, 0x565664, 10), RED, -0.27, -0.22));
+      b.add(fore, ...grp(fist(FACE, 0.06, s), 0, -HAND, 0.01));
+    }
+
+    // ---- quadril: calça larga, faixa vermelha grossa com nó, duas pontas caídas na frente e uma solta atrás (fita com física)
+    b.add("hips", at(sph(0.2, PANTS, 1.08, 0.78, 0.86, PANTS_D), 0, -0.02, 0));
+    const sash = lathe([[0.2, 0.02], [0.215, 0.06], [0.215, 0.12], [0.2, 0.16]], RED, RED_D, 14);
+    sash.scale(1.05, 1, 0.82);
+    b.add("hips", sash, at(stud(0.05, RED, RED_D, 1.2, 0.9, 0.8, 0), -0.06, 0.09, 0.175));
+    b.add("skirt", at(capeMesh({ color: RED, shade: RED_D, half: [0.22, 0.2], rTop: 0.2, rHem: 0.23, len: 0.5, folds: 0.05, tatter: 0.03, nu: 3, nt: 4 }), -0.07, 0.06, 0.19, 0, Math.PI + 0.25, 0));
+    b.add("skirt", at(capeMesh({ color: 0xb01416, shade: RED_D, half: [0.2, 0.17], rTop: 0.2, rHem: 0.22, len: 0.38, folds: 0.05, tatter: 0.03, nu: 3, nt: 3 }), 0.02, 0.06, 0.19, 0, Math.PI - 0.15, 0));
+    b.ribbons.push({ bone: "hips", at: [-0.14, 0.09, -0.16], len: 0.7, seg: 8, width: [0.05, 0.035], color: RED, tip: RED_D });
+
+    // ---- pernas: calça larga presa na canela por faixas, sapato escuro
+    for (const [th, sh] of [["thighL", "shinL"], ["thighR", "shinR"]] as const) {
+      b.add(th, limb(0.13, 0.11, 0.42, PANTS, 0.08));
+      b.add(sh, limb(0.115, 0.085, 0.24, PANTS, 0.2));
+      b.add(sh, edge(lathe([[0.066, -0.37], [0.07, -0.33], [0.08, -0.22], [0.076, -0.2]], BOOT, BOOT_D, 10), RED_D, -0.2));
+      b.add(sh, at(sph(0.082, BOOT, 1, 0.68, 1.9, BOOT_D), 0, -0.42, 0.07));
+    }
+
+    // ---- punho direito em chamas: línguas finas acesas, amarelas na base e vermelhas na ponta, puxadas para trás e para cima
+    const fistAt = new THREE.Vector3(0, -HAND, 0.01);
+    b.lit("foreR", at(stud(0.03, FLAME_Y, FLAME_Y), 0, -HAND - 0.03, 0.05));
+    for (let i = 0; i < 7; i++) {
+      const a = i * 0.9;
+      const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+      b.lit("foreR", tubeMesh(5, 7, (t, o) => {
+        o.copy(fistAt).addScaledVector(out, 0.065 + 0.03 * Math.sin(t * 5 + i * 2) * t);
+        o.y += -0.06 + (0.2 + (i % 3) * 0.05) * t;
+        o.z += -0.05 * t * t;
+      }, (t) => 0.026 * Math.pow(Math.max(0, 1 - t), 0.8) + 0.002, (_a, t, c) => c.copy(cFlameY).lerp(cFlame, ss(0, 0.3, t)).lerp(cFlameR, ss(0.45, 1, t)), new THREE.Vector3(0.3, 0.2, 1)));
     }
   },
   // Redesenho a partir do sprite (docs/ref/zephyr.png): pistoleiro velho de chapéu de aba larga e barba branca, poncho verde-azulado com faixa
