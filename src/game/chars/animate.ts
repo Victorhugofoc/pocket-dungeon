@@ -1,11 +1,12 @@
 // Animação procedural por molas: locomoção, ataque por estilo, reação a empurrão e morte.
-import type * as THREE from "three";
+import * as THREE from "three";
 import type { AnimState, Rig } from "../models";
 import type { Bone, Form, Style } from "./kit";
 
 export interface CharState {
   bones: Partial<Record<Bone, THREE.Group>>;
-  legs: THREE.Group[]; // patas extras (aranha)
+  /** patas com cinemática inversa (aranha) */
+  legs: IkLeg[];
   style: Style;
   /** pose de descanso dos braços: [ombro x, cotovelo x] */
   poseR: [number, number];
@@ -20,6 +21,22 @@ export interface CharState {
   /** altura do quadril em repouso */
   hipY: number;
   phys: ReturnType<typeof newPhys>;
+}
+
+export interface IkLeg {
+  root: THREE.Group;
+  femur: THREE.Group;
+  tibia: THREE.Group;
+  l1: number;
+  l2: number;
+  attach: THREE.Vector3;
+  home: THREE.Vector2;
+  /** pé no mundo; durante a passada vai de `from` ao alvo com `u` de 0 a 1 (-1 = apoiado) */
+  foot: THREE.Vector3;
+  from: THREE.Vector3;
+  u: number;
+  /** patas do mesmo grupo pisam juntas; os dois grupos se alternam */
+  group: number;
 }
 
 class Spring {
@@ -157,7 +174,7 @@ export function animateChar(rig: Rig, a: AnimState): void {
   const crouch = c.crouch + 0.1 * run;
   let hipY = c.hipY - crouch * 0.1;
   if (c.form === "robed") hipY = c.hipY + 0.06 + Math.sin(t * 2.4) * 0.05 + Math.abs(cw) * 0.02 * move;
-  else if (c.form === "spider") hipY = c.hipY + 0.25 + Math.sin(ph * 2) * 0.03 * move;
+  else if (c.form === "spider") hipY = c.hipY + Math.sin(t * 1.8) * 0.012 + Math.abs(cw) * 0.015 * move;
   else hipY -= (0.5 - Math.abs(cw) * 0.5) * 0.1 * move * (1 + run * 0.6) * W;
   hips.position.set(sway * 0.025 + sw * 0.02 * sN, hipY, 0);
   hips.rotation.set(0, sw * 0.16 * fN + twist * 0.4, sway * 0.04 + Math.cos(ph) * 0.05 * move);
@@ -187,14 +204,16 @@ export function animateChar(rig: Rig, a: AnimState): void {
     B.shinR!.rotation.x = crouch * 1.1 + kneeR;
   }
   if (B.skirt) B.skirt.rotation.set(-secF * 0.22 + kf * 0.3, 0, secS * 0.22);
-  c.legs.forEach((g, i) => {
-    const lp = ph * 1.4 + (i % 2 ? Math.PI : 0) + Math.floor(i / 2) * 1.6;
-    g.rotation.z = Math.max(0, Math.sin(lp)) * 0.24 * (i % 2 ? -1 : 1) * (0.2 + move);
-    g.rotation.x = Math.cos(lp) * 0.18 * (0.15 + move);
-  });
+  if (c.form === "spider") {
+    // corpo de aranha não rebola; o abdômen só pesa um pouco atrás
+    hips.position.x = 0;
+    hips.rotation.set(0, twist * 0.25, 0);
+    if (B.tail) B.tail.rotation.set(Math.sin(t * 1.3) * 0.025 + secF * 0.06, Math.sin(t * 0.9) * 0.03 + twist * 0.5, 0);
+  }
+  if (c.legs.length) stepLegs(c, rig, hips.position, dt, vf, vs, a.dead);
   // peças soltas arrastam com a velocidade e oscilam como mola
   if (B.cape) B.cape.rotation.set(0.1 + secF + Math.sin(t * 3.1) * 0.04 * (1 + move), 0, -secS + leanS);
-  if (B.tail) B.tail.rotation.set(0.2 + secF * 0.6 + Math.sin(t * 2.6) * 0.12, Math.sin(t * 2.1) * 0.5 + twist * 2 - secS, 0);
+  if (B.tail && c.form !== "spider") B.tail.rotation.set(0.2 + secF * 0.6 + Math.sin(t * 2.6) * 0.12, Math.sin(t * 2.1) * 0.5 + twist * 2 - secS, 0);
 
   // ---- golpe: preparo, ataque que passa do ponto e volta, corpo avança
   const wind = a.windup;
@@ -290,6 +309,65 @@ export function animateChar(rig: Rig, a: AnimState): void {
       B.shinL!.rotation.x = 0.9 * limp;
       B.shinR!.rotation.x = 0.3 * limp;
     }
+  }
+}
+
+const V = new THREE.Vector3();
+
+/** Patas com o pé preso ao chão: cada uma dá a passada quando o corpo se afasta do ponto de apoio; os dois grupos se alternam. */
+function stepLegs(c: CharState, rig: Rig, hip: THREE.Vector3, dt: number, vf: number, vs: number, dead: number): void {
+  const root = rig.root;
+  const S = root.scale.x;
+  const sn = Math.sin(root.rotation.y), cs = Math.cos(root.rotation.y);
+  const speed = Math.hypot(vf, vs);
+  const lead = Math.min(0.3, speed * 0.1) / (speed || 1);
+  const stepping = [false, false];
+  for (const l of c.legs) if (l.u >= 0) stepping[l.group] = true;
+  const fresh = !c.phys.init || dt <= 0;
+  const dur = clamp(0.2 - speed * 0.02, 0.09, 0.2);
+  const curl = dead > 0 ? ease(Math.min(1, dead * 2)) : 0;
+  for (const l of c.legs) {
+    // alvo no mundo: ponto de repouso adiantado na direção do movimento
+    const hx = l.home.x + vs * lead, hz = l.home.y + vf * lead;
+    V.set(root.position.x + (hx * cs + hz * sn) * S, 0, root.position.z + (-hx * sn + hz * cs) * S);
+    const err = Math.hypot(l.foot.x - V.x, l.foot.z - V.z) / S;
+    if (fresh || err > 3) {
+      l.foot.copy(V);
+      l.u = -1;
+    } else if (l.u < 0 && dead <= 0 && ((err > (speed > 0.05 ? 0.3 : 0.1) && !stepping[1 - l.group]) || err > 0.75)) {
+      l.u = 0;
+      l.from.copy(l.foot);
+      stepping[l.group] = true;
+    }
+    let lift = 0;
+    if (l.u >= 0) {
+      l.u += dt / dur;
+      if (l.u >= 1) {
+        l.u = -1;
+        l.foot.copy(V);
+      } else {
+        l.foot.lerpVectors(l.from, V, ease(l.u));
+        lift = Math.sin(l.u * Math.PI) * 0.22;
+      }
+    }
+    // pé no espaço do corpo; morta, as patas encolhem para junto do corpo
+    const dx = l.foot.x - root.position.x, dz = l.foot.z - root.position.z;
+    let fx = (dx * cs - dz * sn) / S, fy = lift, fz = (dx * sn + dz * cs) / S;
+    if (curl > 0) {
+      fx += (l.attach.x * 2.4 - fx) * curl;
+      fy += (0.2 - fy) * curl;
+      fz += (l.attach.z + l.home.y * 0.25 - fz) * curl;
+    }
+    l.root.position.copy(hip).add(l.attach);
+    const ox = fx - l.root.position.x, oy = fy - l.root.position.y, oz = fz - l.root.position.z;
+    const h = Math.hypot(ox, oz);
+    const d = clamp(Math.hypot(h, oy), Math.abs(l.l1 - l.l2) + 0.02, l.l1 + l.l2 - 0.02);
+    // joelho para cima: lei dos cossenos no plano vertical que contém o encaixe e o pé
+    const up = Math.atan2(oy, h) + Math.acos(clamp((l.l1 * l.l1 + d * d - l.l2 * l.l2) / (2 * l.l1 * d), -1, 1));
+    const knee = Math.acos(clamp((l.l1 * l.l1 + l.l2 * l.l2 - d * d) / (2 * l.l1 * l.l2), -1, 1));
+    l.root.rotation.y = Math.atan2(ox, oz);
+    l.femur.rotation.x = -up;
+    l.tibia.rotation.x = Math.PI - knee;
   }
 }
 

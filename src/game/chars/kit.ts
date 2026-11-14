@@ -48,13 +48,27 @@ export function torus(r: number, tube: number, c: number): G {
 }
 export const at = xf;
 
+/** Pata de dois ossos. Geometria ao longo de +z a partir da origem de cada osso; usa o material de `pelt` quando houver. */
+export interface LegSpec {
+  /** encaixe no corpo, em relação ao quadril */
+  attach: [number, number, number];
+  /** onde o pé pousa em repouso, no chão, em relação ao centro do corpo */
+  home: [number, number];
+  l1: number;
+  l2: number;
+  femur: G[];
+  tibia: G[];
+}
+
 // ---------------------------------------------------------------- construtor
 export class Builder {
   solid = new Map<Bone | string, G[]>();
   glow = new Map<Bone | string, G[]>();
-  /** pelagem: mesma luz do corpo, com listras desenhadas no shader */
+  /** superfície com padrão no shader: pelagem listrada (`fur`) ou casca rachada de lava (`lava`) */
   pelt = new Map<Bone | string, G[]>();
+  surface: "fur" | "lava" = "fur";
   stripe = 0x140a0c;
+  lava = 0xff6a1a;
   /** proporções do esqueleto; shoulderX e hipX em 0 = calculados pelo `bulk` */
   dims = { hipY: HIP_Y, headY: HEAD_Y, shoulderY: SHOULDER_Y, shoulderX: 0, arm: 0.34, hipX: 0, thigh: 0.42 };
   style: Style = "swing";
@@ -65,7 +79,8 @@ export class Builder {
   scale = 1;
   glowColor = 0xffffff;
   rough = 0.72;
-  extraLegs = 0;
+  /** patas com cinemática inversa: o pé fica preso ao chão e dá passadas (aranha, escorpião) */
+  ikLegs: LegSpec[] = [];
   lean = 0.05;
   crouch = 0.14;
   armOut = 0.14;

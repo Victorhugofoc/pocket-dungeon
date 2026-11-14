@@ -2,7 +2,8 @@
 import * as THREE from "three";
 import { merge } from "../flora";
 import type { Rig } from "../models";
-import { newPhys } from "./animate";
+import { U } from "../shared";
+import { type IkLeg, newPhys } from "./animate";
 import { BOSSES } from "./cast-bosses";
 import { ENEMIES } from "./cast-enemies";
 import { HEROES } from "./cast-heroes";
@@ -72,6 +73,61 @@ function furMaterial(stripe: number, rough: number): THREE.MeshStandardMaterial 
   return mat;
 }
 
+/** casca escura rachada: bordas de células (Voronoi 3D no espaço local do osso) acesas como lava */
+function lavaMaterial(lava: number, rough: number): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: 0.1 });
+  const col = new THREE.Color(lava);
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uLava = { value: col };
+    shader.uniforms.uTime = U.uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vLp;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLp = position;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+      varying vec3 vLp;
+      uniform vec3 uLava;
+      uniform float uTime;
+      vec3 lvHash(vec3 p) {
+        p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
+        return fract(sin(p) * 43758.5453);
+      }
+      float lvEdge(vec3 x) {
+        vec3 p = floor(x), f = fract(x);
+        float d1 = 8.0, d2 = 8.0;
+        for (int k = -1; k <= 1; k++) for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+          vec3 g = vec3(float(i), float(j), float(k));
+          vec3 r = g + lvHash(p + g) - f;
+          float d = dot(r, r);
+          if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
+        }
+        return sqrt(d2) - sqrt(d1);
+      }`,
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+      float lvC = 1.0 - smoothstep(0.015, 0.075, lvEdge(vLp * 4.2));
+      diffuseColor.rgb = mix(diffuseColor.rgb, uLava * 0.35, lvC);`,
+      )
+      .replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+      totalEmissiveRadiance += uLava * lvC * (1.5 + 0.45 * sin(uTime * 1.7 + vLp.y * 3.0 + vLp.z * 2.0));`,
+      )
+      .replace(
+        "#include <opaque_fragment>",
+        `float rim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.6);
+      outgoingLight += (diffuseColor.rgb * 0.9 + 0.1) * rim * 0.45;
+      #include <opaque_fragment>`,
+      );
+  };
+  mat.customProgramCacheKey = () => "lava";
+  return mat;
+}
+
 export function buildChar(id: string, scaleMult: number, champion: boolean): Rig {
   const b = new Builder();
   CAST[id](b);
@@ -121,33 +177,34 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     mk("wingL", hips, -0.16, 0.05, 0);
     mk("wingR", hips, 0.16, 0.05, 0);
   }
-  const legs: THREE.Group[] = [];
-  if (b.extraLegs) {
-    // patas de aranha: 4 de cada lado, saindo do abdômen
-    for (let i = 0; i < b.extraLegs; i++) {
-      const side = i % 2 ? 1 : -1;
-      const row = Math.floor(i / 2);
-      const g = new THREE.Group();
-      g.position.set(side * 0.35, -0.1, -0.45 - row * 0.32);
-      g.rotation.y = side * (0.5 - row * 0.32);
-      const upper = at(cyl(0.075, 0.05, 1.0, 0x15100e, 6), side * 0.42, 0.26, 0, 0, 0, -side * 1.05);
-      const lower = at(cyl(0.05, 0.016, 1.25, 0x15100e, 6), side * 1.06, -0.1, 0, 0, 0, side * 0.42);
-      const joint = at(sph(0.06, 0xff6a1a), side * 0.86, 0.5, 0);
-      const geo = merge([upper, lower]);
-      const mesh = new THREE.Mesh(geo, main);
-      mesh.castShadow = true;
-      g.add(mesh, new THREE.Mesh(geo, OUTLINE), new THREE.Mesh(joint, glow));
-      hips.add(g);
-      legs.push(g);
-    }
-  }
   const mats = [main, glow];
   const layers: [Map<Bone | string, G[]>, THREE.MeshStandardMaterial][] = [[b.solid, main], [b.glow, glow]];
+  let legMat = main;
   if (b.pelt.size) {
-    const fur = furMaterial(b.stripe, b.rough);
+    const fur = b.surface === "lava" ? lavaMaterial(b.lava, b.rough) : furMaterial(b.stripe, b.rough);
     mats.push(fur);
     layers.push([b.pelt, fur]);
+    legMat = fur;
   }
+  // patas com cinemática inversa: presas a `inner`, resolvidas em animate
+  const legs: IkLeg[] = b.ikLegs.map((spec, i) => {
+    const root = new THREE.Group(), femur = new THREE.Group(), tibia = new THREE.Group();
+    tibia.position.z = spec.l1;
+    femur.add(tibia);
+    root.add(femur);
+    inner.add(root);
+    for (const [bone, list] of [[femur, spec.femur], [tibia, spec.tibia]] as const) {
+      const geo = merge(list);
+      const mesh = new THREE.Mesh(geo, legMat);
+      mesh.castShadow = true;
+      bone.add(mesh, new THREE.Mesh(geo, OUTLINE));
+    }
+    const side = spec.attach[0] < 0 ? 0 : 1;
+    return {
+      root, femur, tibia, l1: spec.l1, l2: spec.l2, attach: new THREE.Vector3(...spec.attach), home: new THREE.Vector2(...spec.home),
+      foot: new THREE.Vector3(), from: new THREE.Vector3(), u: -1, group: (Math.floor(i / 2) + side) % 2,
+    };
+  });
   for (const [map, material] of layers) {
     for (const [name, list] of map) {
       const parent = bones[name as Bone];

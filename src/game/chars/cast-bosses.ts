@@ -236,21 +236,78 @@ export const BOSSES: Record<string, Spec> = {
     const lp = new THREE.Vector3(0, -0.32, 0).applyQuaternion(Lq.inv);
     b.lights.push({ bone: "foreL", x: lp.x, y: lp.y - HAND, z: lp.z, color: 0xffa64a, intensity: 9, distance: 12 });
   },
+  // Redesenho a partir do sprite (docs/ref/ember_matriarch.png): torso esguio de mulher sobre corpo de aranha, casca preta rachada de lava.
+  // Medidas do sprite (altura 120 px): abdômen 60 px de diâmetro atrás do corpo, cefalotórax 25 px, cintura a 35% e ombros a 67% da altura,
+  // patas longas com o joelho acima do corpo. As rachaduras vêm do shader (`surface = "lava"`); as patas usam cinemática inversa.
   ember_matriarch: (b) => {
-    body(b, { skin: 0x2e1c18, top: 0x2a1a16, sleeve: 0x2a1a16, hands: 0xff6a1a, eyes: 0xffc84a, eyeGlow: true, robe: { color: 0x1c1210, flare: 0.5 } });
-    b.form = "spider"; b.scale = 2.0; b.style = "cast"; b.poseR = [-1.2, -0.5]; b.poseL = [-0.3, -0.8]; b.glowColor = 0xff6a1a; b.extraLegs = 8;
-    b.add("head", ...hairLong(0x15100e, 0.6));
-    for (let i = 0; i < 5; i++) b.add("head", at(cone(0.04, 0.3, 0x15100e, 4), (i - 2) * 0.09, 0.5, -0.05, -0.3, 0, -(i - 2) * 0.25));
-    for (const y of [0.16, 0.34]) b.lit("torso", at(torus(0.255, 0.014, 0xff6a1a), 0, y, 0));
-    b.lit("torso", at(bx(0.03, 0.4, 0.02, 0xff8a2a), 0, 0.28, 0.21));
-    // abdômen de lava
-    const ab = sph(0.75, 0x1c1210, 1, 0.85, 1.25, 0x0e0908);
-    b.add("hips", at(ab, 0, -0.1, -0.95));
-    for (let i = 0; i < 9; i++) {
-      const a = i * 2.4;
-      b.lit("hips", at(bx(0.035, 0.035, rngLen(i), 0xff6a1a), Math.cos(a) * 0.5, -0.1 + Math.sin(i * 1.7) * 0.5, -0.95 + Math.sin(a) * 0.6, i * 0.9, i * 1.3, 0));
+    const SHELL = 0x1c1513, SHELL_D = 0x0b0807, SHELL_L = 0x4a4442, HAIR = 0x0d0a0a, EMBER = 0xff7a1f, EYE = 0xffd24a;
+    b.form = "spider"; b.surface = "lava"; b.lava = 0xff5a12; b.bulk = 1; b.scale = 2.0; b.rough = 0.5;
+    b.style = "cast"; b.glowColor = EMBER; b.lean = -0.04; b.armOut = 0.12;
+    b.poseR = [-2.5, -0.9]; b.poseL = [-1.4, -0.12];
+    b.dims = { hipY: 0.53, headY: 0.98, shoulderY: 0.84, shoulderX: 0.2, arm: 0.32, hipX: 0, thigh: 0.42 };
+    const cShell = new THREE.Color(SHELL), cShellD = new THREE.Color(SHELL_D), cShellL = new THREE.Color(SHELL_L);
+    const shell = (n: THREE.Vector3, c: THREE.Color) => { c.copy(cShellD).lerp(cShell, ss(-0.6, 0.3, n.y)).lerp(cShellL, 0.55 * ss(0.45, 1, n.y)); };
+
+    // ---- abdômen: ovo grande atrás do corpo, mais largo no meio e afinando para trás
+    b.fur("tail", at(sculpt(30, 22, (n, p) => {
+      const back = ss(0.2, -1, n.z);
+      p.set(n.x * 0.54 * (1 - 0.12 * back), n.y * 0.5 * (1 - 0.1 * back) + 0.03 * bell(n.z, 0.6), n.z * 0.64);
+    }, shell), 0, 0.2, -0.62));
+    // ---- cefalotórax com olhos e quelíceras; pedúnculo até o abdômen
+    b.fur("hips", at(sculpt(22, 16, (n, p) => p.set(n.x * 0.25 * (1 - 0.25 * ss(0.2, 1, n.z)), n.y * 0.19, n.z * 0.33), shell), 0, 0, 0.14));
+    b.add("hips", at(sph(0.14, SHELL, 1, 0.9, 1.2, SHELL_D), 0, 0.02, -0.2));
+    for (const s of [-1, 1]) {
+      b.lit("hips", at(sph(0.035, EYE, 1, 1, 0.7, EYE), s * 0.065, 0.06, 0.42), at(sph(0.022, EYE, 1, 1, 0.7, EYE), s * 0.14, 0.085, 0.36));
+      b.add("hips", at(cone(0.035, 0.14, SHELL, 5, SHELL_D), s * 0.055, -0.1, 0.4, Math.PI - 0.25));
     }
-    b.lit("hips", at(sph(0.16, 0xff8a2a, 1, 0.4, 1.6), 0, 0.5, -0.95));
+
+    // ---- patas: 4 de cada lado, fêmur para cima e tíbia longa até o chão, ponta fina
+    const L1 = 0.8, A = 0.6, B2 = 0.56, BEND = 0.38;
+    const tipY = -Math.sin(BEND) * B2, tipZ = A + Math.cos(BEND) * B2;
+    const L2 = Math.hypot(tipY, tipZ), fix = -Math.atan2(-tipY, tipZ);
+    const seg = (r0: number, r1: number, len: number) => at(cyl(r0, r1, len, SHELL, 6, SHELL_D), 0, 0, len / 2, Math.PI / 2);
+    const rows: [number, number, number][] = [[0.3, 0.72, 1.02], [0.14, 1.14, 0.42], [-0.02, 1.18, -0.32], [-0.16, 0.92, -1.08]];
+    for (const [az, hx, hz] of rows) {
+      for (const s of [-1, 1]) {
+        const tibia = [seg(0.04, 0.03, A), at(sph(0.04, SHELL, 1, 1, 1, SHELL_D), 0, 0, A), at(at(cyl(0.03, 0.006, B2, SHELL, 6, SHELL_D), 0, 0, B2 / 2, Math.PI / 2), 0, 0, A, BEND)];
+        b.ikLegs.push({
+          attach: [s * 0.2, -0.02, az], home: [s * hx, hz], l1: L1, l2: L2,
+          femur: [at(sph(0.065, SHELL, 1, 1, 1, SHELL_D), 0, 0, 0), seg(0.055, 0.04, L1), at(sph(0.05, SHELL, 1, 1, 1, SHELL_D), 0, 0, L1)],
+          tibia: tibia.map((g) => g.rotateX(fix)),
+        });
+      }
+    }
+
+    // ---- torso de mulher saindo do cefalotórax: cintura fina, busto, ombros estreitos
+    b.fur("torso", lathe([[0.2, -0.02], [0.15, 0.06], [0.1, 0.16], [0.085, 0.26]], SHELL, SHELL_D, 12));
+    b.fur("torso", torsoMesh({ color: 0x2c2321, shade: SHELL_D, light: 0x6e625c, waistW: 0.098, chestW: 0.088, neckW: 0.12, waistD: 0.08, chestD: 0.058, neckD: 0.062, pecs: 0.046, abs: 0.007, ribs: 0, traps: 0.02, y0: 0.2, height: 0.8, seg: [22, 18] }));
+    b.add("torso", at(cyl(0.04, 0.036, 0.1, SHELL, 8, SHELL_D), 0, 0.975, 0.005));
+
+    // ---- cabeça pequena: rosto escuro com olhos em brasa, coroa de espinhos e cabelo longo que arrasta (osso `cape`)
+    b.add("head", at(headBase({ w: 0.098, h: 0.12, d: 0.11, muzzle: 0.014, muzzleNarrow: 0.3, palate: null, brow: 0.008, socket: 0.014, cheek: 0, seg: [20, 16], tint: (n, c) => {
+      c.copy(cShellD).lerp(cShell, ss(-0.5, 0.5, n.y)).lerp(cShellL, 0.5 * ss(0.2, 0.9, n.z) * ss(-0.6, 0.2, n.y));
+    } }), 0, 0.05, 0.01));
+    for (const s of [-1, 1]) b.lit("head", at(sph(0.014, EYE, 1.4, 0.7, 0.6, EYE), s * 0.042, 0.092, 0.104, 0, 0, s * 0.25));
+    b.lit("head", at(sph(0.012, EMBER, 1.6, 0.5, 0.6, EMBER), 0, 0.008, 0.112));
+    b.add("head", at(sph(0.115, HAIR, 1, 0.95, 1.05, HAIR), 0, 0.09, -0.025));
+    for (let i = 0; i < 7; i++) {
+      const a = (i - 3) * 0.5;
+      b.add("head", at(cone(0.022, i % 2 ? 0.2 : 0.28, HAIR, 4, SHELL_L), Math.sin(a) * 0.098, 0.26 - Math.abs(i - 3) * 0.012, Math.cos(a) * 0.07 - 0.02, -0.15, 0, -Math.sin(a) * 0.55));
+    }
+    for (let i = 0; i < 6; i++) {
+      const f = i - 2.5;
+      const lock = lathe([[0.004, -0.62 - (i % 2) * 0.12], [0.03, -0.4], [0.05, -0.12], [0.035, 0.02], [0, 0.05]], HAIR, HAIR, 6);
+      lock.scale(1, 1, 0.6);
+      b.add("cape", at(lock, f * 0.04, 0.56, 0.06, 0.85 + Math.abs(f) * 0.05, 0, f * 0.16));
+    }
+
+    // ---- braços finos; um erguido e outro apontando, com brasa nas mãos
+    for (const [arm, fore] of [["armL", "foreL"], ["armR", "foreR"]] as const) {
+      b.fur(arm, sph(0.058, SHELL, 1, 1, 1, SHELL_D), lathe([[0, -0.35], [0.038, -0.32], [0.047, -0.16], [0.05, -0.03], [0, 0.04]], SHELL, SHELL_D, 8));
+      b.fur(fore, lathe([[0, -0.3], [0.03, -0.27], [0.042, -0.1], [0.04, 0], [0, 0.04]], SHELL, SHELL_D, 8));
+      b.add(fore, at(sph(0.036, SHELL, 0.9, 1.2, 0.6, SHELL_D), 0, -0.31, 0));
+      for (let i = 0; i < 3; i++) b.lit(fore, at(cone(0.01, 0.07, EMBER, 4, EMBER), (i - 1) * 0.022, -0.38, 0.005, Math.PI, 0, (i - 1) * 0.25));
+    }
   },
   // Redesenho a partir do sprite (docs/ref/hollow_king.png): lich de caveira coroado, gola de pelo, manto roxo aberto na frente
   // com as costelas à mostra, cajado de crescente com orbe e mão esquerda em garra. Flutua (forma `robed`).
@@ -353,7 +410,3 @@ export const BOSSES: Record<string, Spec> = {
     b.lit("foreL", ...hang([at(sph(0.055, SOUL, 1, 1.2, 1, SOUL), 0, 0.16, 0.04), at(cone(0.04, 0.16, SOUL, 6, SOUL), 0, 0.28, 0.04)], Lq.inv, HAND));
   },
 };
-
-function rngLen(i: number): number {
-  return 0.4 + ((i * 37) % 10) * 0.07;
-}

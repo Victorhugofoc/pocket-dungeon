@@ -20,11 +20,12 @@ Como chegamos no Bloodfang (não repetir os erros):
 - O Bloodfang tem cerca de 19,4 mil triângulos, acima do orçamento de 12 mil; reduzir segmentos na `M1-01`.
 
 - `M1-02`: **Gravekeeper refeito a partir do sprite, em uso no jogo e aprovado pelo usuário.** Receita em `cast-bosses.ts`. É bípede com saia de manto por cima das pernas (o osso `skirt` agora existe também em bípedes), para os sapatos pisarem por baixo da barra rasgada. Pá e lanterna são giradas pelo inverso da pose de descanso para ficarem na vertical do mundo (`restArm` e `hang` do kit). Kit novo: `sculptTube`, `robeMesh` (saia com pregas e barra rasgada), `Builder.lights` (luz pontual presa a um osso) e `Builder.glowByVertex` (brilho na cor do vértice, para olhos verdes e lanterna âmbar no mesmo personagem). Conferido só na prévia; a luta na Cripta não foi jogada.
-- `M1-04`: **Hollow King refeito a partir do sprite e em uso no jogo; falta o usuário validar.** Forma `robed` (flutua). Crânio esculpido, coroa, gola de pelo aberta na frente, costelas, saia com painel e debrum (`robeMesh` com `panel`), cajado com orbe e luz turquesa, chama na mão esquerda. Cerca de 8,5 mil triângulos. Conferido só na prévia.
+- `M1-04`: **Hollow King refeito a partir do sprite, em uso no jogo e aprovado pelo usuário.** Forma `robed` (flutua). Crânio esculpido, coroa, gola de pelo aberta na frente, costelas, saia com painel e debrum (`robeMesh` com `panel`), cajado com orbe e luz turquesa, chama na mão esquerda. Cerca de 8,5 mil triângulos. Conferido só na prévia.
+- `M1-03`: **Ember Matriarch refeita a partir do sprite e em uso no jogo; falta o usuário validar.** Casca preta com rachaduras de lava no shader (`b.surface = "lava"`, material `lavaMaterial` em `build.ts`; quem usa `b.fur()` recebe esse material). Patas por cinemática inversa: a receita preenche `b.ikLegs` (encaixe, ponto de repouso, comprimentos, geometria ao longo de +z) e `stepLegs` em `animate.ts` prende o pé ao chão e dá a passada em dois grupos alternados; serve para o escorpião (`M10-01`). O abdômen fica no osso `tail`, o cabelo no osso `cape`. Cerca de 11 mil triângulos e 62 draw calls (cada pata são 4). A morte (patas encolhendo) só foi checada por números, sem olhar; a luta no Vulcão não foi jogada.
 
 Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e `furMaterial`, `CharState.hipY`.
 
-Próxima sessão (sugestão do roadmap): retorno do usuário sobre o Hollow King, depois `M1-03` (Ember Matriarch, em duas partes) e `M1-01`.
+Próxima sessão (sugestão do roadmap): retorno do usuário sobre a Ember Matriarch, depois `M1-01` (Bloodfang: acabamento e menos triângulos) e `M1-05` (presença de chefe).
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.
@@ -99,7 +100,7 @@ Retorno do usuário sobre jogabilidade (jogou a 0.1): "a gameplay aparentemente 
 
 ## Insumos para o plano de melhorias
 Arte (o usuário quer começar por aqui):
-- Personagens mais legíveis, a partir de fichas de design (ver topo). Os mais fracos hoje: Ember Matriarch (aranha), rosto do Bloodfang, morcego e gosma.
+- Personagens mais legíveis, a partir de fichas de design (ver topo). Os mais fracos hoje: morcego e gosma (os 4 chefes já foram refeitos).
 - Efeitos das técnicas dos heróis e dos ataques de chefe; as telegrafias ainda são discos vermelhos lisos.
 - Relevo: o chão é plano. Colinas, penhascos na borda do mapa, água.
 - Interface: ícones são emoji; itens e relíquias não têm ícone próprio.
