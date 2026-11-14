@@ -38,7 +38,11 @@ Como chegamos no Bloodfang (não repetir os erros):
 
 Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e `furMaterial`, `CharState.hipY`.
 
-Próxima sessão (sugestão do roadmap): retorno do usuário sobre a presença de chefe e sobre a Vesper e a Ninhada, depois `M2-10`; `M0-03` ainda pendente.
+**2026-11-14, depois do merge do PR #3:** o usuário mostrou o Abyssal Garden (cena submarina procedural feita por um prompt com um crítico cego) e decidiu duas coisas:
+- **Crítico cego (`M0-07`, feito):** subagente que só vê as capturas e o sprite, nunca o código. Rotina e texto em `docs/critic.md`; capturas com `await __preview.criticShots("critic-<id>")` na prévia (7 poses em `.shots/`). Entra no método (seção 4.1, passo 8): o usuário só vê uma versão depois que o crítico não aponta nada acima de "menor". Primeiro teste: no Kaelen (aprovado) e na Vesper (sem validação) ele apontou defeitos graves e concretos que batem com o sprite.
+- **Novo marco M18, Atmosfera das zonas, antes do M3:** prévia de zona com poses fixas, sombra de nuvens, névoa baixa, raios de luz, densidade do chão, contato e cor, e uma passada por zona. Detalhes no roadmap.
+
+Próxima sessão (sugestão): refazer a Vesper com o crítico (`M2-09`; faltam asas, abdômen separado atrás, rosto pálido, manto escuro com o laranja só em faixas), depois `M18-01`. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.

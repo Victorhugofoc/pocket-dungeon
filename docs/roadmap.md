@@ -64,19 +64,20 @@ Um RPG de ação de 8 a 12 horas na primeira passada, com rejogabilidade por dif
 | 1 | M0 Fundação e ferramentas | Barateia todo o resto (prévia, kit de modelagem, medição) |
 | 2 | M1 Chefes atuais | Maior ganho visual; valida o método em corpos difíceis (manto, aranha) |
 | 3 | M2 Heróis | O jogador olha para o herói o tempo todo |
-| 4 | M3 Inimigos atuais | Fecha o elenco que já está no jogo |
-| 5 | M4 Animação e sensação | Corpo novo pede movimento à altura |
-| 6 | M5 Efeitos de combate | Leitura das lutas; pré-requisito para spells e chefes novos |
-| 7 | M6 Spells | Maior ganho de profundidade por tarefa |
-| 8 | M7 Economia | Dá destino ao loot e ao tempo de farm |
-| 9 | M8 Itens | Lendários e ícones, em cima da economia |
-| 10 | M9 Inimigos novos e elites | Variedade antes de abrir zonas novas |
-| 11 | M11 Mundo: relevo e biomas | Casa para os 9 chefes que faltam |
-| 12 | M10 Chefes novos | Um por tarefa, cada um com sua mecânica |
-| 13 | M12 Relíquias e sinergias | Escala o que já existe |
-| 14 | M13 Endgame | Dificuldades, Depths, pactos |
-| 15 | M14 Interface · M15 Áudio | Intercalar: uma tarefa destas a cada 3 ou 4 das outras |
-| 16 | M16 Técnico · M17 Balanceamento | `M16-01` e `M17-01` cedo; o resto conforme a necessidade |
+| 4 | M18 Atmosfera das zonas | Decidido em 2026-11-14: na câmera alta, o ambiente pesa mais na primeira impressão que o detalhe de cada personagem, e custa bem menos |
+| 5 | M3 Inimigos atuais | Fecha o elenco que já está no jogo |
+| 6 | M4 Animação e sensação | Corpo novo pede movimento à altura |
+| 7 | M5 Efeitos de combate | Leitura das lutas; pré-requisito para spells e chefes novos |
+| 8 | M6 Spells | Maior ganho de profundidade por tarefa |
+| 9 | M7 Economia | Dá destino ao loot e ao tempo de farm |
+| 10 | M8 Itens | Lendários e ícones, em cima da economia |
+| 11 | M9 Inimigos novos e elites | Variedade antes de abrir zonas novas |
+| 12 | M11 Mundo: relevo e biomas | Casa para os 9 chefes que faltam |
+| 13 | M10 Chefes novos | Um por tarefa, cada um com sua mecânica |
+| 14 | M12 Relíquias e sinergias | Escala o que já existe |
+| 15 | M13 Endgame | Dificuldades, Depths, pactos |
+| 16 | M14 Interface · M15 Áudio | Intercalar: uma tarefa destas a cada 3 ou 4 das outras |
+| 17 | M16 Técnico · M17 Balanceamento | `M16-01` e `M17-01` cedo; o resto conforme a necessidade |
 
 Marcos de arte (M1 a M3) e de jogo (M6 em diante) não dependem um do outro. Se o usuário cansar de arte, pular para M6 é válido.
 
@@ -94,7 +95,8 @@ Vale para todas as tarefas de M1, M2, M3, M9 e M10. Foi o que funcionou no Blood
 5. **Padrões de superfície no shader ou na cor por vértice** (listras, manchas, runas), nunca com peças coladas.
 6. **Acessórios** como geometria simples por cima.
 7. **Conferir na prévia** com o sprite ao lado: de frente, três quartos, costas e câmera do jogo; depois Walk e as fases do Attack com `freeze`.
-8. **[validar]** com o usuário antes de trocar no jogo.
+8. **Crítico cego** (`docs/critic.md`): `__preview.criticShots("critic-<id>")` e um subagente que só vê as capturas e o sprite. Corrigir e repetir com um subagente novo até não sobrar nada acima de "menor".
+9. **[validar]** com o usuário antes de trocar no jogo, mostrando as capturas e a última lista do crítico.
 
 ### 4.2 O que não fazer
 - Esferas e caixas coladas: fica "boneco" e "amigável demais".
@@ -145,6 +147,11 @@ Até cerca de 12 mil triângulos para chefe, 6 mil para herói, 3 mil para inimi
 - Objetivo: detectar regressão visual sem olhar um por um.
 - Passos: script Playwright (Chromium com `--use-angle=swiftshader`) que abre a prévia em lineup e salva `reports/cast-<data>.png`. Rodar antes de cada commit de arte.
 - Pronto quando: um comando gera a imagem com todo o elenco.
+
+**M0-07 · Crítico cego** · P
+- Objetivo: um olhar que não conhece o código, antes do olhar do usuário. Ideia tirada do projeto Abyssal Garden, que iterou contra um crítico que só via as capturas.
+- Arquivos: `docs/critic.md` (rotina e texto do subagente), `__preview.criticShots` em `src/preview.ts` (7 poses fixas).
+- Pronto quando: o crítico, rodado num herói já aprovado, aponta defeitos concretos que batem com o que o usuário veria.
 
 ### M1 — Chefes atuais [validar cada um]
 
@@ -344,6 +351,39 @@ Uma tarefa `G` por chefe, dividida em duas sessões: **modelo** e **luta** (mec�
 Também revisar os 4 atuais para ganharem sua mecânica: `blood_rush`, `army_of_the_damned`, `meteor_siege`, `soul_tether` (**M10-10**, `M`).
 
 Padrões a portar conforme os chefes pedirem (lista em `bosses.lua`, linhas 143 a 179): `mark`, `crossfire`, `stormfield`, `quake`, `armorbreak`, `venomfield`, `fanvolley`, `graveburst`, `riftcross`, `meteorstorm`, `spiralvolley`, `boulder`, `leap`, `frostbreath`, `iciclerain`, `glacierdive`, `acidlob`, `slimewave`, `engulf`, `sandvolley`, `tailsweep`, `erupt`, `soullance`, `deathring`, `gravehands`, `orbitals`, `prismbeam`, `miragedash`. Distâncias em px convertem por `TUNING.enemy.pxToUnit`.
+
+### M18 — Atmosfera das zonas [validar cada uma]
+
+Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena submarina procedural): ali nenhum objeto é bonito sozinho; o conjunto vem de **luz, névoa, densidade e movimento**. Na nossa câmera alta, o chão e o ar ocupam quase toda a tela. Este marco faz isso nas 4 zonas atuais, sem relevo (que continua em `M11-01`). Cada tarefa passa pelo crítico cego (`docs/critic.md`) com as poses de `M18-01`. Orçamento: 60 fps em placa intermediária; medir draw calls e triângulos antes e depois de cada tarefa.
+
+**M18-01 · Prévia de zona e poses fixas** · M
+- Arquivos: `zone.html` e `src/zone-preview.ts` (fora do build do jogo, como a prévia de personagens).
+- Passos: monta a zona por `buildWorld` com a seed fixa, sem inimigos nem interface, com o herói parado; `?zone=<id>`. `__zone.criticShots(prefix)` grava 6 poses: câmera do jogo na fogueira, no meio do mapa, numa mata densa e na arena do chefe; uma baixa (30°) e uma de longe (zoom 2×) para ver a borda e a névoa.
+- Pronto quando: um comando gera as 6 capturas de qualquer zona.
+
+**M18-02 · Sombra de nuvens e luz viva** · P
+- Passos: ruído animado projetado de cima, escurecendo chão, grama e flora (uniform em `shared.ts`, lido por todos os materiais do cenário); intensidade e escala por zona em `zones.ts`. Variação lenta da cor do sol (parte visual de `M11-09`).
+- Pronto quando: manchas de sombra passam devagar pelo chão e pelos personagens, sem costura nem tremido.
+
+**M18-03 · Névoa baixa e de distância** · M
+- Passos: névoa exponencial com cor por altura em vez de `THREE.Fog` linear; camadas de névoa rasteira animada (planos com ruído, mais densa em depressões, matas e na arena), cor e densidade por zona.
+- Pronto quando: a névoa se mexe, não corta objetos com linha reta e não tem faixas de banding.
+
+**M18-04 · Raios de luz e ar** · M
+- Passos: feixes inclinados de luz em clareiras e bordas de mata (malha aditiva com ruído que desaparece nas pontas e de perto); partículas no ar revistas (`motes`): tamanhos variados, algumas acesas, profundidade em camadas.
+- Pronto quando: o ar tem volume; nenhum feixe vira um bloco chapado nem estoura o bloom.
+
+**M18-05 · Densidade do chão** · M
+- Passos: milhares de peças pequenas instanciadas por bloco (tufos altos, folhas caídas, pedregulhos, raízes, cogumelos), manchas no chão (terra, musgo, cinza) na máscara do `groundMaterial`, copas de árvore balançando com o vento.
+- Pronto quando: nenhuma área da câmera do jogo mostra chão liso, e o desempenho continua no orçamento.
+
+**M18-06 · Contato e cor** · M
+- Passos: sombra de contato pintada no chão em volta de pedras, árvores e lápides; oclusão por vértice na base da flora; correção de cor por zona revista (sombras frias ou quentes, curva por zona em `zones.ts`).
+- Pronto quando: nada parece "colado" no chão.
+
+**M18-07 a M18-10 · Passada por zona** · M cada
+- Bosque, Cripta, Vulcão e Vazio, um por tarefa: aplicar tudo acima com a assinatura de cada uma (Bosque: luz filtrada e folhas caindo; Cripta: névoa azul rasteira entre as lápides; Vulcão: cinza caindo, brilho de lava no chão e fumaça; Vazio: cristais acesos e partículas flutuando para cima), e iterar com o crítico.
+- Pronto quando: o crítico não aponta nada acima de "menor" e o usuário aprova.
 
 ### M11 — Mundo
 
@@ -587,6 +627,8 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`.
 | M2-07 | feito, aprovado | 2026-11-14 | Aurelius refeito do sprite e já no jogo. Chapéu pontudo como tubo de raio que afina (`tubeMesh`), subindo e caindo para trás, com aba mole esculpida, fita dourada e fivela. Rosto velho de nariz grande, sobrancelhas fartas e bigode brancos na camada sem contorno, barba esculpida até a cintura, cabelo branco atrás. Manto roxo: tronco com faixa dourada na frente e gola, mangas em sino com punho dourado, saia até o chão (`robeMesh` com painel claro, debrum e barra dourada), faixa dourada na cintura, bolsa de couro com alça. Continua na forma `robed` (flutua, sem pernas; sapatos aparecem na barra). Orbe: núcleo pequeno aceso com dois aros finos sobre a mão direita, sem luz pontual. Cerca de 6,2 mil triângulos. Conferido só na prévia, por captura em arquivo |
 | M2-08 | feito, aprovado | 2026-11-14 | Frostine refeita do sprite e já no jogo. Rosto pálido e fino, cabelo branco esculpido com queda comprida pelas costas, coroa de sete cristais de quatro faces (sólidos, não acesos). Gola de pelo branco em gomos (`sculpt`), corpete azul com gema ciano acesa, mangas com punho de pelo. Vestido em camadas: saia longa (`robeMesh` com painel e barra branca), sobressaia curta mais clara e babado atrás que abre até o chão e clareia na barra (`capeMesh` largo no osso `skirt`). Cajado na vertical do mundo (`restArm` + `hang`) com floco de neve de seis braços aceso; floquinho sobre a mão estendida. Continua na forma `robed`. **O anel de gelo no chão ficou de fora**: cristais presos à saia balançavam com ela e pareciam pendurados; é efeito de chão, fica para o M5. Cerca de 6,9 mil triângulos. Conferido só na prévia, por captura em arquivo |
 | M2-09 | feito, falta validar | 2026-11-14 | Vesper refeita do sprite e já no jogo. Capuz listrado como malha única com a abertura do rosto afundada (rosto escuro, olhos pequenos acesos), ponta que sobe e cai para trás (`tubeMesh`) e duas antenas com bolinha (haste na camada sem contorno: tubo fino com contorno fica serrilhado). Tronco e manto em gomos listrados de laranja e cinza-escuro (`sculptTube`, função local `stripe`), o manto como um abdômen de abelha até o chão; pelerine e mangas largas. Cajado torto na vertical do mundo com caveira esculpida e órbitas acesas. Continua na forma `robed`. **Abelhas da Ninhada refeitas**: receita `bee` (forma `bat`, cerca de mil triângulos) com abdômen listrado, ferrão, olhos grandes, antenas e asas que batem; em `game.ts` cada abelha passou de um cubo amarelo a um `Rig` animado, com um bote curto quando ferroa. A abelha fica junto das receitas dos heróis por ser aliada da Vesper. Vesper com cerca de 6 mil triângulos. Conferido só na prévia; a Ninhada no jogo não foi jogada |
+| M0-07 | feito | 2026-11-14 | Crítico cego: `docs/critic.md` e `__preview.criticShots` (7 poses). Testado no Kaelen (aprovado) e na Vesper (falta validar) |
+| Marco M18 | pendente | 2026-11-14 | Criado com o usuário: atmosfera das zonas antes do M3 |
 | M16-01 | pendente | | Depende do usuário |
 
 O M1 está completo, faltando só a validação da `M1-05`. No M2, os nove heróis estão refeitos: oito aprovados e Vesper (com as abelhas) esperando validação. Próxima sessão, sugestão: `M2-10`. `M0-03` (prévia com seletor, lineup e contagem) continua pendente.

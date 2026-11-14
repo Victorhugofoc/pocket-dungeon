@@ -184,4 +184,32 @@ async function shot(name: string, set: { anim?: string; yaw?: number; view?: str
   return name;
 }
 
-Object.assign(window, { __preview: { state, actors, camera, controls, setView, shot } });
+/** As poses fixas que o crítico cego recebe (ver docs/critic.md). Grava `.shots/<prefix>-<pose>.png` para cada uma e devolve os nomes.
+ * Só o personagem principal aparece, menos na câmera do jogo, onde o Varok fica ao lado para dar escala. */
+const CRITIC_POSES: [string, { anim: string; yaw: number; view: string; freeze?: number; face?: boolean }][] = [
+  ["front", { anim: "idle", yaw: 0, view: "close" }],
+  ["three-quarter", { anim: "idle", yaw: 35, view: "close" }],
+  ["side", { anim: "idle", yaw: 90, view: "close" }],
+  ["back", { anim: "idle", yaw: 180, view: "close" }],
+  ["face", { anim: "idle", yaw: 15, view: "close", face: true }],
+  ["attack", { anim: "attack", yaw: 35, view: "close", freeze: 0.9 }],
+  ["game", { anim: "idle", yaw: 20, view: "game" }],
+];
+async function criticShots(prefix: string): Promise<string[]> {
+  const lead = actors[0];
+  const h = lead.rig.height ?? 4.8;
+  const names: string[] = [];
+  for (const [pose, p] of CRITIC_POSES) {
+    for (const a of actors) a.rig.root.visible = a === lead || p.view === "game";
+    const name = `${prefix}-${pose}`;
+    await shot(name, {
+      anim: p.anim, yaw: p.yaw, view: p.view, freeze: p.freeze ?? null,
+      dist: p.face ? h * 1.1 : h * 3.2, lookY: p.face ? h * 0.88 : undefined,
+    });
+    names.push(name);
+  }
+  for (const a of actors) a.rig.root.visible = true;
+  return names;
+}
+
+Object.assign(window, { __preview: { state, actors, camera, controls, setView, shot, criticShots } });

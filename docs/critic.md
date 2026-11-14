@@ -1,0 +1,40 @@
+# Crítico cego
+
+Um subagente que **só vê imagens**: as capturas do trabalho e a referência. Ele nunca lê código, receita, roadmap nem a conversa. Quem escreveu a receita sabe o que queria ver e acaba vendo a intenção, não o resultado; o crítico só tem o resultado.
+
+Vale para personagens (M1, M2, M3, M9, M10) e para zonas (marco M18). O usuário só vê uma versão depois que o crítico não aponta mais nada acima de **menor**.
+
+## Rotina
+
+1. Gerar as capturas fixas.
+   - Personagem: `npm run dev`, abrir `/preview.html?a=<id>` e rodar no console `await __preview.criticShots("critic-<id>")`. Grava em `.shots/` as poses `front`, `three-quarter`, `side`, `back`, `face`, `attack` e `game` (câmera do jogo, com o Varok ao lado para escala).
+   - Zona: poses fixas do marco M18 (`M18-01`).
+2. Chamar o subagente (ferramenta Agent) com o texto da seção abaixo, trocando `<...>`. Passar só caminhos de imagem. Não explicar o que mudou nem o que se espera dele.
+3. Corrigir o que veio como **grave** e **médio**, gerar as capturas de novo e repetir com um subagente **novo** (o anterior já conhece a versão velha).
+4. Parar quando sobrar só **menor**. Mostrar ao usuário as capturas e a última lista do crítico.
+
+Decisões já tomadas com o usuário que fogem do sprite (por exemplo, a espada longa do Kaelen vem da ficha da seção 7.1 do roadmap) entram no texto do subagente na linha "Decisões fixas", para ele não apontar de novo. Se ainda assim apontar algo que contraria uma decisão do usuário, a decisão vale: registrar no roadmap e seguir.
+
+Calibração (2026-11-14, primeiro teste): no Kaelen, já aprovado, o crítico apontou o que o sprite tem e o modelo não (lâmina ciano no peito, franja sobre o olho, forro vermelho da capa, calça cinza) e um defeito real que tinha passado: no meio do golpe a espada some e o ombro direito salta. Na Vesper, sem validação, apontou a falta das asas e do abdômen separado atrás, o rosto escuro no lugar do pálido e o laranja dominando um manto que no sprite é escuro. É mais exigente que a validação do usuário até aqui. Se ele errar o que está vendo (achar que a espada é um cajado), é sinal de que a leitura não está clara; tratar como defeito.
+
+## Texto para o subagente (personagem)
+
+```
+Você é um diretor de arte avaliando um modelo 3D de personagem para um RPG de ação visto de cima (câmera alta, estilo Minecraft Dungeons / Diablo). Toda a arte é gerada por código: formas simples, cor por vértice, contorno preto, bloom.
+
+Regras: use a ferramenta Read SÓ nos arquivos de imagem listados. Não abra nenhum outro arquivo, não procure no disco, não leia código.
+
+Referência (o design a seguir; sprite de pixel art, quadro parado): <caminho de docs/ref/<id>.png>
+Capturas do modelo 3D: <caminhos de .shots/critic-<id>-*.png>
+(front, three-quarter, side, back = corpo inteiro; face = rosto de perto; attack = meio do golpe; game = câmera real do jogo, o personagem é o da esquerda, o da direita é outro herói só para escala)
+Decisões fixas (não apontar como defeito): <lista, ou "nenhuma">
+
+Responda em português:
+1. Em uma frase: o que você vê (quem é este personagem, o que carrega). Sem olhar a referência de novo.
+2. Defeitos, do mais grave para o menos grave. Para cada um: gravidade (grave / médio / menor), onde (pose e parte do corpo), o que está errado e o que mudaria, em termos concretos de forma, proporção, cor ou silhueta.
+   - grave: quebra a leitura do personagem, foge do sprite numa peça que o identifica, parece quebrado (peça solta, atravessando, buraco, borrão, artefato preto), ou expressão errada.
+   - médio: proporção ou cor visivelmente diferente do sprite, peça que parece colada, silhueta confusa na câmera do jogo, aspecto de boneco de brinquedo.
+   - menor: acabamento.
+3. Uma linha final: "Maior gravidade: grave|médio|menor|nenhum".
+Seja exigente e específico. Não elogie.
+```
