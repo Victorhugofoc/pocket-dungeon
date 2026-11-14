@@ -1,6 +1,6 @@
 // Prévia de zona (só no `npm run dev`, fora do build do jogo): monta a zona com seed fixa, sem inimigos nem interface, com o mesmo
 // renderizador, luz, névoa e pós-processamento do jogo, e um herói parado para escala. Serve para o marco M18 (atmosfera) e para o
-// crítico cego (docs/critic.md). Abrir em /zone.html. Parâmetros: ?zone=bosque|cripta|vulcao|vazio&seed=<n>&hero=<id>&pose=<nome>
+// crítico cego (docs/critic.md). Abrir em /zone.html. Parâmetros: ?zone=bosque|cripta|vulcao|vazio&seed=<n>&hero=<id>&pose=<nome>&clouds=0
 import * as THREE from "three";
 import { generateZone, distToPath, type ZoneLayout } from "./core/worldgen";
 import { ZONES, ZONE_ORDER } from "./data/zones";
@@ -9,7 +9,7 @@ import { animateRig } from "./game/models";
 import { Pipeline } from "./game/render";
 import { characterRig } from "./game/rigs";
 import { U } from "./game/shared";
-import { buildWorld } from "./game/world";
+import { buildWorld, driftSun, setZoneClouds } from "./game/world";
 
 const q = new URLSearchParams(location.search);
 const zone = ZONES[q.get("zone") ?? "bosque"] ?? ZONES.bosque;
@@ -42,6 +42,8 @@ const world = buildWorld(scene, zone, layout);
 scene.background = new THREE.Color(zone.sky);
 scene.fog = new THREE.Fog(zone.fog, 42, 120);
 pipeline.setGrade(zone);
+setZoneClouds(zone);
+if (q.get("clouds") === "0") U.uCloud.value.x = 0;
 
 const hero = characterRig(q.get("hero") ?? "varok", "hero");
 scene.add(hero.root);
@@ -76,7 +78,7 @@ function densest(): { x: number; z: number } {
 interface Pose { at: { x: number; z: number }; zoom: number; low?: boolean }
 const mid = layout.path[Math.floor(layout.path.length / 2)];
 const POSES: Record<string, Pose> = {
-  campfire: { at: freeSpot(layout.spawn.x + 2.5, layout.spawn.z + 1.5), zoom: 1 },
+  campfire: { at: freeSpot(layout.spawn.x + 4, layout.spawn.z + 3), zoom: 1 },
   middle: { at: freeSpot(mid.x, mid.z), zoom: 1 },
   dense: { at: freeSpot(densest().x, densest().z), zoom: 1 },
   arena: { at: freeSpot(layout.boss.x, layout.boss.z + 3), zoom: 1 },
@@ -111,6 +113,7 @@ const proj = new THREE.Vector3();
 function tick(dt: number): void {
   time += dt;
   U.uTime.value = time;
+  driftSun(sun, zone, time);
   const { x, z } = pose.at;
   const size = pipeline.bufferSize;
   proj.set(x, 1.1, z).project(camera);

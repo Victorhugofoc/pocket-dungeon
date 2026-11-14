@@ -19,7 +19,7 @@ import { characterRig } from "./rigs";
 import { kickRig, nextShot } from "./chars";
 import { Pipeline } from "./render";
 import { U } from "./shared";
-import { buildWorld, type WorldView } from "./world";
+import { buildWorld, driftSun, setZoneClouds, type WorldView } from "./world";
 
 export interface GameEvents {
   toast(msg: string, color?: string): void;
@@ -238,6 +238,7 @@ export class Game {
     this.hemi.intensity = zone.ambientIntensity;
     this.sun.color.set(zone.sun);
     this.sun.intensity = zone.sunIntensity;
+    setZoneClouds(zone);
 
     for (const camp of this.layout.camps) {
       camp.spawns.forEach((s, i) => {
@@ -1195,6 +1196,7 @@ export class Game {
 
     // uniforms do cenário: vento, grama e o "buraco" no que tapa o herói
     U.uTime.value = this.time;
+    driftSun(this.sun, this.zone, this.time);
     U.uCenter.value.set(this.camTarget.x, this.camTarget.z - 8);
     U.uHero.value.set(p.x, 0, p.z);
     const size = this.pipeline.bufferSize;

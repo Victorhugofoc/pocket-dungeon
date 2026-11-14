@@ -22,6 +22,7 @@ Primeira volta completa (Vesper, 2026-11-14, seis críticos): a maior gravidade 
 - **Ele oscila** em medidas de gosto: asas "maiores e âmbar" numa rodada, "menores e claras" na seguinte; abdômen "mais alto" e depois "mais baixo". Quando um ponto inverte entre rodadas, fica onde está e sai da lista.
 - Peça fina vista de perfil vira "risco quebrado" para ele. Asa, lâmina e fita precisam de volume (lente achatada com contorno), não de chapa.
 - Listra pintada por vértice só sai reta se a borda seguir as linhas da malha (no `sculpt`, a latitude de `n.y`). Faixa diagonal sai serrilhada.
+- **Ele erra fato em luz sutil**: na sombra de nuvens (`M18-02`) disse que copas e personagens não escureciam, e a medida dos pixels mostrou que escureciam. Quando ele afirmar que algo "não recebe" luz ou sombra, medir antes de mexer (média de cor num quadrado da captura com e sem o efeito); o que ele percebe continua valendo como sintoma de leitura.
 - Parar quando sobrar só "médio" de gosto e mostrar ao usuário. Insistir até zerar os médios gasta rodadas sem ganho claro.
 
 ## Texto para o subagente (personagem)

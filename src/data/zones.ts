@@ -30,6 +30,9 @@ export interface ZoneDef {
   rockTop: number;
   /** partículas no ar: cor, se sobem (brasa) ou caem (folha), e quantas por segundo */
   motes: { color: number; rise: number; rate: number };
+  /** sombra de nuvens passando pelo chão e pelos personagens: quanto escurece o sol (0..1), tamanho das nuvens (m), velocidade (m/s)
+   * e cobertura (0..1, fração do chão na sombra); `drift`: quanto a força e a cor do sol variam devagar (0..1) */
+  clouds: { strength: number; size: number; speed: number; cover: number; drift: number };
 }
 
 export const ZONE_ORDER = ["bosque", "cripta", "vulcao", "vazio"] as const;
@@ -44,6 +47,7 @@ export const ZONES: Record<string, ZoneDef> = {
     decorCount: 950,
     grass: { root: 0x2f6330, tip: 0x6fae4c, density: 1, height: 0.44 }, flowers: [0xffe14a, 0xffffff, 0xd98cff, 0xff8fa8], rockTop: 0x5f8f3e,
     motes: { color: 0xfff2a0, rise: 0.25, rate: 9 },
+    clouds: { strength: 0.6, size: 58, speed: 1.8, cover: 0.5, drift: 0.1 },
   },
   cripta: {
     id: "cripta", name: "Campos da Cripta", subtitle: "Os mortos não descansam aqui", level: 6, boss: "gravekeeper",
@@ -54,6 +58,7 @@ export const ZONES: Record<string, ZoneDef> = {
     decorCount: 800, glowDecor: 0x9ad1ff,
     grass: { root: 0x3d4a52, tip: 0x8a9aa0, density: 0.55, height: 0.5 }, flowers: [0x9ad1ff], rockTop: 0x6a7480,
     motes: { color: 0xbfe0ff, rise: 0.5, rate: 7 },
+    clouds: { strength: 0.55, size: 64, speed: 1.2, cover: 0.55, drift: 0.08 },
   },
   vulcao: {
     id: "vulcao", name: "Ermos Vulcânicos", subtitle: "Cinza, brasa e artilharia", level: 11, boss: "ember_matriarch",
@@ -64,6 +69,7 @@ export const ZONES: Record<string, ZoneDef> = {
     decorCount: 750, glowDecor: 0xff6a1a,
     grass: { root: 0x3a2a22, tip: 0x7a5a3a, density: 0.18, height: 0.4 }, flowers: [], rockTop: 0x3a2e2a,
     motes: { color: 0xff8a2a, rise: 2.2, rate: 22 },
+    clouds: { strength: 0.6, size: 44, speed: 2.6, cover: 0.5, drift: 0.12 },
   },
   vazio: {
     id: "vazio", name: "O Vazio", subtitle: "O trono do Rei Oco", level: 16, boss: "hollow_king",
@@ -74,5 +80,6 @@ export const ZONES: Record<string, ZoneDef> = {
     decorCount: 750, glowDecor: 0x73ffcc,
     grass: { root: 0x2f2550, tip: 0x73ffcc, density: 0.4, height: 0.45 }, flowers: [0x73ffcc, 0xc8a8ff], rockTop: 0x5a4a80,
     motes: { color: 0x73ffcc, rise: 0.8, rate: 14 },
+    clouds: { strength: 0.45, size: 70, speed: 0.9, cover: 0.5, drift: 0.06 },
   },
 };

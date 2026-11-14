@@ -5,7 +5,7 @@ import { Rng } from "../core/rng";
 import { distToPath, type Obstacle, type ZoneLayout } from "../core/worldgen";
 import type { DecorKind, ZoneDef } from "../data/zones";
 import { buildDecor, buildFlower, type MatKind } from "./flora";
-import { NOISE_GLSL, patchMaterial, U } from "./shared";
+import { NOISE_GLSL, applyClouds, patchMaterial, U } from "./shared";
 
 export interface WorldView {
   group: THREE.Group;
@@ -361,6 +361,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
   portal.visible = false;
   group.add(portal);
   disposables.push(portalMat, torusGeo, discMat, discGeo);
+  applyClouds(group);
 
   return {
     group,
@@ -370,4 +371,20 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
       for (const d of disposables) d.dispose();
     },
   };
+}
+
+/** Liga a sombra de nuvens da zona (uniform compartilhado por todos os materiais; ver `applyClouds`). */
+export function setZoneClouds(zone: ZoneDef): void {
+  const c = zone.clouds;
+  U.uCloud.value.set(c.strength, 1 / c.size, c.speed, c.cover);
+}
+
+const sunWarm = new THREE.Color(), sunCool = new THREE.Color();
+/** Luz viva: a força e a cor do sol variam devagar (ciclo de alguns minutos), mais quente quando forte e mais fria quando fraca. */
+export function driftSun(sun: THREE.DirectionalLight, zone: ZoneDef, time: number): void {
+  const d = zone.clouds.drift;
+  const w = 0.6 * Math.sin(time * 0.045) + 0.4 * Math.sin(time * 0.11 + 1.3);
+  sun.intensity = zone.sunIntensity * (1 + d * w);
+  sunWarm.set(zone.sun).lerp(sunCool.setRGB(1, 0.78, 0.55), 0.5 * d * Math.max(0, w));
+  sun.color.copy(sunWarm).lerp(sunCool.setRGB(0.7, 0.8, 1), 0.5 * d * Math.max(0, -w));
 }
