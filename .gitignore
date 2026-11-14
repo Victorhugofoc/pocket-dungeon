@@ -2,6 +2,7 @@ node_modules
 dist
 dist-single
 *.log
+.shots
 
 # Restos locais do projeto antigo (Covil, Godot): não fazem parte deste jogo
 .godot/

@@ -20,7 +20,7 @@ Leia `HANDOFF.md` antes de qualquer coisa: ele tem o estado atual e o próximo p
 - `src/data/` guarda conteúdo e números de balanceamento. Nada de número mágico de balanceamento em `src/game/`.
 - `src/game/` é o tempo real (three.js): loop, combate, IA, efeitos. `src/ui/` é a interface em DOM.
 - Arte por código, onde mexer: `chars/` (personagens articulados: `kit.ts` com primitivas, `body()` e escultura; `cast-heroes.ts`, `cast-enemies.ts`, `cast-bosses.ts` com a receita de cada um; `build.ts` monta; animação em `animate.ts`), `flora.ts` (árvores, pedras, túmulos...), `world.ts` (chão com shader, grama, montagem da zona), `shared.ts` (uniforms de vento e do recorte que revela o herói), `render.ts` (bloom, cor, vinheta).
-- Conferir arte sempre por captura de tela, com o sprite ao lado: `npm run dev` e abrir `/preview.html` (`src/preview.ts`; fora do build do jogo). Sem GPU, usar Playwright + Chromium com `--use-angle=swiftshader`: renderiza certo, mas lento; não serve para medir desempenho.
+- Conferir arte sempre por captura de tela, com o sprite ao lado: `npm run dev` e abrir `/preview.html` (`src/preview.ts`; fora do build do jogo). Com o navegador oculto, `__preview.shot(nome, opções)` no console da prévia grava `.shots/<nome>.png`. Sem GPU, usar Playwright + Chromium com `--use-angle=swiftshader`: renderiza certo, mas lento; não serve para medir desempenho.
 - Geração procedural só via `core/rng.ts` (seed + stream por rótulo). `Math.random()` só para efeito visual e variação de combate.
 
 ## Fluxo

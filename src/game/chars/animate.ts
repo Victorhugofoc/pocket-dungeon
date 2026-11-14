@@ -304,11 +304,15 @@ export function animateChar(rig: Rig, a: AnimState): void {
         torso.rotation.x += -0.22 * prep01 + 0.24 * hit;
         break;
       case "throw":
-        armR.rotation.x = -3.0 * prep01 - 1.3 * hit + c.poseR[0] * back;
-        foreR.rotation.x = -1.3 * prep01 + c.poseR[1] * back;
-        torso.rotation.y += 0.7 * prep01 - 0.7 * hit;
+      case "throwL": {
+        const left = c.style === "throwL";
+        const pose = left ? c.poseL : c.poseR;
+        (left ? armL : armR).rotation.x = -3.0 * prep01 - 1.3 * hit + pose[0] * back;
+        (left ? foreL : foreR).rotation.x = -1.3 * prep01 + pose[1] * back;
+        torso.rotation.y += (left ? -1 : 1) * (0.7 * prep01 - 0.7 * hit);
         torso.rotation.x += 0.3 * hit;
         break;
+      }
       case "bite":
         break;
     }

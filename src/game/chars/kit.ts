@@ -7,7 +7,8 @@ export type G = THREE.BufferGeometry;
 export type Bone =
   | "hips" | "torso" | "head" | "armL" | "armR" | "foreL" | "foreR" | "thighL" | "thighR" | "shinL" | "shinR"
   | "cape" | "tail" | "wingL" | "wingR" | "skirt" | "weapon";
-export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "bite";
+/** `throwL` = arremesso com o braço esquerdo (escudo) */
+export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "throwL" | "bite";
 export type Form = "biped" | "robed" | "bat" | "slime" | "spider";
 
 // ---------------------------------------------------------------- primitivas (já pintadas por vértice)
@@ -565,4 +566,46 @@ export function fist(c: number, r = 0.07, side = 1): G[] {
   for (let i = 0; i < 4; i++) out.push(at(stud(r * 0.4, c, dk(c), 1, 1.3, 1.1, 0), (i - 1.5) * r * 0.48, -r * 0.45, r * 0.75));
   out.push(at(stud(r * 0.42, c, dk(c), 1, 1.3, 1, 0), -side * r * 0.85, -r * 0.1, r * 0.55, 0, 0, -side * 0.5));
   return out;
+}
+
+/** pinta os vértices nas alturas dadas: sombra ou debrum na borda de cada lâmina de armadura */
+export function edge(g: G, color: number, ...ys: number[]): G {
+  const pos = g.attributes.position, c = g.attributes.color, k = new THREE.Color(color);
+  for (let i = 0; i < pos.count; i++) if (ys.some((y) => Math.abs(pos.getY(i) - y) < 0.004)) c.setXYZ(i, k.r, k.g, k.b);
+  return g;
+}
+/** lâmina em cúpula (ombreira, coxote) com a borda de baixo na cor `rim` */
+export const dome = (r: number, c: number, c2: number, rim: number): G =>
+  edge(lathe([[r * 1.07, -0.045], [r * 1.03, -0.005], [r * 0.93, r * 0.4], [r * 0.62, r * 0.78], [0, r * 0.95]], c, c2, 12), rim, -0.045);
+
+/** Chapa de duas faces sobre uma grade (escudo, asa, estandarte): `u` de -1 a 1, `v` de 0 a 1. A frente olha para +z quando
+ * `u` cresce em +x e `v` desce em -y; o verso fica a `thick` para trás, na cor `back`. */
+export function plateMesh(nu: number, nv: number, shape: (u: number, v: number, p: THREE.Vector3) => void, tint: (u: number, v: number, c: THREE.Color) => void, back: number, thick = 0.03): G {
+  const cols = nu + 1, n = cols * (nv + 1);
+  const pos = new Float32Array(n * 6), col = new Float32Array(n * 6);
+  const p = new THREE.Vector3(), c = new THREE.Color(), cb = new THREE.Color(back);
+  for (let j = 0; j <= nv; j++) {
+    for (let i = 0; i <= nu; i++) {
+      const u = (i / nu) * 2 - 1, v = j / nv, k = j * cols + i;
+      shape(u, v, p);
+      tint(u, v, c);
+      pos.set([p.x, p.y, p.z], k * 3);
+      pos.set([p.x, p.y, p.z - thick], (k + n) * 3);
+      col.set([c.r, c.g, c.b], k * 3);
+      col.set([cb.r, cb.g, cb.b], (k + n) * 3);
+    }
+  }
+  const index: number[] = [];
+  for (let j = 0; j < nv; j++) {
+    for (let i = 0; i < nu; i++) {
+      const a = j * cols + i, q = a + 1, r = a + cols, t = r + 1;
+      index.push(a, r, q, q, r, t, a + n, q + n, r + n, q + n, t + n, r + n);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  return g.toNonIndexed();
 }

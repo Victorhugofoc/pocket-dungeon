@@ -120,7 +120,7 @@ resize();
 setView(state.view);
 
 const t0 = performance.now();
-function frame(now: number): void {
+function tick(now: number): void {
   const t = (now - t0) / 1000;
   for (const a of actors) {
     const r = a.rig.root;
@@ -150,8 +150,32 @@ function frame(now: number): void {
   }
   controls.update();
   pipeline.render();
+}
+function frame(now: number): void {
+  tick(now);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
-Object.assign(window, { __preview: { state, actors, camera, controls, setView } });
+/** Grava uma captura em `.shots/<name>.png` pelo servidor de desenvolvimento (ver vite.config.ts). Avança a animação por conta própria,
+ * então funciona com a aba oculta. `set` troca anim, yaw (graus), view e o recorte `freeze` antes de capturar. */
+async function shot(name: string, set: { anim?: string; yaw?: number; view?: string; freeze?: number | null; dist?: number; w?: number; h?: number } = {}): Promise<string> {
+  if (set.anim) state.anim = set.anim;
+  if (set.yaw !== undefined) state.yaw = (set.yaw * Math.PI) / 180;
+  if (set.freeze !== undefined) set.freeze === null ? q.delete("freeze") : q.set("freeze", String(set.freeze));
+  if (set.dist !== undefined) q.set("dist", String(set.dist));
+  const w = set.w ?? 640, h = set.h ?? 640;
+  renderer.setPixelRatio(1);
+  renderer.setSize(w, h, false);
+  pipeline.setSize(w, h, 1);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  setView(set.view ?? state.view);
+  const start = performance.now();
+  for (let i = 0; i < 90; i++) tick(start + i * 16.7);
+  const data = canvas.toDataURL("image/png");
+  await fetch(`/__shot?name=${encodeURIComponent(name)}`, { method: "POST", body: data });
+  return name;
+}
+
+Object.assign(window, { __preview: { state, actors, camera, controls, setView, shot } });
