@@ -158,8 +158,8 @@ function frame(now: number): void {
 requestAnimationFrame(frame);
 
 /** Grava uma captura em `.shots/<name>.png` pelo servidor de desenvolvimento (ver vite.config.ts). Avança a animação por conta própria,
- * então funciona com a aba oculta. `set` troca anim, yaw (graus), view e o recorte `freeze` antes de capturar. */
-async function shot(name: string, set: { anim?: string; yaw?: number; view?: string; freeze?: number | null; dist?: number; w?: number; h?: number } = {}): Promise<string> {
+ * então funciona com a aba oculta. `set` troca anim, yaw (graus), view, `dist`, a altura mirada `lookY` e o instante `freeze` antes de capturar. */
+async function shot(name: string, set: { anim?: string; yaw?: number; view?: string; freeze?: number | null; dist?: number; lookY?: number; w?: number; h?: number } = {}): Promise<string> {
   if (set.anim) state.anim = set.anim;
   if (set.yaw !== undefined) state.yaw = (set.yaw * Math.PI) / 180;
   if (set.freeze !== undefined) set.freeze === null ? q.delete("freeze") : q.set("freeze", String(set.freeze));
@@ -171,6 +171,12 @@ async function shot(name: string, set: { anim?: string; yaw?: number; view?: str
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   setView(set.view ?? state.view);
+  if (set.lookY !== undefined) {
+    // mira em outra altura (rosto, pés) mantendo o ângulo da câmera
+    camera.position.y += set.lookY - controls.target.y;
+    controls.target.y = set.lookY;
+    controls.update();
+  }
   const start = performance.now();
   for (let i = 0; i < 90; i++) tick(start + i * 16.7);
   const data = canvas.toDataURL("image/png");

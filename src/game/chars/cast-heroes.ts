@@ -1,6 +1,6 @@
 // Heróis. Os que têm o comentário "Redesenho" foram refeitos pelo método da seção 4 do roadmap; os outros são a versão antiga, a refazer em M2.
 import * as THREE from "three";
-import { type G, type Spec, at, beard, bell, belt, body, bx, cape, capeMesh, cone, cowboyHat, cyl, dagger, dome, edge, fist, grp, hairCap, hairLong, hang, hood, lathe, limb, plateMesh, restArm, revolver, sculpt, sph, ss, staff, stud, sword, torus, tubeMesh, wizardHat, BLACK, BONE, GOLD, LEATHER, SKIN, WOOD } from "./kit";
+import { type G, type Spec, at, beard, bell, belt, body, bx, cape, capeMesh, cone, cowboyHat, cyl, dagger, dk, dome, edge, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, lathe, limb, plateMesh, restArm, revolver, robeMesh, sculpt, sph, ss, staff, stud, sword, torus, tubeMesh, wizardHat, BLACK, BONE, GOLD, LEATHER, SKIN, WOOD } from "./kit";
 
 export const HEROES: Record<string, Spec> = {
   // ------------------------------------------------ heróis
@@ -15,15 +15,93 @@ export const HEROES: Record<string, Spec> = {
     for (let i = 0; i < 6; i++) b.lit("foreR", at(bx(0.035, 0.34, 0.035, 0xbfeaff), 0, -0.31, 1.22, 0, 0, (i / 6) * Math.PI));
     b.lit("foreR", at(sph(0.07, 0xeaffff), 0, -0.31, 1.22));
   },
+  // Redesenho a partir do sprite (docs/ref/kaelen.png): duelista esguio de cabelo claro revolto, casaco azul-marinho com debrum dourado,
+  // capa de forro vermelho e faísca ciano na mão. Medidas do sprite (altura 69 px): cabeça com cabelo 16 px, ombros com a capa 25 px, quadril a 41%.
   kaelen: (b) => {
-    body(b, { skin: SKIN, top: 0x2f3f7a, bottom: 0x26305a, boots: 0x1c2444 });
-    b.glowColor = 0xffe066;
-    b.style = "swing"; b.poseR = [-0.35, -0.7];
-    b.add("head", ...hairCap(0xe8e2d0), at(sph(0.1, 0xe8e2d0, 1.2, 0.6, 1), 0.08, 0.36, 0.12));
-    b.add("cape", ...cape(0x3a56a8, 0.3, 1.0));
-    b.add("hips", ...belt(GOLD));
-    b.add("torso", at(bx(0.07, 0.4, 0.03, GOLD), 0, 0.3, 0.205), at(torus(0.2, 0.04, 0x3a56a8), 0, 0.52, 0));
-    b.add("foreR", ...sword(0.9, 0xd9e6ff));
+    const NAVY = 0x2c3f78, NAVY_D = 0x141c3c, NAVY_L = 0x4a66b0, TRIM = 0xe0a030, LINING = 0x7a1f2c, HAIR = 0xf0ead8, HAIR_D = 0xa39678;
+    const FACE = 0xe6b48c, FACE_D = 0xb88460, PANTS = 0x20253a, CYAN = 0x7feaff, BLADE = 0xdfe8f2, DARK = 0x1a1c26;
+    const col = (hex: number) => new THREE.Color(hex);
+    const cFace = col(FACE), cFaceD = col(FACE_D), cHair = col(HAIR), cHairD = col(HAIR_D);
+    const HAND = 0.31;
+    b.bulk = 0.92; b.style = "swing"; b.rough = 0.7; b.glowColor = CYAN;
+    b.lean = 0.03; b.crouch = 0.08; b.armOut = 0.13;
+    b.poseR = [0.15, -0.7]; b.poseL = [-0.45, -1.75];
+    b.dims = { hipY: 0.95, headY: 0.58, shoulderY: 0.46, shoulderX: 0.27, arm: 0.33, hipX: 0.12, thigh: 0.44 };
+
+    // ---- rosto: malha única com nariz e órbitas rasas; olhos por cima
+    b.add("head", at(headBase({ w: 0.155, h: 0.185, d: 0.165, muzzle: 0.03, muzzleNarrow: 0.3, palate: null, brow: 0.012, socket: 0.02, cheek: 0, seg: [24, 18], tint: (n, c) => {
+      c.copy(cFaceD).lerp(cFace, ss(-0.9, 0.2, n.y) * (0.75 + 0.25 * Math.max(0, n.z)));
+      c.lerp(cFaceD, 0.5 * headMask.socket(n));
+    } }), 0, 0.2, 0));
+    b.add("head", at(stud(0.022, FACE, FACE_D, 0.8, 1.2, 1, 0), 0, 0.19, 0.185), at(bx(0.05, 0.012, 0.02, FACE_D, FACE_D), 0, 0.13, 0.175));
+    for (const s of [-1, 1]) {
+      b.add("head", at(stud(0.02, DARK, DARK, 1.1, 1.25, 0.5, 0), s * 0.058, 0.235, 0.148));
+    }
+    // ---- cabelo revolto: massa esculpida aberta no rosto e mechas soltas
+    b.add("head", sculpt(24, 18, (n, p) => {
+      const face = ss(0.1, 0.45, n.z) * ss(0.42, 0.18, n.y);
+      const nape = ss(-0.45, -0.8, n.y) * (n.z > -0.2 ? 1 : 0.3);
+      const k = (1.3 + 0.13 * Math.sin(n.x * 7 + n.y * 5) * Math.sin(n.z * 6 + 1) + 0.1 * ss(0.2, 0.9, n.y)) * (1 - 0.36 * face) * (1 - 0.4 * nape);
+      p.set(n.x * 0.155 * k, n.y * 0.185 * k + 0.225, n.z * 0.165 * k - 0.012);
+    }, (n, c) => {
+      c.copy(cHairD).lerp(cHair, ss(-0.7, 0.5, n.y));
+      if (Math.sin(n.x * 14 + n.z * 9) > 0.6) c.multiplyScalar(0.86);
+    }));
+    const lock = (x: number, y: number, z: number, dx: number, dy: number, dz: number, len: number) => {
+      const g = cone(0.085, len, HAIR, 6, HAIR_D);
+      g.scale(1, 1, 0.75);
+      return g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize())).translate(x, y, z);
+    };
+    for (let i = 0; i < 8; i++) {
+      const a = i * 0.785 + 0.3, r = 0.13 + (i % 2) * 0.03;
+      b.add("head", lock(Math.sin(a) * r, 0.37 - (i % 3) * 0.03, Math.cos(a) * r - 0.03, Math.sin(a) * 0.8, 0.5, Math.cos(a) * 0.8 - 0.25, 0.2 + (i % 3) * 0.05));
+    }
+    for (const [x, dx] of [[-0.1, -0.2], [-0.02, 0.15], [0.08, 0.3]] as const) b.add("head", lock(x, 0.34, 0.17, dx, -0.8, 0.4, 0.15));
+
+    // ---- casaco: tronco esguio com debrum e botões, gola alta e pelerine curta sobre os ombros
+    const chest = lathe([[0.14, -0.08], [0.165, -0.04], [0.16, 0.1], [0.19, 0.3], [0.215, 0.42], [0.19, 0.5], [0.12, 0.56], [0.07, 0.6], [0, 0.61]], NAVY, NAVY_D, 14);
+    chest.scale(1.1, 1, 0.78);
+    const collar = edge(lathe([[0.095, 0.5], [0.125, 0.6], [0.135, 0.69]], NAVY, NAVY_D, 12), TRIM, 0.69);
+    collar.scale(1, 1, 0.9);
+    const capelet = edge(lathe([[0.33, -0.09], [0.335, -0.03], [0.28, 0.06], [0.2, 0.12], [0.14, 0.16]], NAVY, NAVY_D, 16), TRIM, -0.09);
+    capelet.scale(1, 1, 0.74);
+    b.add("torso", chest, collar, at(capelet, 0, 0.46, -0.01, 0.05), at(cyl(0.05, 0.055, 0.12, FACE, 8, FACE_D), 0, 0.6, 0));
+    b.add("torso", at(bx(0.028, 0.42, 0.02, TRIM, dk(TRIM)), 0.035, 0.15, 0.142, -0.07));
+    for (let i = 0; i < 3; i++) b.add("torso", at(stud(0.016, TRIM, dk(TRIM), 1, 1, 1, 0), -0.03, 0.04 + i * 0.11, 0.135 + i * 0.006));
+
+    // ---- braços: manga com punho dourado e mão
+    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
+      b.add(arm, stud(0.085, NAVY, NAVY_D), limb(0.075, 0.062, 0.31, NAVY));
+      b.add(fore, edge(lathe([[0.07, -0.25], [0.072, -0.2], [0.06, -0.05], [0.062, 0.02], [0, 0.06]], NAVY, NAVY_D, 10), TRIM, -0.25));
+      b.add(fore, ...grp(fist(FACE, 0.055, s), 0, -HAND, 0.01));
+    }
+
+    // ---- quadril: cinto, aba do casaco aberta na frente com debrum
+    b.add("hips", at(sph(0.17, PANTS, 1.05, 0.75, 0.84), 0, 0, 0));
+    b.add("hips", at(cyl(0.188, 0.188, 0.06, LEATHER, 14), 0, 0.1, 0, 0, 0, 0, 1, 1, 0.82), at(bx(0.06, 0.06, 0.03, TRIM), 0, 0.1, 0.152));
+    b.add("skirt", robeMesh({ color: NAVY, shade: NAVY_D, rTop: 0.19, rHem: 0.275, yTop: 0.12, yHem: -0.34, folds: 0.03, panel: { half: 0.4, color: PANTS, trim: TRIM }, seg: 28, rings: 4 }));
+
+    // ---- pernas: calça escura e bota alta com dobra
+    for (const [th, sh] of [["thighL", "shinL"], ["thighR", "shinR"]] as const) {
+      b.add(th, limb(0.1, 0.078, 0.42, PANTS, 0.04));
+      b.add(sh, limb(0.085, 0.068, 0.36, NAVY, 0.15), at(cyl(0.088, 0.1, 0.07, NAVY_L, 10, NAVY), 0, -0.03, 0), at(sph(0.085, NAVY, 1, 0.7, 1.9, NAVY_D), 0, -0.42, 0.07));
+    }
+
+    // ---- capa azul-marinho com forro vermelho
+    b.add("cape", at(capeMesh({ color: NAVY, shade: NAVY_D, lining: LINING, half: [1.35, 1.15], rTop: 0.25, rHem: 0.5, len: 1.2, depth: 0.8, folds: 0.07, tatter: 0.03 }), 0, 0.02, -0.03));
+
+    // ---- lâmina fina em guarda baixa, com o fio aceso
+    const tip = cone(0.02, 0.1, BLADE, 4, BLADE);
+    tip.scale(1, 1, 0.45);
+    b.add("foreR", ...grp([
+      at(cyl(0.018, 0.018, 0.16, LEATHER, 6), 0, 0, 0), at(stud(0.03, TRIM, dk(TRIM), 1, 1, 1, 0), 0, 0.1, 0),
+      at(bx(0.17, 0.024, 0.04, TRIM, dk(TRIM)), 0, -0.08, 0), at(bx(0.03, 0.95, 0.012, BLADE, 0xaab6c8), 0, -0.565, 0), at(tip, 0, -1.09, 0, Math.PI),
+    ], 0, -HAND, 0, -0.5));
+    b.lit("foreR", ...grp([at(bx(0.009, 0.92, 0.018, CYAN, CYAN), 0, -0.56, 0)], 0, -HAND, 0, -0.5));
+    // ---- faísca na mão esquerda, na altura do peito
+    b.lit("foreL", at(stud(0.045, CYAN, CYAN), 0, -HAND - 0.02, 0.07));
+    for (let i = 0; i < 4; i++) b.lit("foreL", at(cone(0.016, 0.13, CYAN, 4, CYAN), 0, -HAND - 0.02, 0.07, i * 1.3 + 0.4, 0, i * 1.9));
+    b.lights.push({ bone: "foreL", x: 0, y: -HAND, z: 0.1, color: 0x6fd8ff, intensity: 0.9, distance: 3 });
   },
   aurelius: (b) => {
     body(b, { skin: 0xe8c8a8, top: 0x6a3fb0, sleeve: 0x7a4fc0, robe: { color: 0x5a2f9a, hem: GOLD } });
