@@ -19,7 +19,25 @@ const VARIANTS = 3;
 const CELL = 40;
 const GRASS_TILE = 72;
 
-/** Máscara do chão (R: terra batida — caminho, arena, início, acampamentos). */
+/** Pilares em anel em volta da arena (decoração, sem colisão), com a entrada ao sul aberta. */
+function arenaRing(layout: ZoneLayout): Obstacle[] {
+  const out: Obstacle[] = [];
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    if (Math.abs(a - Math.PI / 2) < 0.45) continue; // entrada ao sul
+    out.push({ x: layout.boss.x + Math.cos(a) * (layout.bossRadius + 0.8), z: layout.boss.z + Math.sin(a) * (layout.bossRadius + 0.8),
+      r: 0.7, kind: "pillar", scale: 1.1, rot: a, solid: false });
+  }
+  return out;
+}
+
+/** quanto cada tipo escurece o chão em volta (sombra de contato) e o raio dela em múltiplos do raio do obstáculo */
+const CONTACT: Partial<Record<DecorKind, [number, number]>> = {
+  tree: [0.7, 1.5], pine: [0.7, 1.4], deadTree: [0.5, 1.25], rock: [0.7, 1.12], lavaRock: [0.6, 1.1], tomb: [0.85, 1.35],
+  pillar: [0.8, 1.3], crystal: [0.55, 1.2], bush: [0.5, 1.2], mushroom: [0.35, 1.5],
+};
+
+/** Máscara do chão. R: terra batida (caminho, arena, início, acampamentos). G: sombra de contato embaixo de cada obstáculo. */
 function buildMask(layout: ZoneLayout): THREE.CanvasTexture {
   const N = 1024;
   const cv = document.createElement("canvas");
@@ -48,6 +66,18 @@ function buildMask(layout: ZoneLayout): THREE.CanvasTexture {
   disc(layout.boss.x, layout.boss.z, layout.bossRadius - 0.5, 1);
   disc(layout.spawn.x, layout.spawn.z, 6.5, 1);
   for (const c of layout.camps) disc(c.x, c.z, 4.2, 0.62);
+  // sombra de contato: discos verdes somados (não mexem no vermelho), com desfoque menor
+  ctx.filter = "blur(2.5px)";
+  ctx.globalCompositeOperation = "lighter";
+  for (const o of [...layout.obstacles, ...arenaRing(layout)]) {
+    const c = CONTACT[o.kind];
+    if (!c) continue;
+    ctx.fillStyle = `rgba(0, ${Math.round(255 * c[0])}, 0, 1)`;
+    ctx.beginPath();
+    ctx.arc(tx(o.x), tx(o.z), Math.max(1.2, o.r * o.scale * c[1] * k), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = "source-over";
   const tex = new THREE.CanvasTexture(cv);
   tex.flipY = false;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -84,7 +114,8 @@ function groundMaterial(zone: ZoneDef): THREE.MeshStandardMaterial {
       gcol = mix(gcol, uG1, smoothstep(0.5, 0.78, mid) * 0.75);
       gcol *= 0.86 + 0.28 * fine;
       gcol = stains(gp, gcol);
-      float mk = texture2D(uMask, gp / uMapSize + 0.5).r;
+      vec2 mm = texture2D(uMask, gp / uMapSize + 0.5).rg;
+      float mk = mm.r;
       float dirtK = smoothstep(0.34, 0.6, mk + (mid - 0.5) * 0.45 + (fine - 0.5) * 0.12);
       vec3 dirt = uDirt * (0.78 + 0.4 * fbm(gp * 0.8 + 3.0));
       float pebble = smoothstep(0.80, 0.86, vnoise(gp * 4.7 + 11.0));
@@ -95,6 +126,8 @@ function groundMaterial(zone: ZoneDef): THREE.MeshStandardMaterial {
       col = mix(col, stains(gp * 1.4 + 50.0, col), dirtK);
       // borda úmida entre grama e terra
       col *= 1.0 - 0.2 * smoothstep(0.12, 0.34, mk) * (1.0 - dirtK);
+      // sombra de contato: o chão escurece embaixo de árvore, pedra, lápide
+      col *= 1.0 - 0.45 * smoothstep(0.15, 0.85, mm.g);
       diffuseColor.rgb = col;`,
     );
   };
@@ -160,7 +193,8 @@ function buildGrass(zone: ZoneDef, rng: Rng): THREE.Mesh | null {
         "#include <begin_vertex>",
         `float T = ${GRASS_TILE.toFixed(1)};
         vec2 w = mod(aOffset - uCenter + T * 0.5, T) - T * 0.5 + uCenter;
-        float mk = texture2D(uMask, w / uMapSize + 0.5).r;
+        vec2 mm = texture2D(uMask, w / uMapSize + 0.5).rg;
+        float mk = mm.r;
         float gh = uGrassH * aRand.x * (1.0 - smoothstep(0.2, 0.5, mk + (aRand.y - 0.5) * 0.25));
         // touceiras: grama mais alta em manchas
         gh *= 0.7 + 0.6 * smoothstep(0.35, 0.7, sin(w.x * 0.21 + aRand.z) * sin(w.y * 0.17) * 0.5 + 0.5);
@@ -180,7 +214,8 @@ function buildGrass(zone: ZoneDef, rng: Rng): THREE.Mesh | null {
         // sem grama aqui: esconde a lâmina abaixo do chão
         if (gh < 0.04) transformed.y = -2.0;
         // manchas: a mesma do chão tinge a lâmina (vColor já foi escrito antes, em color_vertex)
-        vColor = stains(w, vColor);`,
+        vColor = stains(w, vColor);
+        vColor *= 1.0 - 0.45 * smoothstep(0.0, 0.8, mm.g);`,
       )
       .replace(
         "#include <color_vertex>",
@@ -233,13 +268,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
   disposables.push(...Object.values(mats));
 
   // obstáculos + anel de pilares da arena, agrupados por tipo, variante e célula (para o culling por frustum)
-  const all: Obstacle[] = [...layout.obstacles];
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    if (Math.abs(a - Math.PI / 2) < 0.45) continue; // entrada ao sul
-    all.push({ x: layout.boss.x + Math.cos(a) * (layout.bossRadius + 0.8), z: layout.boss.z + Math.sin(a) * (layout.bossRadius + 0.8),
-      r: 0.7, kind: "pillar", scale: 1.1, rot: a, solid: false });
-  }
+  const all: Obstacle[] = [...layout.obstacles, ...arenaRing(layout)];
   const buckets = new Map<string, { kind: DecorKind; variant: number; list: Obstacle[] }>();
   all.forEach((o, i) => {
     const variant = i % VARIANTS;
@@ -256,6 +285,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     let model = models.get(mk);
     if (!model) {
       models.set(mk, (model = buildDecor(b.kind, b.variant, { glow, rockTop: zone.rockTop })));
+      occlude(model.parts);
       for (const g of Object.values(model.parts)) disposables.push(g);
     }
     const tints = b.list.map(() => {
@@ -427,3 +457,27 @@ export function driftSun(sun: THREE.DirectionalLight, zone: ZoneDef, time: numbe
   sunWarm.set(zone.sun).lerp(sunCool.setRGB(1, 0.78, 0.55), 0.5 * d * Math.max(0, w));
   sun.color.copy(sunWarm).lerp(sunCool.setRGB(0.7, 0.8, 1), 0.5 * d * Math.max(0, -w));
 }
+
+/** Oclusão por vértice: tronco, pedra e lápide escurecem perto do chão; a copa escurece embaixo (o miolo que não pega luz). */
+function occlude(parts: Partial<Record<MatKind, THREE.BufferGeometry>>): void {
+  for (const [kind, geo] of Object.entries(parts) as [MatKind, THREE.BufferGeometry][]) {
+    if (kind === "glow") continue;
+    const pos = geo.attributes.position, col = geo.attributes.color;
+    if (!col) continue;
+    geo.computeBoundingBox();
+    const y0 = geo.boundingBox!.min.y, y1 = geo.boundingBox!.max.y;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      // pedra e lápide: pela altura da própria peça (são baixas; pela altura do chão ficavam pretas inteiras)
+      const k = kind === "foliage" ? 0.62 + 0.38 * smooth(y0, y0 + (y1 - y0) * 0.6, y)
+        : kind === "rock" ? 0.6 + 0.4 * smooth(y0, y0 + (y1 - y0) * 0.45, y)
+        : 0.5 + 0.5 * smooth(0, 0.7, y);
+      col.setXYZ(i, col.getX(i) * k, col.getY(i) * k, col.getZ(i) * k);
+    }
+    col.needsUpdate = true;
+  }
+}
+const smooth = (a: number, b: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};

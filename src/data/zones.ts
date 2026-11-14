@@ -38,6 +38,8 @@ export interface ZoneDef {
   scatter: [ScatterKind, number, number[]][];
   /** manchas no chão e na grama (até 3): [cor, tamanho da mancha em m, quanto cobre 0..1] */
   stains: [number, number, number][];
+  /** correção de cor (render.ts): tom das sombras e das luzes (perto de branco), saturação e contraste */
+  grade: { shadow: number; light: number; saturation: number; contrast: number };
   /** sombra de nuvens passando pelo chão e pelos personagens: quanto escurece o sol (0..1), tamanho das nuvens (m), velocidade (m/s)
    * e cobertura (0..1, fração do chão na sombra); `drift`: quanto a força e a cor do sol variam devagar (0..1) */
   clouds: { strength: number; size: number; speed: number; cover: number; drift: number };
@@ -61,7 +63,8 @@ export const ZONES: Record<string, ZoneDef> = {
     shafts: { count: 130, color: 0xfff6e0, intensity: 0.3 },
     scatter: [["tuft", 10, [0x3d7a35, 0x5a8f3a, 0x8f9a48]], ["leaf", 14, [0x8a5a2a, 0xa8742e, 0x6a7a2a, 0x7a4a24]], ["fern", 4.4, [0x2f6a30, 0x3f7f38]],
       ["pebble", 3, [0x7a7262, 0x8a8070, 0x6a6458]], ["twig", 2.4, [0x5a3e28, 0x4a3422]]],
-    stains: [[0x223418, 16, 0.42], [0x8a9a40, 11, 0.36], [0x2e4a26, 30, 0.45]],
+    grade: { shadow: 0xb8cce0, light: 0xfff0d8, saturation: 1.0, contrast: 1.08 },
+    stains: [[0x223418, 16, 0.42], [0x7a8e3c, 11, 0.24], [0x2e4a26, 30, 0.45]],
     clouds: { strength: 0.6, size: 58, speed: 1.8, cover: 0.5, drift: 0.1 },
     haze: { start: 34, density: 0.013, mist: 0.24, mistHeight: 0.8, mistColor: 0xb4d2bc, mistSize: 10, mistSpeed: 0.7 },
   },
@@ -76,7 +79,8 @@ export const ZONES: Record<string, ZoneDef> = {
     motes: { color: 0xbfe0ff, lit: 0xd8f0ff, rise: 0.5, rate: 45 },
     shafts: { count: 100, color: 0xc4d4ff, intensity: 0.24 },
     scatter: [["tuft", 8, [0x5a6a6a, 0x6a786e, 0x6a7468]], ["leaf", 6, [0x4a4040, 0x5a5048, 0x3e3a3a]], ["pebble", 4, [0x5a6070, 0x4a5060, 0x6a7080]], ["twig", 1.6, [0x6a625a, 0x5a544e]]],
-    stains: [[0x323a48, 14, 0.45], [0x56664e, 10, 0.32], [0x2a3038, 26, 0.4]],
+    grade: { shadow: 0xa8b8ff, light: 0xe8f0ff, saturation: 0.85, contrast: 1.1 },
+    stains: [[0x323a48, 14, 0.45], [0x50586a, 10, 0.32], [0x2a3038, 26, 0.4]],
     clouds: { strength: 0.55, size: 64, speed: 1.2, cover: 0.55, drift: 0.08 },
     haze: { start: 24, density: 0.016, mist: 0.42, mistHeight: 0.6, mistColor: 0x7488b4, mistSize: 8, mistSpeed: 0.5 },
   },
@@ -91,6 +95,7 @@ export const ZONES: Record<string, ZoneDef> = {
     motes: { color: 0xff8a2a, lit: 0xffc060, rise: 2.2, rate: 70 },
     shafts: { count: 90, color: 0xffb890, intensity: 0.16 },
     scatter: [["pebble", 10, [0x4a3a34, 0x5a4a44, 0x6a5650, 0x3a2e2a]], ["twig", 1.2, [0x3a302a, 0x2a2220]], ["tuft", 6, [0x5a4a30, 0x6a5434, 0x4a3a28]], ["shard", 1.6, [0x2a2020, 0x3a2a26]]],
+    grade: { shadow: 0x9a90a8, light: 0xffd8b0, saturation: 0.82, contrast: 1.1 },
     stains: [[0x2a2020, 12, 0.45], [0x6a5e5a, 18, 0.42], [0x4a3a36, 30, 0.45]],
     clouds: { strength: 0.6, size: 44, speed: 2.6, cover: 0.5, drift: 0.12 },
     haze: { start: 18, density: 0.022, mist: 0.32, mistHeight: 1.6, mistColor: 0x4a3c38, mistSize: 12, mistSpeed: 1.4 },
@@ -106,6 +111,7 @@ export const ZONES: Record<string, ZoneDef> = {
     motes: { color: 0x73ffcc, lit: 0xc8fff0, rise: 0.8, rate: 55 },
     shafts: { count: 90, color: 0xa8ffe4, intensity: 0.22 },
     scatter: [["pebble", 5, [0x4a3a70, 0x5a4a8a, 0x6a5aa0]], ["tuft", 4, [0x2f2550, 0x3a7a6a]], ["shard", 3, [0x9affe0, 0xc8a8ff, 0x7ad8c0]]],
+    grade: { shadow: 0x9890e8, light: 0xe0fff4, saturation: 0.9, contrast: 1.1 },
     stains: [[0x2a2048, 14, 0.45], [0x3a6a70, 9, 0.3], [0x5a4a8e, 28, 0.42]],
     clouds: { strength: 0.45, size: 70, speed: 0.9, cover: 0.5, drift: 0.06 },
     haze: { start: 20, density: 0.022, mist: 0.3, mistHeight: 0.8, mistColor: 0x463a80, mistSize: 10, mistSpeed: 0.4 },
