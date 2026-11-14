@@ -19,44 +19,49 @@ export const HEROES: Record<string, Spec> = {
   // capa de forro vermelho e faísca ciano na mão. Medidas do sprite (altura 69 px): cabeça com cabelo 16 px, ombros com a capa 25 px, quadril a 41%.
   kaelen: (b) => {
     const NAVY = 0x2c3f78, NAVY_D = 0x141c3c, NAVY_L = 0x4a66b0, TRIM = 0xe0a030, LINING = 0x7a1f2c, HAIR = 0xf0ead8, HAIR_D = 0xa39678;
-    const FACE = 0xe6b48c, FACE_D = 0xb88460, PANTS = 0x20253a, CYAN = 0x7feaff, BLADE = 0xdfe8f2, DARK = 0x1a1c26;
+    const FACE = 0xe6b48c, FACE_D = 0xb88460, PANTS = 0x20253a, CYAN = 0x7feaff, BLADE = 0xdfe8f2, IRIS = 0x27407e;
     const col = (hex: number) => new THREE.Color(hex);
-    const cFace = col(FACE), cFaceD = col(FACE_D), cHair = col(HAIR), cHairD = col(HAIR_D);
+    const cFace = col(FACE), cFaceD = col(FACE_D), cBlush = col(0xe89a80), cHair = col(HAIR), cHairD = col(HAIR_D), cCyan = col(CYAN), cCore = col(0xf2fdff);
     const HAND = 0.31;
     b.bulk = 0.92; b.style = "swing"; b.rough = 0.7; b.glowColor = CYAN;
     b.lean = 0.03; b.crouch = 0.08; b.armOut = 0.13;
     b.poseR = [0.15, -0.7]; b.poseL = [-0.45, -1.75];
     b.dims = { hipY: 0.95, headY: 0.58, shoulderY: 0.46, shoulderX: 0.27, arm: 0.33, hipX: 0.12, thigh: 0.44 };
 
-    // ---- rosto: malha única com nariz e órbitas rasas; olhos por cima
-    b.add("head", at(headBase({ w: 0.155, h: 0.185, d: 0.165, muzzle: 0.03, muzzleNarrow: 0.3, palate: null, brow: 0.012, socket: 0.02, cheek: 0, seg: [24, 18], tint: (n, c) => {
-      c.copy(cFaceD).lerp(cFace, ss(-0.9, 0.2, n.y) * (0.75 + 0.25 * Math.max(0, n.z)));
-      c.lerp(cFaceD, 0.5 * headMask.socket(n));
-    } }), 0, 0.2, 0));
-    b.add("head", at(stud(0.022, FACE, FACE_D, 0.8, 1.2, 1, 0), 0, 0.19, 0.185), at(bx(0.05, 0.012, 0.02, FACE_D, FACE_D), 0, 0.13, 0.175));
+    // ---- rosto: malha única com queixo afinado, nariz e órbitas rasas. Olhos, sobrancelhas e boca vão na camada sem contorno
+    // (`flat`): com o contorno preto, peça pequena no rosto vira risco. Sobrancelha com a ponta de dentro mais baixa = decidido.
+    b.add("head", at(sculpt(32, 24, (n, p) => {
+      const front = ss(0.3, 0.9, n.z);
+      const jaw = ss(0.05, -0.95, n.y);
+      p.set(
+        n.x * 0.15 * (1 - 0.34 * jaw),
+        n.y * 0.19 - 0.012 * jaw * front,
+        n.z * 0.16 * (1 - 0.1 * jaw) + 0.02 * bell(n.x, 0.11) * bell(n.y + 0.12, 0.13) * front - 0.012 * headMask.socket(n) + 0.012 * bell(n.x, 0.3) * ss(-0.55, -0.9, n.y) * front,
+      );
+    }, (n, c) => {
+      c.copy(cFaceD).lerp(cFace, ss(-1, -0.1, n.y) * (0.8 + 0.2 * Math.max(0, n.z)));
+      c.lerp(cBlush, 0.35 * bell(Math.abs(n.x) - 0.5, 0.2) * bell(n.y + 0.2, 0.2) * ss(0.4, 0.8, n.z));
+    }), 0, 0.2, 0));
     for (const s of [-1, 1]) {
-      b.add("head", at(stud(0.02, DARK, DARK, 1.1, 1.25, 0.5, 0), s * 0.058, 0.235, 0.148));
+      b.flat("head", at(stud(0.027, 0xf6f3ec, 0xd9d3c6, 1.25, 1, 0.3, 0), s * 0.056, 0.228, 0.138, 0, s * 0.3, 0));
+      b.flat("head", at(stud(0.018, IRIS, IRIS, 1, 1.25, 0.3, 0), s * 0.056, 0.228, 0.146, 0, s * 0.3, 0));
+      b.flat("head", at(stud(0.006, 0xffffff, 0xffffff, 1, 1, 0.5, 0), s * 0.056 + 0.007, 0.238, 0.153));
+      b.flat("head", at(bx(0.062, 0.014, 0.014, HAIR_D, HAIR_D), s * 0.058, 0.268, 0.147, 0, s * 0.3, s * 0.24));
     }
-    // ---- cabelo revolto: massa esculpida aberta no rosto e mechas soltas
-    b.add("head", sculpt(24, 18, (n, p) => {
-      const face = ss(0.1, 0.45, n.z) * ss(0.42, 0.18, n.y);
+    b.flat("head", at(bx(0.04, 0.007, 0.01, 0x8a4a3c, 0x8a4a3c), 0.004, 0.118, 0.152, 0, 0, 0.12));
+    // ---- cabelo revolto: massa esculpida com a franja recortada sobre a testa e o volume jogado para trás, com gomos nas costas (mecha em cone fica parecendo chifre ou prego)
+    b.add("head", sculpt(32, 24, (n, p) => {
+      const hairline = 0.36 + 0.13 * Math.sin(n.x * 9 + 0.8) - 0.1 * ss(0.5, 0.9, Math.abs(n.x));
+      const face = ss(0.05, 0.35, n.z) * ss(hairline + 0.1, hairline - 0.06, n.y);
       const nape = ss(-0.45, -0.8, n.y) * (n.z > -0.2 ? 1 : 0.3);
-      const k = (1.3 + 0.13 * Math.sin(n.x * 7 + n.y * 5) * Math.sin(n.z * 6 + 1) + 0.1 * ss(0.2, 0.9, n.y)) * (1 - 0.36 * face) * (1 - 0.4 * nape);
-      p.set(n.x * 0.155 * k, n.y * 0.185 * k + 0.225, n.z * 0.165 * k - 0.012);
+      const top = ss(0.1, 0.9, n.y);
+      const tuft = Math.max(0, Math.sin(n.x * 5.5 + 0.9) * Math.sin(n.y * 6.5 + 0.4)) * ss(0.2, -0.5, n.z);
+      const k = (1.28 + 0.1 * Math.sin(n.x * 6 + n.y * 4) * Math.sin(n.z * 5 + 1) + 0.1 * top + 0.2 * tuft) * (1 - 0.36 * face) * (1 - 0.4 * nape);
+      p.set(n.x * 0.155 * k, n.y * 0.185 * k + 0.225, n.z * 0.165 * k - 0.012 - 0.035 * top);
     }, (n, c) => {
       c.copy(cHairD).lerp(cHair, ss(-0.7, 0.5, n.y));
-      if (Math.sin(n.x * 14 + n.z * 9) > 0.6) c.multiplyScalar(0.86);
+      if (Math.sin(n.x * 14 + n.z * 9) > 0.6) c.multiplyScalar(0.88);
     }));
-    const lock = (x: number, y: number, z: number, dx: number, dy: number, dz: number, len: number) => {
-      const g = cone(0.085, len, HAIR, 6, HAIR_D);
-      g.scale(1, 1, 0.75);
-      return g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize())).translate(x, y, z);
-    };
-    for (let i = 0; i < 8; i++) {
-      const a = i * 0.785 + 0.3, r = 0.13 + (i % 2) * 0.03;
-      b.add("head", lock(Math.sin(a) * r, 0.37 - (i % 3) * 0.03, Math.cos(a) * r - 0.03, Math.sin(a) * 0.8, 0.5, Math.cos(a) * 0.8 - 0.25, 0.2 + (i % 3) * 0.05));
-    }
-    for (const [x, dx] of [[-0.1, -0.2], [-0.02, 0.15], [0.08, 0.3]] as const) b.add("head", lock(x, 0.34, 0.17, dx, -0.8, 0.4, 0.15));
 
     // ---- casaco: tronco esguio com debrum e botões, gola alta e pelerine curta sobre os ombros
     const chest = lathe([[0.14, -0.08], [0.165, -0.04], [0.16, 0.1], [0.19, 0.3], [0.215, 0.42], [0.19, 0.5], [0.12, 0.56], [0.07, 0.6], [0, 0.61]], NAVY, NAVY_D, 14);
@@ -98,10 +103,18 @@ export const HEROES: Record<string, Spec> = {
       at(bx(0.17, 0.024, 0.04, TRIM, dk(TRIM)), 0, -0.08, 0), at(bx(0.03, 0.95, 0.012, BLADE, 0xaab6c8), 0, -0.565, 0), at(tip, 0, -1.09, 0, Math.PI),
     ], 0, -HAND, 0, -0.5));
     b.lit("foreR", ...grp([at(bx(0.009, 0.92, 0.018, CYAN, CYAN), 0, -0.56, 0)], 0, -HAND, 0, -0.5));
-    // ---- faísca na mão esquerda, na altura do peito
-    b.lit("foreL", at(stud(0.045, CYAN, CYAN), 0, -HAND - 0.02, 0.07));
-    for (let i = 0; i < 4; i++) b.lit("foreL", at(cone(0.016, 0.13, CYAN, 4, CYAN), 0, -HAND - 0.02, 0.07, i * 1.3 + 0.4, 0, i * 1.9));
-    b.lights.push({ bone: "foreL", x: 0, y: -HAND, z: 0.1, color: 0x6fd8ff, intensity: 0.9, distance: 3 });
+    // ---- faísca na mão esquerda: núcleo pequeno e três arcos finos em zigue-zague (peça grande acesa vira um borrão com o bloom)
+    const core = new THREE.Vector3(0, -HAND - 0.03, 0.1);
+    b.lit("foreL", at(stud(0.022, 0xf2fdff, 0xf2fdff), core.x, core.y, core.z));
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.26 + 0.4;
+      const dir = new THREE.Vector3(Math.cos(a) * 0.8, Math.sin(a) * 0.8, 0.3 - (i % 3) * 0.3).normalize();
+      const side = new THREE.Vector3(-dir.y, dir.x, 0).normalize();
+      b.lit("foreL", tubeMesh(4, 7, (t, o) => {
+        const zig = (Math.abs(((t * 3.5 + i * 0.37) % 1) - 0.5) - 0.25) * 0.2 * Math.sin(Math.min(1, t) * Math.PI);
+        o.copy(core).addScaledVector(dir, t * (0.1 + (i % 3) * 0.035)).addScaledVector(side, zig);
+      }, (t) => 0.009 * (1 - 0.7 * t), (_a, t, c) => c.copy(cCore).lerp(cCyan, ss(0.1, 0.6, t)), new THREE.Vector3(0.2, 0.3, 1)));
+    }
   },
   aurelius: (b) => {
     body(b, { skin: 0xe8c8a8, top: 0x6a3fb0, sleeve: 0x7a4fc0, robe: { color: 0x5a2f9a, hem: GOLD } });

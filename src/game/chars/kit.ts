@@ -111,6 +111,14 @@ export class Builder {
     this.glow.set(bone, l);
     return this;
   }
+  /** peças sem contorno preto (olhos, sobrancelhas, boca): pequenas demais para o contorno, que as transforma em riscos */
+  detail = new Map<Bone | string, G[]>();
+  flat(bone: Bone | string, ...g: G[]): this {
+    const l = this.detail.get(bone) ?? [];
+    l.push(...g);
+    this.detail.set(bone, l);
+    return this;
+  }
   fur(bone: Bone | string, ...g: G[]): this {
     const l = this.pelt.get(bone) ?? [];
     l.push(...g);

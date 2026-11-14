@@ -190,7 +190,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     mk("wingR", hips, 0.16, 0.05, 0);
   }
   const mats = [main, glow];
-  const layers: [Map<Bone | string, G[]>, THREE.MeshStandardMaterial][] = [[b.solid, main], [b.glow, glow]];
+  const layers: [Map<Bone | string, G[]>, THREE.MeshStandardMaterial][] = [[b.solid, main], [b.detail, main], [b.glow, glow]];
   let legMat = main;
   if (b.pelt.size) {
     const fur = b.surface === "lava" ? lavaMaterial(b.lava, b.rough) : furMaterial(b.stripe, b.rough);
@@ -228,7 +228,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
       const mesh = new THREE.Mesh(geo, material);
       mesh.castShadow = material !== glow;
       parent.add(mesh);
-      if (material !== glow) parent.add(new THREE.Mesh(geo, OUTLINE));
+      if (material !== glow && map !== b.detail) parent.add(new THREE.Mesh(geo, OUTLINE));
     }
   }
   for (const l of b.lights) {
