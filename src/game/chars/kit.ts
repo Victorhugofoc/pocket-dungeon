@@ -19,6 +19,12 @@ export function sph(r: number, c: number, sx = 1, sy = 1, sz = 1, c2 = dk(c)): G
   g.scale(sx, sy, sz);
   return paint(g, c2, c, -r * sy, r * sy);
 }
+/** esfera de poucos triângulos (80), para tachas, contas e dedos */
+export function stud(r: number, c: number, c2 = dk(c), sx = 1, sy = 1, sz = 1): G {
+  const g = prep(new THREE.IcosahedronGeometry(r, 1), true);
+  g.scale(sx, sy, sz);
+  return paint(g, c2, c, -r * sy, r * sy);
+}
 export function cap(r: number, len: number, c: number, c2 = dk(c)): G {
   const g = prep(new THREE.CapsuleGeometry(r, len, 4, 10), true);
   return paint(g, c2, c, -len / 2 - r, len / 2 + r);

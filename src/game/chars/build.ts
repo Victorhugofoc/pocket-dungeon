@@ -11,6 +11,17 @@ import { type Bone, type G, type Spec, Builder, TORSO_Y, at, cone, cyl, sph, tor
 
 const CAST: Record<string, Spec> = { ...HEROES, ...ENEMIES, ...BOSSES };
 
+/** Junta as peças de um osso e conserta normais nulas (triângulos degenerados de extrusões): normalizar uma normal nula
+ * dá NaN no contorno e na luz de recorte, e o bloom espalha isso como um bloco preto intermitente. */
+function fuse(list: G[]): G {
+  const geo = merge(list);
+  const n = geo.attributes.normal;
+  for (let i = 0; i < n.count; i++) {
+    if (Math.hypot(n.getX(i), n.getY(i), n.getZ(i)) < 1e-6) n.setXYZ(i, 0, 1, 0);
+  }
+  return geo;
+}
+
 export function hasChar(id: string): boolean {
   return id in CAST;
 }
@@ -194,7 +205,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     root.add(femur);
     inner.add(root);
     for (const [bone, list] of [[femur, spec.femur], [tibia, spec.tibia]] as const) {
-      const geo = merge(list);
+      const geo = fuse(list);
       const mesh = new THREE.Mesh(geo, legMat);
       mesh.castShadow = true;
       bone.add(mesh, new THREE.Mesh(geo, OUTLINE));
@@ -212,7 +223,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
         for (const g of list) g.dispose();
         continue;
       }
-      const geo = merge(list);
+      const geo = fuse(list);
       const mesh = new THREE.Mesh(geo, material);
       mesh.castShadow = material !== glow;
       parent.add(mesh);
