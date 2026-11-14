@@ -19,7 +19,7 @@ import { characterRig } from "./rigs";
 import { kickRig, nextShot } from "./chars";
 import { Pipeline } from "./render";
 import { U } from "./shared";
-import { buildWorld, driftSun, setZoneClouds, type WorldView } from "./world";
+import { buildWorld, driftSun, setZoneAtmosphere, type WorldView } from "./world";
 
 export interface GameEvents {
   toast(msg: string, color?: string): void;
@@ -230,15 +230,13 @@ export class Game {
     this.layout = generateZone(zone, seed);
     this.grid = new ObstacleGrid(this.layout.obstacles);
     this.world = buildWorld(this.scene, zone, this.layout);
-    this.scene.background = new THREE.Color(zone.sky);
-    this.scene.fog = new THREE.Fog(zone.fog, 42, 120);
     this.pipeline.setGrade(zone);
     this.hemi.color.set(zone.ambient);
     this.hemi.groundColor.set(zone.ground[2]);
     this.hemi.intensity = zone.ambientIntensity;
     this.sun.color.set(zone.sun);
     this.sun.intensity = zone.sunIntensity;
-    setZoneClouds(zone);
+    setZoneAtmosphere(this.scene, zone);
 
     for (const camp of this.layout.camps) {
       camp.spawns.forEach((s, i) => {

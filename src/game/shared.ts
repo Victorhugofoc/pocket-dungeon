@@ -12,15 +12,25 @@ export const U = {
   uFadePos: { value: new THREE.Vector2(-9999, -9999) },
   uFadeRadius: { value: 90 },
   uFadeDepth: { value: 0 },
-  /** sombra de nuvens: força (0 = sem nuvens), escala do ruído (1/m), velocidade (m/s) e cobertura (0..1, fração do chão na sombra); ver `applyClouds` */
+  /** sombra de nuvens: força (0 = sem nuvens), escala do ruído (1/m), velocidade (m/s) e cobertura (0..1, fração do chão na sombra); ver `applyAtmosphere` */
   uCloud: { value: new THREE.Vector4(0, 0.03, 1, 0.5) },
+  /** névoa: início da névoa de distância (m), densidade (1/m), força da névoa rasteira (0..1) e altura dela (m); ver `applyAtmosphere` */
+  uFog: { value: new THREE.Vector4(30, 0.014, 0, 1.5) },
+  uFogColor: { value: new THREE.Color() },
+  uMistColor: { value: new THREE.Color() },
+  /** névoa rasteira: escala do ruído (1/m) e velocidade (m/s) */
+  uMistNoise: { value: new THREE.Vector2(0.07, 0.8) },
 };
 
-/** Sombra de nuvens: ruído animado projetado de cima que escurece só a luz do sol (luz direcional), em qualquer material padrão.
+/** Sombra de nuvens e névoa. Nuvens: ruído animado projetado de cima que escurece só a luz do sol (luz direcional), em qualquer material padrão.
  * A posição no mundo sai de `vViewPosition` (a câmera é rígida: p = Rᵀ(v − t)), então serve para qualquer malha, instanciada ou não. */
 const CLOUD_GLSL = `
 uniform float uTime;
 uniform vec4 uCloud;
+uniform vec4 uFog;
+uniform vec3 uFogColor;
+uniform vec3 uMistColor;
+uniform vec2 uMistNoise;
 float cloudHash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 15731.743); }
 float cloudNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
@@ -37,11 +47,28 @@ vec3 cloudShade() {
   float k = uCloud.x * smoothstep(th - 0.045, th + 0.045, n);
   // sombra fria: o sol perde mais vermelho que azul (o que sobra é a luz do céu)
   return vec3(1.0) - k * vec3(1.0, 0.9, 0.68);
+}
+/** Névoa: rasteira (camada baixa que anda com o vento, em manchas) e de distância (exponencial ao quadrado, mais rala no alto).
+ * Pontilhado de 1/255 no fator para não formar faixas. */
+vec3 atmosphere(vec3 col) {
+  vec3 wp = transpose(mat3(viewMatrix)) * (-vViewPosition - viewMatrix[3].xyz);
+  float dth = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
+  vec2 mp = wp.xz * uMistNoise.x + vec2(0.6, 0.35) * uTime * uMistNoise.y * uMistNoise.x;
+  float mn = 0.6 * cloudNoise(mp) + 0.4 * cloudNoise(mp * 2.3 + 5.1);
+  // espessura atravessada: olhando de cima o raio cruza pouca névoa, rente ao chão cruza muita
+  float dy = abs(wp.y - cameraPosition.y) / max(length(vViewPosition), 0.001);
+  float thick = clamp((1.0 - dy) * 1.7, 0.15, 1.0);
+  float mist = uFog.z * thick * exp(-max(wp.y, 0.0) / uFog.w) * (0.3 + 0.7 * smoothstep(0.3, 0.7, mn));
+  col = mix(col, uMistColor, clamp(mist + dth, 0.0, 1.0));
+  float fx = max(length(vViewPosition) - uFog.x, 0.0) * uFog.y;
+  float far = (1.0 - exp(-fx * fx)) * mix(1.0, 0.6, smoothstep(2.0, 14.0, wp.y));
+  return mix(col, uFogColor, clamp(far + dth, 0.0, 1.0));
 }`;
 
-/** Põe a sombra de nuvens em todos os materiais com luz de `root` (uma vez por material). Chamar depois de criar os materiais:
- * ela embrulha o `onBeforeCompile` que já existir. */
-export function applyClouds(root: THREE.Object3D): void {
+/** Põe a sombra de nuvens e a névoa (`atmosphere`) em todos os materiais com luz de `root` (uma vez por material). Chamar depois
+ * de criar os materiais: ela embrulha o `onBeforeCompile` que já existir. A névoa do three (`scene.fog`) fica só para os materiais
+ * sem luz (contorno dos personagens). */
+export function applyAtmosphere(root: THREE.Object3D): void {
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -54,12 +81,17 @@ export function applyClouds(root: THREE.Object3D): void {
         prev.call(mat, shader, renderer);
         shader.uniforms.uTime = U.uTime;
         shader.uniforms.uCloud = U.uCloud;
+        shader.uniforms.uFog = U.uFog;
+        shader.uniforms.uFogColor = U.uFogColor;
+        shader.uniforms.uMistColor = U.uMistColor;
+        shader.uniforms.uMistNoise = U.uMistNoise;
         const lights = THREE.ShaderChunk.lights_fragment_begin.replace(
           "getDirectionalLightInfo( directionalLight, directLight );",
           "getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= cloudShade();",
         );
         shader.fragmentShader = shader.fragmentShader
           .replace("#include <lights_fragment_begin>", lights)
+          .replace("#include <fog_fragment>", "gl_FragColor.rgb = atmosphere(gl_FragColor.rgb);")
           .replace("void main() {", `${shader.fragmentShader.includes("uniform float uTime;") ? CLOUD_GLSL.replace("uniform float uTime;", "") : CLOUD_GLSL}\nvoid main() {`);
       };
       mat.customProgramCacheKey = () => `${prevKey.call(mat)}:clouds`;

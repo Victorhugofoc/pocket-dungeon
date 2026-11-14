@@ -1,6 +1,6 @@
 // Prévia de zona (só no `npm run dev`, fora do build do jogo): monta a zona com seed fixa, sem inimigos nem interface, com o mesmo
 // renderizador, luz, névoa e pós-processamento do jogo, e um herói parado para escala. Serve para o marco M18 (atmosfera) e para o
-// crítico cego (docs/critic.md). Abrir em /zone.html. Parâmetros: ?zone=bosque|cripta|vulcao|vazio&seed=<n>&hero=<id>&pose=<nome>&clouds=0
+// crítico cego (docs/critic.md). Abrir em /zone.html. Parâmetros: ?zone=bosque|cripta|vulcao|vazio&seed=<n>&hero=<id>&pose=<nome>&clouds=0&haze=0
 import * as THREE from "three";
 import { generateZone, distToPath, type ZoneLayout } from "./core/worldgen";
 import { ZONES, ZONE_ORDER } from "./data/zones";
@@ -9,7 +9,7 @@ import { animateRig } from "./game/models";
 import { Pipeline } from "./game/render";
 import { characterRig } from "./game/rigs";
 import { U } from "./game/shared";
-import { buildWorld, driftSun, setZoneClouds } from "./game/world";
+import { buildWorld, driftSun, setZoneAtmosphere } from "./game/world";
 
 const q = new URLSearchParams(location.search);
 const zone = ZONES[q.get("zone") ?? "bosque"] ?? ZONES.bosque;
@@ -39,11 +39,10 @@ scene.add(hemi, sun, sun.target);
 
 const layout: ZoneLayout = generateZone(zone, seed);
 const world = buildWorld(scene, zone, layout);
-scene.background = new THREE.Color(zone.sky);
-scene.fog = new THREE.Fog(zone.fog, 42, 120);
 pipeline.setGrade(zone);
-setZoneClouds(zone);
+setZoneAtmosphere(scene, zone);
 if (q.get("clouds") === "0") U.uCloud.value.x = 0;
+if (q.get("haze") === "0") U.uFog.value.set(1e4, 0, 0, 1);
 
 const hero = characterRig(q.get("hero") ?? "varok", "hero");
 scene.add(hero.root);

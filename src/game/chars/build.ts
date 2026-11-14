@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { merge } from "../flora";
 import type { Rig } from "../models";
-import { applyClouds, U } from "../shared";
+import { applyAtmosphere, U } from "../shared";
 import { type IkLeg, type Ribbon, newPhys } from "./animate";
 import { BOSSES } from "./cast-bosses";
 import { ENEMIES } from "./cast-enemies";
@@ -268,7 +268,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     light.position.set(l.x, l.y, l.z);
     bones[l.bone]?.add(light);
   }
-  applyClouds(root);
+  applyAtmosphere(root);
   const scale = b.scale * scaleMult;
   root.scale.setScalar(scale);
   const height = (b.form === "bat" ? 1.5 : b.form === "slime" ? 1.2 : 2.1) * scale;

@@ -5,7 +5,7 @@ import { Rng } from "../core/rng";
 import { distToPath, type Obstacle, type ZoneLayout } from "../core/worldgen";
 import type { DecorKind, ZoneDef } from "../data/zones";
 import { buildDecor, buildFlower, type MatKind } from "./flora";
-import { NOISE_GLSL, applyClouds, patchMaterial, U } from "./shared";
+import { NOISE_GLSL, applyAtmosphere, patchMaterial, U } from "./shared";
 
 export interface WorldView {
   group: THREE.Group;
@@ -361,7 +361,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
   portal.visible = false;
   group.add(portal);
   disposables.push(portalMat, torusGeo, discMat, discGeo);
-  applyClouds(group);
+  applyAtmosphere(group);
 
   return {
     group,
@@ -373,10 +373,17 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
   };
 }
 
-/** Liga a sombra de nuvens da zona (uniform compartilhado por todos os materiais; ver `applyClouds`). */
-export function setZoneClouds(zone: ZoneDef): void {
-  const c = zone.clouds;
+/** Liga o céu, a sombra de nuvens e a névoa da zona (uniforms compartilhados por todos os materiais; ver `applyAtmosphere`).
+ * A `scene.fog` do three acompanha a névoa de distância só para os materiais sem luz (contorno dos personagens). */
+export function setZoneAtmosphere(scene: THREE.Scene, zone: ZoneDef): void {
+  const c = zone.clouds, h = zone.haze;
   U.uCloud.value.set(c.strength, 1 / c.size, c.speed, c.cover);
+  U.uFog.value.set(h.start, h.density, h.mist, h.mistHeight);
+  U.uFogColor.value.set(zone.fog);
+  U.uMistColor.value.set(h.mistColor);
+  U.uMistNoise.value.set(1 / h.mistSize, h.mistSpeed);
+  scene.background = new THREE.Color(zone.sky);
+  scene.fog = new THREE.Fog(zone.fog, h.start + 0.5 / h.density, h.start + 2.2 / h.density);
 }
 
 const sunWarm = new THREE.Color(), sunCool = new THREE.Color();

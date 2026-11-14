@@ -49,7 +49,9 @@ Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e 
 
 **`M18-02` feito:** sombra de nuvens em todos os materiais com luz (`applyClouds` em `shared.ts`, parâmetros `clouds` em `zones.ts`) e sol que varia devagar (`driftSun` em `world.ts`). **Decisão D11:** o Bosque fica sombrio (vale na passada `M18-07`).
 
-Próxima sessão (sugestão): `M18-03` (névoa baixa e de distância). Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
+**`M18-03` feito:** névoa de distância exponencial e névoa rasteira animada no shader (`atmosphere()` em `shared.ts`, parâmetros `haze` em `zones.ts`).
+
+Próxima sessão (sugestão): `M18-04` (raios de luz e ar). Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.
