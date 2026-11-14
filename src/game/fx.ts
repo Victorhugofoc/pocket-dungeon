@@ -49,6 +49,53 @@ const tmpObj = new THREE.Object3D();
 const tmpColor = new THREE.Color();
 const tmpV = new THREE.Vector3();
 
+/** Anel no chão que marca o chefe: aro com a cor dele, marcas girando e brilho para dentro; em fúria fica vermelho e pulsa rápido. */
+export interface BossRing {
+  mesh: THREE.Mesh;
+  /** `fade` 1 = visível, 0 = sumiu */
+  update(x: number, z: number, radius: number, time: number, rage: number, fade: number): void;
+  dispose(): void;
+}
+
+export function makeBossRing(scene: THREE.Scene, color: number): BossRing {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(color) }, uTime: { value: 0 }, uRage: { value: 0 }, uFade: { value: 1 } },
+    vertexShader: "varying vec2 vP; void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: `varying vec2 vP; uniform vec3 uColor; uniform float uTime, uRage, uFade;
+      void main() {
+        float r = length(vP);
+        float a = atan(vP.y, vP.x + 1e-5); // sem o desvio, o centro dá NaN
+        float pulse = 0.5 + 0.5 * sin(uTime * (2.2 + 6.0 * uRage));
+        float rim = smoothstep(0.86, 0.92, r) * (1.0 - smoothstep(0.96, 1.0, r));
+        float marks = step(0.35, sin(a * 12.0 + uTime * (0.6 + 1.6 * uRage))) * smoothstep(0.7, 0.76, r) * (1.0 - smoothstep(0.8, 0.84, r));
+        float inner = smoothstep(0.25, 0.92, r) * (1.0 - smoothstep(0.92, 0.95, r)) * 0.22;
+        float k = (rim * (0.75 + 0.25 * pulse) + marks * 0.5 + inner * (0.6 + 0.4 * pulse)) * uFade;
+        vec3 col = mix(uColor, vec3(1.0, 0.16, 0.1), uRage * (0.55 + 0.25 * pulse));
+        gl_FragColor = vec4(col * k * (1.1 + 0.9 * uRage), k);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+  });
+  const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 48), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.renderOrder = 1;
+  scene.add(mesh);
+  return {
+    mesh,
+    update(x, z, radius, time, rage, fade) {
+      mesh.position.set(x, 0.07, z);
+      mesh.scale.setScalar(radius);
+      mat.uniforms.uTime.value = time;
+      mat.uniforms.uRage.value = rage;
+      mat.uniforms.uFade.value = fade;
+    },
+    dispose() {
+      mesh.removeFromParent();
+      mesh.geometry.dispose();
+      mat.dispose();
+    },
+  };
+}
+
 export class Fx {
   private particles: Particle[] = [];
   private pMesh: THREE.InstancedMesh;

@@ -46,7 +46,7 @@ interface Drop {
   mesh: THREE.Object3D;
 }
 
-interface Bee { x: number; z: number; life: number; hitCd: number; mesh: THREE.Mesh; phase: number }
+interface Bee { x: number; z: number; life: number; hitCd: number; rig: Rig; phase: number; sting: number }
 interface Field { x: number; z: number; r: number; until: number; tick: number; mesh: THREE.Mesh }
 
 export interface PlayerState {
@@ -109,6 +109,8 @@ export class Game {
   started = false;
   paused = false;
   private hitstop = 0;
+  /** recompensa do chefe, entregue quando o corpo dele some */
+  private bossReward: (() => void) | null = null;
   private saveTimer = 0;
   private bagFullToast = 0;
   private lootRng = new Rng((Date.now() ^ 0x9e3779b9) >>> 0);
@@ -249,6 +251,7 @@ export class Game {
     this.enemies.push(this.boss);
     this.bossEngaged = false;
     this.bossDead = false;
+    this.bossReward = null;
 
     const p = this.player;
     p.x = this.layout.spawn.x;
@@ -263,13 +266,13 @@ export class Game {
   }
 
   private clearZone(): void {
-    for (const e of this.enemies) disposeRig(e.rig);
+    for (const e of this.enemies) e.dispose();
     this.enemies.length = 0;
     for (const pr of this.projectiles) this.freeProjectile(pr);
     this.projectiles.length = 0;
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
-    for (const b of this.bees) b.mesh.removeFromParent();
+    for (const b of this.bees) disposeRig(b.rig);
     this.bees.length = 0;
     for (const f of this.fields) f.mesh.removeFromParent();
     this.fields.length = 0;
@@ -696,10 +699,6 @@ export class Game {
       s.zonesUnlocked.push(next);
       this.events.toast(`Nova zona liberada: ${ZONES[next].name}`, "#9be4ff");
     }
-    if (this.world) {
-      this.world.portal.visible = true;
-      this.world.portal.position.set(this.layout.boss.x, 0, this.layout.boss.z);
-    }
     this.persist();
     const pool = RELIC_IDS.filter((id) => !s.relics.includes(id));
     this.lootRng.shuffle(pool);
@@ -708,12 +707,19 @@ export class Game {
     const after = () => {
       if (final) this.events.victory();
     };
-    if (offer.length) {
-      setTimeout(() => this.events.relicChoice(offer, (id) => {
-        this.addRelic(id);
-        after();
-      }), 1400);
-    } else setTimeout(after, 1400);
+    // portal e escolha de relíquia só depois que o corpo do chefe se desfaz (a escolha pausa o jogo)
+    this.bossReward = () => {
+      if (this.world) {
+        this.world.portal.visible = true;
+        this.world.portal.position.set(this.layout.boss.x, 0, this.layout.boss.z);
+      }
+      if (offer.length) {
+        this.events.relicChoice(offer, (id) => {
+          this.addRelic(id);
+          after();
+        });
+      } else after();
+    };
   }
 
   // ---------------------------------------------------------------- inventário
@@ -908,12 +914,10 @@ export class Game {
         break;
       }
       case "brood": {
-        const mat = new THREE.MeshBasicMaterial({ color: 0xffe14a, toneMapped: false });
         for (let i = 0; i < (t.count ?? 3); i++) {
-          const mesh = new THREE.Mesh(DROP_GEO, mat);
-          mesh.scale.set(0.28, 0.24, 0.4);
-          this.scene.add(mesh);
-          this.bees.push({ x: p.x, z: p.z, life: t.duration ?? 10, hitCd: 0, mesh, phase: i * 1.7 });
+          const rig = characterRig("bee", "hero");
+          this.scene.add(rig.root);
+          this.bees.push({ x: p.x, z: p.z, life: t.duration ?? 10, hitCd: 0, rig, phase: i * 1.7, sting: -1 });
         }
         this.fx.burst(p.x, 1.2, p.z, 0xffe14a, 20, 5, 0.12, 0.5, 2);
         break;
@@ -1031,7 +1035,7 @@ export class Game {
     }
 
     // portal
-    this.nearPortal = this.bossDead && Math.hypot(p.x - this.layout.boss.x, p.z - this.layout.boss.z) < 2.6;
+    this.nearPortal = this.bossDead && this.world !== null && this.world.portal.visible && Math.hypot(p.x - this.layout.boss.x, p.z - this.layout.boss.z) < 2.6;
     if (this.nearPortal && input.wasPressed("KeyE")) this.events.openTravel();
 
     // visual
@@ -1061,7 +1065,7 @@ export class Game {
       b.life -= dt;
       b.hitCd -= dt;
       if (b.life <= 0) {
-        b.mesh.removeFromParent();
+        disposeRig(b.rig);
         this.bees.splice(i, 1);
         continue;
       }
@@ -1084,10 +1088,17 @@ export class Game {
       }
       if (target && d < target.radius + 0.9 && b.hitCd <= 0) {
         b.hitCd = 0.6;
+        b.sting = 0;
         this.hitEnemy(target, t.damage, t.status);
       }
-      b.mesh.position.set(b.x, 1.5 + Math.sin(this.time * 9 + b.phase) * 0.2, b.z);
-      b.mesh.rotation.y = Math.atan2(tx - b.x, tz - b.z);
+      if (b.sting >= 0) {
+        b.sting += dt / 0.3;
+        if (b.sting >= 1) b.sting = -1;
+      }
+      // a forma `bat` já voa a meia altura do corpo; aqui só a altura do voo e para onde olha
+      b.rig.root.position.set(b.x, 0.9 + Math.sin(this.time * 5 + b.phase) * 0.15, b.z);
+      if (d > 0.05) b.rig.root.rotation.y = Math.atan2(tx - b.x, tz - b.z);
+      animateRig(b.rig, { t: this.time, move: 1, attack: b.sting, windup: 0, dead: 0 });
     }
     for (let i = this.fields.length - 1; i >= 0; i--) {
       const f = this.fields[i];
@@ -1115,9 +1126,14 @@ export class Game {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (e.remove) {
-        disposeRig(e.rig);
+        e.dispose();
         this.enemies.splice(i, 1);
-        if (e === this.boss) this.boss = null;
+        if (e === this.boss) {
+          this.boss = null;
+          const reward = this.bossReward;
+          this.bossReward = null;
+          if (reward) setTimeout(reward, 600);
+        }
         continue;
       }
       const near = Math.abs(e.x - p.x) < R && Math.abs(e.z - p.z) < R;

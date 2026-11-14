@@ -2,6 +2,7 @@
 // Open with `npm run dev` at /preview.html. URL params: ?view=close|game&anim=idle|walk|attack&yaw=<deg>&dist=<n>&a=<id>&b=<id to compare>&freeze=<s>&ref=0
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TUNING } from "./data/tuning";
 import { ZONES } from "./data/zones";
 import { hasChar } from "./game/chars";
 import { animateRig, type Rig } from "./game/models";
@@ -54,7 +55,7 @@ const actors: Actor[] = ids.map((id, i) => {
   return { rig, home, label: id };
 });
 // a hero for scale
-if (hasChar("varok")) {
+if (hasChar("varok") && !ids.includes("varok")) {
   const rig = characterRig("varok", "hero");
   scene.add(rig.root);
   actors.push({ rig, home: (ids.length / 2) * spacing + 1, label: "varok" });
@@ -78,9 +79,11 @@ function setView(v: string): void {
     camera.position.set(0, 19.5 * z, 16 * z);
     controls.target.set(0, 0.8, 0);
   } else {
-    const d = Number(q.get("dist") ?? 22);
-    camera.position.set(0, d * 0.42, d);
-    controls.target.set(0, 2.2, 0);
+    // enquadra pela altura do personagem: chefe e herói ocupam a mesma parte da tela
+    const h = actors[0]?.rig.height ?? 4.8;
+    const d = Number(q.get("dist") ?? h * 4.6);
+    camera.position.set(0, h * 0.46 + d * 0.3, d);
+    controls.target.set(0, h * 0.46, 0);
   }
   controls.update();
   refresh();
@@ -89,6 +92,7 @@ function setView(v: string): void {
 const bar = document.getElementById("bar")!;
 const buttons: [string, string, string][] = [
   ["anim", "idle", "Idle"], ["anim", "walk", "Walk"], ["anim", "attack", "Attack"],
+  ["anim", "roar", "Roar"], ["anim", "rage", "Rage"], ["anim", "death", "Boss death"],
   ["view", "close", "Close-up"], ["view", "game", "Game camera"],
 ];
 function refresh(): void {
@@ -116,11 +120,14 @@ resize();
 setView(state.view);
 
 const t0 = performance.now();
-function frame(now: number): void {
+function tick(now: number): void {
   const t = (now - t0) / 1000;
   for (const a of actors) {
     const r = a.rig.root;
-    let attack = -1, windup = 0;
+    let attack = -1, windup = 0, roar = -1, dead = 0;
+    // ?freeze=<seconds into the cycle> holds one instant of the attack, roar or death for screenshots
+    const hold = q.has("freeze") ? Number(q.get("freeze")) : null;
+    const lead = a === actors[0];
     if (state.anim === "walk") {
       // walk a small circle so the gait comes from real displacement
       const ang = t * 0.9;
@@ -136,12 +143,45 @@ function frame(now: number): void {
         else if (c < 1.25) attack = (c - 0.7) / 0.55;
       }
     }
-    animateRig(a.rig, { t, move: state.anim === "walk" ? 1 : 0, attack, windup, dead: 0 });
+    if (lead && state.anim === "roar") roar = Math.min(1, (hold ?? t % 2.6) / TUNING.boss.roarTime);
+    if (lead && state.anim === "death") dead = Math.min(1.25, ((hold ?? t % 4) / TUNING.boss.deathTime) * 1.25);
+    if (roar >= 1) roar = -1;
+    animateRig(a.rig, { t, move: state.anim === "walk" ? 1 : 0, attack, windup, dead, roar, rage: lead && state.anim === "rage" ? 1 : 0, bossDeath: true });
   }
   controls.update();
   pipeline.render();
+}
+function frame(now: number): void {
+  tick(now);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
-Object.assign(window, { __preview: { state, actors, camera, controls, setView } });
+/** Grava uma captura em `.shots/<name>.png` pelo servidor de desenvolvimento (ver vite.config.ts). Avança a animação por conta própria,
+ * então funciona com a aba oculta. `set` troca anim, yaw (graus), view, `dist`, a altura mirada `lookY` e o instante `freeze` antes de capturar. */
+async function shot(name: string, set: { anim?: string; yaw?: number; view?: string; freeze?: number | null; dist?: number; lookY?: number; w?: number; h?: number } = {}): Promise<string> {
+  if (set.anim) state.anim = set.anim;
+  if (set.yaw !== undefined) state.yaw = (set.yaw * Math.PI) / 180;
+  if (set.freeze !== undefined) set.freeze === null ? q.delete("freeze") : q.set("freeze", String(set.freeze));
+  if (set.dist !== undefined) q.set("dist", String(set.dist));
+  const w = set.w ?? 640, h = set.h ?? 640;
+  renderer.setPixelRatio(1);
+  renderer.setSize(w, h, false);
+  pipeline.setSize(w, h, 1);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  setView(set.view ?? state.view);
+  if (set.lookY !== undefined) {
+    // mira em outra altura (rosto, pés) mantendo o ângulo da câmera
+    camera.position.y += set.lookY - controls.target.y;
+    controls.target.y = set.lookY;
+    controls.update();
+  }
+  const start = performance.now();
+  for (let i = 0; i < 90; i++) tick(start + i * 16.7);
+  const data = canvas.toDataURL("image/png");
+  await fetch(`/__shot?name=${encodeURIComponent(name)}`, { method: "POST", body: data });
+  return name;
+}
+
+Object.assign(window, { __preview: { state, actors, camera, controls, setView, shot } });

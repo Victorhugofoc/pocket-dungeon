@@ -50,6 +50,11 @@ export const TUNING = {
     hpMult: 0.55,
     enrageAt: 0.3,
     enrageCooldownMult: 0.65,
+    /** segundos em que o chefe ruge sem atacar: ao entrar na luta e ao enfurecer */
+    roarTime: 1.3,
+    enrageRoarTime: 0.9,
+    /** segundos entre a morte do chefe e o corpo sumir */
+    deathTime: 2.4,
     xpMult: 22,
   },
   loot: {
