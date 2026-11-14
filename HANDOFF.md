@@ -1,4 +1,5 @@
-# Dungeon Reign RPG — handoff
+# Dungeon Reign RPG — hando- **Prévia de zona:** `/zone.html?zone=bosque|cripta|vulcao|vazio` (`src/zone-preview.ts`), com a luz e o pós-processamento do jogo, seed fixa e 6 poses de câmera. Também fora do build.
+ff
 
 Leia este arquivo antes de qualquer coisa. Ele substitui o histórico das conversas anteriores.
 
@@ -42,9 +43,11 @@ Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e 
 - **Crítico cego (`M0-07`, feito):** subagente que só vê as capturas e o sprite, nunca o código. Rotina e texto em `docs/critic.md`; capturas com `await __preview.criticShots("critic-<id>")` na prévia (7 poses em `.shots/`). Entra no método (seção 4.1, passo 8): o usuário só vê uma versão depois que o crítico não aponta nada acima de "menor". Primeiro teste: no Kaelen (aprovado) e na Vesper (sem validação) ele apontou defeitos graves e concretos que batem com o sprite.
 - **Novo marco M18, Atmosfera das zonas, antes do M3:** prévia de zona com poses fixas, sombra de nuvens, névoa baixa, raios de luz, densidade do chão, contato e cor, e uma passada por zona. Detalhes no roadmap.
 
-**Vesper refeita com o crítico** (`M2-09`, 2ª versão, falta validar): seis rodadas, terminando sem nenhum grave. Lições da rodada em `docs/critic.md`: o crítico oscila em gosto, e peça fina precisa de volume.
+**Vesper refeita com o crítico** (`M2-09`, 2ª versão, aprovada pelo usuário): seis rodadas, terminando sem nenhum grave. Lições da rodada em `docs/critic.md`: o crítico oscila em gosto, e peça fina precisa de volume.
 
-Próxima sessão (sugestão): validação da Vesper pelo usuário, depois `M18-01`. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
+**`M18-01` feito:** prévia de zona em `/zone.html` (`src/zone-preview.ts`) com 6 poses fixas para o crítico (`__zone.criticShots`), e a contagem de base de draw calls e triângulos por zona registrada no roadmap.
+
+Próxima sessão (sugestão): `M18-02` (sombra de nuvens e luz viva), conferindo com `__zone.criticShots` antes e depois. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.

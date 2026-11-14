@@ -8,7 +8,7 @@ Vale para personagens (M1, M2, M3, M9, M10) e para zonas (marco M18). O usuário
 
 1. Gerar as capturas fixas.
    - Personagem: `npm run dev`, abrir `/preview.html?a=<id>` e rodar no console `await __preview.criticShots("critic-<id>")`. Grava em `.shots/` as poses `front`, `three-quarter`, `side`, `back`, `face`, `attack` e `game` (câmera do jogo, com o Varok ao lado para escala).
-   - Zona: poses fixas do marco M18 (`M18-01`).
+   - Zona: `npm run dev`, abrir `/zone.html?zone=<id>` e rodar no console `await __zone.criticShots("zone-<id>")`. Grava em `.shots/` as poses `campfire`, `middle`, `dense` (mata mais densa), `arena`, `low` (câmera baixa, cerca de 30°) e `far` (zoom 2×), em 1280×720, e devolve draw calls e triângulos de cada uma. Seed fixa (`?seed=`, padrão 1), sem inimigos; o herói fica parado no centro e o chefe na arena.
 2. Chamar o subagente (ferramenta Agent) com o texto da seção abaixo, trocando `<...>`. Passar só caminhos de imagem. Não explicar o que mudou nem o que se espera dele.
 3. Corrigir o que veio como **grave** e **médio**, gerar as capturas de novo e repetir com um subagente **novo** (o anterior já conhece a versão velha).
 4. Parar quando sobrar só **menor**, ou só **médio** de gosto que oscila entre rodadas (ver as lições abaixo). Mostrar ao usuário as capturas e a última lista do crítico.
@@ -41,6 +41,28 @@ Responda em português:
 2. Defeitos, do mais grave para o menos grave. Para cada um: gravidade (grave / médio / menor), onde (pose e parte do corpo), o que está errado e o que mudaria, em termos concretos de forma, proporção, cor ou silhueta.
    - grave: quebra a leitura do personagem, foge do sprite numa peça que o identifica, parece quebrado (peça solta, atravessando, buraco, borrão, artefato preto), ou expressão errada.
    - médio: proporção ou cor visivelmente diferente do sprite, peça que parece colada, silhueta confusa na câmera do jogo, aspecto de boneco de brinquedo.
+   - menor: acabamento.
+3. Uma linha final: "Maior gravidade: grave|médio|menor|nenhum".
+Seja exigente e específico. Não elogie.
+```
+
+## Texto para o subagente (zona)
+
+```
+Você é um diretor de arte avaliando o cenário de um RPG de ação visto de cima (câmera alta, estilo Minecraft Dungeons / Diablo), renderizado em tempo real no navegador. Toda a arte é gerada por código: formas simples, cor por vértice, contorno preto nos personagens, bloom. O objetivo é atmosfera: luz, névoa, densidade e movimento, como numa cena de jogo bem acabada.
+
+Regras: use a ferramenta Read SÓ nos arquivos de imagem listados. Não abra nenhum outro arquivo, não procure no disco, não leia código.
+
+Zona: <nome> (<uma linha com o clima pretendido, de zones.ts>)
+Capturas, todas na mesma zona: <caminhos de .shots/zone-<id>-*.png>
+(campfire = ponto de partida com fogueira; middle = meio do caminho; dense = mata mais densa; arena = arena do chefe, com o chefe parado; low = câmera baixa só para avaliar névoa e profundidade, não é a câmera do jogo; far = câmera do jogo afastada)
+Decisões fixas (não apontar como defeito): <lista, ou "nenhuma">
+
+Responda em português:
+1. Em uma frase: que lugar é este e que clima passa.
+2. Defeitos, do mais grave para o menos grave. Para cada um: gravidade (grave / médio / menor), onde (pose e região da imagem), o que está errado e o que mudaria, em termos concretos de luz, cor, névoa, densidade, escala ou movimento.
+   - grave: parece quebrado (buraco, faixa, objeto flutuando ou cortado, tremido, bloco preto), ilegível (personagem some no fundo) ou sem atmosfera nenhuma (chão chapado e vazio na maior parte da tela).
+   - médio: repetição visível, chão ou ar sem variação, luz chapada, objetos que parecem colados no chão, paleta que não passa o clima da zona.
    - menor: acabamento.
 3. Uma linha final: "Maior gravidade: grave|médio|menor|nenhum".
 Seja exigente e específico. Não elogie.
