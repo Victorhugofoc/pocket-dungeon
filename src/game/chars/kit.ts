@@ -6,7 +6,7 @@ import { merge, paint, prep, xf } from "../flora";
 export type G = THREE.BufferGeometry;
 export type Bone =
   | "hips" | "torso" | "head" | "armL" | "armR" | "foreL" | "foreR" | "thighL" | "thighR" | "shinL" | "shinR"
-  | "cape" | "tail" | "wingL" | "wingR" | "skirt";
+  | "cape" | "tail" | "wingL" | "wingR" | "skirt" | "weapon";
 export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "bite";
 export type Form = "biped" | "robed" | "bat" | "slime" | "spider";
 
@@ -20,8 +20,8 @@ export function sph(r: number, c: number, sx = 1, sy = 1, sz = 1, c2 = dk(c)): G
   return paint(g, c2, c, -r * sy, r * sy);
 }
 /** esfera de poucos triângulos (80), para tachas, contas e dedos */
-export function stud(r: number, c: number, c2 = dk(c), sx = 1, sy = 1, sz = 1): G {
-  const g = prep(new THREE.IcosahedronGeometry(r, 1), true);
+export function stud(r: number, c: number, c2 = dk(c), sx = 1, sy = 1, sz = 1, detail = 1): G {
+  const g = prep(new THREE.IcosahedronGeometry(r, detail), true);
   g.scale(sx, sy, sz);
   return paint(g, c2, c, -r * sy, r * sy);
 }
@@ -94,6 +94,9 @@ export class Builder {
   lights: { bone: Bone; x: number; y: number; z: number; color: number; intensity: number; distance: number }[] = [];
   /** peças de `lit` brilham na própria cor do vértice em vez de `glowColor` (para dois brilhos de cores diferentes) */
   glowByVertex = false;
+  /** Arma de duas mãos com osso próprio (`weapon`, na mão direita, a `hand` do cotovelo). A arma é modelada ao longo de -y a partir da mão;
+   * `carry` é a rotação de descanso, no golpe ela alinha com o antebraço. A mão esquerda segura a `grip` da mão direita, ao longo do cabo. */
+  weapon: { hand: number; carry: THREE.Quaternion; grip: number } | null = null;
 
   add(bone: Bone | string, ...g: G[]): this {
     const l = this.solid.get(bone) ?? [];
@@ -483,3 +486,83 @@ export function restArm(b: Builder, side: number, hand: number): { inv: THREE.Qu
 }
 /** pendura na mão peças modeladas na vertical do mundo, com a origem na mão */
 export const hang = (list: G[], inv: THREE.Quaternion, hand: number): G[] => list.map((g) => g.applyQuaternion(inv).translate(0, -hand, 0));
+
+/** tubo ao longo de uma curva com raio variável (chifres, presas, tentáculos). `ref` não pode ser paralelo à curva. */
+export function tubeMesh(seg: number, rings: number, path: (t: number, out: THREE.Vector3) => void, radius: (t: number) => number, tint: (a: number, t: number, c: THREE.Color) => void, ref = new THREE.Vector3(0, 0, 1)): G {
+  const c0 = new THREE.Vector3(), c1 = new THREE.Vector3(), T = new THREE.Vector3(), N = new THREE.Vector3(), Bn = new THREE.Vector3();
+  return sculptTube(seg, rings, (a, t, p) => {
+    path(t, c0);
+    path(t + 0.01, c1);
+    T.subVectors(c1, c0).normalize();
+    N.crossVectors(ref, T).normalize();
+    Bn.crossVectors(T, N);
+    const r = radius(t);
+    p.copy(c0).addScaledVector(N, Math.cos(a) * r).addScaledVector(Bn, -Math.sin(a) * r);
+  }, tint);
+}
+
+export interface CapeOpts {
+  color: number;
+  shade: number;
+  /** cor do avesso */
+  lining?: number;
+  /** meia abertura do arco em radianos, no topo e na barra */
+  half: [number, number];
+  rTop: number;
+  rHem: number;
+  len: number;
+  /** achata o arco na profundidade */
+  depth?: number;
+  folds?: number;
+  /** recorte irregular da barra (altura máxima) */
+  tatter?: number;
+  nu?: number;
+  nt?: number;
+}
+/** Pano pendurado (capa, tabardo) como malha única de duas faces: arco em volta do corpo que abre até a barra, com pregas.
+ * A origem é o meio do topo; o pano cai para -y e fica atrás (-z). Para a frente, girar meia volta em y. */
+export function capeMesh(o: CapeOpts): G {
+  const { depth = 1, folds = 0.05, tatter = 0, nu = 12, nt = 7 } = o;
+  const base = new THREE.Color(o.color), shade = new THREE.Color(o.shade), lining = new THREE.Color(o.lining ?? dk(o.shade, 0.7));
+  const cols = nu + 1, n = cols * (nt + 1);
+  const pos = new Float32Array(n * 6), col = new Float32Array(n * 6);
+  const hash = (i: number) => { const s = Math.sin(i * 91.7 + 1.3) * 43758.5453; return s - Math.floor(s); };
+  const c = new THREE.Color();
+  for (let j = 0; j <= nt; j++) {
+    for (let i = 0; i <= nu; i++) {
+      const u = (i / nu) * 2 - 1, t = j / nt;
+      const a = u * (o.half[0] + (o.half[1] - o.half[0]) * t);
+      const fold = Math.sin(u * 9 + Math.sin(u * 4) * 1.2);
+      const r = (o.rTop + (o.rHem - o.rTop) * t) * (1 + folds * t * fold);
+      const h = hash(i);
+      const y = -o.len * t + (j === nt ? tatter * (h > 0.5 ? h : h * 0.2) : 0);
+      const k = j * cols + i;
+      pos.set([Math.sin(a) * r, y, (o.rTop - Math.cos(a) * r) * depth], k * 3);
+      pos.set([Math.sin(a) * (r - 0.014), y, (o.rTop - Math.cos(a) * (r - 0.014)) * depth], (k + n) * 3);
+      c.copy(base).lerp(shade, Math.pow(t, 1.3) * 0.8).multiplyScalar(1 - 0.22 * t * (0.5 - 0.5 * fold));
+      col.set([c.r, c.g, c.b], k * 3);
+      col.set([lining.r, lining.g, lining.b], (k + n) * 3);
+    }
+  }
+  const index: number[] = [];
+  for (let j = 0; j < nt; j++) {
+    for (let i = 0; i < nu; i++) {
+      const p = j * cols + i, q = p + 1, r = p + cols, s = r + 1;
+      index.push(p, q, r, q, s, r, p + n, r + n, q + n, q + n, r + n, s + n);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  return g.toNonIndexed();
+}
+
+/** mão fechada com quatro dedos e polegar, centrada na origem; `side`: 1 = direita, -1 = esquerda */
+export function fist(c: number, r = 0.07, side = 1): G[] {
+  const out = [stud(r, c, dk(c), 0.95, 1.05, 0.9)];
+  for (let i = 0; i < 4; i++) out.push(at(stud(r * 0.4, c, dk(c), 1, 1.3, 1.1, 0), (i - 1.5) * r * 0.48, -r * 0.45, r * 0.75));
+  out.push(at(stud(r * 0.42, c, dk(c), 1, 1.3, 1, 0), -side * r * 0.85, -r * 0.1, r * 0.55, 0, 0, -side * 0.5));
+  return out;
+}

@@ -20,6 +20,8 @@ export interface CharState {
   weight: number;
   /** altura do quadril em repouso */
   hipY: number;
+  /** arma de duas mãos com osso próprio: ver `Builder.weapon` */
+  weapon: { hand: number; carry: THREE.Quaternion; grip: number } | null;
   phys: ReturnType<typeof newPhys>;
 }
 
@@ -188,7 +190,7 @@ export function animateChar(rig: Rig, a: AnimState): void {
 
   // braços: balanço oposto às pernas, com o antebraço atrasado (mola)
   const armLag = P.armLag.step(sw, 90, 9, dt);
-  const freeR = c.poseR[0] > -0.8 ? 1 : 0.18;
+  const freeR = c.poseR[0] > -0.8 && !c.weapon ? 1 : 0.18;
   const freeL = c.poseL[0] > -0.8 ? 1 : 0.18;
   const out = c.armOut + rage * (0.1 + breathe * 0.04);
   armR.rotation.set(c.poseR[0] - sw * 0.55 * amp * freeR * fN - secF * 0.12 * freeR, 0, out + Math.abs(sw) * 0.06);
@@ -237,6 +239,7 @@ export function animateChar(rig: Rig, a: AnimState): void {
   // ---- golpe: preparo, ataque que passa do ponto e volta, corpo avança
   const wind = a.windup;
   const p = a.attack >= 0 ? a.attack : -1;
+  let align = 0; // 0 = arma na pose de descanso, 1 = alinhada com o antebraço
   if (alive && (wind > 0 || p >= 0)) {
     if (p >= 0 && !P.wasAttacking) P.bounce.v += 1.2 / W; // impulso no início do golpe
     const strike = p >= 0 ? (p < 0.3 ? overshoot(p / 0.3) : 1) : 0;
@@ -247,6 +250,16 @@ export function animateChar(rig: Rig, a: AnimState): void {
     hips.position.y -= hit * 0.06;
     switch (c.style) {
       case "swing":
+        if (c.weapon) {
+          // duas mãos: ergue a arma acima da cabeça e desce na frente, dobrando o tronco
+          align = p >= 0 ? 1 - back : clamp(wind * 2.5, 0, 1);
+          armR.rotation.x = c.poseR[0] * back - 2.5 * prep01 - 1.1 * hit;
+          armR.rotation.z = c.armOut - 0.8 * align; // as mãos se juntam na frente do corpo
+          foreR.rotation.x = c.poseR[1] * back - 0.6 * prep01 - 0.6 * hit;
+          torso.rotation.x += -0.25 * prep01 + 0.45 * hit;
+          torso.rotation.y += 0.25 * prep01 - 0.2 * hit;
+          break;
+        }
         armR.rotation.x = c.poseR[0] * back - 2.8 * prep01 + 0.55 * hit;
         armR.rotation.z = c.armOut + 0.55 * prep01 - 0.35 * hit;
         foreR.rotation.x = c.poseR[1] * back - 0.7 * prep01 - 0.05 * hit;
@@ -302,6 +315,31 @@ export function animateChar(rig: Rig, a: AnimState): void {
   }
   P.wasAttacking = p >= 0;
 
+  // ---- arma de duas mãos: a mão esquerda vai até o ponto da arma (dois ossos, cotovelo dobrando para a frente)
+  if (c.weapon && B.weapon) {
+    if (align > 0) {
+      // alinhada com o antebraço, desfazendo a abertura lateral do braço para a arma descer reta à frente
+      GQ.copy(foreR.quaternion).invert().multiply(GZ.setFromAxisAngle(AXIS_Z, -armR.rotation.z)).multiply(foreR.quaternion);
+      B.weapon.quaternion.copy(c.weapon.carry).slerp(GQ, ease(align));
+    }
+    else B.weapon.quaternion.copy(c.weapon.carry);
+  }
+  if (alive && c.weapon && B.weapon) {
+    const l1 = -foreL.position.y, l2 = c.weapon.hand;
+    // mão direita e direção do cabo no espaço do tronco, em relação ao ombro esquerdo
+    const toTorso = (v: THREE.Vector3) => v.applyQuaternion(foreR.quaternion).add(foreR.position).applyQuaternion(armR.quaternion).add(armR.position).sub(armL.position);
+    toTorso(GV.copy(B.weapon.position));
+    toTorso(GD.set(0, -1, 0).applyQuaternion(B.weapon.quaternion).add(B.weapon.position)).sub(GV);
+    // no golpe a mão esquerda escorrega pelo cabo até o ponto mais perto do ombro
+    const near = clamp(-GV.dot(GD), 0.14, 0.75);
+    GV.addScaledVector(GD, c.weapon.grip + (near - c.weapon.grip) * ease(align));
+    const d = clamp(GV.length(), Math.abs(l1 - l2) + 0.02, l1 + l2 - 0.005);
+    const bend = Math.acos(clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1)) - Math.PI;
+    GH.set(0, -l1 - l2 * Math.cos(bend), -l2 * Math.sin(bend)).normalize();
+    armL.quaternion.setFromUnitVectors(GH, GV.normalize());
+    foreL.rotation.set(bend, 0, 0);
+  }
+
   // ---- morte de chefe: cambaleia, cai de joelhos, tomba para a frente e achata enquanto se desfaz
   if (!alive && a.bossDeath) {
     const k = a.dead;
@@ -356,7 +394,7 @@ export function animateChar(rig: Rig, a: AnimState): void {
   if (c.legs.length) stepLegs(c, rig, hips.position, dt, vf, vs, a.dead);
 }
 
-const V = new THREE.Vector3();
+const V = new THREE.Vector3(), GV = new THREE.Vector3(), GH = new THREE.Vector3(), GD = new THREE.Vector3(), GQ = new THREE.Quaternion(), GZ = new THREE.Quaternion(), AXIS_Z = new THREE.Vector3(0, 0, 1);
 
 /** Patas com o pé preso ao chão: cada uma dá a passada quando o corpo se afasta do ponto de apoio; os dois grupos se alternam. */
 function stepLegs(c: CharState, rig: Rig, hip: THREE.Vector3, dt: number, vf: number, vs: number, dead: number): void {

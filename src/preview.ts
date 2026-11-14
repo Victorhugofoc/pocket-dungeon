@@ -55,7 +55,7 @@ const actors: Actor[] = ids.map((id, i) => {
   return { rig, home, label: id };
 });
 // a hero for scale
-if (hasChar("varok")) {
+if (hasChar("varok") && !ids.includes("varok")) {
   const rig = characterRig("varok", "hero");
   scene.add(rig.root);
   actors.push({ rig, home: (ids.length / 2) * spacing + 1, label: "varok" });
@@ -79,9 +79,11 @@ function setView(v: string): void {
     camera.position.set(0, 19.5 * z, 16 * z);
     controls.target.set(0, 0.8, 0);
   } else {
-    const d = Number(q.get("dist") ?? 22);
-    camera.position.set(0, d * 0.42, d);
-    controls.target.set(0, 2.2, 0);
+    // enquadra pela altura do personagem: chefe e herói ocupam a mesma parte da tela
+    const h = actors[0]?.rig.height ?? 4.8;
+    const d = Number(q.get("dist") ?? h * 4.6);
+    camera.position.set(0, h * 0.46 + d * 0.3, d);
+    controls.target.set(0, h * 0.46, 0);
   }
   controls.update();
   refresh();

@@ -177,6 +177,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     const hx = b.dims.hipX || 0.13 * k;
     mk("foreL", mk("armL", torso, -sx, b.dims.shoulderY, 0), 0, -b.dims.arm, 0);
     mk("foreR", mk("armR", torso, sx, b.dims.shoulderY, 0), 0, -b.dims.arm, 0);
+    if (b.weapon) mk("weapon", bones.foreR!, 0, -b.weapon.hand, 0);
     mk("cape", torso, 0, 0.52, -0.2 * k);
     mk("tail", hips, 0, 0, -0.16 * k);
     if (b.form === "biped") {
@@ -244,7 +245,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     root, inner, body: inner, head: inner, armL: null, armR: null, legL: null, legR: null, wings: [],
     mats, baseEmissive: mats.map((m) => m.emissive.clone()), kind: "humanoid", height, phase: Math.random() * 10,
     char: { bones, legs, style: b.style, poseR: b.poseR, poseL: b.poseL, form: b.form, shot: 0,
-      lean: b.lean, crouch: b.crouch, armOut: b.armOut, weight, hipY: b.dims.hipY, phys: newPhys() },
+      lean: b.lean, crouch: b.crouch, armOut: b.armOut, weight, hipY: b.dims.hipY, weapon: b.weapon, phys: newPhys() },
   };
 }
 
