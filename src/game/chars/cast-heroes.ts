@@ -259,15 +259,106 @@ export const HEROES: Record<string, Spec> = {
     b.add("weapon", ...mace.map((g) => g.rotateX(Math.PI)));
     b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.5 };
   },
+  // Redesenho a partir do sprite (docs/ref/umbra.png): assassina esguia e agachada, de capuz e máscara, toda de preto com placas cinza e filetes
+  // magenta, cachecol magenta com duas pontas longas soltas (fitas com física) e uma adaga em cada mão.
+  // Medidas do sprite (altura 67 px): capuz 15 px, ombros 22 px, quadril a 45% da altura, pontas do cachecol com 40% da altura.
   umbra: (b) => {
-    body(b, { skin: 0x2a2a34, top: BLACK, bottom: BLACK, boots: 0x15151a, eyes: 0xe07aff, eyeGlow: true });
-    b.glowColor = 0xc83cd9;
-    b.style = "thrust"; b.poseR = [-0.6, -1.1]; b.poseL = [-0.3, -1.2];
-    b.add("head", ...hood(BLACK));
-    b.add("torso", at(torus(0.19, 0.06, 0xc83cd9), 0, 0.52, 0));
-    b.add("cape", at(bx(0.12, 0.75, 0.03, 0xc83cd9, 0x8a2aa0), -0.1, -0.36, 0.04), at(bx(0.1, 0.55, 0.03, 0xa02ab8, 0x6a1a80), 0.1, -0.28, 0.06));
-    b.add("hips", ...belt(0x3a3a44, 1, 0xc83cd9));
-    b.add("foreR", ...dagger()).add("foreL", ...dagger());
+    const CLOTH = 0x4b4962, CLOTH_D = 0x24232f, CLOTH_L = 0x6a6884, PLATE = 0x8890aa, PLATE_D = 0x4c5268, MAG = 0xe45cf0, MAG_D = 0x7c2090, FACE = 0xd4b0bd, BLADE = 0xdfe6f0;
+    const col = (hex: number) => new THREE.Color(hex);
+    const cCloth = col(CLOTH), cClothD = col(CLOTH_D), cClothL = col(CLOTH_L), cFace = col(FACE), cFaceD = col(0x9a7888), cMask = col(0x7c7a96), cMaskD = col(0x45435a), cMagD = col(MAG_D);
+    const HAND = 0.3;
+    b.bulk = 0.88; b.style = "thrust"; b.rough = 0.78; b.glowColor = MAG;
+    b.lean = 0.2; b.crouch = 0.34; b.armOut = 0.17;
+    b.poseR = [-0.6, -1.1]; b.poseL = [0.15, -0.8];
+    b.dims = { hipY: 0.93, headY: 0.57, shoulderY: 0.45, shoulderX: 0.25, arm: 0.32, hipX: 0.145, thigh: 0.44 };
+
+    // ---- capuz: malha única com a abertura do rosto afundada (faixa de pele nos olhos, máscara embaixo), forro magenta na borda,
+    // bico caído para trás e barra que abre sobre os ombros
+    const open = (n: THREE.Vector3) => ss(0.62, 0.46, Math.abs(n.x)) * ss(0.36, 0.26, n.y) * ss(-0.5, -0.38, n.y) * ss(0.25, 0.5, n.z);
+    b.add("head", at(sculpt(32, 24, (n, p) => {
+      const skirt = ss(-0.35, -0.95, n.y);
+      const peak = ss(0.35, 1, n.y) * ss(0.3, -0.6, n.z);
+      const nose = bell(n.x, 0.14) * bell(n.y + 0.08, 0.14) * ss(0.5, 0.9, n.z);
+      p.set(
+        n.x * 0.2 * (1 + 0.14 * skirt),
+        n.y * 0.235 + 0.03 * peak,
+        n.z * 0.21 * (1 + 0.1 * skirt) - 0.04 * open(n) + 0.022 * nose - 0.07 * peak + 0.022 * bell(open(n) - 0.2, 0.2) * ss(0.2, 0.5, n.z),
+      );
+    }, (n, c) => {
+      const o = open(n);
+      c.copy(cClothD).lerp(cCloth, ss(-0.9, 0.2, n.y)).lerp(cClothL, ss(0.3, 0.95, n.y) * 0.6);
+      if (Math.sin(n.x * 7 + n.y * 3) * Math.sin(n.z * 6) > 0.55) c.multiplyScalar(0.85); // dobras do pano
+      if (o > 0.12) c.copy(cMagD);
+      if (o > 0.6) c.copy(cMaskD).lerp(cMask, ss(-0.45, 0.0, n.y) * (0.6 + 0.4 * bell(n.x, 0.3)));
+    }), 0, 0.2, 0));
+    // faixa de pele dos olhos: chapa própria sem contorno sobre o fundo da abertura (pintada na malha do capuz a borda fica borrada)
+    b.flat("head", plateMesh(10, 3, (u, v, p) => {
+      const nx = Math.sin(u * 0.52), ny = 0.31 - 0.3 * v - 0.03 * u * u;
+      const nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
+      p.set(nx * 0.2, ny * 0.235 + 0.2, nz * 0.21 - 0.033);
+    }, (u, v, c) => {
+      c.copy(cFaceD).lerp(cFace, ss(0, 0.5, v)).lerp(cFaceD, 0.5 * ss(0.6, 1, Math.abs(u)));
+    }, 0x9a7888, 0.004));
+    for (const s of [-1, 1]) {
+      b.flat("head", at(stud(0.024, 0xf4eef2, 0xd8ccd6, 1.35, 0.62, 0.3), s * 0.06, 0.236, 0.166, 0, s * 0.3, 0));
+      b.flat("head", at(stud(0.016, MAG_D, MAG_D, 1, 1.05, 0.3), s * 0.058, 0.236, 0.172, 0, s * 0.3, 0));
+      b.lit("head", at(stud(0.009, MAG, MAG, 1, 1, 0.4, 0), s * 0.058, 0.236, 0.178, 0, s * 0.3, 0));
+      b.flat("head", at(bx(0.066, 0.012, 0.014, CLOTH_D, CLOTH_D), s * 0.06, 0.259, 0.17, 0, s * 0.3, s * 0.26));
+    }
+
+    // ---- tronco esguio com arnês cinza cruzado, placa no peito e bainha atravessada nas costas
+    const chest = lathe([[0.135, -0.08], [0.155, -0.04], [0.15, 0.1], [0.175, 0.3], [0.2, 0.42], [0.18, 0.5], [0.11, 0.56], [0.065, 0.6], [0, 0.61]], CLOTH, CLOTH_D, 14);
+    chest.scale(1.08, 1, 0.78);
+    b.add("torso", chest, at(cyl(0.05, 0.055, 0.12, CLOTH_D, 8), 0, 0.6, 0));
+    b.add("torso", at(bx(0.05, 0.5, 0.018, PLATE_D, PLATE_D), 0.02, 0.26, 0.135, -0.1, 0, 0.62), at(bx(0.05, 0.5, 0.018, PLATE_D, PLATE_D), 0, 0.26, -0.14, 0.06, 0, -0.62));
+    b.add("torso", at(edge(lathe([[0.075, -0.06], [0.08, 0], [0.05, 0.05], [0, 0.065]], PLATE, PLATE_D, 8), MAG, -0.06), -0.085, 0.35, 0.115, 1.35, 0, 0.1, 1, 1, 0.8));
+    b.add("torso", at(stud(0.02, GOLD, dk(GOLD), 1, 1, 1, 0), 0.05, 0.3, 0.15));
+    b.add("torso", ...grp([at(bx(0.07, 0.42, 0.035, PLATE_D, CLOTH_D), 0, 0, 0), at(bx(0.075, 0.03, 0.04, MAG, MAG_D), 0, 0.2, 0), at(cyl(0.016, 0.016, 0.12, LEATHER, 6), 0, 0.28, 0), at(stud(0.022, GOLD, dk(GOLD), 1, 1, 1, 0), 0, 0.35, 0)], 0.02, 0.1, -0.165, 0, 0, 1.15));
+
+    // ---- cachecol: volta larga no pescoço caindo sobre o peito, nó atrás e duas pontas soltas
+    const wrap = edge(lathe([[0.11, 0.49], [0.175, 0.52], [0.165, 0.555], [0.185, 0.59], [0.165, 0.625], [0.175, 0.655], [0.11, 0.69]], MAG, 0xb23cc2, 14), MAG_D, 0.555, 0.625);
+    wrap.scale(1.05, 1, 0.9);
+    b.add("torso", at(wrap, 0, 0, 0.01, 0.1), at(stud(0.05, MAG, MAG_D, 1.1, 0.9, 0.9, 0), -0.05, 0.6, -0.175));
+    b.ribbons.push({ bone: "torso", at: [-0.09, 0.6, -0.18], len: 1.05, seg: 11, width: [0.045, 0.03], color: MAG, tip: 0xf08af5 });
+    b.ribbons.push({ bone: "torso", at: [0.03, 0.59, -0.19], len: 0.82, seg: 9, width: [0.042, 0.028], color: 0xa832b8, tip: MAG_D });
+
+    // ---- braços: ombreira pequena, manga justa, braçal com filete magenta e mão descoberta
+    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
+      b.add(arm, at(dome(0.095, PLATE, PLATE_D, MAG), s * 0.02, 0.03, 0, 0, 0, -s * 0.5));
+      b.add(arm, limb(0.07, 0.058, 0.3, CLOTH));
+      b.add(fore, limb(0.058, 0.05, 0.24, CLOTH, 0.05));
+      b.add(fore, edge(lathe([[0.058, -0.24], [0.064, -0.21], [0.07, -0.09], [0.066, -0.07]], PLATE, PLATE_D, 10), MAG, -0.24, -0.07));
+      b.add(fore, ...grp(fist(FACE, 0.05, s), 0, -HAND, 0.01));
+    }
+
+    // ---- quadril: cinto com fivela dourada e bolsa de lado
+    b.add("hips", at(sph(0.16, CLOTH, 1.05, 0.78, 0.84, CLOTH_D), 0, 0, 0));
+    b.add("hips", at(edge(cyl(0.178, 0.178, 0.06, PLATE_D, 14, PLATE_D), MAG, 0.03), 0, 0.1, 0, 0, 0, 0, 1, 1, 0.82), at(bx(0.055, 0.055, 0.03, GOLD, dk(GOLD)), 0, 0.1, 0.143));
+    b.add("hips", at(bx(0.07, 0.1, 0.06, PLATE, PLATE_D), -0.17, 0.03, 0.02), at(bx(0.075, 0.03, 0.065, PLATE_D, PLATE_D), -0.17, 0.085, 0.02));
+
+    // ---- pernas: calça justa, tira com tacha na coxa, joelheira, caneleira com filete e sapatilha de biqueira cinza
+    for (const [th, sh, s] of [["thighL", "shinL", -1], ["thighR", "shinR", 1]] as const) {
+      b.add(th, limb(0.104, 0.076, 0.42, CLOTH, 0.05));
+      b.add(th, at(cyl(0.094, 0.099, 0.035, PLATE_D, 10, PLATE_D), 0, -0.17, 0), at(stud(0.016, GOLD, dk(GOLD), 1, 1, 1, 0), s * 0.06, -0.17, 0.07));
+      b.add(sh, at(stud(0.062, PLATE, PLATE_D, 1, 1.1, 0.8), 0, 0, 0.04));
+      b.add(sh, limb(0.07, 0.056, 0.36, CLOTH, 0.14));
+      b.add(sh, edge(lathe([[0.062, -0.34], [0.07, -0.3], [0.08, -0.14], [0.076, -0.1]], CLOTH_L, CLOTH, 10), MAG, -0.1));
+      b.add(sh, at(sph(0.075, CLOTH_D, 1, 0.68, 1.85, CLOTH_D), 0, -0.42, 0.065), at(stud(0.05, PLATE, PLATE_D, 1.2, 0.75, 1.1), 0, -0.425, 0.15));
+    }
+
+    // ---- adagas: lâmina larga de um gume, guarda magenta e pomo dourado; a direita em guarda à frente, a esquerda baixa
+    const knife = (): G[] => {
+      const tip = cone(0.035, 0.12, BLADE, 4, BLADE);
+      tip.rotateY(Math.PI / 4).scale(1, 1, 0.3);
+      return [
+        at(cyl(0.017, 0.017, 0.13, CLOTH_D, 6), 0, 0, 0), at(stud(0.024, GOLD, dk(GOLD), 1, 1, 1, 0), 0, 0.08, 0),
+        at(bx(0.1, 0.022, 0.034, MAG_D, dk(MAG_D)), 0, -0.07, 0),
+        at(bx(0.05, 0.3, 0.012, BLADE, 0xa6b0c2), 0, -0.23, 0), at(bx(0.012, 0.28, 0.018, 0x8a94a8, 0x8a94a8), 0.012, -0.22, 0),
+        at(tip, 0, -0.44, 0, Math.PI),
+      ];
+    };
+    b.add("foreR", ...grp(knife(), 0, -HAND, 0.01, -0.35));
+    b.add("foreL", ...grp(knife(), 0, -HAND, 0.01, -0.5, 0, 0));
   },
   // Redesenho a partir do sprite (docs/ref/seraph.png): paladino ereto de placa branca com debrum dourado, elmo fechado, espada erguida e escudo grande.
   // Medidas do sprite (altura 65 px): elmo 13 px, ombros 25 px, quadril a 43% da altura, espada de 36 px, escudo de 22 por 32 px.

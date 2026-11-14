@@ -67,6 +67,22 @@ export interface LegSpec {
   tibia: G[];
 }
 
+/** Fita solta com física: presa em `at` no osso, cai com a gravidade, arrasta com o movimento e não atravessa o corpo nem o chão.
+ * É simulada no mundo como uma corrente de pontos (`animate.ts`); a malha é refeita a cada quadro. */
+export interface RibbonSpec {
+  bone: Bone;
+  at: [number, number, number];
+  len: number;
+  /** número de gomos da corrente */
+  seg?: number;
+  /** meia largura na raiz e na ponta */
+  width: [number, number];
+  thick?: number;
+  color: number;
+  /** cor da ponta */
+  tip: number;
+}
+
 // ---------------------------------------------------------------- construtor
 export class Builder {
   solid = new Map<Bone | string, G[]>();
@@ -98,6 +114,9 @@ export class Builder {
   /** Arma de duas mãos com osso próprio (`weapon`, na mão direita, a `hand` do cotovelo). A arma é modelada ao longo de -y a partir da mão;
    * `carry` é a rotação de descanso, no golpe ela alinha com o antebraço. A mão esquerda segura a `grip` da mão direita, ao longo do cabo. */
   weapon: { hand: number; carry: THREE.Quaternion; grip: number } | null = null;
+
+  /** fitas soltas com física (cachecol, faixa): ver `RibbonSpec` */
+  ribbons: RibbonSpec[] = [];
 
   add(bone: Bone | string, ...g: G[]): this {
     const l = this.solid.get(bone) ?? [];

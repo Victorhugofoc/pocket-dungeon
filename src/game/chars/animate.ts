@@ -22,7 +22,22 @@ export interface CharState {
   hipY: number;
   /** arma de duas mãos com osso próprio: ver `Builder.weapon` */
   weapon: { hand: number; carry: THREE.Quaternion; grip: number } | null;
+  ribbons: Ribbon[];
   phys: ReturnType<typeof newPhys>;
+}
+
+/** fita com física (cachecol): corrente de pontos no mundo, presa em `at` no osso; ver `RibbonSpec` */
+export interface Ribbon {
+  bone: THREE.Group;
+  at: THREE.Vector3;
+  /** comprimento de cada gomo, na escala do personagem */
+  seg: number;
+  width: [number, number];
+  thick: number;
+  geo: THREE.BufferGeometry;
+  pts: THREE.Vector3[];
+  prev: THREE.Vector3[];
+  init: boolean;
 }
 
 export interface IkLeg {
@@ -56,7 +71,7 @@ export function newPhys() {
     init: false, t: 0, x: 0, z: 0, yaw: 0, vx: 0, vz: 0, pvf: 0, pvs: 0, stride: Math.random() * 6,
     leanF: new Spring(), leanS: new Spring(), secF: new Spring(), secS: new Spring(), twist: new Spring(),
     kickX: new Spring(), kickZ: new Spring(), bounce: new Spring(), armLag: new Spring(),
-    fallX: 0, fallZ: 0, wasAttacking: false,
+    fallX: 0, fallZ: 0, wasAttacking: false, snap: false,
   };
 }
 
@@ -89,6 +104,7 @@ export function animateChar(rig: Rig, a: AnimState): void {
     while (dy > Math.PI) dy -= Math.PI * 2;
     while (dy < -Math.PI) dy += Math.PI * 2;
     yawVel = dy / dt;
+    P.snap = Math.abs(dy) > 0.5; // giro instantâneo: as fitas recomeçam penduradas
   }
   P.init = true;
   P.x = root.position.x;
@@ -396,6 +412,93 @@ export function animateChar(rig: Rig, a: AnimState): void {
   }
   // por último: as patas seguem a altura final do corpo (rugido, morte)
   if (c.legs.length) stepLegs(c, rig, hips.position, dt, vf, vs, a.dead);
+  if (c.ribbons.length) stepRibbons(c, rig, dt, t);
+}
+
+const RA = new THREE.Vector3(), RT = new THREE.Vector3(), RW = new THREE.Vector3(), RN = new THREE.Vector3(), RX = new THREE.Vector3(), RP = new THREE.Vector3();
+
+/** Fitas soltas: integração de Verlet no mundo (gravidade, arrasto do ar, brisa para trás e tremulação), gomos de comprimento fixo
+ * a partir da ponta presa, sem atravessar o chão nem o corpo. A malha é escrita no espaço de `root`. */
+function stepRibbons(c: CharState, rig: Rig, dt: number, t: number): void {
+  const root = rig.root;
+  const S = root.scale.x;
+  root.updateMatrixWorld(true);
+  const sn = Math.sin(root.rotation.y), cs = Math.cos(root.rotation.y);
+  const h = Math.min(dt, 0.034);
+  const keep = Math.exp(-h * 2.4);
+  for (let ri = 0; ri < c.ribbons.length; ri++) {
+    const r = c.ribbons[ri];
+    const n = r.pts.length, L = r.seg * S;
+    r.bone.localToWorld(RA.copy(r.at));
+    if (!r.init || c.phys.snap || RA.distanceTo(r.pts[0]) > 2.5 * S) {
+      // primeira vez ou teleporte: pendurada atrás do corpo
+      for (let i = 0; i < n; i++) {
+        r.pts[i].set(RA.x - sn * L * i * 0.35, RA.y - L * i * 0.93, RA.z - cs * L * i * 0.35);
+        r.prev[i].copy(r.pts[i]);
+      }
+      r.init = true;
+    }
+    r.pts[0].copy(RA);
+    if (h > 0) {
+      for (let i = 1; i < n; i++) {
+        const p = r.pts[i], q = r.prev[i];
+        const k = i / (n - 1);
+        const wave = (Math.sin(t * 5.1 - i * 0.9 + ri * 2.1) + 0.5 * Math.sin(t * 8.3 - i * 1.7 + ri)) * 5.5 * k;
+        const gust = 4.2 * (0.75 + 0.35 * Math.sin(t * 1.3 + ri * 0.8));
+        const ax = (-sn * gust + cs * wave) * S, az = (-cs * gust - sn * wave) * S;
+        const ay = (-7.5 + Math.sin(t * 4.1 - i * 0.8 + ri) * 3.2 * k) * S;
+        const vx = (p.x - q.x) * keep, vy = (p.y - q.y) * keep, vz = (p.z - q.z) * keep;
+        q.copy(p);
+        p.x += vx + ax * h * h;
+        p.y += vy + ay * h * h;
+        p.z += vz + az * h * h;
+      }
+    }
+    for (let it = 0; it < 5; it++) {
+      for (let i = 1; i < n; i++) {
+        // gomo de comprimento fixo: os dois pontos cedem meio a meio (só o primeiro é preso); puxar só o de baixo faz a ponta chicotear
+        const p = r.pts[i], o = r.pts[i - 1];
+        RT.subVectors(p, o);
+        const len = RT.length() || 1;
+        const fix = (len - L) / len;
+        if (i === 1) p.addScaledVector(RT, -fix);
+        else {
+          p.addScaledVector(RT, -fix * 0.5);
+          o.addScaledVector(RT, fix * 0.5);
+        }
+        if (p.y < 0.03 * S) p.y = 0.03 * S;
+        // corpo: cilindro achatado em volta do eixo do osso (acompanha a inclinação do tronco); quem entra por trás sai por trás
+        r.bone.worldToLocal(RP.copy(p));
+        const d = Math.hypot(RP.x, RP.z / 0.75);
+        if (d < 0.21 && RP.y < 1.1) {
+          RP.z = -0.75 * Math.sqrt(0.21 * 0.21 - Math.min(0.2, Math.abs(RP.x)) ** 2);
+          p.copy(r.bone.localToWorld(RP));
+        }
+      }
+    }
+    // malha: largura ao longo do eixo lateral do osso (ou da vertical, se a fita estiver estendida de lado), com leve torção
+    RX.setFromMatrixColumn(r.bone.matrixWorld, 0).normalize();
+    const pos = r.geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < n; i++) {
+      RT.subVectors(r.pts[Math.min(n - 1, i + 1)], r.pts[Math.max(0, i - 1)]).normalize();
+      RW.copy(RX).addScaledVector(RT, -RX.dot(RT));
+      if (RW.lengthSq() < 0.12) RW.set(0, 1, 0).addScaledVector(RT, -RT.y);
+      RW.normalize();
+      RN.crossVectors(RT, RW);
+      const tw = Math.sin(t * 2.3 + i * 0.7 + ri * 1.7) * 0.35 * (i / (n - 1));
+      const cw = Math.cos(tw), sw = Math.sin(tw);
+      const k = i / (n - 1);
+      const w = (r.width[0] + (r.width[1] - r.width[0]) * k) * S, th = r.thick * S;
+      for (let j = 0; j < 4; j++) {
+        const a = j % 2 === 0 ? (j === 0 ? -w : w) : 0, b = j % 2 === 1 ? (j === 1 ? th : -th) : 0;
+        RP.copy(r.pts[i]).addScaledVector(RW, a * cw - b * sw).addScaledVector(RN, a * sw + b * cw);
+        root.worldToLocal(RP);
+        pos.setXYZ(i * 4 + j, RP.x, RP.y, RP.z);
+      }
+    }
+    pos.needsUpdate = true;
+    r.geo.computeVertexNormals();
+  }
 }
 
 const V = new THREE.Vector3(), GV = new THREE.Vector3(), GH = new THREE.Vector3(), GD = new THREE.Vector3(), GQ = new THREE.Quaternion(), GZ = new THREE.Quaternion(), AXIS_Z = new THREE.Vector3(0, 0, 1);

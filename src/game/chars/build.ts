@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { merge } from "../flora";
 import type { Rig } from "../models";
 import { U } from "../shared";
-import { type IkLeg, newPhys } from "./animate";
+import { type IkLeg, type Ribbon, newPhys } from "./animate";
 import { BOSSES } from "./cast-bosses";
 import { ENEMIES } from "./cast-enemies";
 import { HEROES } from "./cast-heroes";
@@ -231,6 +231,38 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
       if (material !== glow && map !== b.detail) parent.add(new THREE.Mesh(geo, OUTLINE));
     }
   }
+  // fitas com física: malha em anel de 4 vértices por gomo (esquerda, cima, direita, baixo), no espaço de `root`, refeita em animate
+  const ribbons: Ribbon[] = [];
+  for (const r of b.ribbons) {
+    const bone = bones[r.bone];
+    if (!bone) continue;
+    const seg = r.seg ?? 10, rings = seg + 1;
+    const col = new Float32Array(rings * 12), index: number[] = [];
+    const c0 = new THREE.Color(r.color), c1 = new THREE.Color(r.tip), c = new THREE.Color();
+    for (let i = 0; i < rings; i++) {
+      for (let k = 0; k < 4; k++) {
+        c.copy(c0).lerp(c1, i / seg).multiplyScalar(k % 2 === 0 ? 0.72 : k === 1 ? 1 : 0.6);
+        col.set([c.r, c.g, c.b], (i * 4 + k) * 3);
+        if (i < seg) {
+          const a = i * 4 + k, d = i * 4 + ((k + 1) % 4);
+          index.push(a, a + 4, d, d, a + 4, d + 4);
+        }
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(rings * 12), 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(rings * 12), 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setIndex(index);
+    const mesh = new THREE.Mesh(geo, main), line = new THREE.Mesh(geo, OUTLINE);
+    mesh.castShadow = true;
+    mesh.frustumCulled = line.frustumCulled = false;
+    root.add(mesh, line);
+    ribbons.push({
+      bone, at: new THREE.Vector3(...r.at), seg: r.len / seg, width: r.width, thick: r.thick ?? 0.012, geo, init: false,
+      pts: Array.from({ length: rings }, () => new THREE.Vector3()), prev: Array.from({ length: rings }, () => new THREE.Vector3()),
+    });
+  }
   for (const l of b.lights) {
     const light = new THREE.PointLight(l.color, l.intensity, l.distance, 1.7);
     light.position.set(l.x, l.y, l.z);
@@ -245,7 +277,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     root, inner, body: inner, head: inner, armL: null, armR: null, legL: null, legR: null, wings: [],
     mats, baseEmissive: mats.map((m) => m.emissive.clone()), kind: "humanoid", height, phase: Math.random() * 10,
     char: { bones, legs, style: b.style, poseR: b.poseR, poseL: b.poseL, form: b.form, shot: 0,
-      lean: b.lean, crouch: b.crouch, armOut: b.armOut, weight, hipY: b.dims.hipY, weapon: b.weapon, phys: newPhys() },
+      lean: b.lean, crouch: b.crouch, armOut: b.armOut, weight, hipY: b.dims.hipY, weapon: b.weapon, ribbons, phys: newPhys() },
   };
 }
 
