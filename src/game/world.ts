@@ -5,6 +5,7 @@ import { Rng } from "../core/rng";
 import { distToPath, type Obstacle, type ZoneLayout } from "../core/worldgen";
 import type { DecorKind, ZoneDef } from "../data/zones";
 import { buildDecor, buildFlower, type MatKind } from "./flora";
+import { buildShafts } from "./air";
 import { NOISE_GLSL, applyAtmosphere, patchMaterial, U } from "./shared";
 
 export interface WorldView {
@@ -362,6 +363,13 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
   group.add(portal);
   disposables.push(portalMat, torusGeo, discMat, discGeo);
   applyAtmosphere(group);
+
+  // feixes de luz (material próprio, aditivo: fica fora da sombra de nuvens e da névoa)
+  const shafts = buildShafts(zone, layout);
+  if (shafts) {
+    group.add(shafts);
+    disposables.push(shafts.geometry, shafts.material as THREE.Material);
+  }
 
   return {
     group,

@@ -9,6 +9,7 @@ import { animateRig } from "./game/models";
 import { Pipeline } from "./game/render";
 import { characterRig } from "./game/rigs";
 import { U } from "./game/shared";
+import { SUN_OFFSET, stepMotes } from "./game/air";
 import { buildWorld, driftSun, setZoneAtmosphere } from "./game/world";
 
 const q = new URLSearchParams(location.search);
@@ -99,7 +100,7 @@ function placeCamera(p: Pose): void {
     camera.position.set(x, 19.5 * p.zoom, z + 16 * p.zoom);
     camera.lookAt(x, 0.8, z);
   }
-  sun.position.set(x + 30, 50, z + 14);
+  sun.position.set(x + SUN_OFFSET.x, SUN_OFFSET.y, z + SUN_OFFSET.z);
   sun.target.position.set(x, 0, z - 4);
   camera.updateMatrixWorld();
   U.uCenter.value.set(x, z - 8);
@@ -107,7 +108,8 @@ function placeCamera(p: Pose): void {
 }
 
 // ---------------------------------------------------------------- tempo
-let time = 0, moteAcc = 0;
+let time = 0;
+const moteAcc = { v: 0 };
 const proj = new THREE.Vector3();
 function tick(dt: number): void {
   time += dt;
@@ -120,12 +122,7 @@ function tick(dt: number): void {
   U.uFadeRadius.value = size.y * 0.085;
   U.uFadeDepth.value = proj.z * 0.5 + 0.5 - 0.0004;
   // partículas de ambiente e fogueira, como em game.ts
-  moteAcc += dt * zone.motes.rate;
-  while (moteAcc >= 1) {
-    moteAcc--;
-    fx.spark(x + (Math.random() - 0.5) * 44, 0.3 + Math.random() * 3.5, z - 6 + (Math.random() - 0.5) * 34,
-      zone.motes.color, 0.05 + Math.random() * 0.05, 2 + Math.random() * 2, zone.motes.rise * (0.5 + Math.random()));
-  }
+  stepMotes(fx, zone, x, z, dt, moteAcc);
   const fire = world.group.userData.fire as THREE.Group | undefined;
   if (fire) {
     (fire.userData.light as THREE.PointLight).intensity = 40 + Math.sin(time * 11) * 6 + Math.sin(time * 23) * 4;

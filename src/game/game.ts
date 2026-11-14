@@ -19,6 +19,7 @@ import { characterRig } from "./rigs";
 import { kickRig, nextShot } from "./chars";
 import { Pipeline } from "./render";
 import { U } from "./shared";
+import { SUN_OFFSET, stepMotes } from "./air";
 import { buildWorld, driftSun, setZoneAtmosphere, type WorldView } from "./world";
 
 export interface GameEvents {
@@ -123,7 +124,7 @@ export class Game {
   private lastFrame = 0;
   private marker: THREE.Mesh | null = null;
   pipeline!: Pipeline;
-  private moteAcc = 0;
+  private moteAcc = { v: 0 };
   zoom = 1;
   private proj = new THREE.Vector3();
   private storage = safeStorage();
@@ -1188,7 +1189,7 @@ export class Game {
     this.zoom = Math.max(0.55, Math.min(1.25, this.zoom + this.input.takeWheel() * 0.0009));
     this.camera.position.set(this.camTarget.x + sx, 19.5 * this.zoom, this.camTarget.z + 16 * this.zoom + sz);
     this.camera.lookAt(this.camTarget.x + sx, 0.8, this.camTarget.z + sz);
-    this.sun.position.set(this.camTarget.x + 30, 50, this.camTarget.z + 14);
+    this.sun.position.set(this.camTarget.x + SUN_OFFSET.x, SUN_OFFSET.y, this.camTarget.z + SUN_OFFSET.z);
     this.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z - 4);
     this.camera.updateMatrixWorld();
 
@@ -1204,13 +1205,7 @@ export class Game {
     U.uFadeDepth.value = this.proj.z * 0.5 + 0.5 - 0.0004;
 
     // partículas de ambiente (pólen, brasas, centelhas) e fogueira
-    const motes = this.zone.motes;
-    this.moteAcc += dt * motes.rate;
-    while (this.moteAcc >= 1) {
-      this.moteAcc--;
-      this.fx.spark(this.camTarget.x + (Math.random() - 0.5) * 44, 0.3 + Math.random() * 3.5, this.camTarget.z - 6 + (Math.random() - 0.5) * 34,
-        motes.color, 0.05 + Math.random() * 0.05, 2 + Math.random() * 2, motes.rise * (0.5 + Math.random()));
-    }
+    stepMotes(this.fx, this.zone, this.camTarget.x, this.camTarget.z, dt, this.moteAcc);
     const fire = this.world?.group.userData.fire as THREE.Group | undefined;
     if (fire) {
       (fire.userData.light as THREE.PointLight).intensity = 40 + Math.sin(this.time * 11) * 6 + Math.sin(this.time * 23) * 4;

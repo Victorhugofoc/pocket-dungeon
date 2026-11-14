@@ -28,8 +28,10 @@ export interface ZoneDef {
   flowers: number[];
   /** musgo/poeira no topo das pedras */
   rockTop: number;
-  /** partículas no ar: cor, se sobem (brasa) ou caem (folha), e quantas por segundo */
-  motes: { color: number; rise: number; rate: number };
+  /** partículas no ar: cor, cor das poucas acesas, se sobem (brasa) ou caem (folha), e quantas por segundo */
+  motes: { color: number; lit: number; rise: number; rate: number };
+  /** feixes de luz inclinados do sol até o chão, perto de árvores e bordas de mata: quantos no mapa, cor e brilho (aditivo) */
+  shafts: { count: number; color: number; intensity: number };
   /** sombra de nuvens passando pelo chão e pelos personagens: quanto escurece o sol (0..1), tamanho das nuvens (m), velocidade (m/s)
    * e cobertura (0..1, fração do chão na sombra); `drift`: quanto a força e a cor do sol variam devagar (0..1) */
   clouds: { strength: number; size: number; speed: number; cover: number; drift: number };
@@ -49,7 +51,8 @@ export const ZONES: Record<string, ZoneDef> = {
     decor: [["tree", 5, true], ["pine", 3, true], ["rock", 1.2, true], ["bush", 3, false], ["mushroom", 1, false]],
     decorCount: 950,
     grass: { root: 0x2f6330, tip: 0x6fae4c, density: 1, height: 0.44 }, flowers: [0xffe14a, 0xffffff, 0xd98cff, 0xff8fa8], rockTop: 0x5f8f3e,
-    motes: { color: 0xfff2a0, rise: 0.25, rate: 9 },
+    motes: { color: 0xffe080, lit: 0xfff0a0, rise: 0.25, rate: 60 },
+    shafts: { count: 130, color: 0xfff6e0, intensity: 0.3 },
     clouds: { strength: 0.6, size: 58, speed: 1.8, cover: 0.5, drift: 0.1 },
     haze: { start: 34, density: 0.013, mist: 0.24, mistHeight: 0.8, mistColor: 0xb4d2bc, mistSize: 10, mistSpeed: 0.7 },
   },
@@ -61,7 +64,8 @@ export const ZONES: Record<string, ZoneDef> = {
     decor: [["deadTree", 4, true], ["tomb", 4, true], ["pillar", 1.5, true], ["rock", 1.5, true], ["bush", 1, false]],
     decorCount: 800, glowDecor: 0x9ad1ff,
     grass: { root: 0x3d4a52, tip: 0x8a9aa0, density: 0.55, height: 0.5 }, flowers: [0x9ad1ff], rockTop: 0x6a7480,
-    motes: { color: 0xbfe0ff, rise: 0.5, rate: 7 },
+    motes: { color: 0xbfe0ff, lit: 0xd8f0ff, rise: 0.5, rate: 45 },
+    shafts: { count: 100, color: 0xc4d4ff, intensity: 0.24 },
     clouds: { strength: 0.55, size: 64, speed: 1.2, cover: 0.55, drift: 0.08 },
     haze: { start: 24, density: 0.016, mist: 0.42, mistHeight: 0.6, mistColor: 0x7488b4, mistSize: 8, mistSpeed: 0.5 },
   },
@@ -73,7 +77,8 @@ export const ZONES: Record<string, ZoneDef> = {
     decor: [["lavaRock", 4, true], ["rock", 4, true], ["deadTree", 2, true], ["pillar", 0.8, true]],
     decorCount: 750, glowDecor: 0xff6a1a,
     grass: { root: 0x3a2a22, tip: 0x7a5a3a, density: 0.18, height: 0.4 }, flowers: [], rockTop: 0x3a2e2a,
-    motes: { color: 0xff8a2a, rise: 2.2, rate: 22 },
+    motes: { color: 0xff8a2a, lit: 0xffc060, rise: 2.2, rate: 70 },
+    shafts: { count: 90, color: 0xffb890, intensity: 0.16 },
     clouds: { strength: 0.6, size: 44, speed: 2.6, cover: 0.5, drift: 0.12 },
     haze: { start: 18, density: 0.022, mist: 0.32, mistHeight: 1.6, mistColor: 0x4a3c38, mistSize: 12, mistSpeed: 1.4 },
   },
@@ -85,7 +90,8 @@ export const ZONES: Record<string, ZoneDef> = {
     decor: [["crystal", 5, true], ["pillar", 2, true], ["rock", 2, true], ["deadTree", 1.5, true]],
     decorCount: 750, glowDecor: 0x73ffcc,
     grass: { root: 0x2f2550, tip: 0x73ffcc, density: 0.4, height: 0.45 }, flowers: [0x73ffcc, 0xc8a8ff], rockTop: 0x5a4a80,
-    motes: { color: 0x73ffcc, rise: 0.8, rate: 14 },
+    motes: { color: 0x73ffcc, lit: 0xc8fff0, rise: 0.8, rate: 55 },
+    shafts: { count: 90, color: 0xa8ffe4, intensity: 0.22 },
     clouds: { strength: 0.45, size: 70, speed: 0.9, cover: 0.5, drift: 0.06 },
     haze: { start: 20, density: 0.022, mist: 0.3, mistHeight: 0.8, mistColor: 0x463a80, mistSize: 10, mistSpeed: 0.4 },
   },
