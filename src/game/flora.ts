@@ -212,14 +212,14 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
     }
     case "tomb": {
       const list: THREE.BufferGeometry[] = [];
-      const stone = rng.pick([0x8a8f9a, 0x7d838f, 0x959aa3]);
+      const stone = rng.pick([0x6e737e, 0x646a76, 0x767b86]);
       if (variant % 3 === 2) {
         // cruz
-        list.push(xf(paint(prep(new THREE.BoxGeometry(0.2, 1.3, 0.16), false), 0x666b75, stone, -0.65, 0.65, 0.1, rng), 0, 0.65, 0));
-        list.push(xf(paint(prep(new THREE.BoxGeometry(0.72, 0.18, 0.16), false), 0x666b75, stone, -0.1, 0.1, 0.1, rng), 0, 0.92, 0));
+        list.push(xf(paint(prep(new THREE.BoxGeometry(0.2, 1.3, 0.16), false), 0x3e434c, stone, -0.65, 0.65, 0.1, rng), 0, 0.65, 0));
+        list.push(xf(paint(prep(new THREE.BoxGeometry(0.72, 0.18, 0.16), false), 0x3e434c, stone, -0.1, 0.1, 0.1, rng), 0, 0.92, 0));
       } else {
         const slab = prep(new THREE.BoxGeometry(0.78, 0.8, 0.2, 2, 2, 1), false);
-        list.push(xf(paint(slab, 0x666b75, stone, -0.4, 0.4, 0.1, rng), 0, 0.4, 0));
+        list.push(xf(paint(slab, 0x3e434c, stone, -0.4, 0.4, 0.1, rng), 0, 0.4, 0));
         const arch = prep(new THREE.CylinderGeometry(0.39, 0.39, 0.2, 10, 1, false, 0, Math.PI), false);
         list.push(xf(paint(arch, stone, stone, 0, 1, 0.1, rng), 0, 0.8, 0, Math.PI / 2, Math.PI / 2, 0));
       }

@@ -125,7 +125,7 @@ function groundMaterial(zone: ZoneDef): THREE.MeshStandardMaterial {
       // terra batida também ganha manchas (úmida, pisada), mais fracas
       col = mix(col, stains(gp * 1.4 + 50.0, col), dirtK);
       // borda úmida entre grama e terra
-      col *= 1.0 - 0.2 * smoothstep(0.12, 0.34, mk) * (1.0 - dirtK);
+      col *= 1.0 - 0.08 * smoothstep(0.05, 0.4, mk) * (1.0 - dirtK);
       // sombra de contato: o chão escurece embaixo de árvore, pedra, lápide
       col *= 1.0 - 0.45 * smoothstep(0.15, 0.85, mm.g);
       diffuseColor.rgb = col;`,
@@ -298,8 +298,10 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
       mesh.receiveShadow = true;
       b.list.forEach((o, i) => {
         inst.position.set(o.x, 0, o.z);
-        inst.rotation.set(0, o.rot, 0);
-        inst.scale.setScalar(o.scale);
+        const lean = b.kind === "deadTree" ? 0.16 : b.kind === "tomb" ? 0.1 : 0;
+        const h = Math.sin(o.x * 12.9898 + o.z * 78.233) * 43758.5453, r1 = h - Math.floor(h), r2 = (h * 7.13) % 1;
+        inst.rotation.set((r1 - 0.5) * lean, o.rot, (r2 - 0.5) * lean);
+        inst.scale.set(o.scale, o.scale * (lean ? 0.75 + 0.55 * r2 : 1), o.scale);
         inst.updateMatrix();
         mesh.setMatrixAt(i, inst.matrix);
         mesh.setColorAt(i, tints[i]);
@@ -321,7 +323,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     const fl = buildFlower();
     const n = 900;
     const stemMat = mats.foliage;
-    const petalMat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, emissive: 0xffffff, emissiveIntensity: zone.capGlow ? 0.08 : zone.glowDecor ? 0.5 : 0.06 }), { wind: 0.25, windFrom: 0.1 });
+    const petalMat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, emissive: 0xffffff, emissiveIntensity: zone.flowerGlow ?? 0.06 }), { wind: 0.25, windFrom: 0.1 });
     const stems = new THREE.InstancedMesh(fl.stem, stemMat, n);
     const petals = new THREE.InstancedMesh(fl.petals, petalMat, n);
     const half = layout.size / 2 - 6;

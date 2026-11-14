@@ -47,6 +47,8 @@ export interface ZoneDef {
   foliage?: Foliage;
   /** chapéu do cogumelo aceso, na cor de `glowDecor` (ou âmbar) */
   capGlow?: boolean;
+  /** brilho próprio das pétalas (padrão 0,06) */
+  flowerGlow?: number;
   /** sombra de nuvens passando pelo chão e pelos personagens: quanto escurece o sol (0..1), tamanho das nuvens (m), velocidade (m/s)
    * e cobertura (0..1, fração do chão na sombra); `drift`: quanto a força e a cor do sol variam devagar (0..1) */
   clouds: { strength: number; size: number; speed: number; cover: number; drift: number };
@@ -80,18 +82,19 @@ export const ZONES: Record<string, ZoneDef> = {
   cripta: {
     id: "cripta", name: "Campos da Cripta", subtitle: "Os mortos não descansam aqui", level: 6, boss: "gravekeeper",
     enemies: [["goblin", 2], ["assassin", 3], ["archer", 2], ["spellcaster", 3], ["summoner", 1.5], ["orc", 2]],
-    ground: [0x5a6474, 0x6a7586, 0x4a5364], path: 0x7d8494, fog: 0x55657f, sky: 0x55657f,
-    sun: 0xeef2ff, sunIntensity: 2.3, ambient: 0xc4cce0, ambientIntensity: 1.35,
-    decor: [["deadTree", 4, true], ["tomb", 4, true], ["pillar", 1.5, true], ["rock", 1.5, true], ["bush", 1, false]],
-    decorCount: 800, glowDecor: 0x9ad1ff,
-    grass: { root: 0x4a565c, tip: 0x768690, density: 0.55, height: 0.5 }, flowers: [0x9ad1ff], rockTop: 0x6a7480,
+    ground: [0x3c4644, 0x48524e, 0x30383a], path: 0x4a4c50, fog: 0x3e4c64, sky: 0x3e4c64,
+    sun: 0xd8e2ff, sunIntensity: 2.1, ambient: 0x9aa4ac, ambientIntensity: 1.15,
+    decor: [["deadTree", 2.2, true], ["tomb", 8, true], ["pillar", 1.5, true], ["rock", 1.5, true], ["bush", 1, false]],
+    decorCount: 950, glowDecor: 0x9ad1ff,
+    grass: { root: 0x343e3c, tip: 0x5c6a66, density: 0.55, height: 0.5 }, flowers: [0x6a7a90], rockTop: 0x4a5a58,
     motes: { color: 0xbfe0ff, lit: 0xd8f0ff, rise: 0.5, rate: 45 },
-    shafts: { count: 100, color: 0xc4d4ff, intensity: 0.24 },
+    shafts: { count: 70, color: 0xc4d4ff, intensity: 0.12 },
     scatter: [["tuft", 8, [0x5a6a6a, 0x6a786e, 0x6a7468]], ["leaf", 6, [0x4a4040, 0x5a5048, 0x3e3a3a]], ["pebble", 4, [0x5a6070, 0x4a5060, 0x6a7080]], ["twig", 1.6, [0x6a625a, 0x5a544e]]],
-    grade: { shadow: 0xa8b8ff, light: 0xe8f0ff, saturation: 0.85, contrast: 1.1 },
+    grade: { shadow: 0xa8b8ff, light: 0xeef2f0, saturation: 0.85, contrast: 1.22 },
+    foliage: { tree: [[0x2a3634, 0x4e5e58]], pine: [0x223230, 0x3e504c], bush: [0x2c3a38, 0x52645c] },
     stains: [[0x323a48, 14, 0.45], [0x50586a, 10, 0.32], [0x2a3038, 26, 0.4]],
-    clouds: { strength: 0.55, size: 64, speed: 1.2, cover: 0.55, drift: 0.08 },
-    haze: { start: 24, density: 0.016, mist: 0.42, mistHeight: 0.6, mistColor: 0x7488b4, mistSize: 8, mistSpeed: 0.5 },
+    clouds: { strength: 0.28, size: 64, speed: 1.2, cover: 0.45, drift: 0.08 },
+    haze: { start: 22, density: 0.017, mist: 0.5, mistHeight: 0.5, mistColor: 0x7084b0, mistSize: 8, mistSpeed: 0.5 },
   },
   vulcao: {
     id: "vulcao", name: "Ermos Vulcânicos", subtitle: "Cinza, brasa e artilharia", level: 11, boss: "ember_matriarch",
@@ -122,6 +125,7 @@ export const ZONES: Record<string, ZoneDef> = {
     scatter: [["pebble", 5, [0x4a3a70, 0x5a4a8a, 0x6a5aa0]], ["tuft", 4, [0x2f2550, 0x3a7a6a]], ["shard", 3, [0x9affe0, 0xc8a8ff, 0x7ad8c0]]],
     grade: { shadow: 0x9890e8, light: 0xe0fff4, saturation: 0.9, contrast: 1.1 },
     stains: [[0x2a2048, 14, 0.45], [0x3a6a70, 9, 0.3], [0x5a4a8e, 28, 0.42]],
+    flowerGlow: 0.5,
     clouds: { strength: 0.45, size: 70, speed: 0.9, cover: 0.5, drift: 0.06 },
     haze: { start: 20, density: 0.022, mist: 0.3, mistHeight: 0.8, mistColor: 0x463a80, mistSize: 10, mistSpeed: 0.4 },
   },
