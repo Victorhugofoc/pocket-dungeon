@@ -4,16 +4,112 @@ import { type G, type Spec, at, beard, bell, belt, body, bx, cape, capeMesh, con
 
 export const HEROES: Record<string, Spec> = {
   // ------------------------------------------------ heróis
+  // Redesenho a partir do sprite (docs/ref/frostine.png): maga do gelo esguia, coroa de cristais, cabelo branco comprido, gola de pelo branco,
+  // corpete azul com gema ciano, vestido azul em camadas até o chão com cauda atrás, cajado alto com floco de neve e a outra mão estendida.
+  // Medidas do sprite (altura 67 px sem o cajado): coroa 8 px, ombros com a gola 18 px, saia de 20 px na barra e cauda de mais 14 px, cajado de 62 px.
   frostine: (b) => {
-    body(b, { skin: 0xdcefff, top: 0x6fa3e0, sleeve: 0x8fbdf0, robe: { color: 0x5b8fd6, hem: 0xeaf6ff, flare: 1.15 } });
-    b.glowColor = 0x9be4ff;
-    b.style = "cast"; b.poseR = [-0.5, -1.0];
-    b.add("head", ...hairLong(0xeaf6ff, 0.55));
-    for (let i = 0; i < 5; i++) b.lit("head", at(cone(0.035, i === 2 ? 0.26 : 0.17, 0xbfeaff, 4), (i - 2) * 0.09, 0.47 - Math.abs(i - 2) * 0.03, 0.08, 0, 0, -(i - 2) * 0.18));
-    b.add("torso", at(torus(0.26, 0.06, 0xeaf6ff), 0, 0.5, 0), at(bx(0.08, 0.5, 0.03, 0xeaf6ff), 0, 0.22, 0.2));
-    b.add("foreR", ...staff(0xbfd9f2));
-    for (let i = 0; i < 6; i++) b.lit("foreR", at(bx(0.035, 0.34, 0.035, 0xbfeaff), 0, -0.31, 1.22, 0, 0, (i / 6) * Math.PI));
-    b.lit("foreR", at(sph(0.07, 0xeaffff), 0, -0.31, 1.22));
+    const BLUE = 0x4a6fc0, BLUE_D = 0x232c66, BLUE_L = 0x7fa8e8, ICE = 0x9fe4ff, ICE_D = 0x4a90d8, WHITE = 0xf2f6fc, WHITE_D = 0xa9b8d8;
+    const FACE = 0xf2dcda, FACE_D = 0xc0a0aa, HAIR = 0xe6eefa, HAIR_D = 0x93a8d4;
+    const col = (hex: number) => new THREE.Color(hex);
+    const cFace = col(FACE), cFaceD = col(FACE_D), cHair = col(HAIR), cHairD = col(HAIR_D), cWhite = col(WHITE), cWhiteD = col(WHITE_D);
+    const HAND = 0.29;
+    b.form = "robed"; b.bulk = 0.9; b.style = "cast"; b.rough = 0.6; b.glowColor = 0x8fe0ff;
+    b.lean = 0.03; b.armOut = 0.2;
+    b.poseR = [-0.55, -0.95]; b.poseL = [-0.85, -0.55];
+    b.dims = { hipY: 0.92, headY: 0.57, shoulderY: 0.45, shoulderX: 0.22, arm: 0.31, hipX: 0, thigh: 0.42 };
+
+    // ---- rosto pálido e fino; olhos azuis com cílio, sobrancelha fina e boca pequena na camada sem contorno
+    b.add("head", at(sculpt(26, 20, (n, p) => {
+      const front = ss(0.3, 0.9, n.z);
+      const jaw = ss(0.05, -0.95, n.y);
+      p.set(
+        n.x * 0.145 * (1 - 0.4 * jaw),
+        n.y * 0.185 - 0.01 * jaw * front,
+        n.z * 0.155 * (1 - 0.1 * jaw) + 0.016 * bell(n.x, 0.1) * bell(n.y + 0.12, 0.12) * front - 0.01 * headMask.socket(n),
+      );
+    }, (n, c) => {
+      c.copy(cFaceD).lerp(cFace, ss(-1, -0.1, n.y) * (0.8 + 0.2 * Math.max(0, n.z)));
+    }), 0, 0.2, 0));
+    for (const s of [-1, 1]) {
+      b.flat("head", at(stud(0.025, 0xfafcff, 0xd8e0ee, 1.25, 0.85, 0.3), s * 0.054, 0.224, 0.134, 0, s * 0.3, 0));
+      b.flat("head", at(stud(0.016, 0x2f78d0, 0x2f78d0, 1, 1.1, 0.3), s * 0.054, 0.224, 0.141, 0, s * 0.3, 0));
+      b.flat("head", at(stud(0.005, 0xffffff, 0xffffff, 1, 1, 0.5, 0), s * 0.054 + 0.006, 0.232, 0.147));
+      b.flat("head", at(bx(0.06, 0.008, 0.012, 0x38447a, 0x38447a), s * 0.056, 0.243, 0.139, 0, s * 0.3, s * 0.1));
+      b.flat("head", at(bx(0.05, 0.007, 0.012, HAIR_D, HAIR_D), s * 0.056, 0.264, 0.14, 0, s * 0.3, s * 0.16));
+    }
+    b.flat("head", at(bx(0.03, 0.009, 0.01, 0xb06078, 0xb06078), 0, 0.118, 0.146));
+    // ---- cabelo branco: franja repartida ao meio, volume liso e queda comprida pelas costas até a cintura
+    b.add("head", sculpt(30, 22, (n, p) => {
+      const hairline = 0.42 - 0.3 * Math.pow(Math.abs(n.x), 1.5);
+      const face = ss(0.05, 0.35, n.z) * ss(hairline + 0.1, hairline - 0.06, n.y);
+      const k = 1.16 * (1 - 0.3 * face);
+      p.set(n.x * 0.152 * k, n.y * 0.185 * k + 0.225, n.z * 0.162 * k - 0.012);
+    }, (n, c) => {
+      c.copy(cHairD).lerp(cHair, ss(-0.7, 0.5, n.y));
+      if (Math.sin(n.x * 16 + n.z * 5) > 0.65) c.multiplyScalar(0.9);
+    }));
+    b.add("head", at(sculpt(18, 16, (n, p) => {
+      const tip = ss(0.3, -1, n.y);
+      p.set(n.x * 0.18 * (1 - 0.35 * tip), n.y * 0.36 - 0.04 * Math.abs(Math.sin(n.x * 6)) * tip, n.z * 0.075 - 0.05 * tip * tip);
+    }, (n, c) => {
+      c.copy(cHairD).lerp(cHair, ss(-0.9, 0.6, n.y) * (0.6 + 0.4 * ss(0.5, -0.5, n.z)));
+      if (Math.sin(n.x * 15) > 0.55) c.multiplyScalar(0.88);
+    }), 0, -0.05, -0.13, -0.08));
+    // ---- coroa de gelo: aro e sete cristais de quatro faces, o do meio mais alto
+    b.add("head", at(torus(0.15, 0.018, ICE_D), 0, 0.36, -0.01, 0.12));
+    for (let i = -3; i <= 3; i++) {
+      const a = i * 0.42, h = 0.2 - Math.abs(i) * 0.035;
+      b.add("head", at(cone(0.034, h, ICE, 4, ICE_D), Math.sin(a) * 0.15, 0.37 + h / 2 + 0.018 * Math.cos(a), Math.cos(a) * 0.15 - 0.01, 0.12 + 0.12 * Math.cos(a), a, -Math.sin(a) * 0.22));
+    }
+
+    // ---- corpete azul de cintura fina com gema ciano, pescoço, gola de pelo branco em gomos sobre os ombros
+    const bodice = lathe([[0.15, -0.08], [0.155, 0.0], [0.13, 0.14], [0.16, 0.32], [0.175, 0.42], [0.15, 0.5], [0.09, 0.56], [0.055, 0.6], [0, 0.61]], BLUE, BLUE_D, 14);
+    bodice.scale(1.05, 1, 0.78);
+    b.add("torso", bodice, at(cyl(0.042, 0.048, 0.12, FACE, 8, FACE_D), 0, 0.61, 0));
+    b.add("torso", at(bx(0.035, 0.42, 0.016, WHITE, WHITE_D), 0, 0.14, 0.118, -0.05));
+    b.lit("torso", at(cone(0.04, 0.09, ICE, 4, ICE), 0, 0.37, 0.128, 0, 0, 0, 1, 1, 0.3), at(cone(0.04, 0.06, ICE, 4, ICE), 0, 0.295, 0.128, 0, 0, Math.PI, 1, 1, 0.3));
+    b.add("torso", sculpt(26, 12, (n, p) => {
+      const tuft = 1 + 0.1 * Math.sin(n.x * 13 + 1) * Math.sin(n.z * 11) + 0.06 * Math.sin(n.y * 9 + n.x * 5);
+      p.set(n.x * 0.3 * tuft, 0.5 + n.y * 0.085 * tuft - 0.05 * n.x * n.x, n.z * 0.2 * tuft - 0.01);
+    }, (n, c) => {
+      c.copy(cWhiteD).lerp(cWhite, ss(-0.6, 0.5, n.y));
+      if (Math.sin(n.x * 13 + 1) * Math.sin(n.z * 11) < -0.4) c.multiplyScalar(0.9);
+    }));
+
+    // ---- braços finos: manga azul, punho de pelo branco e mão
+    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
+      b.add(arm, limb(0.062, 0.052, 0.3, BLUE));
+      b.add(fore, limb(0.052, 0.044, 0.22, BLUE_L, 0.04));
+      b.add(fore, at(stud(0.06, WHITE, WHITE_D, 1, 0.75, 1), 0, -0.225, 0));
+      b.add(fore, ...grp(fist(FACE, 0.044, s), 0, -HAND, 0.01));
+    }
+
+    // ---- vestido em camadas: saia longa escura com painel claro, sobressaia mais curta e clara, barras brancas, cinto com gema; cauda atrás
+    b.add("skirt", edge(robeMesh({ color: BLUE, shade: BLUE_D, rTop: 0.16, rHem: 0.4, yTop: 0.12, yHem: -0.9, folds: 0.07, panel: { half: 0.2, color: BLUE_L, trim: WHITE }, seg: 40, rings: 9 }), WHITE, -0.9));
+    b.add("skirt", edge(robeMesh({ color: BLUE_L, shade: BLUE, rTop: 0.175, rHem: 0.31, yTop: 0.13, yHem: -0.36, folds: 0.06, panel: { half: 0.26, color: BLUE, trim: WHITE }, seg: 32, rings: 5 }), WHITE, -0.36));
+    b.add("skirt", at(capeMesh({ color: BLUE, shade: 0xcfe0f8, lining: BLUE_D, half: [1.45, 1.2], rTop: 0.33, rHem: 0.68, len: 0.52, depth: 1, folds: 0.1, tatter: 0.04, nu: 14, nt: 5 }), 0, -0.44, -0.27, 0.28));
+    const belt2 = lathe([[0.158, 0.06], [0.166, 0.09], [0.166, 0.13], [0.158, 0.16]], WHITE, WHITE_D, 14);
+    belt2.scale(1.05, 1, 0.8);
+    b.add("hips", belt2);
+    b.lit("hips", at(cone(0.03, 0.07, ICE, 4, ICE), 0, 0.11, 0.135, 0, 0, 0, 1, 1, 0.4));
+    // ---- cajado na vertical do mundo: haste fina clara, anel e floco de neve de seis braços com cristal no centro
+    const R = restArm(b, 1, HAND);
+    const foot = R.y - 0.04, top = 0.62;
+    b.add("foreR", ...hang([
+      at(cyl(0.018, 0.022, foot + top, 0xc8dcf4, 6, 0x7f9cd0), 0, (top - foot) / 2, 0),
+      at(stud(0.035, ICE, ICE_D, 1, 1, 1, 0), 0, top, 0), at(stud(0.03, ICE, ICE_D, 1, 0.6, 1, 0), 0, -0.02 - foot * 0.0, 0),
+    ], R.inv, HAND));
+    const flake: G[] = [at(stud(0.045, WHITE, WHITE, 1, 1, 0.6, 0), 0, 0, 0)];
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3;
+      flake.push(at(bx(0.022, 0.2, 0.022, ICE, ICE), -Math.sin(a) * 0.1, Math.cos(a) * 0.1, 0, 0, 0, a));
+      for (const s of [-1, 1]) flake.push(at(bx(0.016, 0.075, 0.016, ICE, ICE), -Math.sin(a) * 0.14 - Math.cos(a) * s * 0.022, Math.cos(a) * 0.14 - Math.sin(a) * s * 0.022, 0, 0, 0, a + s * 0.85));
+    }
+    b.lit("foreR", ...hang(grp(flake, 0, top + 0.2, 0), R.inv, HAND));
+    // floquinho sobre a mão estendida
+    const mini: G[] = [];
+    for (let i = 0; i < 3; i++) mini.push(at(bx(0.012, 0.11, 0.012, ICE, ICE), 0, 0, 0, 0, 0, (i * Math.PI) / 3));
+    b.lit("foreL", ...grp(mini, 0, -HAND - 0.12, 0.08, 0.6));
   },
   // Redesenho a partir do sprite (docs/ref/kaelen.png): duelista esguio de cabelo claro revolto, casaco azul-marinho com debrum dourado,
   // capa de forro vermelho e faísca ciano na mão. Medidas do sprite (altura 69 px): cabeça com cabelo 16 px, ombros com a capa 25 px, quadril a 41%.
