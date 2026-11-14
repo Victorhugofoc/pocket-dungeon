@@ -843,14 +843,129 @@ export const HEROES: Record<string, Spec> = {
     }, WHITE_D, 0.03);
     b.add("foreL", ...hang([at(shield, 0.04, 0.02, 0.1, 0, -0.12, 0), at(stud(0.06, GOLD, GOLD_D, 1, 1, 0.5), 0.03, 0.14, 0.125)], L.inv, HAND));
   },
+  // Redesenho a partir do sprite (docs/ref/vesper.png): feiticeira curvada vestida de abelha, capuz listrado com a ponta caída e duas antenas,
+  // rosto escuro com olhos acesos, manto em gomos listrados de laranja e cinza-escuro como um abdômen, braço esquerdo estendido e
+  // cajado de madeira torta com caveira. Medidas do sprite (altura 62 px): capuz 17 px, manto com 26 px no gomo mais largo, cajado de 60 px.
   vesper: (b) => {
-    body(b, { skin: 0x4a342e, top: 0xd9841f, sleeve: 0xd9841f, robe: { color: 0xd9841f, hem: 0x2a1a12 } });
-    b.glowColor = 0x8cf273;
-    b.style = "cast"; b.poseR = [-0.5, -1.0];
-    b.add("head", ...wizardHat(0xd9841f, 0x2a1a12, -0.12), ...hairLong(0x2a1a12, 0.3));
-    for (const y of [-0.62, -0.38, -0.14]) b.add("skirt", at(torus(0.44 + (y + 0.14) * -0.02 + (y < -0.5 ? 0 : -0.09 + (y + 0.38) * -0.35), 0.03, 0x2a1a12), 0, y, 0));
-    b.add("torso", at(torus(0.24, 0.035, 0x2a1a12), 0, 0.2, 0));
-    b.add("foreR", ...staff(WOOD, 1.8), at(sph(0.13, BONE, 1, 1.1, 1.05), 0, -0.31, 1.2), at(bx(0.12, 0.08, 0.1, BONE), 0, -0.36, 1.12));
-    b.lit("foreR", at(sph(0.035, 0x8cf273), -0.05, -0.3, 1.31), at(sph(0.035, 0x8cf273), 0.05, -0.3, 1.31));
+    const ORANGE = 0xe07a10, ORANGE_D = 0x8a3c08, ORANGE_L = 0xffa838, DARK = 0x45434e, DARK_D = 0x1d1b22, FACE = 0x8a6248, FACE_D = 0x4a3026;
+    const SKULL = 0xf2dc9a, SKULL_D = 0xa8845a, STAFF = 0x7a5246, STAFF_D = 0x3e2620, EYE = 0xc8f25a;
+    const col = (hex: number) => new THREE.Color(hex);
+    const cO = col(ORANGE), cOD = col(ORANGE_D), cOL = col(ORANGE_L), cD = col(DARK), cDD = col(DARK_D), cFace = col(FACE), cFaceD = col(FACE_D);
+    const cSkull = col(SKULL), cSkullD = col(SKULL_D), cStaff = col(STAFF), cStaffD = col(STAFF_D);
+    const HAND = 0.3;
+    b.form = "robed"; b.bulk = 1; b.style = "cast"; b.rough = 0.8; b.glowColor = EYE;
+    b.lean = 0.28; b.armOut = 0.18;
+    b.poseR = [-0.75, -0.8]; b.poseL = [-1.25, -0.25];
+    b.dims = { hipY: 0.84, headY: 0.55, shoulderY: 0.44, shoulderX: 0.25, arm: 0.31, hipX: 0, thigh: 0.42 };
+    /** listras de abelha: faixas alternadas ao longo de `v`, com a dobra entre elas mais escura */
+    const stripe = (v: number, c: THREE.Color, shade = 1) => {
+      const f = v - Math.floor(v);
+      c.copy(Math.floor(v) % 2 === 0 ? cO : cD);
+      if (Math.floor(v) % 2 === 0) c.lerp(cOL, 0.5 * Math.sin(f * Math.PI));
+      c.multiplyScalar(shade * (0.62 + 0.38 * Math.pow(Math.sin(Math.min(1, Math.max(0, f)) * Math.PI), 0.5)));
+    };
+
+    // ---- capuz listrado: malha única com a abertura do rosto afundada e barra sobre os ombros; ponta que sobe e cai para trás; antenas
+    const open = (n: THREE.Vector3) => ss(0.6, 0.44, Math.abs(n.x)) * ss(0.4, 0.3, n.y) * ss(-0.55, -0.42, n.y) * ss(0.25, 0.5, n.z);
+    b.add("head", at(sculpt(30, 22, (n, p) => {
+      const skirt = ss(-0.35, -0.95, n.y);
+      p.set(
+        n.x * 0.2 * (1 + 0.16 * skirt),
+        n.y * 0.235,
+        n.z * 0.21 * (1 + 0.12 * skirt) - 0.045 * open(n) + 0.024 * bell(open(n) - 0.2, 0.2) * ss(0.2, 0.5, n.z),
+      );
+    }, (n, c) => {
+      stripe(n.y * 2.6 + 3.3, c);
+      const o = open(n);
+      if (o > 0.6) c.copy(cFaceD).lerp(cFace, 0.6 * ss(-0.45, 0.1, n.y) * bell(n.x, 0.4));
+    }), 0, 0.2, 0));
+    b.add("head", tubeMesh(12, 12, (t, o) => {
+      o.set(-0.05 * t * t, 0.34 + 0.5 * t - 0.3 * t * t * t, -0.02 - 0.06 * t - 0.4 * t * t * t);
+    }, (t) => 0.16 * Math.pow(Math.max(0, 1 - t), 0.8) + 0.012, (_a, t, c) => stripe(t * 5.5 + 0.5, c)));
+    for (const s of [-1, 1]) {
+      b.flat("head", at(stud(0.02, 0x2a1a14, 0x2a1a14, 1.35, 0.9, 0.3), s * 0.062, 0.235, 0.163, 0, s * 0.3, 0));
+      b.lit("head", at(stud(0.012, EYE, EYE, 1.2, 0.8, 0.4, 0), s * 0.062, 0.235, 0.17, 0, s * 0.3, 0));
+      // antena: sobe da testa do capuz, curva para a frente e termina em bolinha
+      b.flat("head", tubeMesh(5, 8, (t, o) => {
+        o.set(s * (0.07 + 0.09 * t), 0.4 + 0.2 * Math.sin(t * 1.9), 0.1 + 0.16 * t * t);
+      }, () => 0.014, (_a, _t, c) => c.copy(cDD), new THREE.Vector3(1, 0, 0)));
+      b.add("head", at(stud(0.026, ORANGE, ORANGE_D, 1, 1, 1, 0), s * 0.16, 0.4 + 0.2 * Math.sin(1.9), 0.26));
+    }
+
+    // ---- tronco: gomos listrados, pelerine laranja de barra escura sobre os ombros
+    b.add("torso", sculptTube(20, 12, (a, t, p) => {
+      const v = t * 3, puff = Math.sin((v - Math.floor(v)) * Math.PI);
+      const r = (0.1 + 0.13 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.62)) * (0.92 + 0.1 * puff);
+      p.set(Math.sin(a) * r * 1.1, 0.62 - t * 0.7, Math.cos(a) * r * 0.85);
+    }, (_a, t, c) => stripe(t * 3 + 1, c)));
+    const capelet = edge(lathe([[0.31, -0.08], [0.31, -0.03], [0.26, 0.06], [0.18, 0.13], [0.12, 0.17]], ORANGE, ORANGE_D, 16), DARK_D, -0.08);
+    capelet.scale(1, 1, 0.78);
+    b.add("torso", at(capelet, 0, 0.45, -0.01, 0.06));
+
+    // ---- braços: manga larga laranja com faixa escura, mão morena
+    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
+      b.add(arm, limb(0.08, 0.07, 0.3, ORANGE));
+      b.add(fore, edge(lathe([[0.115, -0.26], [0.11, -0.22], [0.09, -0.1], [0.075, 0.0], [0, 0.06]], ORANGE, ORANGE_D, 12), DARK_D, -0.26, -0.22));
+      b.add(fore, at(cyl(0.045, 0.05, 0.1, FACE, 8, FACE_D), 0, -0.23, 0));
+      b.add(fore, ...grp(fist(FACE, 0.052, s), 0, -HAND, 0.01));
+    }
+
+    // ---- manto como abdômen de abelha: seis gomos listrados que engordam e afinam até o chão, com a barra em tiras
+    b.add("skirt", sculptTube(36, 24, (a, t, p) => {
+      const v = t * 6, puff = Math.sin((v - Math.floor(v)) * Math.PI);
+      const base = 0.2 + 0.27 * Math.sin(Math.min(1, t * 1.25) * Math.PI * 0.62) - 0.06 * ss(0.8, 1, t);
+      const r = base * (0.9 + 0.13 * Math.pow(puff, 0.6)) * (1 + 0.04 * Math.sin(a * 9) * ss(0.6, 1, t));
+      const tat = t > 0.98 ? 0.07 * Math.abs(Math.sin(a * 6.5)) : 0;
+      p.set(Math.sin(a) * r, 0.12 - t * 1.0 + tat, Math.cos(a) * r * 0.9 - 0.06 * Math.sin(t * Math.PI));
+    }, (a, t, c) => stripe(t * 6, c, 1 - 0.3 * t)));
+    b.add("hips", at(cyl(0.215, 0.2, 0.06, DARK, 14, DARK_D), 0, 0.12, 0, 0, 0, 0, 1.05, 1, 0.85));
+
+    // ---- cajado torto na vertical do mundo, com caveira no topo
+    const R = restArm(b, 1, HAND);
+    const foot = R.y - 0.03, top = 0.72;
+    b.add("foreR", ...hang([tubeMesh(6, 12, (t, o) => {
+      o.set(0.035 * Math.sin(t * 7) * (1 - t * 0.4), -foot + (foot + top) * t, 0.03 * Math.sin(t * 5 + 1));
+    }, (t) => 0.026 - 0.006 * t, (a, t, c) => c.copy(cStaffD).lerp(cStaff, 0.5 + 0.5 * Math.sin(a * 2 + t * 20)), new THREE.Vector3(0, 0, 1))], R.inv, HAND));
+    const skull: G[] = [
+      sculpt(16, 12, (n, p) => {
+        const jaw = ss(0, -0.9, n.y);
+        p.set(n.x * 0.105 * (1 - 0.35 * jaw), n.y * 0.115, n.z * 0.115 * (1 - 0.2 * jaw) + 0.012 * jaw);
+      }, (n, c) => c.copy(cSkullD).lerp(cSkull, ss(-0.8, 0.4, n.y))),
+      at(bx(0.085, 0.05, 0.06, SKULL, SKULL_D), 0, -0.115, 0.045),
+    ];
+    const dark: G[] = [at(bx(0.008, 0.04, 0.02, 0x2a1a14, 0x2a1a14), 0, -0.115, 0.078)];
+    for (const s of [-1, 1]) {
+      dark.push(at(stud(0.03, 0x2a1a14, 0x2a1a14, 1, 1.05, 0.4), s * 0.042, 0.005, 0.098));
+      dark.push(at(bx(0.008, 0.04, 0.02, 0x2a1a14, 0x2a1a14), s * 0.024, -0.115, 0.076));
+    }
+    dark.push(at(stud(0.013, 0x2a1a14, 0x2a1a14, 0.8, 1.3, 0.4), 0, -0.045, 0.108));
+    b.add("foreR", ...hang(grp(skull, 0, top + 0.1, 0), R.inv, HAND));
+    b.flat("foreR", ...hang(grp(dark, 0, top + 0.1, 0), R.inv, HAND));
+    b.lit("foreR", ...hang(grp([at(stud(0.011, EYE, EYE, 1, 1, 0.5, 0), -0.042, 0.005, 0.11), at(stud(0.011, EYE, EYE, 1, 1, 0.5, 0), 0.042, 0.005, 0.11)], 0, top + 0.1, 0), R.inv, HAND));
+  },
+  // Abelha da Ninhada (técnica da Vesper): aliada pequena que voa (forma `bat`: quadril e duas asas que batem).
+  bee: (b) => {
+    const YEL = 0xffc62a, YEL_D = 0xb87a10, BLK = 0x3a3038, BLK_D = 0x1c161c;
+    const cY = new THREE.Color(YEL), cYD = new THREE.Color(YEL_D), cB = new THREE.Color(BLK);
+    b.form = "bat"; b.scale = 0.5; b.style = "bite"; b.rough = 0.6; b.glowColor = 0xc8f25a;
+    // abdômen listrado em ponta com ferrão, tórax felpudo, cabeça de olhos grandes e antenas
+    b.add("hips", at(sculpt(16, 12, (n, p) => {
+      const tail = ss(0.2, -1, n.z);
+      p.set(n.x * 0.2 * (1 - 0.55 * tail), n.y * 0.19 * (1 - 0.5 * tail) - 0.04 * tail, n.z * 0.3);
+    }, (n, c) => {
+      const v = n.z * 2.6 + 4;
+      c.copy(Math.floor(v) % 2 === 0 ? cY : cB);
+      if (Math.floor(v) % 2 === 0) c.lerp(cYD, ss(0.2, -0.8, n.y));
+    }), 0, 0, -0.22));
+    b.add("hips", at(cone(0.03, 0.14, BLK_D, 5, BLK_D), 0, -0.05, -0.56, -Math.PI / 2 - 0.2));
+    b.add("hips", at(stud(0.17, YEL, YEL_D, 1, 0.95, 1), 0, 0.03, 0.1), at(stud(0.13, BLK, BLK_D, 1.05, 0.95, 0.9), 0, 0.02, 0.3));
+    for (const s of [-1, 1]) {
+      b.flat("hips", at(stud(0.055, 0x15101a, 0x15101a, 0.7, 1.1, 0.9), s * 0.09, 0.05, 0.37));
+      b.flat("hips", at(stud(0.014, 0xffffff, 0xffffff, 1, 1, 1, 0), s * 0.1, 0.085, 0.415));
+      b.add("hips", at(cyl(0.008, 0.008, 0.16, BLK_D, 4, BLK_D), s * 0.06, 0.2, 0.36, 0.5, 0, -s * 0.35), at(stud(0.02, BLK, BLK_D, 1, 1, 1, 0), s * 0.09, 0.27, 0.4));
+      // asa clara, comprida para trás
+      b.add(s < 0 ? "wingL" : "wingR", at(stud(0.2, 0xeef6ff, 0xa8c4e4, 1.5, 0.05, 0.75), s * 0.26, 0.06, -0.08, 0, -s * 0.5, 0));
+      for (let i = 0; i < 3; i++) b.add("hips", at(cyl(0.008, 0.008, 0.12, BLK_D, 4, BLK_D), s * 0.11, -0.16, 0.02 + i * 0.09, 0, 0, s * 0.5));
+    }
   },
 };

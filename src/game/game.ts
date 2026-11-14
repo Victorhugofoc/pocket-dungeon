@@ -46,7 +46,7 @@ interface Drop {
   mesh: THREE.Object3D;
 }
 
-interface Bee { x: number; z: number; life: number; hitCd: number; mesh: THREE.Mesh; phase: number }
+interface Bee { x: number; z: number; life: number; hitCd: number; rig: Rig; phase: number; sting: number }
 interface Field { x: number; z: number; r: number; until: number; tick: number; mesh: THREE.Mesh }
 
 export interface PlayerState {
@@ -272,7 +272,7 @@ export class Game {
     this.projectiles.length = 0;
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
-    for (const b of this.bees) b.mesh.removeFromParent();
+    for (const b of this.bees) disposeRig(b.rig);
     this.bees.length = 0;
     for (const f of this.fields) f.mesh.removeFromParent();
     this.fields.length = 0;
@@ -914,12 +914,10 @@ export class Game {
         break;
       }
       case "brood": {
-        const mat = new THREE.MeshBasicMaterial({ color: 0xffe14a, toneMapped: false });
         for (let i = 0; i < (t.count ?? 3); i++) {
-          const mesh = new THREE.Mesh(DROP_GEO, mat);
-          mesh.scale.set(0.28, 0.24, 0.4);
-          this.scene.add(mesh);
-          this.bees.push({ x: p.x, z: p.z, life: t.duration ?? 10, hitCd: 0, mesh, phase: i * 1.7 });
+          const rig = characterRig("bee", "hero");
+          this.scene.add(rig.root);
+          this.bees.push({ x: p.x, z: p.z, life: t.duration ?? 10, hitCd: 0, rig, phase: i * 1.7, sting: -1 });
         }
         this.fx.burst(p.x, 1.2, p.z, 0xffe14a, 20, 5, 0.12, 0.5, 2);
         break;
@@ -1067,7 +1065,7 @@ export class Game {
       b.life -= dt;
       b.hitCd -= dt;
       if (b.life <= 0) {
-        b.mesh.removeFromParent();
+        disposeRig(b.rig);
         this.bees.splice(i, 1);
         continue;
       }
@@ -1090,10 +1088,17 @@ export class Game {
       }
       if (target && d < target.radius + 0.9 && b.hitCd <= 0) {
         b.hitCd = 0.6;
+        b.sting = 0;
         this.hitEnemy(target, t.damage, t.status);
       }
-      b.mesh.position.set(b.x, 1.5 + Math.sin(this.time * 9 + b.phase) * 0.2, b.z);
-      b.mesh.rotation.y = Math.atan2(tx - b.x, tz - b.z);
+      if (b.sting >= 0) {
+        b.sting += dt / 0.3;
+        if (b.sting >= 1) b.sting = -1;
+      }
+      // a forma `bat` já voa a meia altura do corpo; aqui só a altura do voo e para onde olha
+      b.rig.root.position.set(b.x, 0.9 + Math.sin(this.time * 5 + b.phase) * 0.15, b.z);
+      if (d > 0.05) b.rig.root.rotation.y = Math.atan2(tx - b.x, tz - b.z);
+      animateRig(b.rig, { t: this.time, move: 1, attack: b.sting, windup: 0, dead: 0 });
     }
     for (let i = this.fields.length - 1; i >= 0; i--) {
       const f = this.fields[i];
