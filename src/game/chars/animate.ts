@@ -301,8 +301,8 @@ export function animateChar(rig: Rig, a: AnimState): void {
         const right = c.style === "shoot" ? c.poseR[0] < -1 : c.shot % 2 === 0;
         const arm = right ? armR : armL, fore = right ? foreR : foreL;
         const kick = p >= 0 ? Math.max(0, 1 - p * 3.2) : 0;
-        arm.rotation.x = -1.45 - kick * 0.5;
-        fore.rotation.x = -0.1 - kick * 0.6;
+        arm.rotation.x = -1.45 - kick * 0.3;
+        fore.rotation.x = -0.1 - kick * 0.45;
         torso.rotation.x -= 0.1 * kick;
         torso.rotation.y += (right ? 1 : -1) * 0.12 * kick;
         inner.position.z -= kick * 0.12 + hit * 0.22;

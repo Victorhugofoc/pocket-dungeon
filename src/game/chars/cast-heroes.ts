@@ -1,6 +1,6 @@
 // Heróis. Os que têm o comentário "Redesenho" foram refeitos pelo método da seção 4 do roadmap; os outros são a versão antiga, a refazer em M2.
 import * as THREE from "three";
-import { type G, type Spec, at, beard, bell, belt, body, bx, cape, capeMesh, cone, cowboyHat, cyl, dagger, dk, dome, edge, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, lathe, limb, plateMesh, restArm, revolver, robeMesh, sculpt, sph, ss, staff, stud, sword, torus, tubeMesh, wizardHat, BLACK, BONE, GOLD, LEATHER, SKIN, WOOD } from "./kit";
+import { type G, type Spec, at, beard, bell, belt, body, bx, cape, capeMesh, cone, cowboyHat, cyl, dagger, dk, dome, edge, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, lathe, limb, plateMesh, restArm, revolver, robeMesh, sculpt, sculptTube, sph, ss, staff, stud, sword, torus, tubeMesh, wizardHat, BLACK, BONE, GOLD, LEATHER, SKIN, WOOD } from "./kit";
 
 export const HEROES: Record<string, Spec> = {
   // ------------------------------------------------ heróis
@@ -140,17 +140,126 @@ export const HEROES: Record<string, Spec> = {
       b.lit(f, at(sph(0.1, 0xffa040), 0, -0.34, 0), at(cone(0.07, 0.22, 0xffd34d, 6), 0, -0.34, 0.1, 1.2));
     }
   },
+  // Redesenho a partir do sprite (docs/ref/zephyr.png): pistoleiro velho de chapéu de aba larga e barba branca, poncho verde-azulado com faixa
+  // ciano em zigue-zague caindo em bico na frente e comprido atrás, colete de couro, revólver de cano longo apontado e o segundo no coldre.
+  // Medidas do sprite (altura 75 px): chapéu 12 px de altura e 20 px de aba, poncho de ombro a ombro 28 px, quadril a 50% da altura, revólver de 15 px.
   zephyr: (b) => {
-    body(b, { skin: 0xe0b088, top: 0x8a6a4a, bottom: 0x3a3f5a, boots: 0x6b3f2a, sleeve: 0xd9b48a });
-    b.style = "dual"; b.poseR = [-1.35, -0.15]; b.poseL = [-0.35, -0.9];
-    b.add("head", ...cowboyHat(0x9a9488, 0x5a4a3a), at(sph(0.2, 0x2f8f8a, 1.04, 0.6, 1.02), 0, 0.1, 0.03), at(sph(0.19, 0xb8b0a0, 1, 0.5, 0.6), 0, 0.3, -0.12));
-    // poncho
-    b.add("torso", lathe([[0.4, 0.12], [0.38, 0.19], [0.28, 0.4], [0.16, 0.54], [0.12, 0.57]], 0x2f8f8a, 0x1f6f6a));
-    b.add("torso", at(torus(0.39, 0.028, 0x7fd9cc), 0, 0.16, 0));
-    b.add("cape", ...cape(0x256f6c, 0.3, 0.7));
-    b.add("hips", ...belt(LEATHER));
-    b.add("foreR", ...revolver());
-    b.add("foreL", ...revolver());
+    const TEAL = 0x4f9d8c, TEAL_D = 0x2b6a6c, DEEP = 0x1f4456, DEEP_D = 0x12283a, CYAN = 0x49cde6, CREAM = 0xf2efdc;
+    const HAT = 0x6a586c, HAT_D = 0x3a2a3c, HAT_L = 0x9a8a98, HIDE = 0x7a3f24, HIDE_D = 0x45201a, PANTS = 0x4d5470, PANTS_D = 0x2a2d44;
+    const FACE = 0xd9a680, FACE_D = 0x9a6648, BEARD = 0xf0efe6, BEARD_D = 0xa9adb8, GUN = 0x9aa3b4, GUN_D = 0x3a3f58;
+    const col = (hex: number) => new THREE.Color(hex);
+    const cFace = col(FACE), cFaceD = col(FACE_D), cBeard = col(BEARD), cBeardD = col(BEARD_D), cHat = col(HAT), cHatD = col(HAT_D), cHatL = col(HAT_L);
+    const cTeal = col(TEAL), cTealD = col(TEAL_D), cDeep = col(DEEP), cCyan = col(CYAN), cCream = col(CREAM);
+    const HAND = 0.31;
+    b.bulk = 1; b.style = "shoot"; b.rough = 0.78; b.glowColor = 0xffe9a8;
+    b.lean = 0.02; b.crouch = 0.1; b.armOut = 0.12;
+    b.poseR = [-1.4, -0.12]; b.poseL = [0.12, -0.7];
+    b.dims = { hipY: 0.95, headY: 0.58, shoulderY: 0.46, shoulderX: 0.29, arm: 0.33, hipX: 0.14, thigh: 0.44 };
+
+    // ---- rosto curtido na sombra do chapéu: malha única com nariz forte; olhos e sobrancelhas brancas na camada sem contorno
+    b.add("head", at(sculpt(28, 20, (n, p) => {
+      const front = ss(0.3, 0.9, n.z);
+      const jaw = ss(0.05, -0.95, n.y);
+      p.set(
+        n.x * 0.155 * (1 - 0.2 * jaw),
+        n.y * 0.19,
+        n.z * 0.165 + 0.035 * bell(n.x, 0.12) * bell(n.y + 0.08, 0.16) * front - 0.012 * headMask.socket(n),
+      );
+    }, (n, c) => {
+      c.copy(cFaceD).lerp(cFace, ss(-0.9, 0.0, n.y) * ss(0.6, 0.15, n.y) * (0.75 + 0.25 * Math.max(0, n.z)));
+      c.lerp(cFaceD, 0.5 * bell(Math.abs(n.x) - 0.55, 0.2) * bell(n.y + 0.15, 0.25) * ss(0.3, 0.7, n.z)); // maçãs do rosto fundas
+    }), 0, 0.2, 0));
+    for (const s of [-1, 1]) {
+      // olhos apertados sob sobrancelhas grossas e grisalhas
+      b.flat("head", at(stud(0.02, 0xf0ece4, 0xd0c8bc, 1.3, 0.45, 0.3), s * 0.058, 0.228, 0.146, 0, s * 0.3, 0));
+      b.flat("head", at(stud(0.011, 0x22303e, 0x22303e, 1.1, 0.8, 0.3), s * 0.058, 0.228, 0.152, 0, s * 0.3, 0));
+      b.flat("head", at(bx(0.075, 0.022, 0.02, 0xc9ccd4, BEARD_D), s * 0.06, 0.247, 0.152, 0, s * 0.3, s * 0.22));
+      // bigode caído em duas pontas
+      b.flat("head", at(cone(0.034, 0.13, BEARD, 5, BEARD), s * 0.05, 0.122, 0.172, 0.25, 0, Math.PI + s * 1.05, 1, 1, 0.7));
+    }
+    // barba branca comprida em mechas, até o peito; costeletas e cabelo grisalho na nuca
+    b.add("head", at(sculpt(18, 14, (n, p) => {
+      const tip = ss(0.4, -1, n.y);
+      p.set(n.x * 0.15 * (1 - 0.82 * tip), n.y * 0.26 - 0.07 * Math.abs(Math.sin(n.x * 7)) * tip, n.z * 0.055 * (1 - 0.3 * tip) + 0.03 * tip);
+    }, (n, c) => {
+      c.copy(cBeardD).lerp(cBeard, 0.3 + 0.7 * ss(-0.6, 0.6, n.z) * ss(-1, -0.2, n.y + 0.9));
+      if (Math.sin(n.x * 16) > 0.5) c.multiplyScalar(0.8);
+    }), 0, -0.1, 0.125, 0.14));
+    b.add("head", at(sph(0.172, 0xc4c6ce, 1, 0.92, 0.95, 0x8a8c9a), 0, 0.2, -0.03));
+
+    // ---- chapéu: aba larga virada para cima dos lados e caída na frente, copa com vinco, fita ciano
+    b.add("head", sculpt(28, 8, (n, p) => {
+      p.set(n.x * 0.41, 0.335 + n.y * 0.016 + 0.1 * Math.pow(Math.abs(n.x), 2.4) - 0.035 * ss(0.3, 1, n.z) - 0.02 * ss(-0.3, -1, n.z), n.z * 0.38 + 0.02);
+    }, (n, c) => {
+      c.copy(n.y < -0.2 ? cHatD : cHat).lerp(cHatL, n.y > 0 ? 0.5 * ss(0.5, 1, Math.hypot(n.x, n.z)) : 0);
+    }));
+    b.add("head", sculpt(24, 14, (n, p) => {
+      const up = Math.max(0, n.y);
+      const top = ss(0.55, 1, n.y);
+      p.set(n.x * 0.185 * (1 - 0.14 * up), 0.335 + up * 0.27 - 0.06 * top * bell(n.x, 0.35) + 0.025 * top * ss(0, 1, n.z), n.z * 0.2 * (1 - 0.1 * up) + 0.01);
+    }, (n, c) => {
+      c.copy(cHatD).lerp(cHat, ss(0, 0.5, n.y)).lerp(cHatL, 0.6 * ss(0.5, 1, n.y));
+    }));
+    const band = lathe([[0.192, 0.345], [0.186, 0.4]], CYAN, 0x2a8ab0, 16);
+    band.scale(1, 1, 1.07);
+    b.add("head", at(band, 0, 0, 0.01), at(stud(0.022, GOLD, dk(GOLD), 1, 1, 0.6, 0), 0.19, 0.372, 0.03));
+
+    // ---- tronco: camisa creme e colete de couro, quase todo sob o poncho
+    const chest = lathe([[0.16, -0.08], [0.185, -0.04], [0.18, 0.1], [0.205, 0.3], [0.225, 0.42], [0.2, 0.5], [0.12, 0.56], [0.07, 0.6], [0, 0.61]], HIDE, HIDE_D, 14);
+    chest.scale(1.1, 1, 0.8);
+    b.add("torso", chest, at(cyl(0.05, 0.055, 0.12, FACE_D, 8), 0, 0.6, 0));
+    b.add("torso", at(bx(0.07, 0.4, 0.02, CREAM, 0xc9c4ae), 0, 0.14, 0.152, -0.06));
+
+    // ---- poncho: malha única do pescoço à barra, em bico na frente e atrás e curto dos lados para soltar os braços;
+    // faixa ciano com zigue-zague creme e barra escura, pintadas por vértice
+    const hem = (a: number) => 0.28 - 0.27 * Math.pow(Math.abs(Math.cos(a)), 1.6);
+    b.add("torso", sculptTube(48, 12, (a, t, p) => {
+      const fold = Math.sin(a * 9 + Math.sin(a * 4) * 1.2);
+      const r = (0.1 + 0.32 * Math.pow(t, 0.7) + 0.05 * t * Math.abs(Math.cos(a))) * (1 + 0.035 * t * fold);
+      p.set(Math.sin(a) * r * 1.17, 0.635 + (hem(a) - 0.635) * Math.pow(t, 1.25), Math.cos(a) * r * 0.72);
+    }, (a, t, c) => {
+      const zig = Math.abs(((a * 16) / Math.PI) % 2 + (a < 0 ? 2 : 0) - 1) - 0.5;
+      c.copy(cTeal).lerp(cTealD, 0.6 * ss(0, 0.45, t) * (0.5 - 0.5 * Math.sin(a * 9)));
+      if (t > 0.52 && t < 0.86) c.copy(Math.abs(t - 0.69 - zig * 0.12) < 0.045 ? cCream : cCyan);
+      if (t >= 0.86) c.copy(cDeep);
+      if (t < 0.1) c.copy(cTealD);
+    }));
+
+    // ---- braços: manga de couro, punho creme e mão
+    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
+      b.add(arm, limb(0.078, 0.066, 0.31, HIDE));
+      b.add(fore, limb(0.066, 0.056, 0.25, HIDE, 0.06));
+      b.add(fore, edge(lathe([[0.066, -0.26], [0.07, -0.22], [0.064, -0.16]], CREAM, 0xc9c4ae, 10), 0xc9c4ae, -0.16));
+      b.add(fore, ...grp(fist(FACE, 0.056, s), 0, -HAND, 0.01));
+    }
+
+    // ---- quadril: cinturão com fivela e balas, coldre com o segundo revólver do lado esquerdo
+    b.add("hips", at(sph(0.185, PANTS, 1.05, 0.75, 0.84, PANTS_D), 0, 0, 0));
+    b.add("hips", at(cyl(0.21, 0.205, 0.07, HIDE, 14, HIDE_D), 0, 0.09, 0, 0, 0, 0.06, 1, 1, 0.82), at(bx(0.07, 0.07, 0.03, GOLD, dk(GOLD)), 0, 0.09, 0.168));
+    for (let i = 0; i < 4; i++) b.add("hips", at(cyl(0.012, 0.012, 0.05, GOLD, 5, dk(GOLD)), 0.07 + i * 0.03, 0.09, 0.168 - i * i * 0.006));
+    b.add("hips", ...grp([
+      at(bx(0.07, 0.24, 0.1, HIDE, HIDE_D), 0, -0.1, 0), at(bx(0.04, 0.1, 0.05, 0x3a2a22, 0x3a2a22), 0, 0.07, -0.04, 0.5),
+      at(cyl(0.03, 0.03, 0.06, GUN, 8, GUN_D), 0, 0.03, 0.01),
+    ], -0.225, 0, 0.02, 0.15, 0, -0.1));
+
+    // ---- pernas: calça cinza-azulada e bota de cano alto com dobra e espora
+    for (const [th, sh] of [["thighL", "shinL"], ["thighR", "shinR"]] as const) {
+      b.add(th, limb(0.108, 0.086, 0.42, PANTS, 0.04));
+      b.add(sh, limb(0.092, 0.072, 0.36, HIDE, 0.15), at(cyl(0.095, 0.108, 0.08, HIDE, 10, HIDE_D), 0, -0.04, 0));
+      b.add(sh, at(sph(0.088, HIDE, 1, 0.7, 1.95, HIDE_D), 0, -0.42, 0.075), at(cyl(0.03, 0.03, 0.012, GOLD, 8, dk(GOLD)), 0, -0.4, -0.1, 0, 0, Math.PI / 2));
+    }
+
+    // ---- parte de trás do poncho: comprida até o joelho, azul-petróleo, solta
+    b.add("cape", at(capeMesh({ color: DEEP, shade: 0x2f6f7a, lining: DEEP_D, half: [1.35, 1.05], rTop: 0.27, rHem: 0.5, len: 1.0, depth: 0.8, folds: 0.07, tatter: 0.05 }), 0, -0.2, 0.0));
+
+    // ---- revólver de cano longo, ao longo do antebraço: cano, tambor, cão e coronha de madeira
+    b.add("foreR", ...grp([
+      at(bx(0.045, 0.13, 0.06, WOOD, dk(WOOD)), 0, 0.01, -0.035, -0.35),
+      at(bx(0.05, 0.16, 0.07, GUN_D, GUN_D), 0, -0.12, 0.02),
+      at(cyl(0.042, 0.042, 0.1, GUN, 8, 0x6a7286), 0, -0.13, 0.03),
+      at(cyl(0.02, 0.02, 0.36, GUN, 8, GUN_D), 0, -0.37, 0.045), at(bx(0.016, 0.3, 0.02, GUN_D, GUN_D), 0, -0.34, 0.015),
+      at(bx(0.012, 0.03, 0.03, GUN_D, GUN_D), 0, -0.53, 0.07), at(bx(0.014, 0.04, 0.03, GUN_D, GUN_D), 0, -0.03, 0.06, 0.5),
+    ], 0, -HAND, 0.02));
   },
   // Redesenho a partir do sprite (docs/ref/varok.png): guerreiro atarracado de placas, elmo com chifres, maça de duas mãos atravessada no corpo.
   // Medidas do sprite (altura 80 px sem os chifres): elmo 16 px, ombreira a ombreira 34 px, quadril a 37% da altura, maça de 62 px com cabeça de 15 px.
