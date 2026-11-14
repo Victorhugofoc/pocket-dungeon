@@ -53,7 +53,9 @@ Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e 
 
 **`M18-04` feito:** feixes de luz e partículas no ar em camadas (`src/game/air.ts`, parâmetros `shafts` e `motes` em `zones.ts`).
 
-Próxima sessão (sugestão): `M18-05` (densidade do chão). Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
+**`M18-05` feito:** miudezas do chão (`src/game/scatter.ts`), manchas no chão e na grama (`STAIN_GLSL`) e copas mais vivas; parâmetros `scatter` e `stains` em `zones.ts`.
+
+Próxima sessão (sugestão): `M18-06` (contato e cor), depois as passadas por zona (`M18-07` a `M18-10`, Bosque sombrio pela D11). Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.

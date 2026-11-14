@@ -1,5 +1,7 @@
 // Zonas (biomas). Cada uma é um mapa aberto procedural com acampamentos de monstros e um chefe.
 
+export type ScatterKind = "pebble" | "leaf" | "tuft" | "twig" | "fern" | "shard";
+
 export type DecorKind = "tree" | "pine" | "deadTree" | "rock" | "bush" | "tomb" | "pillar" | "crystal" | "lavaRock" | "mushroom";
 
 export interface ZoneDef {
@@ -32,6 +34,10 @@ export interface ZoneDef {
   motes: { color: number; lit: number; rise: number; rate: number };
   /** feixes de luz inclinados do sol até o chão, perto de árvores e bordas de mata: quantos no mapa, cor e brilho (aditivo) */
   shafts: { count: number; color: number; intensity: number };
+  /** miudezas do chão (scatter.ts): [tipo, peças por 100 m², cores sorteadas por peça] */
+  scatter: [ScatterKind, number, number[]][];
+  /** manchas no chão e na grama (até 3): [cor, tamanho da mancha em m, quanto cobre 0..1] */
+  stains: [number, number, number][];
   /** sombra de nuvens passando pelo chão e pelos personagens: quanto escurece o sol (0..1), tamanho das nuvens (m), velocidade (m/s)
    * e cobertura (0..1, fração do chão na sombra); `drift`: quanto a força e a cor do sol variam devagar (0..1) */
   clouds: { strength: number; size: number; speed: number; cover: number; drift: number };
@@ -48,11 +54,14 @@ export const ZONES: Record<string, ZoneDef> = {
     enemies: [["goblin", 5], ["swarm", 3], ["archer", 2], ["orc", 2], ["splitter", 1]],
     ground: [0x3a7034, 0x4f8a3e, 0x2c5c30], path: 0x9a8257, fog: 0x9fc7a8, sky: 0x9fc7a8,
     sun: 0xfff1d0, sunIntensity: 2.4, ambient: 0xa8d0ff, ambientIntensity: 1.1,
-    decor: [["tree", 5, true], ["pine", 3, true], ["rock", 1.2, true], ["bush", 3, false], ["mushroom", 1, false]],
+    decor: [["tree", 10, true], ["pine", 6, true], ["rock", 2.4, true], ["bush", 6, false], ["mushroom", 2, false]],
     decorCount: 950,
     grass: { root: 0x2f6330, tip: 0x6fae4c, density: 1, height: 0.44 }, flowers: [0xffe14a, 0xffffff, 0xd98cff, 0xff8fa8], rockTop: 0x5f8f3e,
     motes: { color: 0xffe080, lit: 0xfff0a0, rise: 0.25, rate: 60 },
     shafts: { count: 130, color: 0xfff6e0, intensity: 0.3 },
+    scatter: [["tuft", 10, [0x3d7a35, 0x5a8f3a, 0x8f9a48]], ["leaf", 14, [0x8a5a2a, 0xa8742e, 0x6a7a2a, 0x7a4a24]], ["fern", 4.4, [0x2f6a30, 0x3f7f38]],
+      ["pebble", 3, [0x7a7262, 0x8a8070, 0x6a6458]], ["twig", 2.4, [0x5a3e28, 0x4a3422]]],
+    stains: [[0x223418, 16, 0.42], [0x8a9a40, 11, 0.36], [0x2e4a26, 30, 0.45]],
     clouds: { strength: 0.6, size: 58, speed: 1.8, cover: 0.5, drift: 0.1 },
     haze: { start: 34, density: 0.013, mist: 0.24, mistHeight: 0.8, mistColor: 0xb4d2bc, mistSize: 10, mistSpeed: 0.7 },
   },
@@ -63,9 +72,11 @@ export const ZONES: Record<string, ZoneDef> = {
     sun: 0xeef2ff, sunIntensity: 2.3, ambient: 0xc4cce0, ambientIntensity: 1.35,
     decor: [["deadTree", 4, true], ["tomb", 4, true], ["pillar", 1.5, true], ["rock", 1.5, true], ["bush", 1, false]],
     decorCount: 800, glowDecor: 0x9ad1ff,
-    grass: { root: 0x3d4a52, tip: 0x8a9aa0, density: 0.55, height: 0.5 }, flowers: [0x9ad1ff], rockTop: 0x6a7480,
+    grass: { root: 0x4a565c, tip: 0x768690, density: 0.55, height: 0.5 }, flowers: [0x9ad1ff], rockTop: 0x6a7480,
     motes: { color: 0xbfe0ff, lit: 0xd8f0ff, rise: 0.5, rate: 45 },
     shafts: { count: 100, color: 0xc4d4ff, intensity: 0.24 },
+    scatter: [["tuft", 8, [0x5a6a6a, 0x6a786e, 0x6a7468]], ["leaf", 6, [0x4a4040, 0x5a5048, 0x3e3a3a]], ["pebble", 4, [0x5a6070, 0x4a5060, 0x6a7080]], ["twig", 1.6, [0x6a625a, 0x5a544e]]],
+    stains: [[0x323a48, 14, 0.45], [0x56664e, 10, 0.32], [0x2a3038, 26, 0.4]],
     clouds: { strength: 0.55, size: 64, speed: 1.2, cover: 0.55, drift: 0.08 },
     haze: { start: 24, density: 0.016, mist: 0.42, mistHeight: 0.6, mistColor: 0x7488b4, mistSize: 8, mistSpeed: 0.5 },
   },
@@ -79,6 +90,8 @@ export const ZONES: Record<string, ZoneDef> = {
     grass: { root: 0x3a2a22, tip: 0x7a5a3a, density: 0.18, height: 0.4 }, flowers: [], rockTop: 0x3a2e2a,
     motes: { color: 0xff8a2a, lit: 0xffc060, rise: 2.2, rate: 70 },
     shafts: { count: 90, color: 0xffb890, intensity: 0.16 },
+    scatter: [["pebble", 10, [0x4a3a34, 0x5a4a44, 0x6a5650, 0x3a2e2a]], ["twig", 1.2, [0x3a302a, 0x2a2220]], ["tuft", 6, [0x5a4a30, 0x6a5434, 0x4a3a28]], ["shard", 1.6, [0x2a2020, 0x3a2a26]]],
+    stains: [[0x2a2020, 12, 0.45], [0x6a5e5a, 18, 0.42], [0x4a3a36, 30, 0.45]],
     clouds: { strength: 0.6, size: 44, speed: 2.6, cover: 0.5, drift: 0.12 },
     haze: { start: 18, density: 0.022, mist: 0.32, mistHeight: 1.6, mistColor: 0x4a3c38, mistSize: 12, mistSpeed: 1.4 },
   },
@@ -92,6 +105,8 @@ export const ZONES: Record<string, ZoneDef> = {
     grass: { root: 0x2f2550, tip: 0x73ffcc, density: 0.4, height: 0.45 }, flowers: [0x73ffcc, 0xc8a8ff], rockTop: 0x5a4a80,
     motes: { color: 0x73ffcc, lit: 0xc8fff0, rise: 0.8, rate: 55 },
     shafts: { count: 90, color: 0xa8ffe4, intensity: 0.22 },
+    scatter: [["pebble", 5, [0x4a3a70, 0x5a4a8a, 0x6a5aa0]], ["tuft", 4, [0x2f2550, 0x3a7a6a]], ["shard", 3, [0x9affe0, 0xc8a8ff, 0x7ad8c0]]],
+    stains: [[0x2a2048, 14, 0.45], [0x3a6a70, 9, 0.3], [0x5a4a8e, 28, 0.42]],
     clouds: { strength: 0.45, size: 70, speed: 0.9, cover: 0.5, drift: 0.06 },
     haze: { start: 20, density: 0.022, mist: 0.3, mistHeight: 0.8, mistColor: 0x463a80, mistSize: 10, mistSpeed: 0.4 },
   },

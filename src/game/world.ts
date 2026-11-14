@@ -6,7 +6,8 @@ import { distToPath, type Obstacle, type ZoneLayout } from "../core/worldgen";
 import type { DecorKind, ZoneDef } from "../data/zones";
 import { buildDecor, buildFlower, type MatKind } from "./flora";
 import { buildShafts } from "./air";
-import { NOISE_GLSL, applyAtmosphere, patchMaterial, U } from "./shared";
+import { buildScatter } from "./scatter";
+import { NOISE_GLSL, STAIN_GLSL, applyAtmosphere, patchMaterial, U } from "./shared";
 
 export interface WorldView {
   group: THREE.Group;
@@ -72,6 +73,7 @@ function groundMaterial(zone: ZoneDef): THREE.MeshStandardMaterial {
       uniform sampler2D uMask; uniform float uMapSize;
       uniform vec3 uG0; uniform vec3 uG1; uniform vec3 uG2; uniform vec3 uDirt;
       ${NOISE_GLSL}
+      ${STAIN_GLSL}
       ` + shader.fragmentShader.replace(
       "#include <color_fragment>",
       `vec2 gp = vWPos.xz;
@@ -81,6 +83,7 @@ function groundMaterial(zone: ZoneDef): THREE.MeshStandardMaterial {
       vec3 gcol = mix(uG2, uG0, smoothstep(0.3, 0.55, big));
       gcol = mix(gcol, uG1, smoothstep(0.5, 0.78, mid) * 0.75);
       gcol *= 0.86 + 0.28 * fine;
+      gcol = stains(gp, gcol);
       float mk = texture2D(uMask, gp / uMapSize + 0.5).r;
       float dirtK = smoothstep(0.34, 0.6, mk + (mid - 0.5) * 0.45 + (fine - 0.5) * 0.12);
       vec3 dirt = uDirt * (0.78 + 0.4 * fbm(gp * 0.8 + 3.0));
@@ -88,6 +91,8 @@ function groundMaterial(zone: ZoneDef): THREE.MeshStandardMaterial {
       dirt = mix(dirt, dirt * 1.38, pebble * 0.55);
       dirt *= 0.93 + 0.14 * vnoise(gp * 9.0);
       vec3 col = mix(gcol, dirt, dirtK);
+      // terra batida também ganha manchas (úmida, pisada), mais fracas
+      col = mix(col, stains(gp * 1.4 + 50.0, col), dirtK);
       // borda úmida entre grama e terra
       col *= 1.0 - 0.2 * smoothstep(0.12, 0.34, mk) * (1.0 - dirtK);
       diffuseColor.rgb = col;`,
@@ -147,6 +152,8 @@ function buildGrass(zone: ZoneDef, rng: Rng): THREE.Mesh | null {
     shader.vertexShader = `attribute vec2 aOffset; attribute vec3 aRand;
       uniform float uTime; uniform vec2 uCenter; uniform vec3 uHero; uniform sampler2D uMask; uniform float uMapSize;
       uniform vec3 uRoot; uniform vec3 uTip; uniform float uGrassH;
+      ${NOISE_GLSL}
+      ${STAIN_GLSL}
       ` + shader.vertexShader
       .replace("#include <beginnormal_vertex>", "vec3 objectNormal = vec3(0.0, 1.0, 0.0);")
       .replace(
@@ -171,11 +178,14 @@ function buildGrass(zone: ZoneDef, rng: Rng): THREE.Mesh | null {
         transformed.xz += (away / max(pd, 0.001)) * push * 0.45 * t;
         transformed.y *= 1.0 - push * 0.55;
         // sem grama aqui: esconde a lâmina abaixo do chão
-        if (gh < 0.04) transformed.y = -2.0;`,
+        if (gh < 0.04) transformed.y = -2.0;
+        // manchas: a mesma do chão tinge a lâmina (vColor já foi escrito antes, em color_vertex)
+        vColor = stains(w, vColor);`,
       )
       .replace(
         "#include <color_vertex>",
-        `vColor = mix(uRoot, uTip, position.y * position.y) * (0.82 + 0.36 * aRand.z);`,
+        `vColor = mix(uRoot, uTip, position.y * position.y) * (0.82 + 0.36 * aRand.z);
+`,
       );
   };
   mat.customProgramCacheKey = () => "grass";
@@ -216,7 +226,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
   // materiais da flora
   const mats: Record<MatKind, THREE.Material> = {
     solid: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), { fade: true, wind: 0.012, windFrom: 1.2 }),
-    foliage: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), { fade: true, wind: 0.03, windFrom: 0.8 }),
+    foliage: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), { fade: true, wind: 0.05, windFrom: 0.8 }),
     rock: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }), { fade: true }),
     glow: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, flatShading: true, emissive: glow, emissiveIntensity: 1.6 }), { fade: true }),
   };
@@ -248,7 +258,10 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
       models.set(mk, (model = buildDecor(b.kind, b.variant, { glow, rockTop: zone.rockTop })));
       for (const g of Object.values(model.parts)) disposables.push(g);
     }
-    const tints = b.list.map(() => 0.88 + rng.next() * 0.24);
+    const tints = b.list.map(() => {
+      const t = 0.84 + rng.next() * 0.3, w = rng.range(-1, 1);
+      return new THREE.Color(t * (1 + 0.1 * w), t, t * (1 - 0.12 * w));
+    });
     for (const [matKind, geo] of Object.entries(model.parts) as [MatKind, THREE.BufferGeometry][]) {
       const mesh = new THREE.InstancedMesh(geo, mats[matKind], b.list.length);
       mesh.castShadow = matKind !== "glow" && b.kind !== "mushroom";
@@ -259,7 +272,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
         inst.scale.setScalar(o.scale);
         inst.updateMatrix();
         mesh.setMatrixAt(i, inst.matrix);
-        mesh.setColorAt(i, col.setScalar(tints[i]));
+        mesh.setColorAt(i, tints[i]);
       });
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
@@ -267,6 +280,11 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
       disposables.push(mesh);
     }
   }
+
+  // miudezas do chão
+  const scatter = buildScatter(zone, layout, glow);
+  for (const m of scatter.meshes) group.add(m);
+  disposables.push(...scatter.disposables);
 
   // flores
   if (zone.flowers.length) {
@@ -390,6 +408,12 @@ export function setZoneAtmosphere(scene: THREE.Scene, zone: ZoneDef): void {
   U.uFogColor.value.set(zone.fog);
   U.uMistColor.value.set(h.mistColor);
   U.uMistNoise.value.set(1 / h.mistSize, h.mistSpeed);
+  for (let i = 0; i < 3; i++) {
+    const s = zone.stains[i];
+    const c = new THREE.Color(s ? s[0] : 0);
+    U.uStain.value[i].set(c.r, c.g, c.b, s ? s[2] : -9);
+    U.uStainSize.value.setComponent(i, s ? s[1] : 10);
+  }
   scene.background = new THREE.Color(zone.sky);
   scene.fog = new THREE.Fog(zone.fog, h.start + 0.5 / h.density, h.start + 2.2 / h.density);
 }

@@ -20,7 +20,25 @@ export const U = {
   uMistColor: { value: new THREE.Color() },
   /** névoa rasteira: escala do ruído (1/m) e velocidade (m/s) */
   uMistNoise: { value: new THREE.Vector2(0.07, 0.8) },
+  /** manchas no chão e na grama: cor e quanto cobre (w), e o tamanho de cada uma (m); ver `STAIN_GLSL` */
+  uStain: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+  uStainSize: { value: new THREE.Vector3(10, 10, 10) },
 };
+
+/** Manchas no chão (terra úmida, musgo, grama seca...): três camadas de ruído em escalas diferentes, cada uma puxando para a sua cor.
+ * Precisa de `NOISE_GLSL` antes. */
+export const STAIN_GLSL = `
+uniform vec4 uStain[3];
+uniform vec3 uStainSize;
+vec3 stains(vec2 p, vec3 col) {
+  for (int i = 0; i < 3; i++) {
+    float s = i == 0 ? uStainSize.x : i == 1 ? uStainSize.y : uStainSize.z;
+    float n = fbm(p / s + float(i) * 17.3);
+    float k = smoothstep(0.58 - uStain[i].w * 0.3, 0.74 - uStain[i].w * 0.3, n);
+    col = mix(col, uStain[i].rgb, k * 0.65);
+  }
+  return col;
+}`;
 
 /** Sombra de nuvens e névoa. Nuvens: ruído animado projetado de cima que escurece só a luz do sol (luz direcional), em qualquer material padrão.
  * A posição no mundo sai de `vViewPosition` (a câmera é rígida: p = Rᵀ(v − t)), então serve para qualquer malha, instanciada ou não. */
