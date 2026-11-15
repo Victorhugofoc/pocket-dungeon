@@ -139,7 +139,7 @@ export class Ui {
         }).join("")}</div>
         <div class="hero-detail" style="--hc:${hex(h.color)}">
           <h3 style="color:${hex(h.color)}">${h.name} — ${h.title}</h3>
-          <p><b>Ataque:</b> ${h.passive}</p>
+          <p><b>Passiva:</b> ${h.passive}</p>
           <p><b>Técnica (botão direito) — ${h.technique.name}:</b> ${h.technique.text}</p>
           <p style="color:var(--muted)">${statLines(h.stats).replace(/<div class="st">/g, "").replace(/<\/div>/g, " · ").replace(/ · $/, "")}</p>
         </div>

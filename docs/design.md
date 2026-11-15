@@ -17,7 +17,7 @@ RPG de ação para PC em que você joga com um herói só, explora mapas abertos
 5. Volta a zonas anteriores para farmar quando a próxima estiver difícil.
 
 ## Controles
-WASD move · mouse mira · botão esquerdo ataca · botão direito ou Q usa a técnica · Espaço esquiva · F poção · E portal · I inventário · M mapa · Esc pausa.
+WASD move · mouse mira · botão esquerdo ataca · botão direito ou Q usa a técnica · 1 e 2 lançam as spells (a partir do M6) · Espaço esquiva · F poção · E portal · I inventário · M mapa · Esc pausa.
 
 ## Sistemas
 - **Atributos** (1 ponto por nível): Força, Vigor, Agilidade, Foco.
@@ -34,6 +34,6 @@ WASD move · mouse mira · botão esquerdo ataca · botão direito ou Q usa a t�
 | O Vazio | 16–20 | Hollow King (final) |
 
 ## Em aberto
-- Segundo e terceiro botão de habilidade (spells do Dungeon Reign como habilidades equipáveis?).
+- Spells do Dungeon Reign em 2 espaços (teclas 1 e 2), lançadas pelo jogador, não automáticas (decisão D12). Falta decidir quem usa qual e como se ganha (D2, D3).
 - Economia: ouro, loja, desmontar itens.
 - O que acontece depois do chefe final (dificuldades, zonas mais fundas).

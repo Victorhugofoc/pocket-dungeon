@@ -65,10 +65,11 @@ Um RPG de ação de 8 a 12 horas na primeira passada, com rejogabilidade por dif
 | 2 | M1 Chefes atuais | Maior ganho visual; valida o método em corpos difíceis (manto, aranha) |
 | 3 | M2 Heróis | O jogador olha para o herói o tempo todo |
 | 4 | M18 Atmosfera das zonas | Decidido em 2026-11-14: na câmera alta, o ambiente pesa mais na primeira impressão que o detalhe de cada personagem, e custa bem menos |
-| 5 | M3 Inimigos atuais | Fecha o elenco que já está no jogo |
+| 5 | M19 Kit dos heróis do Dungeon Reign | Decidido em 2026-11-14: técnica, passiva e ataque básico de cada herói como no original, onde o design já foi muito trabalhado |
+| 5b | M6 Spells | Decidido em 2026-11-14: logo depois do M19, em teclas (D12) |
+| 5c | M3 Inimigos atuais | Fecha o elenco que já está no jogo |
 | 6 | M4 Animação e sensação | Corpo novo pede movimento à altura |
 | 7 | M5 Efeitos de combate | Leitura das lutas; pré-requisito para spells e chefes novos |
-| 8 | M6 Spells | Maior ganho de profundidade por tarefa |
 | 9 | M7 Economia | Dá destino ao loot e ao tempo de farm |
 | 10 | M8 Itens | Lendários e ícones, em cima da economia |
 | 11 | M9 Inimigos novos e elites | Variedade antes de abrir zonas novas |
@@ -196,6 +197,45 @@ Uma tarefa `M` por herói, na ordem abaixo (do mais simples de corpo para o mais
 **M2-10 · Tela de seleção com os heróis novos** · P
 - Passos: a tela de título mostra o herói 3D girando (reaproveitar a prévia) em vez de só texto.
 
+### M19 — Kit dos heróis do Dungeon Reign [validar cada herói]
+
+Pedido do usuário em 2026-11-14, na frente do M3: cada herói joga como no Dungeon Reign. Hoje as técnicas são aproximações (a Frostine tem uma nova de gelo no lugar da Glacial Wall; o Varok atordoa em vez de tirar 8% da vida máxima) e as passivas quase não existem (a Frostine só deixa lento). A fonte é `dungeon-idle`: `src/data/characters.lua` (efeitos, `frost`, `autoPoison`, `brood`, `maxHitFraction`, `passiveText`), `src/data/spells.lua` (`tech({...})`, seção das técnicas), `src/spells/techniques.lua` (comportamento), `src/combat/frost.lua`, `src/combat/auto_attack.lua` (`autoStyle`) e `src/combat/shield_throw.lua`.
+
+Regras do marco:
+- Mecânica igual à do original; só muda o que o formato pede (tela fixa virou mapa aberto, ondas viraram acampamentos). Cada diferença fica escrita na linha do registro.
+- Unidades: o Dungeon Reign mede em pixels. `M19-01` fixa um fator de conversão único (proposta: 16 px = 1 m, conferido pelo alcance do ataque básico) e todo número passa por ele, em `src/data`.
+- Cada técnica entra com efeito mínimo legível (a parede de gelo é uma parede que se vê); o acabamento fica para o `M5-03`.
+- Níveis 1 a 5 e evolução das técnicas entram nos dados agora, mas o jogo usa o nível 1 até existir como subir (`M6-06`/`M7`).
+
+**M19-01 · Dados e núcleo das técnicas e passivas** · M
+- Arquivos: `src/data/heroes.ts` (números de `characters.lua` e das 9 `tech`), `src/core/techniques.ts` (dano por nível e atributo, marcos de nível, evolução), `src/core/frost.ts` (estado de Estilhaçar, Quebradiço, Pingente e Frio profundo, sem three.js), testes.
+- Pronto quando: há teste para o dano de cada técnica no nível 1 e 5 e para as regras da `frost.lua` (congelado + gelo = ×2 e descongela; 8 acúmulos em chefe ou campeão = Quebradiço +30% por 4 s; 4º tiro seguido no mesmo alvo = pingente ×3; 3 acertos em 3 s congelam inimigo comum).
+
+**M19-02 · Frostine** · M
+- Glacial Wall: parede de gelo no cursor (alcance mínimo e máximo), na direção da mira, por 5 s; inimigos não atravessam (colisão no `enemy.ts`) e quem bate congela 1 s.
+- Passiva Frost inteira (`M19-01`), com sinal visível: congelado, acúmulos, Quebradiço, pingente, estilhaço. Chefes ficam lentos até 20% (`bossSlowCap`).
+- Pronto quando: dá para segurar um grupo atrás da parede e estilhaçar quem congelou, e um chefe fica Quebradiço numa luta normal.
+
+**M19-03 · Kaelen e Aurelius** · M
+- Storm Step: 0,3 s invulnerável e rastro elétrico de 2 s que fere em pulsos. Ataque `storm`: com Double salta para outro inimigo, com Cone bifurca no primeiro acerto.
+- Time Rift: inimigos 60% mais lentos e projéteis inimigos parados dentro; implode em 3 s com mais dano por inimigo preso (até ×3).
+
+**M19-04 · Zephyr, Varok e Ignis** · M
+- Fan the Hammer: 5 tiros em cone com o dano do ataque básico. Ricochete já existe; conferir os números.
+- Execution Leap: o inimigo com mais vida na área perde 8% da vida máxima; todos ficam atordoados 0,5 s. Inquebrável já existe.
+- Inferno Charge: atravessa os inimigos e termina com soco que abre anel de fogo; 0,22 s invulnerável. Ataque `firefan` a 65% do alcance.
+
+**M19-05 · Umbra, Seraph e Vesper** · M
+- Shadow Step: some 0,6 s (invulnerável) e reaparece atrás do inimigo mais forte por perto com golpe ×3 sempre crítico. Passiva: +50% em quem se afasta, está atordoado ou nos 2 s depois do passo; matar assim cura 4.
+- Aegis: escudo de 3 s que bloqueia o próximo golpe; ao acabar explode em volta e cura 10% da vida. Passiva: a cada 4 arremessos do escudo, cura 2.
+- Brood: 2 vespas grandes por 6 s que ferroam e envenenam (3 acúmulos). Passiva Ninhada: uma abelha pequena a cada 8 s (até 3, vive 15 s). Ataque `venom` com 1 acúmulo por acerto, até 3.
+
+**M19-06 · Textos e interface** · P
+- Passos: descrição da técnica e da passiva de cada herói na escolha de herói e na pausa, com os textos do original; contador de recarga com o nome da técnica.
+
+**M19-07 · Evolução das técnicas** · M [decisão D3]
+- Passos: os marcos de nível 2 a 5 e a evolução (Permafrost Bastion, Tempest Step, Stasis Field, Trick Shot, Kingslayer, Phoenix Rush, Eclipse, Sanctum, Broodmother). Depende de como se sobe de nível (`M6-06`/`M7`).
+
 ### M3 — Inimigos atuais [validar em lote de 2 ou 3]
 
 Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de triângulos: são dezenas na tela.
@@ -260,7 +300,7 @@ Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de 
 
 ### M6 — Spells [decisão D2]
 
-Porta das 11 spells do Dungeon Reign: `fireball`, `iceball`, `chain_lightning`, `arcane_bolt`, `healing_field`, `blade_orbit`, `venom_nova`, `cyclone`, `rune_traps`, `prism_beam`, `quake_totem`. Proposta: 2 espaços de spell por herói (teclas 1 e 2), qualquer herói usa qualquer spell, com nível de 1 a 5.
+Porta das 11 spells do Dungeon Reign: `fireball`, `iceball`, `chain_lightning`, `arcane_bolt`, `healing_field`, `blade_orbit`, `venom_nova`, `cyclone`, `rune_traps`, `prism_beam`, `quake_totem`. **D12 decidida:** não são lançadas sozinhas como lá; 2 espaços nas teclas 1 e 2, mira no cursor, técnica e esquiva sem mudança. Proposta para D2: qualquer herói usa qualquer spell, começando pelas 4 iniciais dele (`startingSpells`), nível de 1 a 5.
 
 **M6-01 · Dados e núcleo** · M
 - Arquivos: `src/data/spells.ts` (porta de `spells.lua`), `src/core/spells.ts` (dano, recarga, escala por nível e por atributo), testes.
@@ -600,6 +640,7 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 | D8 | Endgame: dificuldades e Depths como no Dungeon Reign? | Sim | M13 |
 | D9 | Onde publicar? | GitHub Pages | M16-06 |
 | D10 | Nome definitivo do jogo | Em aberto | Nenhuma |
+| D12 | Spells como no Dungeon Reign: lançadas sozinhas (como lá) ou em teclas? | **Decidido em 2026-11-14: em teclas.** As mesmas spells do Dungeon Reign, sem lançamento automático: teclas 1 e 2 para as 2 spells; técnica e esquiva ficam onde estão. M6 vem logo depois do M19 | M6 |
 | D11 | Bosque Sombrio: deixar sombrio (fim de tarde, verdes fechados, luz fria, fogueira e cogumelos como contraste quente) ou manter ensolarado? | **Decidido em 2026-11-14: sombrio** | M18-07 |
 
 ---
@@ -615,6 +656,12 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`.
 | M0-01 | feito | 2026-11-13 | `chars.ts` virou `src/game/chars/` (`kit`, `cast-heroes`, `cast-enemies`, `cast-bosses`, `build`, `animate`). Kit: `sculpt`, `ss`, `bell`, `grp`, `muscleArm`, `muscleLeg`, `torsoMesh`, `headBase`, `headMask`. Geometria dos 23 personagens idêntica bit a bit (hash antes e depois) |
 | M0-02 | feito | 2026-11-13 | `npm run refs` (`tools/make-refs.mjs`, usa `pngjs`): 37 sprites em `docs/ref/<id>.png` e 3 folhas de contato em ordem alfabética de id |
 | M0-03 | pendente | | |
+| Marco M19 | criado | 2026-11-14 | Pedido do usuário: kit dos heróis igual ao do Dungeon Reign, na frente do M3 |
+| M19-01 | feito | 2026-11-14 | `src/data/techniques.ts`: as 9 técnicas com os números do `spells.lua` em px (marcos de nível 2 a 5 e evolução) e as passivas (`FROST`, `SHADOW`, `SHIELD_THROW`, `VENOM`, `UNBREAKABLE`, `RICOCHET`). Conversão: **12 px = 1 m** (`DR_PX_PER_M`; o alcance do tiro lá, 160 px, vira 13,3 m, perto dos 13 a 16 m daqui), dano = (base + 8 × escala) / 8 sobre o dano do herói, curas fixas viram % da vida (÷ 100). `src/core/techniques.ts`: `techniqueStats(id, nível, ctx)` com escala de nível ×3,25 no 5, pool de percentuais igual ao `modifiers.lua` e piso de recarga de 35%. `src/core/frost.ts`: Estilhaçar, Frio profundo, Quebradiço e `IcicleCounter`. 14 testes em `tests/techniques.test.ts`. O jogo ainda usa as técnicas antigas de `heroes.ts`; cada herói troca nas tarefas `M19-02` a `M19-05`. O Execution Leap tem 26,7 m de alcance por essa conversão: conferir jogando se cabe na tela |
+| M19-02 | feito, falta validar | 2026-11-14 | Frostine no jogo. **Glacial Wall** (`src/game/icewall.ts`): parede de cristais de gelo atravessada na mira, a 4 a 17 m do herói, 12,5 m de comprimento, 5 s; prévia no chão enquanto a técnica está pronta; empurra os inimigos para fora (depois da separação, em `updateIceWalls`), o primeiro contato dá dano de gelo e congela 1 s (chefe só é empurrado), tiros inimigos quebram nela; a evolução (estilhaço no fim, ×3) já está ligada para quando houver nível 5. **Passiva** em `hitEnemy` via `frostModify`: Estilhaçar (o congelado daqui é o atordoamento), Frio profundo, Quebradiço (vale para qualquer dano), Pingente (tiro maior e branco, `IcicleCounter`); chefe fica lento no máximo 20% pelo gelo dela; textos flutuantes Estilhaçou, Quebradiço, Pingente; tinta do inimigo clareia com os acúmulos e pulsa em branco quando Quebradiço. Tiro dela ficou com o lento do original (30% por 1,5 s). `Game.tech` guarda `techniqueStats` do herói; heróis sem técnica nova seguem como antes. Conferido no navegador por script (parede segura um orc e congela; estilhaço; pingente ×3 e Quebradiço no Bloodfang; lento de 20%) e por captura; **não foi jogado com mouse**. A escolha de herói mostrava a passiva com o rótulo "Ataque"; virou "Passiva" |
+| M19-03 | feito, falta validar | 2026-11-14 | **Kaelen, Storm Step:** teleporta até o mouse (16,7 m), fere o caminho (largura 2,2 m, ×2,7), 0,3 s invulnerável, não gasta se o destino estiver a menos de 1,7 m; rastro elétrico de 2 s que fere a cada 0,4 s com 35% do dano, desenhado como raios em zigue-zague (`boltAlong`); trovão pequeno na chegada (a evolução troca pelo choque em área). **Aurelius, Time Rift** (`src/game/rift.ts`): fenda no mouse (19,2 m de alcance, raio 6,7 m mais a área do herói) por 3 s, inimigos dentro 60% mais lentos, tiros inimigos dentro param no ar e não envelhecem; implode com dano ×(1 + 0,15 por inimigo dentro, até ×3), atordoa 1 s na evolução; anéis giram e se fecham no último quarto. Conferido por script no navegador (caminho e rastro ferem; lentidão 0,6; tiro parado; implosão de 3 inimigos ×4,5) e por captura. **Diferenças mantidas:** o ataque do Kaelen continua saltando para 2 inimigos e o do Aurelius atravessando 2 (no original o tiro é simples e isso vinha das melhorias Double e Cone, que não existem aqui; decidir no M6 ou M17). Chefes: lá ignoram atordoamento e levam lentidão a 20%; aqui atordoamento a 30% e lentidão a 40% (regra geral de `applyStatus`, fora do M19). **A conferir jogando:** com 12 px = 1 m as áreas ficam grandes na tela (a fenda cobre um terço da tela); se parecer demais, subir `DR_PX_PER_M` para 16 encolhe todas as técnicas de uma vez |
+| M19-04 | feito, falta validar | 2026-11-14 | **Zephyr, Fan the Hammer:** 5 tiros de uma vez em cone (0,16 rad entre eles), com o dano e o crítico do ataque básico, 15% mais rápidos, alcance de 21,7 m, empurram (0,85 do empurrão) e ricocheteiam pela passiva; recarga 5 s (era rajada de 10 em 8 s). No original só sai com inimigo no alcance; aqui sai sempre (o jogador escolhe). **Varok, Execution Leap:** salta até o mouse (até 26,7 m, 0,45 s invulnerável); o inimigo com mais vida no pouso (raio 5,8 m) leva o maior entre ×3,75 e 8% da vida máxima, os outros metade, todos atordoados 0,5 s (`executionLanding`); recarga 14 s (era 9). **Ignis, Inferno Charge:** avança 0,22 s até o mouse (até 16,7 m) atravessando e queimando (×2,65), invulnerável no avanço, e termina com anel de fogo de 6,25 m (×1,3 e queimadura) (`infernoRing`). A queimadura do original (4 de dano por segundo por 2,5 s) virou `power` = dps ÷ dano do golpe. O ataque básico do Ignis segue o leque de projéteis antigo (no original é um cone corpo a corpo a 65% do alcance, ×1,5): fica para decidir. Conferido por script no navegador (os acertos e multiplicadores batem) e por captura do Ignis |
+| M19-05 | feito, falta validar | 2026-11-15 | **Umbra, Shadow Step:** reaparece atrás do inimigo mais forte a até 20 m (chefe, depois campeão, depois mais vida), 0,6 s invulnerável, golpe ×3 o ataque básico sempre crítico; não gasta sem alvo. **Golpe pelas costas** agora como no original: +50% em quem está atordoado, se afastando dela (o inimigo ganhou `vx`/`vz`) ou nos 2 s depois do passo; matar assim cura 4% da vida (antes valia para atordoado ou lento, e a técnica dava 2,5 s de crítico). **Seraph, Aegis:** bolha de luz por 3 s que bloqueia o próximo golpe inteiro; no fim explode (raio 7,5 m, ×3,2) e cura 10% (antes curava 25% na hora e reduzia o dano em 60%); **a cada 4 arremessos do escudo cura 2%**. **Vesper, Brood:** 2 vespas grandes por 6 s (picada ×1,07 a cada 0,7 s, veneno até 4 acúmulos, 14,6 m/s); **Ninhada:** abelha pequena a cada 8 s, até 3, vive 15 s, metade do dano, só com inimigo a até 33 m. **Limpeza:** todas as técnicas antigas saíram de `game.ts` (`nova`, `field`, `dash`, `burst`, `critUntil`, `aegisUntil`, campos de dano); `Technique` em `heroes.ts` agora só tem nome, texto, tipo e recarga, montado por `tech(id)` a partir de `TECHNIQUES`. Conferido por script no navegador (alvo e posição do passo, crítico e bônus pelas costas; bloqueio, explosão e cura; picadas e veneno, vespas somem em 6 s, abelha da Ninhada nasce); a captura das vespas falhou (painel parou de desenhar), então o tamanho delas no jogo não foi visto |
 | M1-01 | feito | 2026-11-13 | Aprovado pelo usuário. | Bloodfang: orelhas menores e achatadas, tufos da bochecha em leque curto, polegar e garras nas duas mãos, dedos nos pés, caveira esculpida com suturas e nuca, estrela na tanga (geometria fina, não cor por vértice: a tanga tem poucos vértices). De 19,4 mil para cerca de 12 mil triângulos (cabeça 36×26, tronco 22×16, `stud` de 80 triângulos para tachas e dedos). Conferido só na prévia |
 | M1-02 | feito | 2026-11-13 | Aprovado pelo usuário. | Gravekeeper refeito do sprite e já no jogo: capuz esculpido com abertura preta e olhos acesos, pelerine, saia rasgada (`robeMesh`), pernas por baixo da saia, pá apoiada no chão, lanterna com luz pontual. Cerca de 6,6 mil triângulos. Conferido só na prévia (parado, andando, ataque, câmera do jogo); a luta na Cripta não foi jogada. Kit novo: `sculptTube`, `robeMesh`, `Builder.lights`, `Builder.glowByVertex`; bípedes ganharam o osso `skirt` |
 | M1-04 | feito | 2026-11-13 | Aprovado pelo usuário. | Hollow King refeito do sprite e já no jogo: crânio esculpido com órbitas, nariz e dentes, coroa alta, gola de pelo aberta na frente, costelas à mostra, saia com painel azul e debrum dourado (`robeMesh` com `panel`), mãos de osso, cajado de crescente com orbe e luz turquesa, chama na mão esquerda. Cerca de 8,5 mil triângulos. Conferido só na prévia; a luta no Vazio não foi jogada. Kit: `restArm` e `hang` (objeto na vertical do mundo na pose de descanso) |
