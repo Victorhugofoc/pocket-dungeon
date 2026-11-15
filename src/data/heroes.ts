@@ -66,7 +66,8 @@ export interface HeroDef {
   stats: StatBlock;
   auto: AutoAttack;
   technique: Technique;
-  passive: string;
+  /** linhas da passiva, uma por regra (textos do passiveText do Dungeon Reign) */
+  passive: string[];
   /** passiva de gelo da Frostine (src/core/frost.ts, números em FROST) */
   frost?: boolean;
   /** Seraph: a cada SHIELD_THROW.healEvery arremessos, cura */
@@ -88,7 +89,7 @@ export const HEROES: Record<string, HeroDef> = {
       status: { kind: "slow", power: FROST.autoSlow, duration: FROST.autoSlowTime } },
     // os números da técnica vêm de TECHNIQUES (techniqueStats); aqui só o que a interface mostra
     technique: tech("glacial_wall"),
-    passive: FROST.passiveText.join(" "),
+    passive: [...FROST.passiveText],
     frost: true,
   },
   kaelen: {
@@ -98,7 +99,7 @@ export const HEROES: Record<string, HeroDef> = {
     auto: { kind: "projectile", rate: 2.1, damage: 0.85, range: 13, speed: 34, color: 0xfff29a,
       ricochet: 2, ricochetDamage: 0.6 },
     technique: tech("storm_step"),
-    passive: "Cada raio salta para até 2 inimigos próximos.",
+    passive: ["Cada raio salta para até 2 inimigos próximos."],
   },
   aurelius: {
     id: "aurelius", name: "Aurelius", title: "Sábio Arcano", identity: "Magia, recarga, regeneração",
@@ -106,7 +107,7 @@ export const HEROES: Record<string, HeroDef> = {
     stats: { cdrPct: 0.15, regen: 0.4, maxHpPct: 0.08, areaPct: 0.15, moveSpeedPct: -0.05 },
     auto: { kind: "projectile", rate: 1.5, damage: 1.15, range: 16, speed: 22, color: 0xd9a0ff, pierce: 2, size: 1.3 },
     technique: tech("time_rift"),
-    passive: "Projéteis arcanos atravessam até 2 inimigos.",
+    passive: ["Projéteis arcanos atravessam até 2 inimigos."],
   },
   ignis: {
     id: "ignis", name: "Ignis", title: "Inferno", identity: "Fogo, queimadura, pressão",
@@ -115,7 +116,7 @@ export const HEROES: Record<string, HeroDef> = {
     auto: { kind: "fan", rate: 1.5, damage: 0.5, range: 8.5, speed: 20, count: 5, spreadDeg: 44, color: 0xff8a2a,
       status: { kind: "burn", power: 0.35, duration: 3, maxStacks: 3 } },
     technique: tech("inferno_charge"),
-    passive: "Leque de fogo de curto alcance; queimaduras acumulam até 3 vezes.",
+    passive: ["Leque de fogo de curto alcance; queimaduras acumulam até 3 vezes."],
   },
   zephyr: {
     id: "zephyr", name: "Zephyr", title: "Pistoleiro", identity: "Tiro, velocidade, crítico",
@@ -124,7 +125,7 @@ export const HEROES: Record<string, HeroDef> = {
     auto: { kind: "projectile", rate: 2.6, damage: 0.8, range: 16, speed: 42, color: 0xffe9b0,
       ricochet: 1, ricochetDamage: 0.7, size: 0.8 },
     technique: tech("fan_the_hammer"),
-    passive: RICOCHET.passiveText.join(" "),
+    passive: [...RICOCHET.passiveText],
   },
   varok: {
     id: "varok", name: "Varok", title: "Matador de Chefes", identity: "Maça, golpes pesados, resistência",
@@ -132,7 +133,7 @@ export const HEROES: Record<string, HeroDef> = {
     stats: { damagePct: 0.35, maxHpPct: 0.60, armor: 14 },
     auto: { kind: "melee", rate: 1.05, damage: 2.3, range: 3.4, arcDeg: 130, color: 0xffb3a8 },
     technique: tech("execution_leap"),
-    passive: UNBREAKABLE.passiveText.join(" "),
+    passive: [...UNBREAKABLE.passiveText],
     maxHitFraction: UNBREAKABLE.maxHitFraction,
   },
   umbra: {
@@ -141,7 +142,7 @@ export const HEROES: Record<string, HeroDef> = {
     stats: { dodge: 0.20, critChance: 0.15, critDamagePct: 0.25, moveSpeedPct: 0.12, armor: 6 },
     auto: { kind: "melee", rate: 2.4, damage: 1.05, range: 2.8, arcDeg: 80, color: 0xd9b3ff, backstab: 0.5 },
     technique: tech("shadow_step"),
-    passive: SHADOW.passiveText.join(" "),
+    passive: [...SHADOW.passiveText],
   },
   seraph: {
     id: "seraph", name: "Seraph", title: "Paladino", identity: "Armadura, cura, escudo",
@@ -150,7 +151,7 @@ export const HEROES: Record<string, HeroDef> = {
     auto: { kind: "projectile", rate: 1.3, damage: 1.25, range: 12, speed: 20, color: 0xfff0b0, pierce: 1,
       ricochet: 2, ricochetDamage: 0.8, size: 1.6 },
     technique: tech("aegis"),
-    passive: SHIELD_THROW.passiveText.join(" "),
+    passive: [...SHIELD_THROW.passiveText],
     shieldHeal: true,
   },
   vesper: {
@@ -160,7 +161,7 @@ export const HEROES: Record<string, HeroDef> = {
     auto: { kind: "projectile", rate: 1.9, damage: 0.7, range: 14, speed: 26, color: 0x9dff7a,
       status: { kind: "poison", power: 0.35, duration: 3, maxStacks: 4 } },
     technique: tech("brood"),
-    passive: VENOM.passiveText.join(" ") + " Cada tiro envenena (até 4 acúmulos).",
+    passive: [...VENOM.passiveText, "Veneno: cada tiro envenena (até 4 acúmulos)."],
     nest: true,
   },
 };
