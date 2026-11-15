@@ -116,7 +116,7 @@ function groundMaterial(zone: ZoneDef): THREE.MeshStandardMaterial {
       gcol = stains(gp, gcol);
       vec2 mm = texture2D(uMask, gp / uMapSize + 0.5).rg;
       float mk = mm.r;
-      float dirtK = smoothstep(0.34, 0.6, mk + (mid - 0.5) * 0.45 + (fine - 0.5) * 0.12);
+      float dirtK = smoothstep(0.28, 0.66, mk + (mid - 0.5) * 0.4);
       vec3 dirt = uDirt * (0.78 + 0.4 * fbm(gp * 0.8 + 3.0));
       float pebble = smoothstep(0.80, 0.86, vnoise(gp * 4.7 + 11.0));
       dirt = mix(dirt, dirt * 1.38, pebble * 0.55);
@@ -264,6 +264,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     foliage: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), { fade: true, wind: 0.05, windFrom: 0.8 }),
     rock: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }), { fade: true }),
     glow: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, flatShading: true, emissive: glow, emissiveIntensity: 1.6 }), { fade: true }),
+    lava: lavaRockMaterial(glow),
   };
   disposables.push(...Object.values(mats));
 
@@ -464,6 +465,7 @@ export function driftSun(sun: THREE.DirectionalLight, zone: ZoneDef, time: numbe
 function occlude(parts: Partial<Record<MatKind, THREE.BufferGeometry>>): void {
   for (const [kind, geo] of Object.entries(parts) as [MatKind, THREE.BufferGeometry][]) {
     if (kind === "glow") continue;
+    const rocky = kind === "rock" || kind === "lava";
     const pos = geo.attributes.position, col = geo.attributes.color;
     if (!col) continue;
     geo.computeBoundingBox();
@@ -472,7 +474,7 @@ function occlude(parts: Partial<Record<MatKind, THREE.BufferGeometry>>): void {
       const y = pos.getY(i);
       // pedra e lápide: pela altura da própria peça (são baixas; pela altura do chão ficavam pretas inteiras)
       const k = kind === "foliage" ? 0.62 + 0.38 * smooth(y0, y0 + (y1 - y0) * 0.6, y)
-        : kind === "rock" ? 0.6 + 0.4 * smooth(y0, y0 + (y1 - y0) * 0.45, y)
+        : rocky ? 0.6 + 0.4 * smooth(y0, y0 + (y1 - y0) * 0.45, y)
         : 0.5 + 0.5 * smooth(0, 0.7, y);
       col.setXYZ(i, col.getX(i) * k, col.getY(i) * k, col.getZ(i) * k);
     }
@@ -487,3 +489,40 @@ const smooth = (a: number, b: number, x: number): number => {
 /** força média da luz da fogueira; `fireFlicker` faz ela oscilar */
 const FIRE_LIGHT = 70;
 export const fireFlicker = (time: number): number => FIRE_LIGHT * (1 + Math.sin(time * 11) * 0.12 + Math.sin(time * 23) * 0.08);
+
+/** Rocha de lava: material de pedra com rachaduras acesas (bordas de Voronoi em 3D na posição do objeto), que pulsam devagar e
+ * ficam mais fortes perto do chão. Sem o recorte do herói (`fade`): as rochas de lava são baixas. */
+function lavaRockMaterial(glow: number): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+  const uni = { uLava: { value: new THREE.Color(glow) } };
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, U, uni);
+    shader.vertexShader = "varying vec3 vObj;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvObj = position;");
+    shader.fragmentShader = `varying vec3 vObj; uniform vec3 uLava; uniform float uTime;
+      vec3 lavaHash(vec3 p) { p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6))); return fract(sin(p) * 43758.5453); }
+      float lavaCrack(vec3 p) {
+        vec3 i = floor(p), f = fract(p);
+        float d1 = 8.0, d2 = 8.0;
+        for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++) for (int z = -1; z <= 1; z++) {
+          vec3 g = vec3(float(x), float(y), float(z));
+          float d = length(g + lavaHash(i + g) - f);
+          if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
+        }
+        // só parte das bordas acende: as células com hash baixo ficam fechadas
+        float open = step(0.45, lavaHash(i + 7.0).x);
+        return (1.0 - smoothstep(0.01, 0.05, d2 - d1)) * open;
+      }
+      ` + shader.fragmentShader.replace(
+      "#include <emissivemap_fragment>",
+      `#include <emissivemap_fragment>
+      float crack = lavaCrack(vObj * 1.5);
+      float low = 1.0 - smoothstep(-0.3, 0.35, vObj.y);
+      crack *= 0.25 + 0.75 * low;
+      float pulse = 0.75 + 0.25 * sin(uTime * 1.3 + vObj.x * 3.0 + vObj.z * 2.0);
+      totalEmissiveRadiance += uLava * crack * (0.5 + 1.6 * low) * pulse * 2.6;
+      diffuseColor.rgb *= 1.0 - 0.5 * crack;`,
+    );
+  };
+  mat.customProgramCacheKey = () => "lavaRock";
+  return mat;
+}

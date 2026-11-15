@@ -59,9 +59,11 @@ Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e 
 
 **`M18-07` feito e aprovado pelo usuário:** Bosque sombrio (D11), paleta de flora por zona, cogumelos acesos, fogueira mais forte. Pendências do crítico registradas no roadmap.
 
-**`M18-08` feito, falta validar:** Cripta ao luar, lápides como decoração principal, árvores mortas e lápides com inclinação variada.
+**`M18-08` feito e aprovado pelo usuário:** Cripta ao luar, lápides como decoração principal, árvores mortas e lápides com inclinação variada.
 
-Próxima sessão (sugestão): validação da Cripta, depois `M18-09` (Vulcão). Cada passada tem as pendências do crítico nas linhas `M18-03` a `M18-06` do registro. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
+**`M18-09` feito, falta validar:** Vulcão em cinza e fumaça, rochas de basalto com rachaduras de lava no shader.
+
+Próxima sessão (sugestão): validação do Vulcão, depois `M18-10` (Vazio, com o bloom dos cristais). Cada passada tem as pendências do crítico nas linhas `M18-03` a `M18-06` do registro. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.

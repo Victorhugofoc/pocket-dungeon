@@ -62,7 +62,7 @@ vec3 cloudShade() {
   float n = 0.55 * cloudNoise(p) + 0.3 * cloudNoise(p * 2.1 + 7.3) + 0.15 * cloudNoise(p * 4.3 - 2.1);
   // cobertura 0..1 vira o limiar do ruído (o ruído fica quase todo entre 0,25 e 0,75); borda curta para ler como nuvem
   float th = 0.5 + (0.5 - uCloud.w) * 0.55;
-  float k = uCloud.x * smoothstep(th - 0.045, th + 0.045, n);
+  float k = uCloud.x * smoothstep(th - 0.07, th + 0.07, n);
   // sombra fria: o sol perde mais vermelho que azul (o que sobra é a luz do céu)
   return vec3(1.0) - k * vec3(1.0, 0.9, 0.68);
 }

@@ -5,7 +5,7 @@ import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferG
 import { Rng } from "../core/rng";
 import type { DecorKind, Foliage } from "../data/zones";
 
-export type MatKind = "solid" | "foliage" | "rock" | "glow";
+export type MatKind = "solid" | "foliage" | "rock" | "glow" | "lava";
 export interface DecorModel {
   parts: Partial<Record<MatKind, THREE.BufferGeometry>>;
 }
@@ -264,16 +264,9 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
       return { parts: { glow: merge(glow), rock: xf(rockGeo(rng, 0.75, 0x4a3f66, pal.rockTop), 0, 0.12, 0, 0, 0, 0, 1, 0.45, 1) } };
     }
     case "lavaRock": {
-      const rock = xf(rockGeo(rng, 1.15, 0x3a2e2c, pal.rockTop), 0, 0.5, 0);
-      // veios de lava: lascas incandescentes saindo da pedra
-      const glow: THREE.BufferGeometry[] = [];
-      for (let i = 0; i < 5; i++) {
-        const s = prep(new THREE.OctahedronGeometry(rng.range(0.16, 0.3), 0), false);
-        paint(s, 0xff3a0a, 0xffc84a, -0.3, 0.3);
-        const a = rng.range(0, 6.28);
-        glow.push(xf(s, Math.cos(a) * rng.range(0.5, 0.9), rng.range(0.25, 0.9), Math.sin(a) * rng.range(0.5, 0.9), rng.range(0, 3), rng.range(0, 3), 0, 1, 0.5, 1.6));
-      }
-      return { parts: { rock, glow: merge(glow) } };
+      // rocha escura; as rachaduras acesas vêm do material "lava" (world.ts), mais fortes embaixo
+      const rock = xf(rockGeo(rng, 1.15, 0x3c3c42, 0x4a4a50), 0, 0.5, 0);
+      return { parts: { lava: rock } };
     }
   }
 }
