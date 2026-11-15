@@ -67,7 +67,9 @@ Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e 
 
 **Desempenho (2026-11-14):** MSAA conforme a densidade e resolução adaptativa mirando 60 fps (`TUNING.frame`, F3 mostra o tempo de GPU e a escala). **Modo de teste ligado**: `TUNING.testBoost` dá dano ×2 e velocidade ×4 a todos os heróis, a pedido do usuário; voltar para 1 ao balancear.
 
-Próxima sessão (sugestão): o roadmap volta ao M3 (inimigos atuais), agora com o crítico cego e a prévia de zona para conferir os inimigos no cenário. Antes, vale jogar uma volta completa para sentir as quatro zonas novas em movimento (nada do M18 foi conferido em vídeo nem jogando). Cada passada tem as pendências do crítico nas linhas `M18-03` a `M18-06` do registro. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
+**Marco M19 criado (2026-11-14), na frente do M3:** o usuário quer as técnicas, passivas e ataques básicos de cada herói iguais aos do Dungeon Reign (ex.: Glacial Wall e Estilhaçar da Frostine). Tarefas e fontes no roadmap, seção 5, M19. Próxima tarefa: `M19-01`. Decisão D12 (spells sozinhas ou em teclas) em aberto.
+
+Antes do M19, a sugestão era: o roadmap volta ao M3 (inimigos atuais), agora com o crítico cego e a prévia de zona para conferir os inimigos no cenário. Antes, vale jogar uma volta completa para sentir as quatro zonas novas em movimento (nada do M18 foi conferido em vídeo nem jogando). Cada passada tem as pendências do crítico nas linhas `M18-03` a `M18-06` do registro. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.
