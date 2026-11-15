@@ -95,17 +95,13 @@ export interface RunStatistics {
 
 /**
  * Progresso do jogo antigo que ainda vive dentro da partida até o M20 terminar:
- * zonas e visitas saem no M20-02 (zona = 5 ondas), atributos no M20-03, itens no M20-04.
+ * atributos saem no M20-03, itens no M20-04, a contagem de mortes no M20-06 (morrer encerra a partida).
  */
 export interface LegacyProgress {
   attrs: Attributes;
   attrPoints: number;
   bag: Item[];
   equipped: Partial<Record<Slot, Item>>;
-  zonesUnlocked: string[];
-  bossesKilled: string[];
-  zone: string;
-  visits: number;
   deaths: number;
 }
 
@@ -184,10 +180,6 @@ export function newRun(opts: NewRunOptions): RunState {
       attrPoints: 0,
       bag: [],
       equipped: {},
-      zonesUnlocked: ["bosque"],
-      bossesKilled: [],
-      zone: "bosque",
-      visits: 0,
       deaths: 0,
     },
   };
@@ -197,7 +189,7 @@ export function newSpellSlot(id: string): SpellSlot {
   return { id, level: 1, evolution: null };
 }
 
-/** Seed do mapa de uma zona: só depende da seed da partida, da zona e da visita, nunca dos fluxos. */
+/** Seed do mapa de uma zona: só depende da seed da partida, da zona e da volta (0; 1 em diante no modo sem fim), nunca dos fluxos. */
 export function zoneSeed(runSeed: number, zoneId: string, visit: number): number {
   return ((runSeed ^ hashStr("zone:" + zoneId)) + visit * 7919) >>> 0;
 }

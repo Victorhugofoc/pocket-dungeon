@@ -1,4 +1,4 @@
-// Geração procedural de uma zona: caminho, acampamentos, arena do chefe e obstáculos.
+// Geração procedural de uma zona: caminho, os 5 trechos (um por onda; o 5º é a arena do chefe) e obstáculos.
 // Lógica pura (sem three.js): o mesmo seed gera sempre o mesmo mapa.
 import { Rng } from "./rng";
 import { TUNING } from "../data/tuning";
@@ -17,14 +17,11 @@ export interface Obstacle extends Vec2 {
   solid: boolean;
 }
 
-export interface CampSpawn {
-  id: string;
-  champion: boolean;
-}
-
-export interface Camp extends Vec2 {
-  level: number;
-  spawns: CampSpawn[];
+/** Trecho da zona: a clareira onde uma onda acontece (D13: cada zona = 5 ondas). */
+export interface Segment extends Vec2 {
+  r: number;
+  /** ponto do caminho logo antes da clareira: onde o herói fica ao continuar a partida nesta onda */
+  entry: Vec2;
 }
 
 export interface ZoneLayout {
@@ -34,7 +31,8 @@ export interface ZoneLayout {
   boss: Vec2;
   bossRadius: number;
   path: Vec2[];
-  camps: Camp[];
+  /** os 5 trechos, do início ao chefe; o último é a arena do chefe */
+  segments: Segment[];
   obstacles: Obstacle[];
 }
 
@@ -57,12 +55,31 @@ export function distToPath(px: number, pz: number, path: Vec2[]): number {
   return best;
 }
 
+function pathLength(path: Vec2[]): number {
+  let len = 0;
+  for (let i = 0; i < path.length - 1; i++) len += Math.hypot(path[i + 1].x - path[i].x, path[i + 1].z - path[i].z);
+  return len;
+}
+
+/** Ponto do caminho a uma distância d do início, medida ao longo dele. */
+export function pointOnPath(path: Vec2[], d: number): Vec2 {
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i], b = path[i + 1];
+    const seg = Math.hypot(b.x - a.x, b.z - a.z);
+    if (d <= seg || i === path.length - 2) {
+      const t = seg > 0 ? Math.max(0, Math.min(1, d / seg)) : 0;
+      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+    }
+    d -= seg;
+  }
+  return { ...path[path.length - 1] };
+}
+
 export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
   const W = TUNING.world;
   const half = W.size / 2;
   const inner = half - W.margin;
   const rLayout = Rng.of(seed, "layout");
-  const rCamps = Rng.of(seed, "camps");
   const rDecor = Rng.of(seed, "decor");
 
   const spawn: Vec2 = { x: rLayout.range(-30, 30), z: inner - 8 };
@@ -81,34 +98,31 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
   path.push(boss);
   for (const p of path) p.x = Math.max(-inner + 6, Math.min(inner - 6, p.x));
 
-  // acampamentos
-  const camps: Camp[] = [];
-  const totalWeight = zone.enemies.reduce((s, [, w]) => s + w, 0);
-  void totalWeight;
-  let tries = 0;
-  while (camps.length < W.campCount && tries < 4000) {
-    tries++;
-    const x = rCamps.range(-inner + 8, inner - 8);
-    const z = rCamps.range(-inner + 8, inner - 8);
-    if (Math.hypot(x - spawn.x, z - spawn.z) < 26) continue;
-    if (Math.hypot(x - boss.x, z - boss.z) < W.bossArenaRadius + 12) continue;
-    let ok = true;
-    for (const c of camps) {
-      if (Math.hypot(x - c.x, z - c.z) < 27) {
-        ok = false;
-        break;
-      }
-    }
-    if (!ok) continue;
-    // progresso 0..1 do início até o chefe define nível e tamanho do grupo
-    const progress = Math.max(0, Math.min(1, (spawn.z - z) / (spawn.z - boss.z)));
-    const level = zone.level + Math.floor(progress * 4.99);
-    const count = rCamps.int(3, 5) + Math.round(progress * 2);
-    const spawns: CampSpawn[] = [];
-    for (let i = 0; i < count; i++) spawns.push({ id: rCamps.weighted(zone.enemies), champion: false });
-    if (rCamps.chance(0.25)) spawns[0].champion = true;
-    camps.push({ x, z, level, spawns });
+  // os trechos: clareiras ao longo do caminho; o último é a arena do chefe
+  const len = pathLength(path);
+  // o caminho é sinuoso: do chefe para trás, cada clareira recua pelo caminho até não tocar a seguinte
+  const gap = 2;
+  const at = W.segmentAt.map((f) => len * f);
+  const centers: Vec2[] = [];
+  let next: Vec2 = boss;
+  let nextR: number = W.bossArenaRadius;
+  for (let i = at.length - 1; i >= 0; i--) {
+    let d = Math.min(at[i], (i + 1 < at.length ? at[i + 1] : len) - W.segmentRadius - nextR - gap);
+    let c = pointOnPath(path, d);
+    while (d > 0 && Math.hypot(c.x - next.x, c.z - next.z) < W.segmentRadius + nextR + gap) c = pointOnPath(path, (d -= 1));
+    at[i] = d;
+    centers[i] = c;
+    next = c;
+    nextR = W.segmentRadius;
   }
+  // entrada: o primeiro ponto do caminho, voltando da clareira, que fica 3 unidades fora dela
+  const entryOf = (c: Vec2, r: number, d: number): Vec2 => {
+    let e = pointOnPath(path, d);
+    while (d > 0 && Math.hypot(e.x - c.x, e.z - c.z) < r + 3) e = pointOnPath(path, (d -= 1));
+    return e;
+  };
+  const segments: Segment[] = centers.map((c, i) => ({ ...c, r: W.segmentRadius, entry: entryOf(c, W.segmentRadius, at[i]) }));
+  segments.push({ ...boss, r: W.bossArenaRadius, entry: entryOf(boss, W.bossArenaRadius, len) });
 
   // obstáculos e decoração
   const obstacles: Obstacle[] = [];
@@ -116,7 +130,8 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
     if (Math.hypot(x - spawn.x, z - spawn.z) < 9 + r) return true;
     if (Math.hypot(x - boss.x, z - boss.z) < W.bossArenaRadius + 1 + r) return true;
     if (distToPath(x, z, path) < 3.2 + r) return true;
-    for (const c of camps) if (Math.hypot(x - c.x, z - c.z) < 4.5 + r) return true;
+    // clareira das ondas: sem nada sólido; decoração baixa só na beirada
+    for (const sg of segments.slice(0, -1)) if (Math.hypot(x - sg.x, z - sg.z) < (r > 0 ? sg.r + 1 + r : sg.r * 0.6)) return true;
     return false;
   };
   for (let i = 0; i < zone.decorCount; i++) {
@@ -146,7 +161,7 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
     }
   }
 
-  return { seed, size: W.size, spawn, boss, bossRadius: W.bossArenaRadius, path, camps, obstacles };
+  return { seed, size: W.size, spawn, boss, bossRadius: W.bossArenaRadius, path, segments, obstacles };
 }
 
 /** Grade espacial para colisão com obstáculos sólidos. */

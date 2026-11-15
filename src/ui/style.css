@@ -158,3 +158,16 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .skill-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .skill-name { font: 700 11px/1 system-ui; color: var(--gold); text-shadow: 0 1px 2px #000; white-space: nowrap; }
 .skill.big.ready { box-shadow: 0 0 10px rgba(255, 210, 90, 0.55); }
+
+/* ondas (M20-02) */
+#wavebar { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); display: flex; gap: 12px; align-items: baseline;
+  background: rgba(10, 12, 20, 0.62); border: 1px solid rgba(255, 210, 122, 0.35); border-radius: 8px; padding: 6px 14px; text-shadow: 0 1px 3px #000; }
+#wavebar b { font-size: 17px; color: #ffd27a; letter-spacing: 1px; }
+#wavebar span { font-size: 14px; color: #e8eaf2; font-variant-numeric: tabular-nums; }
+#wavebar .hasten { color: #ffc83d; font-size: 12px; border: 1px solid rgba(255, 200, 61, 0.6); border-radius: 5px; padding: 1px 6px; }
+.hud-top-left .gold { color: #ffd27a; }
+#banner { position: absolute; left: 50%; top: 28%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; text-shadow: 0 2px 8px #000; }
+#banner h1 { font-size: 46px; letter-spacing: 3px; color: #ffe6a8; margin: 0; }
+#banner p { font-size: 16px; color: #e8eaf2; margin: 6px 0 0; }
+#banner.show { animation: banner 2.4s ease-out forwards; }
+@keyframes banner { 0% { opacity: 0; transform: translate(-50%, -40%); } 12% { opacity: 1; transform: translate(-50%, -50%); } 75% { opacity: 1; } 100% { opacity: 0; } }

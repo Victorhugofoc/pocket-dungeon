@@ -1,5 +1,8 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
 import { newFrostTarget, type FrostTarget } from "../core/frost";
+import { bossStats, enemyStats } from "../core/wave";
+import { bossXp } from "../core/waves";
+import { CHAMPION, CHILD_SCALE, MINION_SCALE } from "../data/run";
 import { TUNING } from "../data/tuning";
 import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
 import type { StatusKind } from "../data/heroes";
@@ -22,9 +25,12 @@ export class Enemy {
   def: EnemyDef | null;
   boss: BossDef | null;
   name: string;
+  /** onda em que nasceu: dá a escala de vida e dano (core/wave.ts) e o nível dos itens que deixa */
   level: number;
   champion: boolean;
   summoned: boolean;
+  /** nasceu de uma onda: persegue o herói pela clareira e nunca volta para casa */
+  hunter = false;
   maxHp: number;
   hp: number;
   dmg: number;
@@ -73,11 +79,11 @@ export class Enemy {
   private emberT = 0;
   private ring: BossRing | null = null;
 
-  constructor(game: Game, def: EnemyDef | BossDef, level: number, x: number, z: number, opts: { champion?: boolean; summoned?: boolean } = {}) {
-    const T = TUNING.enemy;
+  constructor(game: Game, def: EnemyDef | BossDef, wave: number, x: number, z: number,
+    opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean } = {}) {
     this.x = this.homeX = x;
     this.z = this.homeZ = z;
-    this.level = level;
+    this.level = wave;
     this.champion = opts.champion === true;
     this.summoned = opts.summoned === true;
     const isBoss = "patterns" in def;
@@ -85,15 +91,16 @@ export class Enemy {
     this.boss = isBoss ? (def as BossDef) : null;
     this.def = isBoss ? null : (def as EnemyDef);
     this.name = def.name;
-    const hpScale = Math.pow(T.hpPerLevel, level - 1);
-    const dmgScale = Math.pow(T.damagePerLevel, level - 1);
-    const champ = this.champion ? T.champion : null;
-    this.maxHp = this.hp = Math.round(def.hp * hpScale * (champ ? champ.hp : 1) * (this.summoned ? 0.75 : 1) * (isBoss ? TUNING.boss.hpMult : 1));
-    this.dmg = def.damage * dmgScale * (champ ? champ.damage : 1);
-    this.speed = def.speed * (champ ? champ.speed : 1);
-    this.radius = def.radius * (champ ? 1.2 : 1);
-    const xpLevel = 1 + TUNING.xp.enemyPerLevel * (level - 1);
-    this.xp = this.summoned ? 0 : Math.round(def.xp * xpLevel * (isBoss ? TUNING.boss.xpMult : champ ? champ.xp : 1));
+    // vida, dano e velocidade como no Dungeon Reign (enemy.lua, boss.lua): pela onda e pela dificuldade
+    const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final) : enemyStats(def, wave, game.mods, this.champion);
+    const derived = opts.child ? CHILD_SCALE : this.summoned ? MINION_SCALE : null;
+    const hpK = isBoss ? TUNING.boss.hpMult : 1;
+    this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1) * hpK);
+    this.dmg = st.damage * (derived ? derived.damage : 1);
+    this.speed = def.speed * st.speed * (derived ? derived.speed : 1);
+    this.radius = def.radius * (this.champion ? 1.2 : 1);
+    // XP de lá; os invocados e filhos da gosma não rendem. O chefe rende o XP do chefe da onda.
+    this.xp = this.summoned || opts.child ? 0 : isBoss ? bossXp(wave) : Math.round(def.xp * (this.champion ? CHAMPION.rewardMult : 1));
     if (isBoss) this.windupDur = 0.55;
 
     this.rig = this.makeRig();
@@ -208,7 +215,7 @@ export class Enemy {
         const fromHome = Math.hypot(this.x - this.homeX, this.z - this.homeZ);
         const leash = this.isBoss
           ? Math.hypot(p.x - this.homeX, p.z - this.homeZ) > game.layout.bossRadius + 16
-          : fromHome > TUNING.enemy.leashRadius && dist > TUNING.enemy.aggroRadius;
+          : !this.hunter && fromHome > TUNING.enemy.leashRadius && dist > TUNING.enemy.aggroRadius;
         if (!alive || leash) this.reset(game);
         else if (this.boss && this.roarT >= 0) this.updateRoar(game, dt);
         else if (this.boss) this.updateBoss(game, dt, dist, speed);
@@ -561,7 +568,7 @@ export class Enemy {
           if (!ok() || game.countSummons() >= 8) return;
           for (let i = 0; i < (pt.count ?? 3); i++) {
             const a = (i / (pt.count ?? 3)) * Math.PI * 2;
-            game.spawnEnemy(pt.minion ?? "goblin", Math.max(1, this.level - 2), this.x + Math.cos(a) * 3.5, this.z + Math.sin(a) * 3.5, { summoned: true, aggro: true });
+            game.spawnEnemy(pt.minion ?? "goblin", this.level, this.x + Math.cos(a) * 3.5, this.z + Math.sin(a) * 3.5, { summoned: true, aggro: true });
           }
           fx.shockwave(this.x, this.z, 5, b.glow);
         });

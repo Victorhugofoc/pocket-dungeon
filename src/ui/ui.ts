@@ -1,4 +1,6 @@
 // Interface em DOM: título, HUD, inventário, viagem, relíquias, pausa.
+import { canHasten, hastenBonus } from "../core/wave";
+import { TOTAL_WAVES } from "../data/run";
 import { itemName, itemScore, RARITY_COLOR, RARITY_LABEL, SLOT_LABEL, SLOTS, type Item, type Slot } from "../core/items";
 import { clearRun, discardLegacySave, loadRun, safeStorage } from "../core/save";
 import { RunRng, continueRun, newRun, type RunState } from "../core/run";
@@ -63,7 +65,7 @@ export class Ui {
         if (this.overlayKind === "inv") this.showInventory();
       },
       victory: () => this.showVictory(),
-      openTravel: () => this.showTravel(),
+      banner: (t, sub) => this.banner(t, sub),
     };
     window.addEventListener("keydown", (e) => this.onKey(e));
     this.showTitle();
@@ -113,10 +115,16 @@ export class Ui {
     } else if (k === "F3") {
       e.preventDefault();
       this.r.perf.classList.toggle("hidden");
-    } else if (k === "KeyM") {
-      if (this.overlayKind === "travel") this.close();
-      else this.showTravel();
     }
+  }
+
+  /** Letreiro grande no meio da tela, some sozinho. */
+  banner(title: string, sub = ""): void {
+    const b = this.r.banner;
+    b.innerHTML = `<h1>${title}</h1>${sub ? `<p>${sub}</p>` : ""}`;
+    b.classList.remove("show");
+    void b.offsetWidth;
+    b.classList.add("show");
   }
 
   toast(msg: string, color = "#e8eaf2"): void {
@@ -144,7 +152,7 @@ export class Ui {
         <h1>DUNGEON REIGN</h1>
         <p class="tag">RPG de ação · protótipo 0.3 · mapas procedurais, um herói, loot e chefes</p>
         ${save ? `<div class="continue"><button class="primary" data-act="continue" style="padding:12px 30px;font-size:16px">
-          Continuar — ${HEROES[save.run.heroId]?.name ?? "?"} nível ${save.run.level} · seed ${save.run.seedCode}</button></div>` : ""}
+          Continuar — ${HEROES[save.run.heroId]?.name ?? "?"} · onda ${save.wave} · nível ${save.run.level} · seed ${save.run.seedCode}</button></div>` : ""}
         <div class="section">${save ? "Ou comece uma partida nova (encerra a atual)" : "Escolha seu herói"}</div>
         <div class="heroes">${HERO_ORDER.map((id) => {
           const d = HEROES[id];
@@ -203,11 +211,13 @@ export class Ui {
   private buildHud(): void {
     this.hud.innerHTML = `
       <div id="vignette"></div>
-      <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><div class="points hidden" data-r="points"></div></div>
+      <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold" data-r="gold"></p><div class="points hidden" data-r="points"></div></div>
+      <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
+      <div id="banner" data-r="banner"></div>
       <canvas id="minimap" width="176" height="176"></canvas>
-      <div class="hud-help">I inventário · M mapa · Esc pausa<br>F3 desempenho</div>
+      <div class="hud-help">H apressar a onda · I inventário · Esc pausa<br>F3 desempenho</div>
       <div id="bossbar" class="hidden" data-r="boss"><h3 data-r="bossName"></h3><div class="bar"><i data-r="bossFill"></i><span data-r="bossText"></span></div></div>
-      <div id="hint" class="hidden" data-r="hint">E — entrar no portal</div>
+      <div id="hint" class="hidden" data-r="hint"></div>
       <div id="perf" class="hidden" data-r="perf"></div>
       <div id="toasts"></div>
       <div class="hud-bottom">
@@ -230,7 +240,9 @@ export class Ui {
   private onZoneChanged(): void {
     const z = this.game.zone;
     this.r.zone.textContent = z.name;
-    this.r.zoneSub.textContent = `${z.subtitle} · nível ${z.level}–${z.level + 4}`;
+    const w = this.game.run.wave;
+    const first = w - ((w - 1) % 5);
+    this.r.zoneSub.textContent = `${z.subtitle} · ondas ${first}–${first + 4}`;
   }
 
   private updateHud(): void {
@@ -268,7 +280,29 @@ export class Ui {
       r.bossFill.style.width = `${(boss.hp / boss.maxHp) * 100}%`;
       r.bossText.textContent = `${Math.ceil(boss.hp)} / ${boss.maxHp}`;
     }
-    r.hint.classList.toggle("hidden", !g.nearPortal || !!this.overlay);
+    // onda: número, relógio, Apressar
+    const n = g.run.wave;
+    const total = n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : " · sem fim";
+    r.waveN.textContent = `Onda ${n}${total}`;
+    const w = g.wave;
+    let t = "";
+    if (g.phase === "walk") t = "vá até o círculo";
+    else if (g.phase === "intro") t = "prepare-se";
+    else if (g.phase === "fight" && w) {
+      const left = Math.ceil(g.waveTimeLeft);
+      t = w.isBossWave ? (w.heldByBoss ? "derrote o chefe" : `${fmtTime(left)} · chefe`) : fmtTime(left);
+      if (w.hastened) t += " · apressada";
+    } else if (g.phase === "cleared") t = "concluída";
+    else if (g.phase === "portal") t = "portal aberto";
+    r.waveT.textContent = t;
+    const can = canHasten(w);
+    r.hasten.classList.toggle("hidden", !can);
+    if (can && w) r.hasten.textContent = `H apressar +${Math.round(hastenBonus(w) * 100)}%`;
+    r.gold.textContent = `${g.run.gold} ouro`;
+    r.boss.style.top = "64px";
+    const hint = g.nearPortal ? "E — seguir para a próxima zona" : g.phase === "walk" && g.playerAlive ? `Entre no círculo para começar a onda ${n}` : "";
+    if (r.hint.textContent !== hint) r.hint.textContent = hint;
+    r.hint.classList.toggle("hidden", !hint || !!this.overlay);
     if (this.frameN % 15 === 0 && !r.perf.classList.contains("hidden")) {
       r.perf.textContent = `${Math.round(g.fps)} fps · GPU ${g.pipeline.gpuMs < 0 ? "?" : g.pipeline.gpuMs.toFixed(1) + " ms"} · qualidade ${QUALITY[g.quality]} · ${g.pipeline.bufferSize.x}×${g.pipeline.bufferSize.y} (${Math.round(g.resScale * 100)}%)`;
     }
@@ -300,11 +334,20 @@ export class Ui {
       const sz = e.champion ? 4 : 2;
       ctx.fillRect(tx(e.x) - sz / 2, tx(e.z) - sz / 2, sz, sz);
     }
+    // trechos das ondas: o atual em destaque, os já passados apagados
+    const cur = (g.run.wave - 1) % 5;
+    L.segments.forEach((sg, i) => {
+      ctx.strokeStyle = i === cur ? "#ffd27a" : i < cur ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.45)";
+      ctx.lineWidth = i === cur ? 2 : 1;
+      ctx.beginPath();
+      ctx.arc(tx(sg.x), tx(sg.z), sg.r * k, 0, 7);
+      ctx.stroke();
+    });
     // chefe / portal
     ctx.font = "14px system-ui";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(g.bossDead ? "🌀" : "💀", tx(L.boss.x), tx(L.boss.z));
+    ctx.fillText(g.phase === "portal" ? "🌀" : "💀", tx(L.boss.x), tx(L.boss.z));
     ctx.fillStyle = "#ffa040";
     ctx.beginPath();
     ctx.arc(tx(L.spawn.x), tx(L.spawn.z), 3, 0, 7);
@@ -435,33 +478,7 @@ export class Ui {
     this.tip.style.top = `${Math.max(4, Math.min(window.innerHeight - hgt - 4, ev.clientY + 12))}px`;
   }
 
-  // ---------------------------------------------------------------- viagem / relíquia / pausa / morte
-  private showTravel(): void {
-    const g = this.game;
-    const panel = this.open("travel", "travel");
-    panel.style.width = "min(980px, 96vw)";
-    panel.innerHTML = `<h2>Mapa do reino</h2><p class="sub">Viajar gera um mapa novo da zona, com todos os monstros e o chefe de volta.</p>
-      <div class="cards">${ZONE_ORDER.map((id) => {
-        const z = ZONES[id];
-        const open = g.run.legacy.zonesUnlocked.includes(id);
-        const killed = g.run.legacy.bossesKilled.includes(z.boss);
-        return `<div class="card ${open ? "" : "locked"}" data-zone="${id}" style="--cc:${hex(z.path)}">
-          <div class="meta">Nível ${z.level}–${z.level + 4}${id === g.zone.id ? " · você está aqui" : ""}</div>
-          <h3>${open ? z.name : "???"}</h3><p>${open ? z.subtitle : "Derrote o chefe da zona anterior."}</p>
-          <p>Chefe: <b>${open ? BOSSES[z.boss].name : "???"}</b> ${killed ? "✔ derrotado" : ""}</p></div>`;
-      }).join("")}</div>
-      <div class="row end"><button data-act="close">Ficar aqui (M)</button></div>`;
-    panel.onclick = (ev) => {
-      const t = ev.target as HTMLElement;
-      if (t.closest("[data-act=close]")) return this.close();
-      const id = t.closest<HTMLElement>("[data-zone]")?.dataset.zone;
-      if (id && g.run.legacy.zonesUnlocked.includes(id)) {
-        this.close();
-        g.enterZone(id);
-      }
-    };
-  }
-
+  // ---------------------------------------------------------------- relíquia / pausa / morte
   private showRelicChoice(ids: string[], pick: (id: string) => void): void {
     const panel = this.open("relic", "relic");
     panel.style.width = "min(820px, 96vw)";
@@ -483,7 +500,7 @@ export class Ui {
     const g = this.game;
     const panel = this.open("pause", "pause");
     const mins = Math.floor(g.run.statistics.elapsed / 60);
-    panel.innerHTML = `<h2>Pausa</h2><p class="sub">${g.run.statistics.kills} abates · ${g.run.legacy.deaths} mortes · ${mins} min de jogo · seed ${g.run.seedCode}</p>
+    panel.innerHTML = `<h2>Pausa</h2><p class="sub">onda ${g.run.wave} · ${g.run.gold} ouro · ${g.run.statistics.kills} abates · ${g.run.legacy.deaths} mortes · ${mins} min de jogo · seed ${g.run.seedCode}</p>
       <div class="section" style="color:${hex(g.hero.color)}">${g.hero.name} — ${g.hero.title}</div>
       ${heroKit(g.hero, g.tech?.cooldown ?? g.hero.technique.cooldown * g.stats.cooldownMult)}
       <div class="controls">
@@ -493,9 +510,9 @@ export class Ui {
         <kbd>Botão direito / Q</kbd><span>Técnica do herói: ${g.hero.technique.name}</span>
         <kbd>Espaço</kbd><span>Esquiva (invulnerável por um instante)</span>
         <kbd>F</kbd><span>Poção de cura</span>
-        <kbd>E</kbd><span>Entrar no portal (depois do chefe)</span>
+        <kbd>H</kbd><span>Apressar a onda (depois de 5 s; mais recompensa, inimigos mais rápidos)</span>
+        <kbd>E</kbd><span>Entrar no portal (depois do chefe da zona)</span>
         <kbd>I / Tab</kbd><span>Inventário e atributos</span>
-        <kbd>M</kbd><span>Mapa do reino (viajar entre zonas)</span>
         <kbd>Roda do mouse</kbd><span>Aproximar ou afastar a câmera</span>
         <kbd>F3</kbd><span>Mostrar quadros por segundo</span>
       </div>
@@ -518,8 +535,8 @@ export class Ui {
     if (this.game.playerAlive) return;
     const panel = this.open("death", "death");
     panel.innerHTML = `<h2 style="color:var(--bad)">Você caiu</h2>
-      <p class="sub">Nada se perde: você volta à fogueira com a vida cheia. Os monstros vivos se recuperam.</p>
-      <div class="row end"><button class="primary" data-act="respawn">Renascer</button></div>`;
+      <p class="sub">A onda ${this.game.run.wave} recomeça do começo, com o que você tinha ao entrar nela.</p>
+      <div class="row end"><button class="primary" data-act="respawn">Recomeçar a onda</button></div>`;
     panel.onclick = (ev) => {
       if (!(ev.target as HTMLElement).closest("[data-act=respawn]")) return;
       this.close();
@@ -532,8 +549,8 @@ export class Ui {
     const panel = this.open("victory", "victory");
     panel.innerHTML = `<h2 style="color:var(--gold)">O Rei Oco caiu</h2>
       <p class="sub">${g.hero.name} chegou ao fim do reino no nível ${g.run.level}, com ${g.run.statistics.kills} abates e ${g.run.legacy.deaths} mortes.</p>
-      <p>Este é o fim do protótipo. Você pode continuar explorando e farmando em qualquer zona.</p>
-      <div class="row end"><button class="primary" data-act="close">Continuar jogando</button></div>`;
+      <p>As 20 ondas acabaram. O portal leva ao modo sem fim: as zonas voltam com mapas novos e inimigos mais fortes.</p>
+      <div class="row end"><button class="primary" data-act="close">Seguir no modo sem fim</button></div>`;
     panel.onclick = (ev) => {
       if ((ev.target as HTMLElement).closest("[data-act=close]")) this.close();
     };
@@ -544,4 +561,8 @@ export class Ui {
 function legacyView(g: Game) {
   const r = g.run;
   return { ...r.legacy, level: r.level, xp: r.xp, relics: r.relics };
+}
+
+function fmtTime(sec: number): string {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 }

@@ -146,32 +146,34 @@ describe("geração de zona", () => {
     const b = generateZone(ZONES.bosque, 123);
     const c = generateZone(ZONES.bosque, 124);
     expect(a).toEqual(b);
-    expect(a.camps).not.toEqual(c.camps);
+    expect(a.segments).not.toEqual(c.segments);
   });
-  it("todas as zonas têm acampamentos suficientes, dentro do mapa e longe do início", () => {
+  it("toda zona tem 5 trechos em sequência, sem se tocar, dentro do mapa e longe do início; o último é a arena", () => {
     for (const id of ZONE_ORDER) {
-      for (const seed of [1, 99, 123456]) {
-        const L = generateZone(ZONES[id], seed);
-        const half = L.size / 2;
-        expect(L.camps.length).toBeGreaterThanOrEqual(16);
-        for (const c of L.camps) {
-          expect(Math.abs(c.x)).toBeLessThan(half);
-          expect(Math.abs(c.z)).toBeLessThan(half);
-          expect(Math.hypot(c.x - L.spawn.x, c.z - L.spawn.z)).toBeGreaterThanOrEqual(26);
-          expect(c.level).toBeGreaterThanOrEqual(ZONES[id].level);
-          expect(c.level).toBeLessThanOrEqual(ZONES[id].level + 4);
-          expect(c.spawns.length).toBeGreaterThanOrEqual(3);
-        }
+      for (let seed = 1; seed <= 400; seed += 7) {
+        const L = generateZone(ZONES[id], seed * 7919);
+        const inner = L.size / 2 - TUNING.world.margin;
+        expect(L.segments.length).toBe(5);
+        expect(L.segments[4]).toMatchObject({ x: L.boss.x, z: L.boss.z, r: L.bossRadius });
+        L.segments.forEach((s, i) => {
+          expect(Math.abs(s.x) + s.r).toBeLessThan(inner + 8);
+          expect(Math.abs(s.z) + s.r).toBeLessThan(inner + 8);
+          // o início fica fora do 1º trecho: a onda 1 começa quando o herói entra nele
+          expect(Math.hypot(s.x - L.spawn.x, s.z - L.spawn.z)).toBeGreaterThan(s.r + 4);
+          // a entrada fica fora da própria clareira
+          expect(Math.hypot(s.entry.x - s.x, s.entry.z - s.z)).toBeGreaterThan(s.r);
+          for (const t of L.segments.slice(i + 1)) expect(Math.hypot(s.x - t.x, s.z - t.z)).toBeGreaterThan(s.r + t.r + 1);
+        });
       }
     }
   });
-  it("o caminho, o início e a arena ficam livres de obstáculos sólidos", () => {
+  it("o caminho, o início, os trechos e a arena ficam livres de obstáculos sólidos", () => {
     const L = generateZone(ZONES.cripta, 77);
     const inner = L.size / 2 - TUNING.world.margin;
     for (const o of L.obstacles) {
       if (!o.solid || Math.abs(o.x) > inner || Math.abs(o.z) > inner) continue;
       expect(distToPath(o.x, o.z, L.path)).toBeGreaterThan(o.r);
-      expect(Math.hypot(o.x - L.boss.x, o.z - L.boss.z)).toBeGreaterThan(L.bossRadius);
+      for (const s of L.segments) expect(Math.hypot(o.x - s.x, o.z - s.z)).toBeGreaterThan(s.r);
     }
   });
   it("a grade empurra para fora dos obstáculos", () => {

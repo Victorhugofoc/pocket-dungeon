@@ -166,3 +166,34 @@ export const RUN_TUNING = {
   /** Apressar: acelera o resto de uma onda normal por mais recompensa */
   hasten: { unlockAfter: 5, timeMult: 1.5, spawnMult: 2.0, maxBonus: 0.30, fullAt: 20, exponent: 1.4, enemySpeed: 1.20 },
 } as const;
+
+/** tuning.lua `ARENA_CROWD`: a arena de lá (1200 × 608 px) tem mais área que a de referência (880 × 632). */
+export const ARENA_CROWD = 1 + ((1200 * 608) / (880 * 632) - 1) / 2;
+
+/** constants.lua e tuning.lua: inimigos nascem na borda, longe do herói, depois de um aviso no chão. */
+export const SPAWN = {
+  /** s de aviso antes de o inimigo aparecer (`SPAWN_TELEGRAPH`) */
+  telegraph: 0.60,
+  /** s de aviso do chefe (`BOSS_TELEGRAPH`) */
+  bossTelegraph: 1.4,
+  /** distância mínima do herói, em px de lá (`SPAWN_MIN_DISTANCE`); vezes TUNING.enemy.pxToUnit no jogo */
+  minDistancePx: 170,
+} as const;
+
+/** enemies.lua `CHAMPION` (§56): vida = max(vida normal, base + onda × perWave) × hpMult. */
+export const CHAMPION = { hpBase: 120, hpPerWave: 26, hpMult: 1.55, damageMult: 1.75, speedMult: 1.12, rewardMult: 4.5 } as const;
+/** affixes.lua `RANDOM`: chance de uma onda normal promover um inimigo sorteado a campeão. */
+export const RANDOM_CHAMPION = { base: 0.02, perWave: 0.02, cap: 0.30 } as const;
+/** enemies.lua: invocados e filhos da gosma (sem recompensa). */
+export const MINION_SCALE = { hp: 0.75, damage: 0.75, speed: 1.10 } as const;
+export const CHILD_SCALE = { hp: 0.72, damage: 0.78, speed: 1.18 } as const;
+/** constants.lua `SURVIVOR_FACTOR`: quem sobra no fim da onda rende 35% do ouro e do XP. */
+export const SURVIVOR_FACTOR = 0.35;
+
+/** bosses.lua `builds[id].mults`: só dos 4 chefes que existem aqui (M10 traz os outros). */
+export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: number }> = {
+  bloodfang: { hp: 1.12, damage: 1.18, speed: 1.12 },
+  gravekeeper: { hp: 1.10, damage: 1.00, speed: 0.88 },
+  ember_matriarch: { hp: 1.04, damage: 1.08, speed: 0.94 },
+  hollow_king: { hp: 1.12, damage: 1.14, speed: 0.92 },
+};

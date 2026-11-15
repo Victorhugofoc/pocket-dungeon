@@ -12,7 +12,11 @@ import {
   BOSS, DEPTHS_FROM, DEPTHS_STEP, DIFFICULTIES, DIFFICULTY_ORDER, ENDLESS, ENEMY_WEIGHT, LEVEL_UP_CHOICES,
   LEVELUP_REROLL, RUN_MAP, RUN_START, RUN_TUNING, TOTAL_WAVES, UPGRADE_TIER_WEIGHTS, UPGRADE_TIERS, WAVE_STAGES, WAVES,
   XP_GROWTH,
+  ARENA_CROWD, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SURVIVOR_FACTOR,
 } from "../src/data/run";
+import { ENEMIES } from "../src/data/enemies";
+import { bossStats, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, targetCount, waveMods } from "../src/core/wave";
+import { Rng } from "../src/core/rng";
 import {
   baseDuration, baseEnemyCount, bossGold, bossTier, bossXp, compositionFor, damageScale, hasMapBefore, hpScale,
   isBossWave, nextXpToNext, segmentOf, waveGold, waveXp,
@@ -27,7 +31,7 @@ const LUAJIT = process.env.LUAJIT ?? "luajit";
 const MODULES = [
   "src.core.constants", "src.data.spells", "src.data.characters",
   "src.data.waves", "src.data.tuning", "src.data.run_map", "src.data.difficulties", "src.data.bosses",
-  "src.progression.level_up",
+  "src.progression.level_up", "src.data.enemies", "src.data.affixes",
 ];
 /** Até que onda as fórmulas são comparadas (passa da 20 para cobrir o modo sem fim). */
 const WAVE_CHECK = 40;
@@ -46,12 +50,48 @@ const WAVE_TABLE = `=(function()
   return t
 end)()`;
 
+/** O ciclo da onda de lá (wave_system.lua, enemy.lua, boss.lua), por dificuldade e onda, sem pacto nem sala. */
+const WAVE_LIFE = `=(function()
+  local E, WS = require("src.run.modifier_engine"), require("src.run.wave_system")
+  local Boss, Enemy = require("src.bosses.boss"), require("src.enemies.enemy")
+  local DF, A = require("src.data.difficulties"), require("src.data.affixes")
+  local out = {}
+  for _, did in ipairs(DF.order) do
+    local d = DF[did]
+    out[did] = {}
+    for w = 1, ${WAVE_CHECK} do
+      local mods = { enemyHp = E.depthsHp(d, w) * E.lateHp(d, w), enemyDamage = (d.earlyDamage and d.earlyDamage[w]) or d.enemyDamage,
+        enemySpeed = d.enemySpeed, projectileSpeed = d.projectileSpeed, bossHp = d.bossHp, bossDamage = d.bossDamage,
+        bossSpeed = d.bossSpeed, earlyBossCut = d.earlyBossCut, crownHp = d.crownHp or 1, enemyCount = 1, reward = d.reward }
+      local t = WS.targetCount(w, mods)
+      if require("src.core.constants").BOSS_WAVES[w] then t = math.max(1, math.floor(t * require("src.data.tuning").BOSS_WAVE_SPAWN + 0.5)) end
+      local foes = {}
+      for _, id in ipairs({ "goblin", "orc", "berserker" }) do
+        local n, c = Enemy.create(id, w, mods, 0, 0), Enemy.create(id, w, mods, 0, 0, { champion = true })
+        foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
+      end
+      local bosses = {}
+      for _, id in ipairs({ "bloodfang", "gravekeeper", "ember_matriarch", "hollow_king" }) do
+        local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
+        bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
+      end
+      local ec = {}
+      for k in pairs(WS.endlessChampions(w, t) or {}) do ec[#ec + 1] = k end
+      table.sort(ec)
+      local hb = {}
+      for i, el in ipairs({ 6, 25, 30, 38 }) do hb[i] = WS.hastenBonus({ wave = { duration = 40, elapsed = el } }) end
+      out[did][w] = { target = t, foes = foes, bosses = bosses, champ = A.randomChance(w), endless = ec, hasten = hb }
+    end
+  end
+  return out
+end)()`;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Lua = any;
 
 function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
-  const r = spawnSync(LUAJIT, [resolve(import.meta.dirname, "../tools/dr-dump.lua"), ROOT, ...MODULES, WAVE_TABLE], {
+  const r = spawnSync(LUAJIT, [resolve(import.meta.dirname, "../tools/dr-dump.lua"), ROOT, ...MODULES, WAVE_TABLE, WAVE_LIFE], {
     encoding: "utf8", maxBuffer: 64 << 20,
   });
   if (r.error || r.status !== 0) return null;
@@ -68,6 +108,9 @@ const RM: Lua = dr?.["src.data.run_map"];
 const DF: Lua = dr?.["src.data.difficulties"];
 const BS: Lua = dr?.["src.data.bosses"];
 const PER_WAVE: Lua[] = dr?.[WAVE_TABLE];
+const LIFE: Lua = dr?.[WAVE_LIFE];
+const EN: Lua = dr?.["src.data.enemies"];
+const AF: Lua = dr?.["src.data.affixes"];
 
 /** Campos numéricos de lá que não têm equivalente aqui, com o motivo (vira linha "adaptado" em docs/paridade.md). */
 const TECH_NOT_PORTED: Record<string, string[]> = {};
@@ -238,5 +281,60 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     expect(RUN_TUNING.enemyDamageMult).toBe(TU.ENEMY_DAMAGE_MULT);
     expect(RUN_TUNING.healOrb).toEqual(TU.HEAL_ORB);
     expect(RUN_TUNING.hasten).toEqual(TU.HASTEN);
+  });
+
+  it("inimigos que existem aqui: vida, dano, XP, ouro e categoria iguais aos de lá", () => {
+    for (const [id, d] of Object.entries(ENEMIES)) {
+      const o = EN[id];
+      expect(o, id).toBeTruthy();
+      expect({ hp: d.hp, damage: d.damage, xp: d.xp, gold: d.gold, category: d.category, cooldown: d.cooldown }, id)
+        .toEqual({ hp: o.hp, damage: o.damage, xp: o.xp, gold: o.gold, category: o.category, cooldown: o.cooldown });
+    }
+    expect(CHAMPION).toEqual({ hpBase: EN.CHAMPION.hpBase, hpPerWave: EN.CHAMPION.hpPerWave, hpMult: EN.CHAMPION.hpMult,
+      damageMult: EN.CHAMPION.damageMult, speedMult: EN.CHAMPION.speedMult, rewardMult: EN.CHAMPION.rewardMult });
+    expect(MINION_SCALE).toEqual(EN.MINION_SCALE);
+    expect(CHILD_SCALE).toEqual(EN.CHILD_SCALE);
+    expect(RANDOM_CHAMPION).toEqual(AF.RANDOM);
+    expect(SURVIVOR_FACTOR).toBe(C.SURVIVOR_FACTOR);
+    expect(ARENA_CROWD).toBeCloseTo(TU.ARENA_CROWD, 12);
+    expect(SPAWN).toEqual({ telegraph: C.SPAWN_TELEGRAPH, bossTelegraph: TU.BOSS_TELEGRAPH, minDistancePx: C.SPAWN_MIN_DISTANCE });
+    for (const [id, m] of Object.entries(BOSS_MULTS)) {
+      const b = BS.builds[id].mults;
+      expect(m, id).toEqual({ hp: b.hp, damage: b.damage, speed: b.speed });
+    }
+  });
+
+  it(`ciclo da onda igual ao de lá em cada dificuldade, da onda 1 à ${WAVE_CHECK}`, () => {
+    for (const did of DIFFICULTY_ORDER) {
+      for (let w = 1; w <= WAVE_CHECK; w++) {
+        const o = LIFE[did][w - 1];
+        const at = `${did} onda ${w}`;
+        const mods = waveMods(w, did);
+        expect(targetCount(w), at).toBe(o.target);
+        expect(randomChampionChance(w), at).toBeCloseTo(o.champ, 12);
+        expect([...endlessChampions(w, o.target)].sort((a, b) => a - b), at).toEqual(Array.isArray(o.endless) ? o.endless : []);
+        for (const id of ["goblin", "orc", "berserker"]) {
+          const n = enemyStats(ENEMIES[id], w, mods), c = enemyStats(ENEMIES[id], w, mods, true), f = o.foes[id];
+          expect(n.hp, at + " " + id).toBeCloseTo(f.hp, 9);
+          expect(n.damage, at + " " + id).toBeCloseTo(f.damage, 9);
+          expect(n.speed, at + " " + id).toBeCloseTo(f.speed, 9);
+          expect(c.hp, at + " campeão " + id).toBeCloseTo(f.chp, 9);
+          expect(c.damage, at + " campeão " + id).toBeCloseTo(f.cdamage, 9);
+          expect(c.speed, at + " campeão " + id).toBeCloseTo(f.cspeed, 9);
+        }
+        for (const id of Object.keys(BOSS_MULTS)) {
+          const b = bossStats(id, w, mods), f = o.bosses[id];
+          expect(b.hp / f.hp, at + " " + id).toBeCloseTo(1, 12);
+          expect(b.damage / f.damage, at + " " + id).toBeCloseTo(1, 12);
+          expect(b.speed, at + " " + id).toBeCloseTo(f.speed, 12);
+        }
+        const wave = startWave(Math.min(w, 4), new Rng(1), () => true);
+        [6, 25, 30, 38].forEach((el, i) => {
+          wave.duration = 40;
+          wave.elapsed = el;
+          expect(hastenBonus(wave), at + " apressar em " + el).toBeCloseTo(o.hasten[i], 12);
+        });
+      }
+    }
   });
 });

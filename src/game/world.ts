@@ -65,7 +65,8 @@ function buildMask(layout: ZoneLayout): THREE.CanvasTexture {
   };
   disc(layout.boss.x, layout.boss.z, layout.bossRadius - 0.5, 1);
   disc(layout.spawn.x, layout.spawn.z, 6.5, 1);
-  for (const c of layout.camps) disc(c.x, c.z, 4.2, 0.62);
+  // clareiras das ondas 1 a 4: chão gasto, mais claro no meio
+  for (const sg of layout.segments.slice(0, -1)) disc(sg.x, sg.z, sg.r * 0.7, 0.45);
   // sombra de contato: discos verdes somados (não mexem no vermelho), com desfoque menor
   ctx.filter = "blur(2.5px)";
   ctx.globalCompositeOperation = "lighter";
@@ -339,7 +340,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
       const fz0 = p.z + Math.sin(a) * d;
       // nada de flor na terra batida
       if (distToPath(fx0, fz0, layout.path) < 4.2 || Math.hypot(fx0 - layout.boss.x, fz0 - layout.boss.z) < layout.bossRadius + 1
-        || Math.hypot(fx0 - layout.spawn.x, fz0 - layout.spawn.z) < 8 || layout.camps.some((c) => Math.hypot(fx0 - c.x, fz0 - c.z) < 5)) continue;
+        || Math.hypot(fx0 - layout.spawn.x, fz0 - layout.spawn.z) < 8 || layout.segments.some((c) => Math.hypot(fx0 - c.x, fz0 - c.z) < c.r * 0.6)) continue;
       inst.position.set(fx0, 0, fz0);
       inst.rotation.set(0, rng.range(0, 6.28), 0);
       inst.scale.setScalar(rng.range(0.8, 1.5));
