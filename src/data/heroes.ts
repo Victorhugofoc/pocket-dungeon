@@ -1,6 +1,7 @@
 // Os 9 heróis do Dungeon Reign (dungeon-idle/src/data/characters.lua), adaptados para o RPG.
 // Os efeitos de atributo vêm de lá; elementos viraram `statusPct`/`damagePct`.
 import type { StatBlock } from "../core/stats";
+import { FROST, TECHNIQUES } from "./techniques";
 
 export type StatusKind = "slow" | "burn" | "poison" | "stun";
 
@@ -35,7 +36,7 @@ export interface AutoAttack {
 }
 
 export type TechniqueKind =
-  | "nova" | "blink" | "field" | "dash" | "burst" | "leap" | "shadow" | "aegis" | "brood";
+  | "nova" | "blink" | "field" | "dash" | "burst" | "leap" | "shadow" | "aegis" | "brood" | "icewall";
 
 export interface Technique {
   id: string;
@@ -66,6 +67,8 @@ export interface HeroDef {
   auto: AutoAttack;
   technique: Technique;
   passive: string;
+  /** passiva de gelo da Frostine (src/core/frost.ts, números em FROST) */
+  frost?: boolean;
   /** dano máximo de um golpe, em fração da vida (Varok) */
   maxHitFraction?: number;
 }
@@ -78,11 +81,12 @@ export const HEROES: Record<string, HeroDef> = {
     color: 0x8fdcff, accent: 0xe8f8ff, weapon: "staff", weaponName: "Cajado",
     stats: { maxHpPct: 0.22, armor: 12, statusPct: 0.25 },
     auto: { kind: "projectile", rate: 1.7, damage: 1.0, range: 15, speed: 24, color: 0x9be4ff,
-      status: { kind: "slow", power: 0.35, duration: 2.0 } },
-    technique: { id: "glacial_nova", name: "Nova Glacial", kind: "nova", cooldown: 11, damage: 2.4, radius: 7,
-      text: "Explosão de gelo ao redor: dano em área e congela os inimigos por 2 s.",
-      status: { kind: "stun", power: 1, duration: 2.0 } },
-    passive: "Seus tiros deixam os inimigos lentos.",
+      status: { kind: "slow", power: FROST.autoSlow, duration: FROST.autoSlowTime } },
+    // os números da técnica vêm de TECHNIQUES (techniqueStats); aqui só o que a interface mostra
+    technique: { id: "glacial_wall", name: TECHNIQUES.glacial_wall.name, kind: "icewall", cooldown: TECHNIQUES.glacial_wall.cooldown,
+      damage: 0, text: TECHNIQUES.glacial_wall.text },
+    passive: FROST.passiveText.join(" "),
+    frost: true,
   },
   kaelen: {
     id: "kaelen", name: "Kaelen", title: "Duelista da Tempestade", identity: "Raio, crítico, mobilidade",

@@ -5,6 +5,9 @@ import { generateItem, itemName, RARITIES, RARITY_COLOR, RARITY_LABEL, type Item
 import { computeStats, xpToNext, type Attributes, type FinalStats, type StatBlock } from "../core/stats";
 import { generateZone, ObstacleGrid, type ZoneLayout } from "../core/worldgen";
 import { writeSave, safeStorage, type SaveData } from "../core/save";
+import { px, techniqueStats, type TechStats } from "../core/techniques";
+import { frostModify, IcicleCounter } from "../core/frost";
+import { FROST, TECHNIQUES } from "../data/techniques";
 import { BOSSES } from "../data/enemies";
 import { HEROES, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { RELICS, RELIC_IDS } from "../data/relics";
@@ -13,6 +16,7 @@ import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
 import { Audio } from "./audio";
 import { Enemy, enemyDef } from "./enemy";
 import { Fx } from "./fx";
+import { IceWalls, type IceWall } from "./icewall";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -37,6 +41,8 @@ interface Projectile {
   dmg: number; life: number; friendly: boolean;
   pierce: number; ricochet: number; ricochetDamage: number;
   status?: StatusSpec; mesh: THREE.Mesh; hit: Set<Enemy>; color: number; source: string;
+  /** gelo da Frostine; `icicle` = o tiro é pingente */
+  ice?: boolean; icicle?: boolean;
 }
 
 interface Drop {
@@ -103,6 +109,10 @@ export class Game {
   private drops: Drop[] = [];
   private bees: Bee[] = [];
   private fields: Field[] = [];
+  private iceWalls = new IceWalls(this.scene);
+  private icicle = new IcicleCounter();
+  /** números da técnica do herói no nível atual (src/core/techniques.ts); null se ainda for a técnica antiga */
+  tech: TechStats | null = null;
   private projPool: THREE.Mesh[] = [];
   private projMats = new Map<number, THREE.MeshBasicMaterial>();
 
@@ -243,6 +253,10 @@ export class Game {
     // reforço de teste (TUNING.testBoost): fora do core para não mexer nas contas testadas
     this.stats.damage *= TUNING.testBoost.damage;
     this.stats.moveSpeed *= TUNING.testBoost.moveSpeed;
+    const tid = this.hero.technique.id;
+    this.tech = TECHNIQUES[tid]
+      ? techniqueStats(tid, 1, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage })
+      : null;
     this.player.hp = Math.min(this.player.hp, this.stats.maxHp);
   }
 
@@ -305,6 +319,7 @@ export class Game {
     this.bees.length = 0;
     for (const f of this.fields) f.mesh.removeFromParent();
     this.fields.length = 0;
+    this.iceWalls.clear();
     this.fx.clear();
     this.world?.dispose();
     this.world = null;
@@ -356,11 +371,14 @@ export class Game {
     const p = this.player;
     const speed = auto.speed ?? 24;
     const range = auto.range * this.stats.range * rangeMult;
+    const ice = this.hero.frost === true;
+    // Pingente (Frostine): o tiro depois de 3 acertos seguidos no mesmo alvo sai maior e x3
+    const icicle = ice && this.icicle.take();
     this.addProjectile({
       x: p.x + Math.sin(angle) * 0.7, z: p.z + Math.cos(angle) * 0.7, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed,
-      r: 0.24 * (auto.size ?? 1), dmg: mult, life: range / speed, friendly: true,
+      r: 0.24 * (auto.size ?? 1) * (icicle ? 1.9 : 1), dmg: mult * (icicle ? FROST.icicleMult : 1), life: range / speed, friendly: true,
       pierce: auto.pierce ?? 0, ricochet: auto.ricochet ?? 0, ricochetDamage: auto.ricochetDamage ?? 1,
-      status: auto.status, color: auto.color, source: "auto",
+      status: auto.status, color: icicle ? 0xf2fbff : auto.color, source: "auto", ice, icicle,
     });
   }
 
@@ -377,8 +395,16 @@ export class Game {
           if (e.dead || pr.hit.has(e)) continue;
           const rr = e.radius + pr.r + 0.25;
           if ((e.x - pr.x) ** 2 + (e.z - pr.z) ** 2 > rr * rr) continue;
+          const first = pr.hit.size === 0;
           pr.hit.add(e);
-          this.hitEnemy(e, pr.dmg, pr.status);
+          if (pr.ice && first) {
+            this.icicle.onHit(e, pr.icicle === true);
+            if (pr.icicle) {
+              this.fx.burst(e.x, 1.2, e.z, 0xe8f8ff, 18, 7, 0.14, 0.45, 6);
+              this.fx.text(e.x, 2.4, e.z, "Pingente", "frost");
+            }
+          }
+          this.hitEnemy(e, pr.dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined });
           if (pr.ricochet > 0) {
             const next = this.nearestEnemy(e.x, e.z, 9, pr.hit);
             if (next) {
@@ -396,6 +422,8 @@ export class Game {
           else dead = true;
           break;
         }
+      } else if (!dead && this.iceWalls.list.length && this.iceWalls.blocks(pr.x, pr.z, pr.r)) {
+        dead = true; // tiro inimigo quebra na parede de gelo
       } else if (!dead && this.playerAlive) {
         const rr = 0.55 + pr.r;
         if ((p.x - pr.x) ** 2 + (p.z - pr.z) ** 2 < rr * rr && p.iframes <= 0) {
@@ -430,7 +458,7 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- dano
-  hitEnemy(e: Enemy, mult: number, status?: StatusSpec): void {
+  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number }): void {
     if (e.dead) return;
     const s = this.stats;
     const now = this.time;
@@ -438,9 +466,31 @@ export class Game {
     let amount = s.damage * mult * (0.9 + Math.random() * 0.2);
     const bs = this.hero.auto.backstab;
     if (bs && (now < e.stunUntil || now < e.slowUntil)) amount *= 1 + bs;
+    let deepChill = false;
+    if (this.hero.frost) {
+      // Frostine: Estilhaçar, Frio profundo e Quebradiço (src/core/frost.ts); o congelado daqui é o atordoamento
+      e.frost.frozenUntil = e.stunUntil;
+      const r = frostModify(e.frost, amount, { ice: hit?.ice === true, stacks: hit?.frostStacks }, now);
+      amount = r.amount;
+      deepChill = r.deepChill;
+      if (r.shatter) {
+        e.stunUntil = 0;
+        this.fx.burst(e.x, 1, e.z, 0xdff6ff, 26, 9, 0.16, 0.55, 10);
+        this.fx.text(e.x, 2.6, e.z, "Estilhaçou", "frost");
+        this.fx.addShake(0.12);
+      }
+      if (r.brittle) {
+        this.fx.burst(e.x, 1.4, e.z, 0xe6f8ff, 30, 6, 0.14, 0.7, 2);
+        this.fx.text(e.x, 3, e.z, "Quebradiço", "frost");
+      }
+    }
     if (crit) amount *= s.critDamage;
     this.damageEnemy(e, amount, { crit });
     if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount);
+    if (deepChill && !e.dead) {
+      this.applyStatus(e, { kind: "stun", power: 1, duration: FROST.chillFreeze }, amount);
+      this.fx.burst(e.x, 1, e.z, 0x9fdcff, 12, 4, 0.12, 0.5, 2);
+    }
   }
 
   applyStatus(e: Enemy, st: StatusSpec, hitDamage: number): void {
@@ -448,7 +498,9 @@ export class Game {
     const potency = this.stats.status;
     if (st.kind === "slow") {
       e.slowUntil = Math.max(e.slowUntil, now + st.duration);
-      e.slowPower = Math.min(0.85, st.power * Math.min(1.6, potency)) * (e.isBoss ? 0.4 : 1);
+      const v = Math.min(0.85, st.power * Math.min(1.6, potency));
+      // chefes: o gelo da Frostine deixa lento até FROST.bossSlowCap; o resto vale 40%
+      e.slowPower = e.isBoss ? (this.hero.frost ? Math.min(FROST.bossSlowCap, v) : v * 0.4) : v;
     } else if (st.kind === "stun") {
       e.stunUntil = Math.max(e.stunUntil, now + st.duration * (e.isBoss ? 0.3 : 1));
       e.windupT = -1;
@@ -871,11 +923,21 @@ export class Game {
     const p = this.player;
     const t = this.hero.technique;
     const s = this.stats;
-    p.techMax = t.cooldown * s.cooldownMult;
+    p.techMax = this.tech ? this.tech.cooldown : t.cooldown * s.cooldownMult;
     p.techCd = p.techMax;
     this.audio.play("tech");
     const color = this.hero.color;
     switch (t.kind) {
+      case "icewall": {
+        const T = this.tech!;
+        const pl = IceWalls.place(p.x, p.z, this.aim.x, this.aim.z, T.minRange ?? 4, T.maxRange ?? 16);
+        this.iceWalls.add({ ...pl, length: T.length ?? 12, thickness: T.thickness ?? 1.2, dur: T.duration ?? 5,
+          damage: T.damage, freeze: T.freeze ?? 1, shatter: T.shatter === true });
+        this.fx.burst(pl.x, 0.4, pl.z, 0xcdeeff, 40, 6, 0.16, 0.6, 6);
+        this.fx.flashLight(pl.x, 1.5, pl.z, 0x9fdcff, 2.2, 0.4);
+        this.fx.addShake(0.2);
+        break;
+      }
       case "nova": {
         const r = (t.radius ?? 6) * s.area;
         this.areaHit(p.x, p.z, r, t.damage, t.status);
@@ -1032,6 +1094,11 @@ export class Game {
           this.audio.play("dash");
         }
       }
+      if (this.hero.technique.kind === "icewall" && this.tech) {
+        const T = this.tech;
+        const pl = IceWalls.place(p.x, p.z, this.aim.x, this.aim.z, T.minRange ?? 4, T.maxRange ?? 16);
+        this.iceWalls.showGhost(p.techCd <= 0, pl.x, pl.z, pl.ax, pl.az, T.length ?? 12, T.thickness ?? 1.2);
+      }
       if ((input.rmbPressed || input.wasPressed("KeyQ")) && p.techCd <= 0) this.useTechnique();
       else if (input.lmb && p.attackCd <= 0 && !p.burst) this.autoAttack();
       if (input.wasPressed("KeyF") && p.potionCd <= 0 && p.hp < s.maxHp) {
@@ -1148,6 +1215,33 @@ export class Game {
     }
   }
 
+  /** Glacial Wall: tempo, empurrão e congelamento no primeiro contato, estilhaço da evolução no fim. */
+  private updateIceWalls(dt: number, active: Enemy[]): void {
+    const W = this.iceWalls;
+    if (!W.list.length) return;
+    for (const e of active) {
+      if (e.dead) continue;
+      W.collide(e, (w: IceWall) => {
+        this.hitEnemy(e, w.damage, undefined, { ice: true });
+        if (!e.dead && !e.isBoss) this.applyStatus(e, { kind: "stun", power: 1, duration: w.freeze }, 0);
+        this.fx.burst(e.x, 0.8, e.z, 0xcdeeff, 10, 4, 0.12, 0.4, 4);
+      });
+    }
+    W.update(dt, (w: IceWall) => {
+      const mx = (w.x0 + w.x1) / 2;
+      const mz = (w.z0 + w.z1) / 2;
+      this.fx.burst(mx, 0.8, mz, 0xcdeeff, 30, 5, 0.14, 0.6, 8);
+      if (!w.shatter) return;
+      const half = Math.hypot(w.x1 - w.x0, w.z1 - w.z0) / 2;
+      for (const e of this.enemies) {
+        if (e.dead) continue;
+        if (Math.hypot(e.x - mx, e.z - mz) < half + px(20) + e.radius) this.hitEnemy(e, w.damage * 3, undefined, { ice: true });
+      }
+      this.fx.shockwave(mx, mz, half, 0xcdeeff, 0.5);
+      this.fx.addShake(0.35);
+    });
+  }
+
   private updateEnemies(dt: number): void {
     const p = this.player;
     const active: Enemy[] = [];
@@ -1201,6 +1295,7 @@ export class Game {
         a.z = p.z + (dz / d) * min;
       }
     }
+    this.updateIceWalls(dt, active);
   }
 
   private updateCamera(dt: number): void {

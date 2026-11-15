@@ -1,4 +1,5 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
+import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { TUNING } from "../data/tuning";
 import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
 import type { StatusKind } from "../data/heroes";
@@ -48,6 +49,8 @@ export class Enemy {
   slowUntil = 0;
   slowPower = 0;
   stunUntil = 0;
+  /** estado do gelo da Frostine (src/core/frost.ts) */
+  frost: FrostTarget;
   dots: Dot[] = [];
   dotTick = 0;
   strafe = Math.random() < 0.5 ? -1 : 1;
@@ -75,6 +78,7 @@ export class Enemy {
     this.champion = opts.champion === true;
     this.summoned = opts.summoned === true;
     const isBoss = "patterns" in def;
+    this.frost = newFrostTarget(isBoss, this.champion);
     this.boss = isBoss ? (def as BossDef) : null;
     this.def = isBoss ? null : (def as EnemyDef);
     this.name = def.name;
@@ -262,9 +266,10 @@ export class Enemy {
     if (this.flash > 0) {
       this.flash = Math.max(0, this.flash - dt * 7);
       flashRig(rig, this.flash);
-    } else if (stunned) tintRig(rig, 0x8fdcff, 0.55);
+    } else if (now < this.frost.brittleUntil) tintRig(rig, 0xe6f8ff, 0.5 + Math.sin(now * 10) * 0.12);
+    else if (stunned) tintRig(rig, 0x8fdcff, 0.55);
     else if (this.dots.length) tintRig(rig, this.dots[0].kind === "poison" ? 0x5fd35f : 0xff7a1a, 0.35);
-    else if (now < this.slowUntil) tintRig(rig, 0x8fdcff, 0.25);
+    else if (now < this.slowUntil || this.frost.frostStacks > 0) tintRig(rig, 0x8fdcff, 0.2 + this.frost.frostStacks * 0.035);
     else if (this.enraged) tintRig(rig, 0xff2a1a, 0.13 + Math.sin(now * 8) * 0.09);
     else flashRig(rig, 0);
   }
