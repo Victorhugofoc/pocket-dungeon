@@ -19,7 +19,8 @@ import { characterRig } from "./rigs";
 import { kickRig, nextShot } from "./chars";
 import { Pipeline } from "./render";
 import { U } from "./shared";
-import { buildWorld, type WorldView } from "./world";
+import { SUN_OFFSET, stepMotes } from "./air";
+import { buildWorld, driftSun, fireFlicker, setZoneAtmosphere, type WorldView } from "./world";
 
 export interface GameEvents {
   toast(msg: string, color?: string): void;
@@ -123,7 +124,7 @@ export class Game {
   private lastFrame = 0;
   private marker: THREE.Mesh | null = null;
   pipeline!: Pipeline;
-  private moteAcc = 0;
+  private moteAcc = { v: 0 };
   zoom = 1;
   private proj = new THREE.Vector3();
   private storage = safeStorage();
@@ -157,7 +158,7 @@ export class Game {
   private resize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality === 0 ? 1 : 1.5));
+    this.renderer.setPixelRatio(this.pixelRatio());
     this.renderer.setSize(w, h, false);
     this.pipeline.setSize(w, h, this.renderer.getPixelRatio());
     this.fx.setPointScale(this.pipeline.bufferSize.y / (2 * Math.tan((this.camera.fov * Math.PI) / 360)));
@@ -189,6 +190,32 @@ export class Game {
 
   /** 0 baixo, 1 médio, 2 alto: sombras, bloom e resolução */
   quality = 2;
+  /** escala da resolução interna (resolução adaptativa, ver `adaptResolution`) */
+  resScale = 1;
+  private resTimer = 0;
+  private gpuAvg = 0;
+
+  /** densidade de pixels: a da tela (até o teto da qualidade) vezes a escala adaptativa */
+  private pixelRatio(): number {
+    const max = Math.min(window.devicePixelRatio, this.quality === 0 ? 1 : TUNING.frame.maxRatio);
+    return Math.max(0.5, max * this.resScale);
+  }
+
+  /** Mira 60 fps: média do tempo de GPU; acima do teto baixa a resolução interna um degrau, abaixo do piso sobe um degrau. */
+  private adaptResolution(dt: number): void {
+    const f = TUNING.frame, gpu = this.pipeline.gpuMs;
+    if (gpu < 0) return;
+    this.gpuAvg += (gpu - this.gpuAvg) * Math.min(1, dt * 4);
+    this.resTimer += dt;
+    if (this.resTimer < f.every) return;
+    this.resTimer = 0;
+    const next = this.gpuAvg > f.gpuHigh ? this.resScale - f.step : this.gpuAvg < f.gpuLow ? this.resScale + f.step / 2 : this.resScale;
+    const clamped = Math.min(1, Math.max(f.minScale, next));
+    if (Math.abs(clamped - this.resScale) > 1e-3) {
+      this.resScale = clamped;
+      this.resize();
+    }
+  }
 
   setQuality(q: number): void {
     this.quality = q;
@@ -213,6 +240,9 @@ export class Game {
     }
     for (const id of this.save.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
     this.stats = computeStats(this.save.level, this.save.attrs, sources);
+    // reforço de teste (TUNING.testBoost): fora do core para não mexer nas contas testadas
+    this.stats.damage *= TUNING.testBoost.damage;
+    this.stats.moveSpeed *= TUNING.testBoost.moveSpeed;
     this.player.hp = Math.min(this.player.hp, this.stats.maxHp);
   }
 
@@ -230,14 +260,13 @@ export class Game {
     this.layout = generateZone(zone, seed);
     this.grid = new ObstacleGrid(this.layout.obstacles);
     this.world = buildWorld(this.scene, zone, this.layout);
-    this.scene.background = new THREE.Color(zone.sky);
-    this.scene.fog = new THREE.Fog(zone.fog, 42, 120);
     this.pipeline.setGrade(zone);
     this.hemi.color.set(zone.ambient);
     this.hemi.groundColor.set(zone.ground[2]);
     this.hemi.intensity = zone.ambientIntensity;
     this.sun.color.set(zone.sun);
     this.sun.intensity = zone.sunIntensity;
+    setZoneAtmosphere(this.scene, zone);
 
     for (const camp of this.layout.camps) {
       camp.spawns.forEach((s, i) => {
@@ -1189,12 +1218,13 @@ export class Game {
     this.zoom = Math.max(0.55, Math.min(1.25, this.zoom + this.input.takeWheel() * 0.0009));
     this.camera.position.set(this.camTarget.x + sx, 19.5 * this.zoom, this.camTarget.z + 16 * this.zoom + sz);
     this.camera.lookAt(this.camTarget.x + sx, 0.8, this.camTarget.z + sz);
-    this.sun.position.set(this.camTarget.x + 30, 50, this.camTarget.z + 14);
+    this.sun.position.set(this.camTarget.x + SUN_OFFSET.x, SUN_OFFSET.y, this.camTarget.z + SUN_OFFSET.z);
     this.sun.target.position.set(this.camTarget.x, 0, this.camTarget.z - 4);
     this.camera.updateMatrixWorld();
 
     // uniforms do cenário: vento, grama e o "buraco" no que tapa o herói
     U.uTime.value = this.time;
+    driftSun(this.sun, this.zone, this.time);
     U.uCenter.value.set(this.camTarget.x, this.camTarget.z - 8);
     U.uHero.value.set(p.x, 0, p.z);
     const size = this.pipeline.bufferSize;
@@ -1204,16 +1234,10 @@ export class Game {
     U.uFadeDepth.value = this.proj.z * 0.5 + 0.5 - 0.0004;
 
     // partículas de ambiente (pólen, brasas, centelhas) e fogueira
-    const motes = this.zone.motes;
-    this.moteAcc += dt * motes.rate;
-    while (this.moteAcc >= 1) {
-      this.moteAcc--;
-      this.fx.spark(this.camTarget.x + (Math.random() - 0.5) * 44, 0.3 + Math.random() * 3.5, this.camTarget.z - 6 + (Math.random() - 0.5) * 34,
-        motes.color, 0.05 + Math.random() * 0.05, 2 + Math.random() * 2, motes.rise * (0.5 + Math.random()));
-    }
+    stepMotes(this.fx, this.zone, this.camTarget.x, this.camTarget.z, dt, this.moteAcc);
     const fire = this.world?.group.userData.fire as THREE.Group | undefined;
     if (fire) {
-      (fire.userData.light as THREE.PointLight).intensity = 40 + Math.sin(this.time * 11) * 6 + Math.sin(this.time * 23) * 4;
+      (fire.userData.light as THREE.PointLight).intensity = fireFlicker(this.time);
       for (let i = 0; i < 3; i++) fire.children[i].scale.y = (1 - i * 0.2) * (1 + Math.sin(this.time * (9 + i * 3) + i) * 0.18);
       if (Math.random() < dt * 14) this.fx.spark(fire.position.x + (Math.random() - 0.5) * 0.4, 0.9, fire.position.z + (Math.random() - 0.5) * 0.4, 0xffa040, 0.07, 0.9, 1.8);
     }
@@ -1257,5 +1281,6 @@ export class Game {
     }
     this.input.endFrame();
     this.pipeline.render();
+    this.adaptResolution(raw);
   }
 }

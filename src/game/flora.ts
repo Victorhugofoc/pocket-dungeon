@@ -3,9 +3,9 @@
 import * as THREE from "three";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { Rng } from "../core/rng";
-import type { DecorKind } from "../data/zones";
+import type { DecorKind, Foliage } from "../data/zones";
 
-export type MatKind = "solid" | "foliage" | "rock" | "glow";
+export type MatKind = "solid" | "foliage" | "rock" | "glow" | "lava";
 export interface DecorModel {
   parts: Partial<Record<MatKind, THREE.BufferGeometry>>;
 }
@@ -120,7 +120,12 @@ function rockGeo(rng: Rng, r: number, base: number, top: number): THREE.BufferGe
 export interface FloraPalette {
   glow: number;
   rockTop: number;
+  /** verdes da flora (base escura, topo claro); sem isso, os verdes de sempre */
+  foliage?: Foliage;
+  /** chapéu do cogumelo aceso (contraste quente em zona escura) */
+  capGlow?: boolean;
 }
+const DEFAULT_FOLIAGE: Foliage = { tree: [[0x2f6f2e, 0x6fbf4a], [0x35782f, 0x86cf55], [0x2a6433, 0x5fae4a]], pine: [0x1f4f30, 0x4f9a52], bush: [0x2a6a2c, 0x74c24e] };
 
 /** `variant` muda a semente: mesma espécie, silhueta diferente. */
 export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette): DecorModel {
@@ -128,12 +133,12 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
   switch (kind) {
     case "tree": {
       const h = rng.range(1.9, 2.5);
-      const solid = [trunk(rng, h, 0.3, 0.16, 0x6b4a2e)];
+      const solid = [trunk(rng, h, 0.3, 0.16, 0x58463a)];
       // um galho
-      const br = trunk(rng, 0.9, 0.09, 0.05, 0x6b4a2e, 0);
+      const br = trunk(rng, 0.9, 0.09, 0.05, 0x58463a, 0);
       solid.push(xf(br, 0, h * 0.62, 0, 0, rng.range(0, 6), rng.range(0.7, 1.0)));
       const fol: THREE.BufferGeometry[] = [];
-      const greens: [number, number][] = [[0x2f6f2e, 0x6fbf4a], [0x35782f, 0x86cf55], [0x2a6433, 0x5fae4a]];
+      const greens = (pal.foliage ?? DEFAULT_FOLIAGE).tree;
       const n = rng.int(5, 7);
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2 + rng.range(-0.3, 0.3);
@@ -153,7 +158,8 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
         const r = 1.35 - t * 0.85;
         let g: THREE.BufferGeometry = new THREE.ConeGeometry(r, 1.5 - t * 0.3, 9, 2);
         g = prep(displace(g, rng.range(0, 30), 0.12, 2.6), true);
-        paint(g, 0x1f4f30, 0x4f9a52, -0.7, 0.7, 0.08, rng);
+        const pc = (pal.foliage ?? DEFAULT_FOLIAGE).pine;
+        paint(g, pc[0], pc[1], -0.7, 0.7, 0.08, rng);
         fol.push(xf(g, 0, h + 0.6 + i * 0.78, 0, 0, rng.range(0, 3)));
       }
       return { parts: { solid: merge(solid), foliage: merge(fol) } };
@@ -175,7 +181,8 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
     }
     case "bush": {
       const fol: THREE.BufferGeometry[] = [];
-      for (let i = 0; i < 3; i++) fol.push(xf(blob(rng, rng.range(0.4, 0.6), 0x2a6a2c, 0x74c24e, 0.75), rng.range(-0.35, 0.35), rng.range(0.3, 0.45), rng.range(-0.35, 0.35)));
+      const bc = (pal.foliage ?? DEFAULT_FOLIAGE).bush;
+      for (let i = 0; i < 3; i++) fol.push(xf(blob(rng, rng.range(0.4, 0.6), bc[0], bc[1], 0.75), rng.range(-0.35, 0.35), rng.range(0.3, 0.45), rng.range(-0.35, 0.35)));
       // frutinhas
       const solid: THREE.BufferGeometry[] = [];
       if (variant % 2 === 0) {
@@ -189,7 +196,7 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
       return { parts: { foliage: merge(fol), ...(solid.length ? { solid: merge(solid) } : {}) } };
     }
     case "mushroom": {
-      const solid: THREE.BufferGeometry[] = [];
+      const solid: THREE.BufferGeometry[] = [], caps: THREE.BufferGeometry[] = [];
       const n = rng.int(1, 3);
       for (let i = 0; i < n; i++) {
         const s = rng.range(0.6, 1.1);
@@ -199,20 +206,20 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
         solid.push(xf(stem, x, 0.17 * s, z));
         const cap = prep(new THREE.SphereGeometry(0.24 * s, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), true);
         paint(cap, 0xa82a22, 0xe8483a, 0, 0.24 * s, 0.1, rng);
-        solid.push(xf(cap, x, 0.32 * s, z, 0, 0, 0, 1, 0.75, 1));
+        (pal.capGlow ? caps : solid).push(xf(cap, x, 0.32 * s, z, 0, 0, 0, 1, 0.75, 1));
       }
-      return { parts: { solid: merge(solid) } };
+      return { parts: { solid: merge(solid), ...(caps.length ? { glow: merge(caps) } : {}) } };
     }
     case "tomb": {
       const list: THREE.BufferGeometry[] = [];
-      const stone = rng.pick([0x8a8f9a, 0x7d838f, 0x959aa3]);
+      const stone = rng.pick([0x6e737e, 0x646a76, 0x767b86]);
       if (variant % 3 === 2) {
         // cruz
-        list.push(xf(paint(prep(new THREE.BoxGeometry(0.2, 1.3, 0.16), false), 0x666b75, stone, -0.65, 0.65, 0.1, rng), 0, 0.65, 0));
-        list.push(xf(paint(prep(new THREE.BoxGeometry(0.72, 0.18, 0.16), false), 0x666b75, stone, -0.1, 0.1, 0.1, rng), 0, 0.92, 0));
+        list.push(xf(paint(prep(new THREE.BoxGeometry(0.2, 1.3, 0.16), false), 0x3e434c, stone, -0.65, 0.65, 0.1, rng), 0, 0.65, 0));
+        list.push(xf(paint(prep(new THREE.BoxGeometry(0.72, 0.18, 0.16), false), 0x3e434c, stone, -0.1, 0.1, 0.1, rng), 0, 0.92, 0));
       } else {
         const slab = prep(new THREE.BoxGeometry(0.78, 0.8, 0.2, 2, 2, 1), false);
-        list.push(xf(paint(slab, 0x666b75, stone, -0.4, 0.4, 0.1, rng), 0, 0.4, 0));
+        list.push(xf(paint(slab, 0x3e434c, stone, -0.4, 0.4, 0.1, rng), 0, 0.4, 0));
         const arch = prep(new THREE.CylinderGeometry(0.39, 0.39, 0.2, 10, 1, false, 0, Math.PI), false);
         list.push(xf(paint(arch, stone, stone, 0, 1, 0.1, rng), 0, 0.8, 0, Math.PI / 2, Math.PI / 2, 0));
       }
@@ -249,7 +256,7 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
         const tip = new THREE.ConeGeometry(r, r * 2.2, 6);
         tip.translate(0, hgt / 2 + r * 1.1, 0);
         const g = prep(mergeGeometries([body, tip], false)!, false);
-        paint(g, new THREE.Color(pal.glow).multiplyScalar(0.35).getHex(), pal.glow, -hgt / 2, hgt / 2 + r);
+        paint(g, new THREE.Color(pal.glow).multiplyScalar(0.18).getHex(), new THREE.Color(pal.glow).multiplyScalar(0.6).getHex(), -hgt / 2, hgt / 2 + r);
         const a = rng.range(0, 6.28);
         const d = i === 0 ? 0 : rng.range(0.3, 0.6);
         glow.push(xf(g, Math.cos(a) * d, hgt / 2 - 0.05, Math.sin(a) * d, i === 0 ? 0 : rng.range(-0.5, 0.5), a, i === 0 ? 0 : rng.range(-0.5, 0.5)));
@@ -257,16 +264,9 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
       return { parts: { glow: merge(glow), rock: xf(rockGeo(rng, 0.75, 0x4a3f66, pal.rockTop), 0, 0.12, 0, 0, 0, 0, 1, 0.45, 1) } };
     }
     case "lavaRock": {
-      const rock = xf(rockGeo(rng, 1.15, 0x3a2e2c, pal.rockTop), 0, 0.5, 0);
-      // veios de lava: lascas incandescentes saindo da pedra
-      const glow: THREE.BufferGeometry[] = [];
-      for (let i = 0; i < 5; i++) {
-        const s = prep(new THREE.OctahedronGeometry(rng.range(0.16, 0.3), 0), false);
-        paint(s, 0xff3a0a, 0xffc84a, -0.3, 0.3);
-        const a = rng.range(0, 6.28);
-        glow.push(xf(s, Math.cos(a) * rng.range(0.5, 0.9), rng.range(0.25, 0.9), Math.sin(a) * rng.range(0.5, 0.9), rng.range(0, 3), rng.range(0, 3), 0, 1, 0.5, 1.6));
-      }
-      return { parts: { rock, glow: merge(glow) } };
+      // rocha escura; as rachaduras acesas vêm do material "lava" (world.ts), mais fortes embaixo
+      const rock = xf(rockGeo(rng, 1.15, 0x3c3c42, 0x4a4a50), 0, 0.5, 0);
+      return { parts: { lava: rock } };
     }
   }
 }

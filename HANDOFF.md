@@ -1,4 +1,5 @@
-# Dungeon Reign RPG — handoff
+# Dungeon Reign RPG — hando- **Prévia de zona:** `/zone.html?zone=bosque|cripta|vulcao|vazio` (`src/zone-preview.ts`), com a luz e o pós-processamento do jogo, seed fixa e 6 poses de câmera. Também fora do build.
+ff
 
 Leia este arquivo antes de qualquer coisa. Ele substitui o histórico das conversas anteriores.
 
@@ -38,7 +39,35 @@ Como chegamos no Bloodfang (não repetir os erros):
 
 Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e `furMaterial`, `CharState.hipY`.
 
-Próxima sessão (sugestão do roadmap): retorno do usuário sobre a presença de chefe e sobre a Vesper e a Ninhada, depois `M2-10`; `M0-03` ainda pendente.
+**2026-11-14, depois do merge do PR #3:** o usuário mostrou o Abyssal Garden (cena submarina procedural feita por um prompt com um crítico cego) e decidiu duas coisas:
+- **Crítico cego (`M0-07`, feito):** subagente que só vê as capturas e o sprite, nunca o código. Rotina e texto em `docs/critic.md`; capturas com `await __preview.criticShots("critic-<id>")` na prévia (7 poses em `.shots/`). Entra no método (seção 4.1, passo 8): o usuário só vê uma versão depois que o crítico não aponta nada acima de "menor". Primeiro teste: no Kaelen (aprovado) e na Vesper (sem validação) ele apontou defeitos graves e concretos que batem com o sprite.
+- **Novo marco M18, Atmosfera das zonas, antes do M3:** prévia de zona com poses fixas, sombra de nuvens, névoa baixa, raios de luz, densidade do chão, contato e cor, e uma passada por zona. Detalhes no roadmap.
+
+**Vesper refeita com o crítico** (`M2-09`, 2ª versão, aprovada pelo usuário): seis rodadas, terminando sem nenhum grave. Lições da rodada em `docs/critic.md`: o crítico oscila em gosto, e peça fina precisa de volume.
+
+**`M18-01` feito:** prévia de zona em `/zone.html` (`src/zone-preview.ts`) com 6 poses fixas para o crítico (`__zone.criticShots`), e a contagem de base de draw calls e triângulos por zona registrada no roadmap.
+
+**`M18-02` feito:** sombra de nuvens em todos os materiais com luz (`applyClouds` em `shared.ts`, parâmetros `clouds` em `zones.ts`) e sol que varia devagar (`driftSun` em `world.ts`). **Decisão D11:** o Bosque fica sombrio (vale na passada `M18-07`).
+
+**`M18-03` feito:** névoa de distância exponencial e névoa rasteira animada no shader (`atmosphere()` em `shared.ts`, parâmetros `haze` em `zones.ts`).
+
+**`M18-04` feito:** feixes de luz e partículas no ar em camadas (`src/game/air.ts`, parâmetros `shafts` e `motes` em `zones.ts`).
+
+**`M18-05` feito:** miudezas do chão (`src/game/scatter.ts`), manchas no chão e na grama (`STAIN_GLSL`) e copas mais vivas; parâmetros `scatter` e `stains` em `zones.ts`.
+
+**`M18-06` feito:** sombra de contato no chão (canal G da máscara), oclusão por vértice na flora e correção de cor por zona (`grade` em `zones.ts`).
+
+**`M18-07` feito e aprovado pelo usuário:** Bosque sombrio (D11), paleta de flora por zona, cogumelos acesos, fogueira mais forte. Pendências do crítico registradas no roadmap.
+
+**`M18-08` feito e aprovado pelo usuário:** Cripta ao luar, lápides como decoração principal, árvores mortas e lápides com inclinação variada.
+
+**`M18-09` feito e aprovado pelo usuário:** Vulcão em cinza e fumaça, rochas de basalto com rachaduras de lava no shader.
+
+**`M18-10` feito e aprovado:** Vazio com cristais ciano sem estourar o bloom, paleta violeta, chão mais limpo. **O marco M18 está completo e aprovado**; as pendências de cada zona estão nas linhas `M18-07` a `M18-10` do registro.
+
+**Desempenho (2026-11-14):** MSAA conforme a densidade e resolução adaptativa mirando 60 fps (`TUNING.frame`, F3 mostra o tempo de GPU e a escala). **Modo de teste ligado**: `TUNING.testBoost` dá dano ×2 e velocidade ×4 a todos os heróis, a pedido do usuário; voltar para 1 ao balancear.
+
+Próxima sessão (sugestão): o roadmap volta ao M3 (inimigos atuais), agora com o crítico cego e a prévia de zona para conferir os inimigos no cenário. Antes, vale jogar uma volta completa para sentir as quatro zonas novas em movimento (nada do M18 foi conferido em vídeo nem jogando). Cada passada tem as pendências do crítico nas linhas `M18-03` a `M18-06` do registro. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
 
 Decisões desta conversa:
 - **Base em inglês:** nomes, ids e código seguem o Dungeon Reign. Se os textos do jogo também passam a inglês é a decisão D1 do roadmap, ainda sem resposta.

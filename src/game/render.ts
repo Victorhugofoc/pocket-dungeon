@@ -10,21 +10,22 @@ import type { ZoneDef } from "../data/zones";
 const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
-    uTint: { value: new THREE.Color(1, 1, 1) },
+    uShadow: { value: new THREE.Color(1, 1, 1) },
+    uLight: { value: new THREE.Color(1, 1, 1) },
     uSaturation: { value: 1.02 },
     uContrast: { value: 1.06 },
     uVignette: { value: 0.42 },
   },
   vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform vec3 uTint; uniform float uSaturation; uniform float uContrast; uniform float uVignette;
+    uniform sampler2D tDiffuse; uniform vec3 uShadow; uniform vec3 uLight; uniform float uSaturation; uniform float uContrast; uniform float uVignette;
     varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-      // sombras puxam para a cor da zona, luzes ficam neutras
+      // sombras e luzes puxam cada uma para o seu tom (split toning por zona)
       vec3 col = mix(vec3(l), c.rgb, uSaturation);
-      col *= mix(uTint, vec3(1.0), smoothstep(0.0, 0.7, l));
+      col *= mix(uShadow, uLight, smoothstep(0.02, 0.45, l));
       col = (col - 0.18) * uContrast + 0.18;
       vec2 q = vUv - 0.5;
       col *= 1.0 - uVignette * smoothstep(0.25, 0.95, dot(q, q) * 2.2);
@@ -37,6 +38,12 @@ export class Pipeline {
   bloom: UnrealBloomPass;
   private grade: ShaderPass;
   bufferSize = new THREE.Vector2(1, 1);
+  /** tempo de GPU do último quadro medido (ms), ou -1 sem a extensão de consulta de tempo */
+  gpuMs = -1;
+  private timer: { ext: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number }; query: WebGLQuery | null } | null = null;
+  private samples = 4;
+  /** desligar quando outra medida de tempo da GPU estiver aberta (duas ao mesmo tempo dão erro) */
+  timing = true;
 
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -49,22 +56,55 @@ export class Pipeline {
     this.grade = new ShaderPass(GradeShader);
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
+    const gl = renderer.getContext() as WebGL2RenderingContext;
+    const ext = gl.getExtension("EXT_disjoint_timer_query_webgl2");
+    if (ext) this.timer = { ext, query: null };
   }
 
   setSize(w: number, h: number, pixelRatio: number): void {
+    // acima de 1x a própria densidade já suaviza as bordas: MSAA 4x em cima disso dobrava o custo do quadro em telas grandes
+    const samples = pixelRatio > 1.05 ? 2 : 4;
+    if (samples !== this.samples) {
+      this.samples = samples;
+      for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+        rt.samples = samples;
+        rt.dispose();
+      }
+    }
     this.composer.setPixelRatio(pixelRatio);
     this.composer.setSize(w, h);
     this.bufferSize.set(Math.floor(w * pixelRatio), Math.floor(h * pixelRatio));
   }
 
-  /** tom das sombras conforme a zona (mistura a cor da névoa) */
+  /** correção de cor da zona: tons de sombra e de luz normalizados (não mudam o brilho, só a cor), saturação e contraste */
   setGrade(zone: ZoneDef): void {
-    const tint = new THREE.Color(zone.fog).lerp(new THREE.Color(1, 1, 1), 0.86);
-    const max = Math.max(tint.r, tint.g, tint.b);
-    (this.grade.uniforms.uTint.value as THREE.Color).copy(tint).multiplyScalar(1 / max);
+    const g = zone.grade;
+    const norm = (hex: number, out: THREE.Color) => {
+      out.set(hex).lerp(new THREE.Color(1, 1, 1), 0.55); // tom leve: a zona já tem a sua cor, aqui só puxa
+      const l = out.r * 0.2126 + out.g * 0.7152 + out.b * 0.0722;
+      out.multiplyScalar(1 / Math.max(l, 1e-3));
+    };
+    norm(g.shadow, this.grade.uniforms.uShadow.value as THREE.Color);
+    norm(g.light, this.grade.uniforms.uLight.value as THREE.Color);
+    this.grade.uniforms.uSaturation.value = g.saturation;
+    this.grade.uniforms.uContrast.value = g.contrast;
   }
 
   render(): void {
+    const t = this.timer;
+    const gl = this.renderer.getContext() as WebGL2RenderingContext;
+    // lê a medida anterior quando ficar pronta; só começa outra depois disso (nunca espera a GPU)
+    if (t?.query && gl.getQueryParameter(t.query, gl.QUERY_RESULT_AVAILABLE)) {
+      if (!gl.getParameter(t.ext.GPU_DISJOINT_EXT)) this.gpuMs = gl.getQueryParameter(t.query, gl.QUERY_RESULT) / 1e6;
+      gl.deleteQuery(t.query);
+      t.query = null;
+    }
+    const measure = this.timing && t && !t.query;
+    if (measure) {
+      t.query = gl.createQuery();
+      gl.beginQuery(t.ext.TIME_ELAPSED_EXT, t.query!);
+    }
     this.composer.render();
+    if (measure) gl.endQuery(t.ext.TIME_ELAPSED_EXT);
   }
 }

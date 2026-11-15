@@ -243,7 +243,7 @@ export class Ui {
     }
     r.hint.classList.toggle("hidden", !g.nearPortal || !!this.overlay);
     if (this.frameN % 15 === 0 && !r.perf.classList.contains("hidden")) {
-      r.perf.textContent = `${Math.round(g.fps)} fps · qualidade ${QUALITY[g.quality]} · ${g.pipeline.bufferSize.x}×${g.pipeline.bufferSize.y}`;
+      r.perf.textContent = `${Math.round(g.fps)} fps · GPU ${g.pipeline.gpuMs < 0 ? "?" : g.pipeline.gpuMs.toFixed(1) + " ms"} · qualidade ${QUALITY[g.quality]} · ${g.pipeline.bufferSize.x}×${g.pipeline.bufferSize.y} (${Math.round(g.resScale * 100)}%)`;
     }
     if (this.frameN++ % 5 === 0) this.drawMinimap();
   }

@@ -5,7 +5,9 @@ import { Rng } from "../core/rng";
 import { distToPath, type Obstacle, type ZoneLayout } from "../core/worldgen";
 import type { DecorKind, ZoneDef } from "../data/zones";
 import { buildDecor, buildFlower, type MatKind } from "./flora";
-import { NOISE_GLSL, patchMaterial, U } from "./shared";
+import { buildShafts } from "./air";
+import { buildScatter } from "./scatter";
+import { NOISE_GLSL, STAIN_GLSL, applyAtmosphere, patchMaterial, U } from "./shared";
 
 export interface WorldView {
   group: THREE.Group;
@@ -17,7 +19,25 @@ const VARIANTS = 3;
 const CELL = 40;
 const GRASS_TILE = 72;
 
-/** Máscara do chão (R: terra batida — caminho, arena, início, acampamentos). */
+/** Pilares em anel em volta da arena (decoração, sem colisão), com a entrada ao sul aberta. */
+function arenaRing(layout: ZoneLayout): Obstacle[] {
+  const out: Obstacle[] = [];
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    if (Math.abs(a - Math.PI / 2) < 0.45) continue; // entrada ao sul
+    out.push({ x: layout.boss.x + Math.cos(a) * (layout.bossRadius + 0.8), z: layout.boss.z + Math.sin(a) * (layout.bossRadius + 0.8),
+      r: 0.7, kind: "pillar", scale: 1.1, rot: a, solid: false });
+  }
+  return out;
+}
+
+/** quanto cada tipo escurece o chão em volta (sombra de contato) e o raio dela em múltiplos do raio do obstáculo */
+const CONTACT: Partial<Record<DecorKind, [number, number]>> = {
+  tree: [0.7, 1.5], pine: [0.7, 1.4], deadTree: [0.5, 1.25], rock: [0.7, 1.12], lavaRock: [0.6, 1.1], tomb: [0.85, 1.35],
+  pillar: [0.8, 1.3], crystal: [0.55, 1.2], bush: [0.5, 1.2], mushroom: [0.35, 1.5],
+};
+
+/** Máscara do chão. R: terra batida (caminho, arena, início, acampamentos). G: sombra de contato embaixo de cada obstáculo. */
 function buildMask(layout: ZoneLayout): THREE.CanvasTexture {
   const N = 1024;
   const cv = document.createElement("canvas");
@@ -46,6 +66,18 @@ function buildMask(layout: ZoneLayout): THREE.CanvasTexture {
   disc(layout.boss.x, layout.boss.z, layout.bossRadius - 0.5, 1);
   disc(layout.spawn.x, layout.spawn.z, 6.5, 1);
   for (const c of layout.camps) disc(c.x, c.z, 4.2, 0.62);
+  // sombra de contato: discos verdes somados (não mexem no vermelho), com desfoque menor
+  ctx.filter = "blur(2.5px)";
+  ctx.globalCompositeOperation = "lighter";
+  for (const o of [...layout.obstacles, ...arenaRing(layout)]) {
+    const c = CONTACT[o.kind];
+    if (!c) continue;
+    ctx.fillStyle = `rgba(0, ${Math.round(255 * c[0])}, 0, 1)`;
+    ctx.beginPath();
+    ctx.arc(tx(o.x), tx(o.z), Math.max(1.2, o.r * o.scale * c[1] * k), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = "source-over";
   const tex = new THREE.CanvasTexture(cv);
   tex.flipY = false;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -71,6 +103,7 @@ function groundMaterial(zone: ZoneDef): THREE.MeshStandardMaterial {
       uniform sampler2D uMask; uniform float uMapSize;
       uniform vec3 uG0; uniform vec3 uG1; uniform vec3 uG2; uniform vec3 uDirt;
       ${NOISE_GLSL}
+      ${STAIN_GLSL}
       ` + shader.fragmentShader.replace(
       "#include <color_fragment>",
       `vec2 gp = vWPos.xz;
@@ -80,15 +113,21 @@ function groundMaterial(zone: ZoneDef): THREE.MeshStandardMaterial {
       vec3 gcol = mix(uG2, uG0, smoothstep(0.3, 0.55, big));
       gcol = mix(gcol, uG1, smoothstep(0.5, 0.78, mid) * 0.75);
       gcol *= 0.86 + 0.28 * fine;
-      float mk = texture2D(uMask, gp / uMapSize + 0.5).r;
-      float dirtK = smoothstep(0.34, 0.6, mk + (mid - 0.5) * 0.45 + (fine - 0.5) * 0.12);
+      gcol = stains(gp, gcol);
+      vec2 mm = texture2D(uMask, gp / uMapSize + 0.5).rg;
+      float mk = mm.r;
+      float dirtK = smoothstep(0.28, 0.66, mk + (mid - 0.5) * 0.4);
       vec3 dirt = uDirt * (0.78 + 0.4 * fbm(gp * 0.8 + 3.0));
       float pebble = smoothstep(0.80, 0.86, vnoise(gp * 4.7 + 11.0));
       dirt = mix(dirt, dirt * 1.38, pebble * 0.55);
       dirt *= 0.93 + 0.14 * vnoise(gp * 9.0);
       vec3 col = mix(gcol, dirt, dirtK);
+      // terra batida também ganha manchas (úmida, pisada), mais fracas
+      col = mix(col, stains(gp * 1.4 + 50.0, col), dirtK);
       // borda úmida entre grama e terra
-      col *= 1.0 - 0.2 * smoothstep(0.12, 0.34, mk) * (1.0 - dirtK);
+      col *= 1.0 - 0.08 * smoothstep(0.05, 0.4, mk) * (1.0 - dirtK);
+      // sombra de contato: o chão escurece embaixo de árvore, pedra, lápide
+      col *= 1.0 - 0.45 * smoothstep(0.15, 0.85, mm.g);
       diffuseColor.rgb = col;`,
     );
   };
@@ -146,13 +185,16 @@ function buildGrass(zone: ZoneDef, rng: Rng): THREE.Mesh | null {
     shader.vertexShader = `attribute vec2 aOffset; attribute vec3 aRand;
       uniform float uTime; uniform vec2 uCenter; uniform vec3 uHero; uniform sampler2D uMask; uniform float uMapSize;
       uniform vec3 uRoot; uniform vec3 uTip; uniform float uGrassH;
+      ${NOISE_GLSL}
+      ${STAIN_GLSL}
       ` + shader.vertexShader
       .replace("#include <beginnormal_vertex>", "vec3 objectNormal = vec3(0.0, 1.0, 0.0);")
       .replace(
         "#include <begin_vertex>",
         `float T = ${GRASS_TILE.toFixed(1)};
         vec2 w = mod(aOffset - uCenter + T * 0.5, T) - T * 0.5 + uCenter;
-        float mk = texture2D(uMask, w / uMapSize + 0.5).r;
+        vec2 mm = texture2D(uMask, w / uMapSize + 0.5).rg;
+        float mk = mm.r;
         float gh = uGrassH * aRand.x * (1.0 - smoothstep(0.2, 0.5, mk + (aRand.y - 0.5) * 0.25));
         // touceiras: grama mais alta em manchas
         gh *= 0.7 + 0.6 * smoothstep(0.35, 0.7, sin(w.x * 0.21 + aRand.z) * sin(w.y * 0.17) * 0.5 + 0.5);
@@ -170,11 +212,15 @@ function buildGrass(zone: ZoneDef, rng: Rng): THREE.Mesh | null {
         transformed.xz += (away / max(pd, 0.001)) * push * 0.45 * t;
         transformed.y *= 1.0 - push * 0.55;
         // sem grama aqui: esconde a lâmina abaixo do chão
-        if (gh < 0.04) transformed.y = -2.0;`,
+        if (gh < 0.04) transformed.y = -2.0;
+        // manchas: a mesma do chão tinge a lâmina (vColor já foi escrito antes, em color_vertex)
+        vColor = stains(w, vColor);
+        vColor *= 1.0 - 0.45 * smoothstep(0.0, 0.8, mm.g);`,
       )
       .replace(
         "#include <color_vertex>",
-        `vColor = mix(uRoot, uTip, position.y * position.y) * (0.82 + 0.36 * aRand.z);`,
+        `vColor = mix(uRoot, uTip, position.y * position.y) * (0.82 + 0.36 * aRand.z);
+`,
       );
   };
   mat.customProgramCacheKey = () => "grass";
@@ -215,20 +261,15 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
   // materiais da flora
   const mats: Record<MatKind, THREE.Material> = {
     solid: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), { fade: true, wind: 0.012, windFrom: 1.2 }),
-    foliage: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), { fade: true, wind: 0.03, windFrom: 0.8 }),
+    foliage: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), { fade: true, wind: 0.05, windFrom: 0.8 }),
     rock: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }), { fade: true }),
-    glow: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, flatShading: true, emissive: glow, emissiveIntensity: 1.6 }), { fade: true }),
+    glow: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, flatShading: true, emissive: glow, emissiveIntensity: zone.glowStrength ?? 1.6 }), { fade: true }),
+    lava: lavaRockMaterial(glow),
   };
   disposables.push(...Object.values(mats));
 
   // obstáculos + anel de pilares da arena, agrupados por tipo, variante e célula (para o culling por frustum)
-  const all: Obstacle[] = [...layout.obstacles];
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    if (Math.abs(a - Math.PI / 2) < 0.45) continue; // entrada ao sul
-    all.push({ x: layout.boss.x + Math.cos(a) * (layout.bossRadius + 0.8), z: layout.boss.z + Math.sin(a) * (layout.bossRadius + 0.8),
-      r: 0.7, kind: "pillar", scale: 1.1, rot: a, solid: false });
-  }
+  const all: Obstacle[] = [...layout.obstacles, ...arenaRing(layout)];
   const buckets = new Map<string, { kind: DecorKind; variant: number; list: Obstacle[] }>();
   all.forEach((o, i) => {
     const variant = i % VARIANTS;
@@ -244,21 +285,27 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     const mk = `${b.kind}:${b.variant}`;
     let model = models.get(mk);
     if (!model) {
-      models.set(mk, (model = buildDecor(b.kind, b.variant, { glow, rockTop: zone.rockTop })));
+      models.set(mk, (model = buildDecor(b.kind, b.variant, { glow, rockTop: zone.rockTop, foliage: zone.foliage, capGlow: zone.capGlow })));
+      occlude(model.parts);
       for (const g of Object.values(model.parts)) disposables.push(g);
     }
-    const tints = b.list.map(() => 0.88 + rng.next() * 0.24);
+    const tints = b.list.map(() => {
+      const t = 0.84 + rng.next() * 0.3, w = rng.range(-1, 1);
+      return new THREE.Color(t * (1 + 0.1 * w), t, t * (1 - 0.12 * w));
+    });
     for (const [matKind, geo] of Object.entries(model.parts) as [MatKind, THREE.BufferGeometry][]) {
       const mesh = new THREE.InstancedMesh(geo, mats[matKind], b.list.length);
       mesh.castShadow = matKind !== "glow" && b.kind !== "mushroom";
       mesh.receiveShadow = true;
       b.list.forEach((o, i) => {
         inst.position.set(o.x, 0, o.z);
-        inst.rotation.set(0, o.rot, 0);
-        inst.scale.setScalar(o.scale);
+        const lean = b.kind === "deadTree" ? 0.16 : b.kind === "tomb" ? 0.1 : b.kind === "crystal" ? 0.22 : 0;
+        const h = Math.sin(o.x * 12.9898 + o.z * 78.233) * 43758.5453, r1 = h - Math.floor(h), r2 = (h * 7.13) % 1;
+        inst.rotation.set((r1 - 0.5) * lean, o.rot, (r2 - 0.5) * lean);
+        inst.scale.set(o.scale, o.scale * (lean ? 0.75 + 0.55 * r2 : 1), o.scale);
         inst.updateMatrix();
         mesh.setMatrixAt(i, inst.matrix);
-        mesh.setColorAt(i, col.setScalar(tints[i]));
+        mesh.setColorAt(i, tints[i]);
       });
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
@@ -267,12 +314,17 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     }
   }
 
+  // miudezas do chão
+  const scatter = buildScatter(zone, layout, glow);
+  for (const m of scatter.meshes) group.add(m);
+  disposables.push(...scatter.disposables);
+
   // flores
   if (zone.flowers.length) {
     const fl = buildFlower();
     const n = 900;
     const stemMat = mats.foliage;
-    const petalMat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, emissive: 0xffffff, emissiveIntensity: zone.glowDecor ? 0.5 : 0.06 }), { wind: 0.25, windFrom: 0.1 });
+    const petalMat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, emissive: 0xffffff, emissiveIntensity: zone.flowerGlow ?? 0.06 }), { wind: 0.25, windFrom: 0.1 });
     const stems = new THREE.InstancedMesh(fl.stem, stemMat, n);
     const petals = new THREE.InstancedMesh(fl.petals, petalMat, n);
     const half = layout.size / 2 - 6;
@@ -336,7 +388,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     s.castShadow = true;
     fire.add(s);
   }
-  const fireLight = new THREE.PointLight(0xff8a3a, 45, 18, 1.7);
+  const fireLight = new THREE.PointLight(0xff8a3a, FIRE_LIGHT, 22, 1.4);
   fireLight.position.y = 1.4;
   fire.add(fireLight);
   fire.userData.light = fireLight;
@@ -361,6 +413,14 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
   portal.visible = false;
   group.add(portal);
   disposables.push(portalMat, torusGeo, discMat, discGeo);
+  applyAtmosphere(group);
+
+  // feixes de luz (material próprio, aditivo: fica fora da sombra de nuvens e da névoa)
+  const shafts = buildShafts(zone, layout);
+  if (shafts) {
+    group.add(shafts);
+    disposables.push(shafts.geometry, shafts.material as THREE.Material);
+  }
 
   return {
     group,
@@ -370,4 +430,99 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
       for (const d of disposables) d.dispose();
     },
   };
+}
+
+/** Liga o céu, a sombra de nuvens e a névoa da zona (uniforms compartilhados por todos os materiais; ver `applyAtmosphere`).
+ * A `scene.fog` do three acompanha a névoa de distância só para os materiais sem luz (contorno dos personagens). */
+export function setZoneAtmosphere(scene: THREE.Scene, zone: ZoneDef): void {
+  const c = zone.clouds, h = zone.haze;
+  U.uCloud.value.set(c.strength, 1 / c.size, c.speed, c.cover);
+  U.uFog.value.set(h.start, h.density, h.mist, h.mistHeight);
+  U.uFogColor.value.set(zone.fog);
+  U.uMistColor.value.set(h.mistColor);
+  U.uMistNoise.value.set(1 / h.mistSize, h.mistSpeed);
+  for (let i = 0; i < 3; i++) {
+    const s = zone.stains[i];
+    const c = new THREE.Color(s ? s[0] : 0);
+    U.uStain.value[i].set(c.r, c.g, c.b, s ? s[2] : -9);
+    U.uStainSize.value.setComponent(i, s ? s[1] : 10);
+  }
+  scene.background = new THREE.Color(zone.sky);
+  scene.fog = new THREE.Fog(zone.fog, h.start + 0.5 / h.density, h.start + 2.2 / h.density);
+}
+
+const sunWarm = new THREE.Color(), sunCool = new THREE.Color();
+/** Luz viva: a força e a cor do sol variam devagar (ciclo de alguns minutos), mais quente quando forte e mais fria quando fraca. */
+export function driftSun(sun: THREE.DirectionalLight, zone: ZoneDef, time: number): void {
+  const d = zone.clouds.drift;
+  const w = 0.6 * Math.sin(time * 0.045) + 0.4 * Math.sin(time * 0.11 + 1.3);
+  sun.intensity = zone.sunIntensity * (1 + d * w);
+  sunWarm.set(zone.sun).lerp(sunCool.setRGB(1, 0.78, 0.55), 0.5 * d * Math.max(0, w));
+  sun.color.copy(sunWarm).lerp(sunCool.setRGB(0.7, 0.8, 1), 0.5 * d * Math.max(0, -w));
+}
+
+/** Oclusão por vértice: tronco, pedra e lápide escurecem perto do chão; a copa escurece embaixo (o miolo que não pega luz). */
+function occlude(parts: Partial<Record<MatKind, THREE.BufferGeometry>>): void {
+  for (const [kind, geo] of Object.entries(parts) as [MatKind, THREE.BufferGeometry][]) {
+    if (kind === "glow") continue;
+    const rocky = kind === "rock" || kind === "lava";
+    const pos = geo.attributes.position, col = geo.attributes.color;
+    if (!col) continue;
+    geo.computeBoundingBox();
+    const y0 = geo.boundingBox!.min.y, y1 = geo.boundingBox!.max.y;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      // pedra e lápide: pela altura da própria peça (são baixas; pela altura do chão ficavam pretas inteiras)
+      const k = kind === "foliage" ? 0.62 + 0.38 * smooth(y0, y0 + (y1 - y0) * 0.6, y)
+        : rocky ? 0.6 + 0.4 * smooth(y0, y0 + (y1 - y0) * 0.45, y)
+        : 0.5 + 0.5 * smooth(0, 0.7, y);
+      col.setXYZ(i, col.getX(i) * k, col.getY(i) * k, col.getZ(i) * k);
+    }
+    col.needsUpdate = true;
+  }
+}
+const smooth = (a: number, b: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/** força média da luz da fogueira; `fireFlicker` faz ela oscilar */
+const FIRE_LIGHT = 70;
+export const fireFlicker = (time: number): number => FIRE_LIGHT * (1 + Math.sin(time * 11) * 0.12 + Math.sin(time * 23) * 0.08);
+
+/** Rocha de lava: material de pedra com rachaduras acesas (bordas de Voronoi em 3D na posição do objeto), que pulsam devagar e
+ * ficam mais fortes perto do chão. Sem o recorte do herói (`fade`): as rochas de lava são baixas. */
+function lavaRockMaterial(glow: number): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+  const uni = { uLava: { value: new THREE.Color(glow) } };
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, U, uni);
+    shader.vertexShader = "varying vec3 vObj;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvObj = position;");
+    shader.fragmentShader = `varying vec3 vObj; uniform vec3 uLava; uniform float uTime;
+      vec3 lavaHash(vec3 p) { p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6))); return fract(sin(p) * 43758.5453); }
+      float lavaCrack(vec3 p) {
+        vec3 i = floor(p), f = fract(p);
+        float d1 = 8.0, d2 = 8.0;
+        for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++) for (int z = -1; z <= 1; z++) {
+          vec3 g = vec3(float(x), float(y), float(z));
+          float d = length(g + lavaHash(i + g) - f);
+          if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
+        }
+        // só parte das bordas acende: as células com hash baixo ficam fechadas
+        float open = step(0.45, lavaHash(i + 7.0).x);
+        return (1.0 - smoothstep(0.01, 0.05, d2 - d1)) * open;
+      }
+      ` + shader.fragmentShader.replace(
+      "#include <emissivemap_fragment>",
+      `#include <emissivemap_fragment>
+      float crack = lavaCrack(vObj * 1.5);
+      float low = 1.0 - smoothstep(-0.3, 0.35, vObj.y);
+      crack *= 0.25 + 0.75 * low;
+      float pulse = 0.75 + 0.25 * sin(uTime * 1.3 + vObj.x * 3.0 + vObj.z * 2.0);
+      totalEmissiveRadiance += uLava * crack * (0.5 + 1.6 * low) * pulse * 2.6;
+      diffuseColor.rgb *= 1.0 - 0.5 * crack;`,
+    );
+  };
+  mat.customProgramCacheKey = () => "lavaRock";
+  return mat;
 }
