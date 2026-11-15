@@ -68,8 +68,8 @@ Números em `src/data/run.ts` e fórmulas em `src/core/waves.ts`, conferidos por
 | R2 | Início em 3 passos: herói, dificuldade, spell inicial | `ui/screens/run_setup.lua`, `spell_select.lua` | escolha de herói só | falta (`M20-06`) |
 | R3 | 20 ondas; chefes nas ondas 5, 10, 15 e 20; no modo sem fim, a cada 5 | `core/constants.lua` `TOTAL_WAVES`, `BOSS_WAVES` | `TOTAL_WAVES`, `isBossWave` (testados) | igual (dado); falta no jogo (`M20-02`) |
 | R4 | Cada 5 ondas formam um trecho (`segmentOf`) | `run/run_map.lua` | zona = 5 ondas (D13); `segmentOf` testado | igual |
-| R5 | A onda tem duração (20 a 40 s) e os inimigos **nascem ao longo dela** (90% do tempo); acaba quando o tempo passa ou quando não sobra ninguém | `run/wave_system.lua` `start`, `update`; `waves.lua` | os inimigos já estão nos acampamentos | **a decidir** (Q2) |
-| R6 | Contagem de inimigos por onda: base, curva de ritmo e fator da área da arena (`ARENA_CROWD`) | `waves.lua` `baseEnemyCount`; `tuning.lua` | `baseEnemyCount` testado; o fator da arena ainda não tem equivalente | igual (contagem); o fator da área depende de Q2 |
+| R5 | A onda tem duração (20 a 40 s) e os inimigos **nascem ao longo dela** (90% do tempo); acaba quando o tempo passa ou quando não sobra ninguém | `run/wave_system.lua` `start`, `update`; `waves.lua` | os inimigos já estão nos acampamentos | falta (`M20-02`): como lá, os inimigos chegam pelas bordas do trecho ao longo da onda (Q2) |
+| R6 | Contagem de inimigos por onda: base, curva de ritmo e fator da área da arena (`ARENA_CROWD`) | `waves.lua` `baseEnemyCount`; `tuning.lua` | `baseEnemyCount` testado; o fator da arena ainda não tem equivalente | igual (contagem); o fator da área do trecho fica para o ajuste de ritmo, jogando (Q2) |
 | R7 | Inimigos entram no sorteio por estágios (onda 1 só goblin, onda 2 goblin e orc...), com peso | `waves.lua` `STAGES`, `WEIGHT` | `compositionFor` testado | igual (dado); faltam 5 inimigos (shieldbearer, hexer, plaguebearer, leaper, warden; `M9`) |
 | R8 | Vida e dano dos inimigos sobem por onda (+3,5% e +2%), mais a dificuldade | `waves.lua` `hpScale`, `damageScale`; `difficulties.lua` | testados | igual (dado); falta no jogo (`M20-02`) |
 | R9 | Campeão: 1 no meio da onda, quando a sala pede; mais 1 por onda no modo sem fim | `wave_system.lua` `championAt`, `endlessChampions` | campeões aparecem em acampamentos | falta (`M20-02`, `M9`) |
@@ -78,7 +78,7 @@ Números em `src/data/run.ts` e fórmulas em `src/core/waves.ts`, conferidos por
 | R12 | Vida do chefe: 260 + 55 × onda, ×2,2, +10% por onda depois da 5, mais leve nas ondas 5 e 10; tier a cada 5 ondas; a onda 20 é o rei coroado | `bosses.lua`; `tuning.lua` | `BOSS` testado | igual (dado); falta no jogo (`M20-02`) |
 | R13 | Vencer o chefe cura 20% e abre 1 de 3 relíquias (35% de chance de uma premium) | `wave_system.lua` `complete`; `bosses.lua` | 1 de 3 relíquias, sem cura | falta (`M20-02`, `M12`) |
 | R14 | Fechar a onda dá ouro e XP da onda, mais um resto pelos sobreviventes; ouro e XP dos inimigos caem como orbes no chão | `wave_system.lua` `complete`; `progression/rewards.lua`; `combat/loot.lua` | XP direto ao matar; sem ouro | falta (`M20-03`, `M7`) |
-| R15 | Apressar: depois de 5 s, acelerar o resto de uma onda normal por até +30% de recompensa | `wave_system.lua` `hasten`; `tuning.lua` `HASTEN` | — | falta; depende de Q2 |
+| R15 | Apressar: depois de 5 s, acelerar o resto de uma onda normal por até +30% de recompensa | `wave_system.lua` `hasten`; `tuning.lua` `HASTEN` | — | falta (`M20-02`) |
 | R16 | XP: 50 para o nível 2, ×1,35 a cada nível; não há teto de nível | `progression/xp.lua`; `constants.lua` | curva testada; o jogo ainda usa a curva antiga, até o 60 | igual (dado); falta no jogo (`M20-03`) |
 | R17 | Subir de nível só acumula; as 3 melhorias são escolhidas **no intervalo entre as ondas** | `run/run_intermission.lua` `missing` | pontos de atributo na hora | falta (`M20-03`) |
 | R18 | 3 melhorias de `upgrades.lua`, com raridade (comum, rara, épica; +1 ponto de épica a cada 5 níveis) e troca por 20 + 5 × nível, uma vez | `progression/level_up.lua`; `data/upgrades.lua` | raridade e troca testadas; a lista de melhorias falta | falta (`M20-03`) |
@@ -92,13 +92,11 @@ Números em `src/data/run.ts` e fórmulas em `src/core/waves.ts`, conferidos por
 | R26 | Cura e regeneração durante a onda valem 35%; todo dano de inimigo ×1,5; orbes de cura raros (até 2 por onda) | `tuning.lua` | `RUN_TUNING` testado; o jogo usa os números antigos | igual (dado); falta no jogo (`M20-02`) |
 | R27 | Começam abertos Frostine, Kaelen, Aurelius e Ignis; os outros 5 por conquista; desbloqueio nunca dá poder | `core/unlocks.lua`; `data/unlocks.lua` | os 9 abertos | falta (`M20-07`) |
 | R28 | Sem equipamento | — | itens, afixos e inventário | falta remover (`M20-04`) |
-| R29 | O herói não tem esquiva nem poção | `player/player_system.lua` | esquiva (Espaço) e poção (F) | **a decidir** (Q3) |
-
-## Perguntas em aberto
-
-- **Q2. Como a onda acontece no mapa aberto?** Lá a onda é cronometrada: os inimigos nascem ao longo de 20 a 40 s e a onda acaba no tempo ou quando não sobra ninguém (R5). Aqui os inimigos esperam em acampamentos. As opções são (a) como lá: ao entrar no trecho, a onda começa, e os inimigos chegam pelas bordas do trecho ao longo do tempo, com o relógio e o Apressar (R15); ou (b) o trecho já vem povoado com a contagem da onda em acampamentos, e a onda acaba quando todos morrem (sem relógio e sem Apressar). A (a) é a mais fiel.
-- **Q3. Esquiva e poção ficam?** O original não tem nenhuma das duas (R29). Num jogo de ação em 3D com mapa aberto, a esquiva ajuda a ler os ataques telegrafados; a poção compete com as curas do original (orbes, relíquias, Seraph). Opções: tirar as duas, manter só a esquiva, ou manter as duas.
+| R29 | O herói não tem esquiva nem poção | `player/player_system.lua` | esquiva (Espaço) e poção (F) | **adaptado**, aceito em 2026-11-15 por enquanto (Q3); a poção pode sair depois |
 
 ## Perguntas respondidas
+
+- **Q2. Como a onda acontece no mapa aberto?** Respondida em 2026-11-15: **como no Dungeon Reign.** Ao entrar no trecho, a onda começa; os inimigos chegam pelas bordas do trecho ao longo da duração, com relógio e Apressar; a onda acaba no tempo ou quando não sobra ninguém. O ritmo (contagem, duração, fator de área) só se mexe depois, jogando.
+- **Q3. Esquiva e poção ficam?** Respondida em 2026-11-15: **ficam as duas por enquanto.** A poção pode sair depois; decidir jogando.
 
 - **Q1. Save contínuo ou partidas com seed?** Respondida em 2026-11-15 (D13): **partidas como no Dungeon Reign**, sem equipamento, cada zona = 5 ondas. S4 (escolha da spell inicial a cada partida), S20 (loja no mapa da partida) e S22 (melhorias de nível com 3 escolhas) passam a seguir o original; as regras da partida entram como linhas `R` no `M20-00`.
