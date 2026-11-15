@@ -49,6 +49,8 @@ export interface ZoneDef {
   capGlow?: boolean;
   /** brilho próprio das pétalas (padrão 0,06) */
   flowerGlow?: number;
+  /** brilho do material aceso da decoração (cristal, lascas; padrão 1,6) */
+  glowStrength?: number;
   /** sombra de nuvens passando pelo chão e pelos personagens: quanto escurece o sol (0..1), tamanho das nuvens (m), velocidade (m/s)
    * e cobertura (0..1, fração do chão na sombra); `drift`: quanto a força e a cor do sol variam devagar (0..1) */
   clouds: { strength: number; size: number; speed: number; cover: number; drift: number };
@@ -115,17 +117,18 @@ export const ZONES: Record<string, ZoneDef> = {
   vazio: {
     id: "vazio", name: "O Vazio", subtitle: "O trono do Rei Oco", level: 16, boss: "hollow_king",
     enemies: [["assassin", 3], ["spellcaster", 3], ["summoner", 2], ["berserker", 2], ["bombardier", 1.5], ["splitter", 1.5]],
-    ground: [0x574a80, 0x685a96, 0x463a6a], path: 0x7a68a8, fog: 0x2a1f47, sky: 0x2a1f47,
-    sun: 0xe0d0ff, sunIntensity: 2.2, ambient: 0xb09ae6, ambientIntensity: 1.25,
+    ground: [0x463e62, 0x524872, 0x383052], path: 0x5c527c, fog: 0x221a3c, sky: 0x221a3c,
+    sun: 0xd8ccff, sunIntensity: 2.0, ambient: 0xa888d0, ambientIntensity: 1.45,
     decor: [["crystal", 5, true], ["pillar", 2, true], ["rock", 2, true], ["deadTree", 1.5, true]],
-    decorCount: 750, glowDecor: 0x73ffcc,
-    grass: { root: 0x2f2550, tip: 0x73ffcc, density: 0.4, height: 0.45 }, flowers: [0x73ffcc, 0xc8a8ff], rockTop: 0x5a4a80,
-    motes: { color: 0x73ffcc, lit: 0xc8fff0, rise: 0.8, rate: 55 },
-    shafts: { count: 90, color: 0xa8ffe4, intensity: 0.22 },
-    scatter: [["pebble", 5, [0x4a3a70, 0x5a4a8a, 0x6a5aa0]], ["tuft", 4, [0x2f2550, 0x3a7a6a]], ["shard", 3, [0x9affe0, 0xc8a8ff, 0x7ad8c0]]],
-    grade: { shadow: 0x9890e8, light: 0xe0fff4, saturation: 0.9, contrast: 1.1 },
+    decorCount: 750, glowDecor: 0x40e0ff,
+    grass: { root: 0x2a2248, tip: 0x3e9a8a, density: 0.4, height: 0.45 }, flowers: [0x73ffcc, 0xc8a8ff], rockTop: 0x4a3e6c,
+    motes: { color: 0x60d8ff, lit: 0xe0b0ff, rise: 0.8, rate: 110 },
+    shafts: { count: 60, color: 0xa8ffe4, intensity: 0.14 },
+    scatter: [["pebble", 5, [0x4a3a70, 0x5a4a8a, 0x6a5aa0]], ["tuft", 4, [0x2f2550, 0x3a7a6a]], ["shard", 1, [0x3a90b0, 0x7a68b0, 0x3a8090]]],
+    grade: { shadow: 0x9890e8, light: 0xe8f4f0, saturation: 0.82, contrast: 1.12 },
+    glowStrength: 1.0,
     stains: [[0x2a2048, 14, 0.45], [0x3a6a70, 9, 0.3], [0x5a4a8e, 28, 0.42]],
-    flowerGlow: 0.5,
+    flowerGlow: 0.3,
     clouds: { strength: 0.45, size: 70, speed: 0.9, cover: 0.5, drift: 0.06 },
     haze: { start: 20, density: 0.022, mist: 0.3, mistHeight: 0.8, mistColor: 0x463a80, mistSize: 10, mistSpeed: 0.4 },
   },

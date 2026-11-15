@@ -256,7 +256,7 @@ export function buildDecor(kind: DecorKind, variant: number, pal: FloraPalette):
         const tip = new THREE.ConeGeometry(r, r * 2.2, 6);
         tip.translate(0, hgt / 2 + r * 1.1, 0);
         const g = prep(mergeGeometries([body, tip], false)!, false);
-        paint(g, new THREE.Color(pal.glow).multiplyScalar(0.35).getHex(), pal.glow, -hgt / 2, hgt / 2 + r);
+        paint(g, new THREE.Color(pal.glow).multiplyScalar(0.18).getHex(), new THREE.Color(pal.glow).multiplyScalar(0.6).getHex(), -hgt / 2, hgt / 2 + r);
         const a = rng.range(0, 6.28);
         const d = i === 0 ? 0 : rng.range(0.3, 0.6);
         glow.push(xf(g, Math.cos(a) * d, hgt / 2 - 0.05, Math.sin(a) * d, i === 0 ? 0 : rng.range(-0.5, 0.5), a, i === 0 ? 0 : rng.range(-0.5, 0.5)));

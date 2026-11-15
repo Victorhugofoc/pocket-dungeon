@@ -263,7 +263,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
     solid: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), { fade: true, wind: 0.012, windFrom: 1.2 }),
     foliage: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), { fade: true, wind: 0.05, windFrom: 0.8 }),
     rock: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }), { fade: true }),
-    glow: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, flatShading: true, emissive: glow, emissiveIntensity: 1.6 }), { fade: true }),
+    glow: patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, flatShading: true, emissive: glow, emissiveIntensity: zone.glowStrength ?? 1.6 }), { fade: true }),
     lava: lavaRockMaterial(glow),
   };
   disposables.push(...Object.values(mats));
@@ -299,7 +299,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
       mesh.receiveShadow = true;
       b.list.forEach((o, i) => {
         inst.position.set(o.x, 0, o.z);
-        const lean = b.kind === "deadTree" ? 0.16 : b.kind === "tomb" ? 0.1 : 0;
+        const lean = b.kind === "deadTree" ? 0.16 : b.kind === "tomb" ? 0.1 : b.kind === "crystal" ? 0.22 : 0;
         const h = Math.sin(o.x * 12.9898 + o.z * 78.233) * 43758.5453, r1 = h - Math.floor(h), r2 = (h * 7.13) % 1;
         inst.rotation.set((r1 - 0.5) * lean, o.rot, (r2 - 0.5) * lean);
         inst.scale.set(o.scale, o.scale * (lean ? 0.75 + 0.55 * r2 : 1), o.scale);
