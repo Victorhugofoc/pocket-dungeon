@@ -44,6 +44,8 @@ interface Projectile {
   status?: StatusSpec; mesh: THREE.Mesh; hit: Set<Enemy>; color: number; source: string;
   /** gelo da Frostine; `icicle` = o tiro é pingente */
   ice?: boolean; icicle?: boolean;
+  /** empurrão extra no acerto, em fração de TUNING.enemy.knockback (Fan the Hammer) */
+  push?: number;
 }
 
 interface Drop {
@@ -69,7 +71,7 @@ export interface PlayerState {
   critUntil: number; aegisUntil: number;
   flash: number; hurtT: number;
   leap: { t: number; dur: number; x0: number; z0: number; x1: number; z1: number } | null;
-  rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy> } | null;
+  rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number } | null;
   burst: { left: number; timer: number } | null;
 }
 
@@ -417,6 +419,11 @@ export class Game {
             }
           }
           this.hitEnemy(e, pr.dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined });
+          if (pr.push && !e.isBoss && !e.dead) {
+            const sp = Math.hypot(pr.vx, pr.vz) || 1;
+            e.kx += (pr.vx / sp) * pr.push * TUNING.enemy.knockback;
+            e.kz += (pr.vz / sp) * pr.push * TUNING.enemy.knockback;
+          }
           if (pr.ricochet > 0) {
             const next = this.nearestEnemy(e.x, e.z, 9, pr.hit);
             if (next) {
@@ -978,6 +985,40 @@ export class Game {
         this.fx.burst(dest.x, 0.5, dest.z, 0xc28cff, 30, 5, 0.14, 0.6, -2);
         break;
       }
+      case "fan": {
+        // Zephyr: 5 tiros em cone de uma vez, com o dano e o crítico do ataque básico, empurrando
+        const T = this.tech!;
+        const a = this.hero.auto;
+        const n = T.shots ?? 5;
+        const spread = T.spread ?? 0.16;
+        const rangeMult = Math.max(T.range, a.range * s.range) / (a.range * s.range);
+        const fanAuto = { ...a, speed: (a.speed ?? 24) * 1.15 };
+        for (let k = 1; k <= n; k++) {
+          this.firePlayer(p.facing + (k - (n + 1) / 2) * spread, fanAuto, T.damage, rangeMult);
+          this.projectiles[this.projectiles.length - 1].push = 0.85;
+        }
+        p.attackAnim = 0;
+        if (p.rig) nextShot(p.rig);
+        this.audio.play("shoot");
+        this.fx.burst(p.x + Math.sin(p.facing) * 0.9, 1.2, p.z + Math.cos(p.facing) * 0.9, 0xffe9b0, 18, 8, 0.12, 0.3, 4);
+        this.fx.flashLight(p.x + Math.sin(p.facing), 1.4, p.z + Math.cos(p.facing), 0xffd080, 1.8, 0.15);
+        this.fx.addShake(0.22);
+        break;
+      }
+      case "charge": {
+        // Ignis: avança em chamas atravessando os inimigos e termina com um soco que abre um anel de fogo
+        const T = this.tech!;
+        const dest = this.aimPoint(T.range);
+        const d = Math.hypot(dest.x - p.x, dest.z - p.z);
+        if (d < 20 / 12) {
+          p.techCd = 0;
+          return;
+        }
+        const dur = T.dashTime ?? 0.22;
+        p.rush = { t: 0, dur, dx: (dest.x - p.x) / d, dz: (dest.z - p.z) / d, hit: new Set(), speed: d / dur };
+        p.iframes = Math.max(p.iframes, T.invuln ?? 0.22);
+        break;
+      }
       case "icewall": {
         const T = this.tech!;
         const pl = IceWalls.place(p.x, p.z, this.aim.x, this.aim.z, T.minRange ?? 4, T.maxRange ?? 16);
@@ -1040,9 +1081,15 @@ export class Game {
         p.burst = { left: t.count ?? 8, timer: 0 };
         break;
       case "leap": {
-        const dest = this.aimPoint(t.range ?? 10);
-        p.leap = { t: 0, dur: 0.42, x0: p.x, z0: p.z, x1: dest.x, z1: dest.z };
-        p.iframes = Math.max(p.iframes, 0.55);
+        const T = this.tech;
+        const dest = this.aimPoint(T ? T.range : t.range ?? 10);
+        if (T && Math.hypot(dest.x - p.x, dest.z - p.z) < 20 / 12) {
+          p.techCd = 0;
+          return;
+        }
+        const dur = T?.leapTime ?? 0.42;
+        p.leap = { t: 0, dur, x0: p.x, z0: p.z, x1: dest.x, z1: dest.z };
+        p.iframes = Math.max(p.iframes, T ? dur : 0.55);
         break;
       }
       case "aegis": {
@@ -1101,9 +1148,11 @@ export class Game {
       if (k >= 1) {
         p.leap = null;
         const t = this.hero.technique;
-        const r = (t.radius ?? 4) * s.area;
+        const T = this.tech;
+        const r = T ? T.radius ?? 5.8 : (t.radius ?? 4) * s.area;
         this.grid.resolve(p, 0.5);
-        this.areaHit(p.x, p.z, r, t.damage, t.status, 1.5);
+        if (T) this.executionLanding(r, T);
+        else this.areaHit(p.x, p.z, r, t.damage, t.status, 1.5);
         this.fx.shockwave(p.x, p.z, r, this.hero.color, 0.4);
         this.fx.burst(p.x, 0.3, p.z, 0xc8b89a, 40, 10, 0.2, 0.7);
         this.fx.addShake(0.6);
@@ -1111,15 +1160,26 @@ export class Game {
       }
     } else if (p.rush) {
       const r = p.rush;
+      const step = Math.min(dt, r.dur - r.t);
       r.t += dt;
-      const nx = p.x + r.dx * 30 * dt;
-      const nz = p.z + r.dz * 30 * dt;
-      this.lineHit(p.x, p.z, nx, nz, 1.7, this.hero.technique.damage, this.hero.technique.status, r.hit);
+      const T = this.tech;
+      const sp = r.speed ?? 30;
+      const nx = p.x + r.dx * sp * step;
+      const nz = p.z + r.dz * sp * step;
+      if (T) this.lineHit(p.x, p.z, nx, nz, (T.width ?? 2.5) / 2, T.damage, this.chargeBurn(T), r.hit);
+      else this.lineHit(p.x, p.z, nx, nz, 1.7, this.hero.technique.damage, this.hero.technique.status, r.hit);
+      // labareda ao longo do caminho
+      for (let k = 0; k < 4; k++) {
+        const q = Math.random();
+        this.fx.glow(p.x + (nx - p.x) * q, 0.6 + Math.random() * 0.6, p.z + (nz - p.z) * q, Math.random() < 0.5 ? 0xff8a2a : 0xffd34d, 0.5, 0.45, 0, 1.5, 0);
+      }
       p.x = nx;
       p.z = nz;
       p.moveAmt = 1;
-      this.fx.burst(p.x, 0.8, p.z, 0xff8a2a, 3, 3, 0.2, 0.5, 2);
-      if (r.t >= r.dur) p.rush = null;
+      if (r.t >= r.dur) {
+        p.rush = null;
+        if (T) this.infernoRing(T);
+      }
     } else {
       if (p.dashT > 0) {
         p.dashT -= dt;
@@ -1263,6 +1323,52 @@ export class Game {
         this.fx.burst(f.x + (Math.random() - 0.5) * f.r, 0.2, f.z + (Math.random() - 0.5) * f.r, this.hero.color, 5, 2, 0.12, 0.6, -2);
       }
     }
+  }
+
+  /** Execution Leap: o inimigo com mais vida na área perde 8% da vida máxima (ou o dano, se for maior); os outros levam
+   * metade; todos ficam atordoados. */
+  private executionLanding(r: number, T: TechStats): void {
+    const p = this.player;
+    const inside = this.enemies.filter((e) => !e.dead && Math.hypot(e.x - p.x, e.z - p.z) <= r + e.radius);
+    let target: Enemy | null = null;
+    for (const e of inside) if (!target || e.hp > target.hp) target = e;
+    if (target) {
+      const pct = (target.maxHp * (T.maxHpFraction ?? 0.08)) / Math.max(1, this.stats.damage);
+      this.hitEnemy(target, Math.max(T.damage, pct));
+      this.fx.burst(target.x, 1.2, target.z, 0xff5040, 26, 8, 0.16, 0.5, 8);
+    }
+    for (const e of inside) {
+      if (e !== target) this.hitEnemy(e, T.damage * 0.5);
+      if (!e.dead) this.applyStatus(e, { kind: "stun", power: 1, duration: T.stun ?? 0.5 }, 0);
+    }
+    this.fx.shockwave(p.x, p.z, r, this.hero.color, 0.45);
+    this.fx.shockwave(p.x, p.z, r * 0.55, 0xffd0a0, 0.3);
+    this.fx.burst(p.x, 0.3, p.z, 0xc8b89a, 50, 11, 0.22, 0.8);
+    this.fx.flashLight(p.x, 1.2, p.z, 0xffb070, 2.5, 0.3);
+    this.fx.addShake(0.7);
+    this.hitstop = Math.max(this.hitstop, 0.06);
+  }
+
+  /** Queimadura do Inferno Charge como StatusSpec: dano por segundo em fração do golpe. */
+  private chargeBurn(T: TechStats): StatusSpec {
+    return { kind: "burn", power: (T.burnDps ?? 0.5) / Math.max(0.01, T.damage), duration: T.burnDuration ?? 2.5, maxStacks: 3 };
+  }
+
+  /** Fim do Inferno Charge: soco que abre um anel de fogo em volta. */
+  private infernoRing(T: TechStats): void {
+    const p = this.player;
+    const r = T.radius ?? 6.25;
+    this.areaHit(p.x, p.z, r, T.damage * (T.ringMult ?? 1.3), this.chargeBurn(T));
+    this.fx.shockwave(p.x, p.z, r, 0xff8a2a, 0.45);
+    this.fx.shockwave(p.x, p.z, r * 0.6, 0xffd34d, 0.3);
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2;
+      this.fx.glow(p.x + Math.sin(a) * r * 0.9, 0.4, p.z + Math.cos(a) * r * 0.9, i % 2 ? 0xff8a2a : 0xffd34d, 0.7, 0.5, Math.sin(a) * 2, 2.2, Math.cos(a) * 2);
+    }
+    this.fx.flashLight(p.x, 1.3, p.z, 0xff8a2a, 2.6, 0.3);
+    this.fx.addShake(0.4);
+    this.hitstop = Math.max(this.hitstop, 0.04);
+    this.audio.play("kill");
   }
 
   /** Glacial Wall: tempo, empurrão e congelamento no primeiro contato, estilhaço da evolução no fim. */

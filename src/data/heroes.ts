@@ -1,7 +1,7 @@
 // Os 9 heróis do Dungeon Reign (dungeon-idle/src/data/characters.lua), adaptados para o RPG.
 // Os efeitos de atributo vêm de lá; elementos viraram `statusPct`/`damagePct`.
 import type { StatBlock } from "../core/stats";
-import { FROST, TECHNIQUES } from "./techniques";
+import { FROST, RICOCHET, TECHNIQUES, UNBREAKABLE } from "./techniques";
 
 export type StatusKind = "slow" | "burn" | "poison" | "stun";
 
@@ -36,7 +36,7 @@ export interface AutoAttack {
 }
 
 export type TechniqueKind =
-  | "nova" | "blink" | "field" | "dash" | "burst" | "leap" | "shadow" | "aegis" | "brood" | "icewall" | "rift";
+  | "nova" | "blink" | "field" | "dash" | "burst" | "leap" | "shadow" | "aegis" | "brood" | "icewall" | "rift" | "fan" | "charge";
 
 export interface Technique {
   id: string;
@@ -113,9 +113,8 @@ export const HEROES: Record<string, HeroDef> = {
     stats: { statusPct: 0.30, armor: 8, maxHpPct: 0.08, moveSpeedPct: -0.08 },
     auto: { kind: "fan", rate: 1.5, damage: 0.5, range: 8.5, speed: 20, count: 5, spreadDeg: 44, color: 0xff8a2a,
       status: { kind: "burn", power: 0.35, duration: 3, maxStacks: 3 } },
-    technique: { id: "inferno_charge", name: "Investida Infernal", kind: "dash", cooldown: 8, damage: 2.4, range: 11,
-      text: "Avança em chamas na direção do cursor, queimando quem estiver no caminho.",
-      status: { kind: "burn", power: 0.5, duration: 4, maxStacks: 3 } },
+    technique: { id: "inferno_charge", name: TECHNIQUES.inferno_charge.name, kind: "charge", cooldown: TECHNIQUES.inferno_charge.cooldown,
+      damage: 0, text: TECHNIQUES.inferno_charge.text },
     passive: "Leque de fogo de curto alcance; queimaduras acumulam até 3 vezes.",
   },
   zephyr: {
@@ -124,20 +123,19 @@ export const HEROES: Record<string, HeroDef> = {
     stats: { damagePct: 0.20, attackSpeedPct: 0.16, critChance: 0.10, moveSpeedPct: 0.08, maxHpPct: 0.10, armor: 8 },
     auto: { kind: "projectile", rate: 2.6, damage: 0.8, range: 16, speed: 42, color: 0xffe9b0,
       ricochet: 1, ricochetDamage: 0.7, size: 0.8 },
-    technique: { id: "fan_the_hammer", name: "Leque de Balas", kind: "burst", cooldown: 8, damage: 0.9, count: 10,
-      text: "Descarrega 10 tiros rápidos em leque na direção do cursor." },
-    passive: "Todo tiro ricocheteia 1 vez (70% do dano).",
+    technique: { id: "fan_the_hammer", name: TECHNIQUES.fan_the_hammer.name, kind: "fan", cooldown: TECHNIQUES.fan_the_hammer.cooldown,
+      damage: 0, text: TECHNIQUES.fan_the_hammer.text },
+    passive: RICOCHET.passiveText.join(" "),
   },
   varok: {
     id: "varok", name: "Varok", title: "Matador de Chefes", identity: "Maça, golpes pesados, resistência",
     color: 0xf2594a, accent: 0xb9c2cc, weapon: "mace", weaponName: "Maça",
     stats: { damagePct: 0.35, maxHpPct: 0.60, armor: 14 },
     auto: { kind: "melee", rate: 1.05, damage: 2.3, range: 3.4, arcDeg: 130, color: 0xffb3a8 },
-    technique: { id: "execution_leap", name: "Salto de Execução", kind: "leap", cooldown: 9, damage: 4.0, radius: 4.5, range: 11,
-      text: "Salta até o cursor e esmaga o chão: dano em área e atordoa por 1 s.",
-      status: { kind: "stun", power: 1, duration: 1.0 } },
-    passive: "Inquebrável: um golpe tira no máximo 50% da vida.",
-    maxHitFraction: 0.5,
+    technique: { id: "execution_leap", name: TECHNIQUES.execution_leap.name, kind: "leap", cooldown: TECHNIQUES.execution_leap.cooldown,
+      damage: 0, text: TECHNIQUES.execution_leap.text },
+    passive: UNBREAKABLE.passiveText.join(" "),
+    maxHitFraction: UNBREAKABLE.maxHitFraction,
   },
   umbra: {
     id: "umbra", name: "Umbra", title: "Assassina das Sombras", identity: "Esquiva, crítico, golpes pelas costas",
