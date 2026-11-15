@@ -23,7 +23,7 @@ Primeira rodada (2026-11-15): o teste achou 1 divergência real. O tiro da Vespe
 | S1 | 2 espaços de spell, mais a técnica num espaço próprio (o 0) | `core/constants.lua` `MAX_SPELLS`; `core/game_state.lua` `newRun` | `MAX_SPELLS` em `src/data/spells.ts` (testado) | igual (dado); falta no jogo (`M6-02`) |
 | S2 | 11 spells, na ordem de `S.order` | `data/spells.lua` | `SPELL_ORDER` (testado) | igual (lista); definições faltam (`M6-01`) |
 | S3 | Cada herói tem 4 spells iniciais próprias | `data/characters.lua` `startingSpells` | `HeroDef.startingSpells` (testado) | igual |
-| S4 | No início o jogador escolhe **1** das 4 (tela "Spell inicial", passo 3 de 3) | `ui/screens/spell_select.lua` | não existe | falta (`M6-02`); quando acontece: **a decidir** (ver Q1) |
+| S4 | No início o jogador escolhe **1** das 4 (tela "Spell inicial", passo 3 de 3) | `ui/screens/spell_select.lua` | não existe | falta (`M6-02`, `M20-06`): a cada partida, como lá |
 | S5 | Healing Field nunca é spell inicial | `spell_select.lua` (texto) e `startingSpells` | testado | igual |
 | S6 | Começa no nível 1, com a recarga zerada | `game_state.lua` `newSpellSlot` | — | falta (`M6-01`) |
 | S7 | Spell nova só entra com espaço livre; recusa com `no_slot` ou `owned` | `spells/spell_system.lua` `addSpell` | — | falta (`M6-01`) |
@@ -39,9 +39,9 @@ Primeira rodada (2026-11-15): o teste achou 1 divergência real. O tiro da Vespe
 | S17 | Volátil: inimigo queimando pelo Fireball pode explodir ao morrer | `spell_system.lua` `onKill` | — | falta (`M6-02`) |
 | S18 | Evolução de spell: nível 5 mais **uma** relíquia da receita; até 3 opções, pode recusar; não gasta a relíquia | `spells/evolution.lua` | — | falta (`M6-06`) |
 | S19 | A técnica também sobe de nível na loja; o nível 5 é a evolução dela | `shop_system.lua` `candidates` (`spells[0]`) | dados prontos (`M19-01`), sem como subir | falta (`M19-07`, `M7`) |
-| S20 | Loja: até 3 ofertas por visita mais 1 relíquia; uma melhoria de spell é garantida se houver; categorias sorteadas por igual (melhoria, modificador, spell nova, arma afiada, vitalidade, tomo arcano) | `shop_system.lua` `roll`; `data/shop.lua` | — | falta (`M7`); quando a loja aparece: **a decidir** (ver Q1) |
+| S20 | Loja: até 3 ofertas por visita mais 1 relíquia; uma melhoria de spell é garantida se houver; categorias sorteadas por igual (melhoria, modificador, spell nova, arma afiada, vitalidade, tomo arcano) | `shop_system.lua` `roll`; `data/shop.lua` | — | falta (`M7`, `M20-05`) |
 | S21 | Preços: spell nova 50, melhoria 50 + 44 × nível, crescendo com o nível da loja e com cada compra de spell | `data/shop.lua` `SPELL`, `MODIFIER` | — | falta (`M7`) |
-| S22 | Subir de nível não dá spell: dá melhorias de atributo, escolhidas entre 3 | `progression/level_up.lua` | aqui subir de nível dá pontos de atributo | **a decidir** (fora do M6; ver Q1) |
+| S22 | Subir de nível não dá spell: dá melhorias de atributo, escolhidas entre 3 | `progression/level_up.lua` | aqui subir de nível dá pontos de atributo | falta (`M20-03`) |
 
 ## Heróis (M19)
 
@@ -58,6 +58,6 @@ Primeira rodada (2026-11-15): o teste achou 1 divergência real. O tiro da Vespe
 | H9 | Varok: modo Matador de Chefes (menos inimigos, chefes mais fortes, recompensa maior) | `characters.lua` `runMods` | — | falta; não estava no M19 |
 | H10 | Textos das passivas | `passiveText` | os mesmos; os da Frostine estão por extenso | igual |
 
-## Perguntas em aberto
+## Perguntas respondidas
 
-- **Q1. Save contínuo ou partidas com seed?** No Dungeon Reign cada partida (run) começa do zero: herói, spell inicial, ondas, loja a cada tantas ondas, até o chefe final ou a morte. Aqui hoje o save é contínuo: o herói guarda nível, itens e relíquias para sempre, e cada viagem gera um mapa novo a partir da seed do save. A resposta muda S4, S20, S22 e o `docs/design.md`.
+- **Q1. Save contínuo ou partidas com seed?** Respondida em 2026-11-15 (D13): **partidas como no Dungeon Reign**, sem equipamento, cada zona = 5 ondas. S4 (escolha da spell inicial a cada partida), S20 (loja no mapa da partida) e S22 (melhorias de nível com 3 escolhas) passam a seguir o original; as regras da partida entram como linhas `R` no `M20-00`.
