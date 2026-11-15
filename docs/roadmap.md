@@ -302,6 +302,12 @@ Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de 
 
 Porta das 11 spells do Dungeon Reign: `fireball`, `iceball`, `chain_lightning`, `arcane_bolt`, `healing_field`, `blade_orbit`, `venom_nova`, `cyclone`, `rune_traps`, `prism_beam`, `quake_totem`. **D12 decidida:** não são lançadas sozinhas como lá; 2 espaços nas teclas 1 e 2, mira no cursor, técnica e esquiva sem mudança. Proposta para D2: qualquer herói usa qualquer spell, começando pelas 4 iniciais dele (`startingSpells`), nível de 1 a 5.
 
+**M6-00 · Tabela de paridade com o Dungeon Reign** · P
+- Arquivo: `docs/paridade.md`. Uma linha por regra do sistema de spells do original (escolha inicial em `ui/screens/spell_select.lua`, espaços e níveis em `core/constants.lua` e `spells/spell_system.lua`, ofertas da loja em `shop/shop_system.lua`, evolução em `spells/evolution.lua`, números em `data/spells.lua`), com arquivo e linha de lá, o equivalente daqui e o estado: igual, adaptado (com o motivo) ou falta.
+- Pronto quando: toda regra tem linha, e cada "adaptado" foi aceito pelo usuário. Nas tarefas seguintes do M6, o código só fica pronto quando a linha dele está "igual" ou "adaptado".
+- Garantia por teste: `tests/parity.test.ts` lê os `.lua` do repo local (`DUNGEON_IDLE`) com um leitor de Lua em Node e compara com `src/data`: as 4 spells iniciais de cada herói, os números das 11 spells, marcos, modificadores, evoluções, `MAX_SPELLS` e `SPELL_MAX_LEVEL`. Pula sozinho se o repo não estiver na máquina.
+- Funções do núcleo com o nome e o retorno das de lá (`addSpell` com `no_slot`/`owned`, `levelUp` com `max_level`, `addModifier` com `not_in_pool`), cada uma com teste do mesmo caso.
+
 **M6-01 · Dados e núcleo** · M
 - Arquivos: `src/data/spells.ts` (porta de `spells.lua`), `src/core/spells.ts` (dano, recarga, escala por nível e por atributo), testes.
 - Pronto quando: `spellStats(id, level, stats)` tem teste para as 11.
@@ -631,7 +637,7 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 | ID | Decisão | Proposta | Trava |
 |---|---|---|---|
 | D1 | Textos do jogo em inglês com português como tradução, ou só código em inglês? | Inglês como base e português como tradução, com troca nas opções | M14-01 |
-| D2 | Spells: quantos espaços e quem usa o quê? | 2 espaços; qualquer herói usa qualquer spell | M6 |
+| D2 | Spells: quantos espaços e quem usa o quê? | **Decidido em 2026-11-15: igual ao Dungeon Reign.** 2 espaços mais a técnica; cada herói escolhe 1 spell inicial entre as 4 dele (`startingSpells`, Healing Field nunca é inicial); a segunda spell, os níveis (até 5), os modificadores e o nível da técnica vêm da loja (Magic Shop), que vende qualquer spell. Estrutura conferida pela tabela de paridade (`M6-00`) | M6 |
 | D3 | Como se ganha spell? | Primeira no primeiro chefe; depois tomo raro e loja | M6-06 |
 | D4 | Entra ouro, mercador e ferreiro? | Sim, na fogueira de cada zona | M7 |
 | D5 | Mais espaços de equipamento? | De 3 para 6 (elmo, botas, anel) | M8-04 |
