@@ -53,6 +53,16 @@ local function enc(v, seen)
   return "null"
 end
 
+-- cada argumento é um módulo (`src.data.waves`) ou, começando com `=`, uma expressão Lua cujo valor entra no JSON
+-- com o próprio texto como chave (para calcular as fórmulas de lá, onda a onda)
+local compile = loadstring or load
 local result = {}
-for i = 2, #arg do result[arg[i]] = require(arg[i]) end
+for i = 2, #arg do
+  local a = arg[i]
+  if a:sub(1, 1) == "=" then
+    result[a] = assert(compile("return " .. a:sub(2)))()
+  else
+    result[a] = require(a)
+  end
+end
 io.write(enc(result, {}))
