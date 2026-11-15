@@ -14,3 +14,9 @@ export const SPELL_ORDER = [
 ] as const;
 
 export type SpellId = (typeof SPELL_ORDER)[number];
+
+/** spells.lua `school` de cada spell (o sorteio das melhorias olha a escola das spells da build). */
+export const SPELL_SCHOOL: Readonly<Record<SpellId, string>> = {
+  fireball: "fire", iceball: "ice", chain_lightning: "lightning", arcane_bolt: "arcane", healing_field: "healing",
+  blade_orbit: "blade", venom_nova: "poison", cyclone: "wind", rune_traps: "rune", prism_beam: "light", quake_totem: "earth",
+};

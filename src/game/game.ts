@@ -1,7 +1,8 @@
 // Loop principal: herói, combate, loot, progressão e as ondas da partida (cada zona = 5 ondas, D13).
 import * as THREE from "three";
 import { generateItem, itemName, RARITIES, RARITY_COLOR, RARITY_LABEL, type Item, type Slot } from "../core/items";
-import { computeStats, xpToNext, type Attributes, type FinalStats, type StatBlock } from "../core/stats";
+import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
+import { addXp, applyUpgrade, draft, draftTiers, rerollCost, rerollsLeft, upgradeStats, type UpgradeTier } from "../core/levelup";
 import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
 import { loadRun, writeRun, safeStorage } from "../core/save";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
@@ -36,12 +37,25 @@ import { buildWorld, driftSun, fireFlicker, setZoneAtmosphere, type WorldView } 
 export interface GameEvents {
   toast(msg: string, color?: string): void;
   relicChoice(ids: string[], pick: (id: string) => void): void;
+  /** abriu (ou mudou) a escolha de melhoria de nível; o estado está em `Game.levelUp` */
+  levelUp(): void;
   died(): void;
   zoneChanged(): void;
   bagChanged(): void;
   victory(): void;
   /** letreiro grande no meio da tela ("Onda 3", "Onda concluída") */
   banner(title: string, sub?: string): void;
+}
+
+/** As 3 cartas de melhoria abertas no fim da onda (run_drafts.lua `checkLevelUp`). */
+export interface LevelUpDraft {
+  ids: string[];
+  tiers: UpgradeTier[];
+  /** trocas já feitas neste nível */
+  rerolls: number;
+  /** "2 de 3" quando vários níveis esperam juntos */
+  index: number;
+  total: number;
 }
 
 /** Em que ponto da onda a partida está. */
@@ -170,6 +184,9 @@ export class Game {
   private hitstop = 0;
   /** recompensa do chefe, entregue quando o corpo dele some */
   private bossReward: (() => void) | null = null;
+  /** escolha de melhoria aberta; o jogo fica pausado pela tela */
+  levelUp: LevelUpDraft | null = null;
+  private levelUpIndex = 0;
   private bagFullToast = 0;
   private aim = new THREE.Vector3();
   private camTarget = new THREE.Vector3();
@@ -295,7 +312,8 @@ export class Game {
       if (it) sources.push(it.stats);
     }
     for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
-    this.stats = computeStats(this.run.level, this.run.legacy.attrs, sources);
+    sources.push(upgradeStats(this.run));
+    this.stats = computeStats(sources);
     // reforço de teste (TUNING.testBoost): fora do core para não mexer nas contas testadas
     this.stats.damage *= TUNING.testBoost.damage;
     this.stats.moveSpeed *= TUNING.testBoost.moveSpeed;
@@ -804,30 +822,69 @@ export class Game {
     }
   }
 
+  /** xp.lua `addXp`: uma passagem de nível por ganho; a melhoria espera o fim da onda (R17). */
   gainXp(amount: number): void {
     const s = this.run;
-    if (s.level >= TUNING.xp.maxLevel) return;
-    const gained = Math.round(amount * this.stats.xp);
-    s.xp += gained;
-    s.statistics.xpEarned += gained;
-    let leveled = false;
-    while (s.level < TUNING.xp.maxLevel && s.xp >= xpToNext(s.level)) {
-      s.xp -= xpToNext(s.level);
-      s.level++;
-      s.legacy.attrPoints += TUNING.attributes.pointsPerLevel;
-      leveled = true;
-    }
-    if (leveled) {
-      this.recompute();
-      this.player.hp = this.stats.maxHp;
+    if (addXp(s, amount, this.stats.xp)) {
       const p = this.player;
       this.fx.shockwave(p.x, p.z, 6, 0xffe066, 0.6);
       this.fx.burst(p.x, 1.5, p.z, 0xffe066, 40, 8, 0.16, 0.9, 6);
       this.fx.text(p.x, 3.2, p.z, `NÍVEL ${s.level}`, "level");
       this.audio.play("level");
-      this.events.toast(`Nível ${s.level}! +1 ponto de atributo (I)`, "#ffe066");
-      this.events.bagChanged();
+      this.events.toast(`Nível ${s.level}! A melhoria sai no fim da onda`, "#ffe066");
     }
+  }
+
+  /** Sorteia as 3 cartas no fluxo `levelup`, com a raridade de cada uma. */
+  private openLevelUp(): void {
+    const run = this.run;
+    const rng = this.rng.get("levelup");
+    const ids = draft(run, rng);
+    if (ids.length === 0) {
+      run.pendingLevelUps = 0;
+      return;
+    }
+    this.levelUpIndex++;
+    this.levelUp = {
+      ids, tiers: draftTiers(run, rng, ids), rerolls: 0,
+      index: this.levelUpIndex, total: this.levelUpIndex - 1 + run.pendingLevelUps,
+    };
+    this.events.levelUp();
+  }
+
+  /** run_drafts.lua `rerollLevelUp`: paga ouro e sorteia as 3 de novo (raridades também). */
+  rerollLevelUp(): boolean {
+    const L = this.levelUp;
+    if (!L || rerollsLeft(L.rerolls) <= 0) return false;
+    const cost = rerollCost(this.run);
+    if (this.run.gold < cost) return false;
+    this.run.gold -= cost;
+    this.run.statistics.goldSpent += cost;
+    const rng = this.rng.get("levelup");
+    L.ids = draft(this.run, rng);
+    L.tiers = draftTiers(this.run, rng, L.ids);
+    L.rerolls++;
+    this.audio.play("pickup");
+    this.events.levelUp();
+    return true;
+  }
+
+  /** run_drafts.lua `chooseUpgrade`; a vida máxima sobe junto (`refreshMaxHp`), Vitality cura tudo. */
+  chooseUpgrade(index: number): void {
+    const L = this.levelUp;
+    const id = L?.ids[index];
+    if (!L || !id) return;
+    const before = this.stats.maxHp;
+    const u = applyUpgrade(this.run, id, L.tiers[index]);
+    this.levelUp = null;
+    this.recompute();
+    const p = this.player;
+    if (u.fullHeal) p.hp = this.stats.maxHp;
+    else if (this.stats.maxHp > before) p.hp += this.stats.maxHp - before;
+    p.hp = Math.min(p.hp, this.stats.maxHp);
+    this.fx.burst(p.x, 1.5, p.z, 0xffe066, 24, 6, 0.14, 0.7, 4);
+    if (this.run.pendingLevelUps > 0) this.openLevelUp();
+    else this.levelUpIndex = 0;
   }
 
   hurtPlayer(amount: number, source: string): void {
@@ -918,7 +975,7 @@ export class Game {
     this.fx.addShake(1);
     for (const m of this.enemies) if (m.summoned && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
     const s = this.run;
-    const gold = Math.floor(bossGold(s.wave) * this.mods.reward);
+    const gold = Math.floor(bossGold(s.wave) * this.mods.reward * this.stats.gold);
     s.gold += gold;
     s.statistics.goldEarned += gold;
     const pool = RELIC_IDS.filter((id) => !s.relics.includes(id));
@@ -974,6 +1031,12 @@ export class Game {
     }
     // depois do chefe, o portal (e a vitória) só abrem com a relíquia já entregue: as telas não se atropelam
     if (this.phase === "cleared" && this.phaseT >= RUN_TUNING.clearedTime && !this.bossReward) {
+      // R17: os níveis ganhos na onda viram escolhas agora, um de cada vez
+      if (this.levelUp) return;
+      if (this.run.pendingLevelUps > 0 && this.playerAlive) {
+        this.openLevelUp();
+        if (this.levelUp) return;
+      }
       if (isBossWave(this.run.wave)) this.openPortal();
       else this.prepareWave(this.run.wave + 1);
     }
@@ -1078,7 +1141,7 @@ export class Game {
     for (const e of this.enemies) {
       if (e.dead) continue;
       if (e.def && !e.summoned) {
-        const r = survivorReward(e.def, e.champion, this.mods);
+        const r = survivorReward(e.def, e.champion, this.mods, this.stats.gold);
         gold += r.gold;
         xp += r.xp;
         survivors++;
@@ -1099,7 +1162,7 @@ export class Game {
       const amount = Math.min(this.stats.maxHp - this.player.hp, this.stats.maxHp * BOSS.healPct);
       this.heal(amount, true, true);
     }
-    const r = waveReward(w, this.mods);
+    const r = waveReward(w, this.mods, this.stats.gold);
     gold += r.gold;
     run.gold += gold;
     run.statistics.goldEarned += gold;
@@ -1126,6 +1189,8 @@ export class Game {
 
   /** Tira da cena o que é da onda (avisos de nascimento); os inimigos saem com a zona ou no fim da onda. */
   private clearWave(): void {
+    this.levelUp = null;
+    this.levelUpIndex = 0;
     for (const m of this.markers) m.mesh.removeFromParent();
     this.markers.length = 0;
   }
@@ -1170,17 +1235,6 @@ export class Game {
     const i = this.run.legacy.bag.indexOf(item);
     if (i < 0) return;
     this.run.legacy.bag.splice(i, 1);
-    this.events.bagChanged();
-  }
-
-  spendPoint(attr: keyof Attributes): void {
-    const L = this.run.legacy;
-    if (L.attrPoints <= 0) return;
-    L.attrPoints--;
-    L.attrs[attr]++;
-    const ratio = this.player.hp / this.stats.maxHp;
-    this.recompute();
-    this.player.hp = Math.max(1, Math.round(this.stats.maxHp * ratio));
     this.events.bagChanged();
   }
 

@@ -4,7 +4,9 @@ import { TOTAL_WAVES } from "../data/run";
 import { itemName, itemScore, RARITY_COLOR, RARITY_LABEL, SLOT_LABEL, SLOTS, type Item, type Slot } from "../core/items";
 import { clearRun, discardLegacySave, loadRun, safeStorage } from "../core/save";
 import { RunRng, continueRun, newRun, type RunState } from "../core/run";
-import { ATTR_INFO, ATTR_KEYS, formatStat, STAT_KEYS, xpToNext, type StatBlock } from "../core/stats";
+import { formatStat, STAT_KEYS, type StatBlock } from "../core/stats";
+import { effectsFor, rerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
+import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
 import { BOSSES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
 import { RELICS } from "../data/relics";
@@ -16,6 +18,23 @@ const ICON: Record<Slot, string> = { weapon: "⚔️", armor: "🛡️", trinket
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const QUALITY = ["baixa", "média", "alta"];
 const RELIC_RARITY: Record<string, string> = { incomum: "Incomum", raro: "Rara", epico: "Épica" };
+const TIER_LABEL: Record<UpgradeTier, string> = { common: "Comum", rare: "Rara", epic: "Épica" };
+const TIER_COLOR: Record<UpgradeTier, string> = { common: "#c9c4b8", rare: "#4fa3ff", epic: "#b36bff" };
+/** Nome dos atributos de lá que as melhorias oferecidas usam (o original diz "Auto Damage"; aqui vale para todo o dano). */
+const UPGRADE_LABEL: Record<string, string> = {
+  damageFlat: "Dano", attackSpeedPct: "Vel. de ataque", autoDamagePct: "Dano", critChance: "Chance de crítico",
+  armor: "Armadura", moveSpeedPct: "Vel. de movimento", maxHpFlat: "Vida", maxHpPct: "Vida", rangePct: "Alcance",
+  dodge: "Esquiva", regen: "Regeneração/s", xpPct: "XP ganho", goldPct: "Ouro ganho", spellCooldownPct: "Recarga da técnica",
+};
+/** Na recarga, negativo é bom (format.lua `INVERTED`). */
+const INVERTED: Record<string, true> = { spellCooldownPct: true };
+
+function upgradeLine(e: UpgradeEffect): string {
+  const good = INVERTED[e.stat] ? e.value < 0 : e.value > 0;
+  const n = PCT_STATS[e.stat] ? `${Math.round(e.value * 1000) / 10}%` : String(Math.round(e.value * 100) / 100);
+  const txt = `${e.value >= 0 ? "+" : ""}${n.replace(".", ",")} ${UPGRADE_LABEL[e.stat] ?? e.stat}`;
+  return `<div class="stat ${good ? "" : "neg"}">${txt}</div>`;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", html = ""): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -59,6 +78,7 @@ export class Ui {
     game.events = {
       toast: (m, c) => this.toast(m, c),
       relicChoice: (ids, pick) => this.showRelicChoice(ids, pick),
+      levelUp: () => this.showLevelUp(),
       died: () => setTimeout(() => this.showDeath(), 900),
       zoneChanged: () => this.onZoneChanged(),
       bagChanged: () => {
@@ -103,7 +123,7 @@ export class Ui {
   private onKey(e: KeyboardEvent): void {
     if (!this.game.started || e.repeat) return;
     const k = e.code;
-    const locked = ["title", "relic", "death", "victory"].includes(this.overlayKind);
+    const locked = ["title", "relic", "levelup", "death", "victory"].includes(this.overlayKind);
     if (locked) return;
     if (k === "Escape") {
       if (this.overlay) this.close();
@@ -254,7 +274,7 @@ export class Ui {
     const sv = legacyView(g);
     r.hpFill.style.width = `${(p.hp / s.maxHp) * 100}%`;
     r.hpText.textContent = `${Math.ceil(p.hp)} / ${s.maxHp}`;
-    r.xpFill.style.width = `${Math.min(100, (sv.xp / xpToNext(sv.level)) * 100)}%`;
+    r.xpFill.style.width = `${Math.min(100, (sv.xp / g.run.xpToNext) * 100)}%`;
     r.level.textContent = String(sv.level);
     const tc = Math.max(0, p.techCd);
     r.techCd.style.height = `${(tc / p.techMax) * 100}%`;
@@ -269,8 +289,9 @@ export class Ui {
     const pc = Math.max(0, p.potionCd);
     r.potCd.style.height = `${(pc / TUNING.hero.potionCooldown) * 100}%`;
     r.potN.textContent = pc > 0 ? String(Math.ceil(pc)) : "";
-    r.points.classList.toggle("hidden", sv.attrPoints <= 0);
-    r.points.textContent = `+${sv.attrPoints} ponto${sv.attrPoints > 1 ? "s" : ""} de atributo (I)`;
+    const pend = g.run.pendingLevelUps;
+    r.points.classList.toggle("hidden", pend <= 0);
+    r.points.textContent = `+${pend} melhoria${pend > 1 ? "s" : ""} no fim da onda`;
     (this.hud.querySelector("#vignette") as HTMLElement).style.opacity = String(Math.max(p.hurtT * 0.6, p.hp / s.maxHp < 0.25 ? 0.35 : 0));
     const boss = g.boss;
     const showBoss = !!boss && g.bossEngaged && !boss.dead;
@@ -390,10 +411,12 @@ export class Ui {
     panel.innerHTML = `
       <div>
         <h2 style="color:${hex(h.color)}">${h.name}</h2>
-        <p class="sub">${h.title} · nível ${sv.level} · ${sv.xp}/${xpToNext(sv.level)} XP</p>
-        <div class="section">Atributos ${sv.attrPoints > 0 ? `<b style="color:var(--gold)">(${sv.attrPoints} para gastar)</b>` : ""}</div>
-        ${ATTR_KEYS.map((k) => `<div class="attr"><div>${ATTR_INFO[k].name}<small>${ATTR_INFO[k].text}</small></div><b>${sv.attrs[k]}</b>
-          <button data-attr="${k}" ${sv.attrPoints > 0 ? "" : "disabled"}>+</button></div>`).join("")}
+        <p class="sub">${h.title} · nível ${sv.level} · ${sv.xp}/${g.run.xpToNext} XP</p>
+        <div class="section">Melhorias (${g.run.upgradesTaken.length})</div>
+        <div class="relics">${g.run.upgradesTaken.length ? g.run.upgradesTaken.map((id, i) => {
+          const t = g.run.upgradeTiers[i] ?? "common";
+          return `<div class="relic" style="border-color:${TIER_COLOR[t]}" title="${TIER_LABEL[t]}">${UPGRADE_BY_ID[id]?.name ?? id}</div>`;
+        }).join("") : `<span style="color:var(--muted)">Suba de nível e escolha no fim da onda.</span>`}</div>
         <div class="section">Ficha</div>
         <div class="statlist">
           <span>Vida</span><b>${s.maxHp}</b>
@@ -423,8 +446,6 @@ export class Ui {
       c.dataset.where === "bag" ? sv.bag[Number(c.dataset.idx)] : sv.equipped[SLOTS[Number(c.dataset.idx)]];
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
-      const attr = t.closest<HTMLElement>("[data-attr]")?.dataset.attr;
-      if (attr) return g.spendPoint(attr as (typeof ATTR_KEYS)[number]);
       if (t.closest("[data-act=close]")) return this.close();
       const c = t.closest<HTMLElement>(".cell[data-where=bag]");
       const it = c && itemAt(c);
@@ -493,6 +514,39 @@ export class Ui {
       if (!id) return;
       this.close();
       pick(id);
+    };
+  }
+
+  /** As 3 cartas de melhoria (level_up.lua): raridade, efeitos e a troca paga com ouro. */
+  private showLevelUp(): void {
+    const g = this.game;
+    const L = g.levelUp;
+    if (!L) return;
+    const panel = this.open("levelup", "levelup");
+    panel.style.width = "min(820px, 96vw)";
+    const cost = rerollCost(g.run);
+    const left = rerollsLeft(L.rerolls);
+    const can = left > 0 && g.run.gold >= cost;
+    panel.innerHTML = `<h2>Nível ${g.run.level - g.run.pendingLevelUps + 1}${L.total > 1 ? ` <small>(${L.index} de ${L.total})</small>` : ""}</h2>
+      <p class="sub">Escolha uma melhoria. Ela vale até o fim da partida.</p>
+      <div class="cards">${L.ids.map((id, i) => {
+        const u = UPGRADE_BY_ID[id];
+        const t = L.tiers[i];
+        const body = u.hideEffects ? "" : effectsFor(u, t).map(upgradeLine).join("");
+        return `<div class="card" data-up="${i}" style="--cc:${TIER_COLOR[t]}"><div class="meta">${TIER_LABEL[t]}</div>
+          <h3>${u.name}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}</div>`;
+      }).join("")}</div>
+      <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Trocar as 3 — ${cost} ouro${left > 0 ? "" : " (já trocou)"}</button></div>`;
+    panel.onclick = (ev) => {
+      const t = ev.target as HTMLElement;
+      if (t.closest("[data-act=reroll]")) {
+        g.rerollLevelUp();
+        return;
+      }
+      const i = t.closest<HTMLElement>("[data-up]")?.dataset.up;
+      if (i === undefined) return;
+      this.close();
+      g.chooseUpgrade(Number(i));
     };
   }
 

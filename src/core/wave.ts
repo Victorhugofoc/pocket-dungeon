@@ -254,8 +254,8 @@ export function bossStats(bossId: string, wave: number, mods: WaveMods, final = 
 // ---------------------------------------------------------------- recompensas (rewards.lua)
 
 /** `Rewards.wave`, com o bônus do Apressar (fixado no momento em que o jogador apressou). */
-export function waveReward(w: WaveState, mods: WaveMods): { gold: number; xp: number } {
-  let gold = Math.floor(waveGold(w.number) * mods.reward);
+export function waveReward(w: WaveState, mods: WaveMods, goldMult = 1): { gold: number; xp: number } {
+  let gold = Math.floor(waveGold(w.number) * mods.reward * goldMult);
   let xp = Math.floor(waveXp(w.number) * mods.reward);
   if (w.hastened) {
     const k = 1 + w.hastenBonus;
@@ -266,14 +266,14 @@ export function waveReward(w: WaveState, mods: WaveMods): { gold: number; xp: nu
 }
 
 /** `Rewards.survivor`: quem sobra no fim rende uma parte (invocados e filhos da gosma não rendem). */
-export function survivorReward(def: { gold: number; xp: number }, champion: boolean, mods: WaveMods): { gold: number; xp: number } {
+export function survivorReward(def: { gold: number; xp: number }, champion: boolean, mods: WaveMods, goldMult = 1): { gold: number; xp: number } {
   let g = def.gold;
   let x = def.xp;
   if (champion) {
     g *= CHAMPION.rewardMult;
     x *= CHAMPION.rewardMult;
   }
-  return { gold: Math.floor(g * SURVIVOR_FACTOR * mods.reward), xp: Math.floor(x * SURVIVOR_FACTOR * mods.reward) };
+  return { gold: Math.floor(g * SURVIVOR_FACTOR * mods.reward * goldMult), xp: Math.floor(x * SURVIVOR_FACTOR * mods.reward) };
 }
 
 /** heal_orbs.lua `chance`. */
