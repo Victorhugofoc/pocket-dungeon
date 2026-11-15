@@ -1,4 +1,4 @@
-// Atributos derivados do herói: herói + melhorias de nível + equipamentos + relíquias.
+// Atributos derivados do herói: herói + melhorias de nível + relíquias.
 import { TUNING } from "../data/tuning";
 
 export type StatKey =
@@ -19,7 +19,6 @@ export type StatKey =
   | "rangePct"
   | "xpPct"
   | "goldPct"
-  | "magicFind"
   | "lifeOnKill";
 
 export type StatBlock = Partial<Record<StatKey, number>>;
@@ -27,7 +26,7 @@ export type StatBlock = Partial<Record<StatKey, number>>;
 export const STAT_KEYS: StatKey[] = [
   "damage", "damagePct", "maxHp", "maxHpPct", "attackSpeedPct", "moveSpeedPct", "critChance",
   "critDamagePct", "armor", "regen", "dodge", "cdrPct", "statusPct", "areaPct", "rangePct",
-  "xpPct", "goldPct", "magicFind", "lifeOnKill",
+  "xpPct", "goldPct", "lifeOnKill",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -48,7 +47,6 @@ export const STAT_LABEL: Record<StatKey, string> = {
   rangePct: "Alcance",
   xpPct: "XP ganho",
   goldPct: "Ouro ganho",
-  magicFind: "Sorte de loot",
   lifeOnKill: "Vida por abate",
 };
 
@@ -89,7 +87,6 @@ export interface FinalStats {
   range: number;
   xp: number;
   gold: number;
-  magicFind: number;
   lifeOnKill: number;
 }
 
@@ -98,7 +95,7 @@ export function armorReduction(armor: number): number {
   return a / (a + 100);
 }
 
-/** Soma todas as fontes e devolve os atributos finais. `sources` = herói, melhorias, itens e relíquias. */
+/** Soma todas as fontes e devolve os atributos finais. `sources` = herói, melhorias e relíquias. */
 export function computeStats(sources: StatBlock[]): FinalStats {
   const t = TUNING.hero;
   const sum: StatBlock = {};
@@ -126,7 +123,6 @@ export function computeStats(sources: StatBlock[]): FinalStats {
     range: Math.max(0.5, 1 + g("rangePct")),
     xp: Math.max(0.1, 1 + g("xpPct")),
     gold: Math.max(0.1, 1 + g("goldPct")),
-    magicFind: g("magicFind"),
     lifeOnKill: g("lifeOnKill"),
   };
 }

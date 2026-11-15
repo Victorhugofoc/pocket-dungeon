@@ -44,17 +44,6 @@ export const TUNING = {
     deathTime: 2.4,
     xpMult: 22,
   },
-  loot: {
-    dropChance: 0.09,
-    championDrops: 1,
-    bossDrops: 3,
-    healOrbChance: 0.07,
-    healOrbPct: 0.15,
-    relicChanceChampion: 0.04,
-    bagSize: 24,
-    /** pesos base por raridade; magicFind desloca peso para as raras */
-    rarityWeights: { comum: 60, incomum: 27, raro: 10, epico: 2.6, lendario: 0.4 },
-  },
   world: {
     size: 240,
     margin: 14,

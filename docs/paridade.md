@@ -91,7 +91,7 @@ Números em `src/data/run.ts`, fórmulas em `src/core/waves.ts` e o ciclo da ond
 | R25 | Dificuldades Easy, Normal e Hard (Depths 1 a 5 em cima da Hard) | `data/difficulties.lua` | `DIFFICULTIES` testado; Depths no `M13` | igual (dado); falta no jogo (`M20-06`) |
 | R26 | Cura e regeneração durante a onda valem 35%; todo dano de inimigo ×1,5; orbes de cura raros (até 2 por onda) | `tuning.lua`; `heal_orbs.lua`; `damage.lua` | `combatHealMult` em `heal` e na regeneração, ×1,5 em `enemyStats` e `bossStats`, orbe de cura de lá (8%, 8 s, chance por categoria) | igual; a poção (Q3) também vale 35% durante a onda |
 | R27 | Começam abertos Frostine, Kaelen, Aurelius e Ignis; os outros 5 por conquista; desbloqueio nunca dá poder | `core/unlocks.lua`; `data/unlocks.lua` | os 9 abertos | falta (`M20-07`) |
-| R28 | Sem equipamento | — | itens, afixos e inventário | falta remover (`M20-04`) |
+| R28 | Sem equipamento | — | sem itens, afixos, drops nem inventário; a tela I é o status da partida; Greedy Soul e Scavenger Badge dão ouro (`goldPct`) como lá, no lugar da sorte de loot; o campeão não solta mais relíquia | igual (`M20-04`) |
 | R29 | O herói não tem esquiva nem poção | `player/player_system.lua` | esquiva (Espaço) e poção (F) | **adaptado**, aceito em 2026-11-15 por enquanto (Q3); a poção pode sair depois |
 
 ## Perguntas respondidas
