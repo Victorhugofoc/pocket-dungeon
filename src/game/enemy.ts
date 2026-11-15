@@ -49,6 +49,9 @@ export class Enemy {
   slowUntil = 0;
   slowPower = 0;
   stunUntil = 0;
+  /** velocidade no último quadro (golpe pelas costas da Umbra) */
+  vx = 0;
+  vz = 0;
   /** estado do gelo da Frostine (src/core/frost.ts) */
   frost: FrostTarget;
   dots: Dot[] = [];
@@ -180,6 +183,8 @@ export class Enemy {
       }
     }
 
+    const vx0 = this.x;
+    const vz0 = this.z;
     this.moveAmt = 0;
     this.cd -= dt;
     const stunned = now < this.stunUntil;
@@ -231,6 +236,10 @@ export class Enemy {
     this.kx *= kdec;
     this.kz *= kdec;
     game.grid.resolve(this, this.radius);
+    if (dt > 0) {
+      this.vx = (this.x - vx0) / dt;
+      this.vz = (this.z - vz0) / dt;
+    }
     const lim = game.layout.size / 2 - 6;
     this.x = Math.max(-lim, Math.min(lim, this.x));
     this.z = Math.max(-lim, Math.min(lim, this.z));

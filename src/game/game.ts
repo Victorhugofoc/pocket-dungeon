@@ -7,7 +7,7 @@ import { generateZone, ObstacleGrid, type ZoneLayout } from "../core/worldgen";
 import { writeSave, safeStorage, type SaveData } from "../core/save";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
-import { FROST, TECHNIQUES } from "../data/techniques";
+import { FROST, SHADOW, SHIELD_THROW, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES } from "../data/enemies";
 import { HEROES, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { RELICS, RELIC_IDS } from "../data/relics";
@@ -56,10 +56,13 @@ interface Drop {
   mesh: THREE.Object3D;
 }
 
-interface Bee { x: number; z: number; life: number; hitCd: number; rig: Rig; phase: number; sting: number }
+/** vespa ou abelha aliada da Vesper (Brood e Ninhada) */
+interface Bee {
+  x: number; z: number; life: number; hitCd: number; rig: Rig; phase: number; sting: number;
+  big: boolean; dmg: number; every: number; speed: number; poison: StatusSpec;
+}
 /** rastro que fere em pulsos ao longo de um segmento (Storm Step) */
 interface Trail { x0: number; z0: number; x1: number; z1: number; hw: number; until: number; tick: number; every: number; dmg: number; color: number; mesh: THREE.Mesh }
-interface Field { x: number; z: number; r: number; until: number; tick: number; mesh: THREE.Mesh }
 
 export interface PlayerState {
   x: number; z: number; facing: number; hp: number;
@@ -68,11 +71,17 @@ export interface PlayerState {
   techCd: number; techMax: number;
   dashCd: number; dashT: number; dashDx: number; dashDz: number;
   iframes: number; potionCd: number;
-  critUntil: number; aegisUntil: number;
+  /** Umbra: golpes contam como pelas costas até este instante */
+  shadowUntil: number;
+  /** Seraph: escudo de luz ativo */
+  aegis: { until: number; block: boolean; damage: number; radius: number; heal: number; mesh: THREE.Mesh } | null;
+  /** Seraph: arremessos do escudo (cura a cada SHIELD_THROW.healEvery) */
+  throws: number;
+  /** Vesper: tempo até a próxima abelha da Ninhada */
+  nestT: number;
   flash: number; hurtT: number;
   leap: { t: number; dur: number; x0: number; z0: number; x1: number; z1: number } | null;
   rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number } | null;
-  burst: { left: number; timer: number } | null;
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -99,8 +108,8 @@ export class Game {
 
   player: PlayerState = {
     x: 0, z: 0, facing: 0, hp: 1, rig: null, moveAmt: 0, attackAnim: -1, attackCd: 0, techCd: 0, techMax: 1,
-    dashCd: 0, dashT: 0, dashDx: 0, dashDz: 0, iframes: 0, potionCd: 0, critUntil: 0, aegisUntil: 0,
-    flash: 0, hurtT: 0, leap: null, rush: null, burst: null,
+    dashCd: 0, dashT: 0, dashDx: 0, dashDz: 0, iframes: 0, potionCd: 0, shadowUntil: 0, aegis: null, throws: 0, nestT: VENOM.broodEvery,
+    flash: 0, hurtT: 0, leap: null, rush: null,
   };
   playerAlive = true;
   playerVelX = 0;
@@ -113,7 +122,6 @@ export class Game {
   private projectiles: Projectile[] = [];
   private drops: Drop[] = [];
   private bees: Bee[] = [];
-  private fields: Field[] = [];
   private iceWalls = new IceWalls(this.scene);
   private rifts = new Rifts(this.scene);
   private trails: Trail[] = [];
@@ -307,7 +315,9 @@ export class Game {
     p.x = this.layout.spawn.x;
     p.z = this.layout.spawn.z;
     p.hp = this.stats.maxHp;
-    p.leap = p.rush = p.burst = null;
+    p.leap = p.rush = null;
+    this.endAegis(false);
+    p.shadowUntil = 0;
     p.dashT = 0;
     this.playerAlive = true;
     this.camTarget.set(p.x, 0, p.z);
@@ -324,8 +334,6 @@ export class Game {
     this.drops.length = 0;
     for (const b of this.bees) disposeRig(b.rig);
     this.bees.length = 0;
-    for (const f of this.fields) f.mesh.removeFromParent();
-    this.fields.length = 0;
     this.iceWalls.clear();
     this.rifts.clear();
     for (const t of this.trails) this.disposeTrail(t);
@@ -477,14 +485,14 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- dano
-  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number }): void {
+  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean }): void {
     if (e.dead) return;
     const s = this.stats;
     const now = this.time;
-    const crit = Math.random() < s.critChance || now < this.player.critUntil;
+    const crit = hit?.crit === true || Math.random() < s.critChance;
     let amount = s.damage * mult * (0.9 + Math.random() * 0.2);
-    const bs = this.hero.auto.backstab;
-    if (bs && (now < e.stunUntil || now < e.slowUntil)) amount *= 1 + bs;
+    const back = this.hero.auto.backstab !== undefined && this.isBackstab(e);
+    if (back) amount *= 1 + this.hero.auto.backstab!;
     let deepChill = false;
     if (this.hero.frost) {
       // Frostine: Estilhaçar, Frio profundo e Quebradiço (src/core/frost.ts); o congelado daqui é o atordoamento
@@ -506,10 +514,19 @@ export class Game {
     if (crit) amount *= s.critDamage;
     this.damageEnemy(e, amount, { crit });
     if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount);
+    if (back && e.dead) this.heal(s.maxHp * SHADOW.backstabKillHeal, true); // Umbra: matar pelas costas cura
     if (deepChill && !e.dead) {
       this.applyStatus(e, { kind: "stun", power: 1, duration: FROST.chillFreeze }, amount);
       this.fx.burst(e.x, 1, e.z, 0x9fdcff, 12, 4, 0.12, 0.5, 2);
     }
+  }
+
+  /** Umbra: o inimigo está atordoado, se afastando dela, ou ela saiu do Shadow Step há menos de 2 s (Auto.isBackstab). */
+  private isBackstab(e: Enemy): boolean {
+    const p = this.player;
+    if (this.time < e.stunUntil || this.time < p.shadowUntil) return true;
+    if (e.vx * e.vx + e.vz * e.vz < 0.5) return false;
+    return e.vx * (e.x - p.x) + e.vz * (e.z - p.z) > 0;
   }
 
   applyStatus(e: Enemy, st: StatusSpec, hitDamage: number): void {
@@ -728,7 +745,17 @@ export class Game {
       p.iframes = 0.15;
       return;
     }
-    amount *= this.stats.damageTaken * (this.time < p.aegisUntil ? 0.4 : 1);
+    if (p.aegis?.block) {
+      // Aegis: o escudo come o golpe inteiro
+      p.aegis.block = false;
+      p.iframes = 0.2;
+      this.fx.text(p.x, 2.6, p.z, "Bloqueado", "frost");
+      this.fx.burst(p.x, 1.2, p.z, 0xffe9a8, 24, 7, 0.14, 0.4, 2);
+      this.fx.flashLight(p.x, 1.5, p.z, 0xffe9a8, 1.8, 0.2);
+      this.audio.play("crit");
+      return;
+    }
+    amount *= this.stats.damageTaken;
     if (this.hero.maxHitFraction) amount = Math.min(amount, this.stats.maxHp * this.hero.maxHitFraction);
     amount = Math.max(1, Math.round(amount));
     p.hp -= amount;
@@ -743,7 +770,8 @@ export class Game {
     if (p.hp <= 0) {
       p.hp = 0;
       this.playerAlive = false;
-      p.leap = p.rush = p.burst = null;
+      p.leap = p.rush = null;
+      this.endAegis(false);
       this.save.deaths++;
       this.persist();
       this.events.died();
@@ -912,6 +940,7 @@ export class Game {
     if (a.kind === "projectile") {
       this.firePlayer(p.facing, a, a.damage);
       this.audio.play("shoot");
+      if (this.hero.shieldHeal && ++p.throws % SHIELD_THROW.healEvery === 0) this.heal(this.stats.maxHp * SHIELD_THROW.heal, true);
     } else if (a.kind === "fan") {
       const n = a.count ?? 5;
       const spread = ((a.spreadDeg ?? 40) * Math.PI) / 180;
@@ -943,11 +972,12 @@ export class Game {
     const t = this.hero.technique;
     const s = this.stats;
     p.techMax = this.tech ? this.tech.cooldown : t.cooldown * s.cooldownMult;
+    if (!this.tech) return;
     p.techCd = p.techMax;
     this.audio.play("tech");
     const color = this.hero.color;
-    switch (this.tech && t.kind === "blink" ? "storm_step" : t.kind) {
-      case "storm_step": {
+    switch (t.kind) {
+      case "blink": {
         // Kaelen: teleporta até o mouse ferindo o caminho; 0,3 s invulnerável e rastro elétrico que fere em pulsos
         const T = this.tech!;
         const dest = this.aimPoint(T.range);
@@ -1029,88 +1059,116 @@ export class Game {
         this.fx.addShake(0.2);
         break;
       }
-      case "nova": {
-        const r = (t.radius ?? 6) * s.area;
-        this.areaHit(p.x, p.z, r, t.damage, t.status);
-        this.fx.shockwave(p.x, p.z, r, color, 0.45);
-        this.fx.burst(p.x, 0.6, p.z, color, 50, 12, 0.18, 0.7, 4);
-        this.fx.addShake(0.3);
-        break;
-      }
-      case "blink":
-      case "shadow": {
-        const dest = this.aimPoint(t.range ?? 10);
-        const x0 = p.x;
-        const z0 = p.z;
-        p.x = dest.x;
-        p.z = dest.z;
-        this.grid.resolve(p, 0.5);
-        p.iframes = Math.max(p.iframes, 0.35);
-        this.fx.streak(x0, z0, p.x, p.z, t.kind === "blink" ? 1.2 : 0.5, color);
-        this.fx.burst(x0, 1, z0, color, 14, 5, 0.14, 0.4);
-        if (t.kind === "blink") this.lineHit(x0, z0, p.x, p.z, 1.6, t.damage);
-        else {
-          this.areaHit(p.x, p.z, 3.2 * s.area, t.damage);
-          this.fx.shockwave(p.x, p.z, 3.2 * s.area, color);
-          p.critUntil = this.time + (t.duration ?? 2.5);
+      case "shadowstep": {
+        // Umbra: some e reaparece atrás do inimigo mais forte por perto, com um golpe que sempre é crítico
+        const T = this.tech!;
+        let target: Enemy | null = null;
+        let best = -1;
+        for (const e of this.enemies) {
+          if (e.dead || Math.hypot(e.x - p.x, e.z - p.z) > T.range) continue;
+          const score = (e.isBoss ? 1e9 : 0) + (e.champion ? 1e6 : 0) + e.hp;
+          if (score > best) {
+            best = score;
+            target = e;
+          }
         }
-        this.fx.burst(p.x, 1, p.z, color, 20, 6, 0.14, 0.4);
-        break;
-      }
-      case "field": {
-        const dest = this.aimPoint(14);
-        const r = (t.radius ?? 6) * s.area;
-        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, depthWrite: false, toneMapped: false });
-        const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 40), mat);
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.position.set(dest.x, 0.1, dest.z);
-        mesh.scale.setScalar(r);
-        this.scene.add(mesh);
-        this.fields.push({ x: dest.x, z: dest.z, r, until: this.time + (t.duration ?? 5), tick: 0, mesh });
-        this.fx.shockwave(dest.x, dest.z, r, color, 0.4);
-        break;
-      }
-      case "dash": {
-        const dest = this.aimPoint(t.range ?? 11);
-        const d = Math.hypot(dest.x - p.x, dest.z - p.z) || 1;
-        p.rush = { t: 0, dur: Math.max(0.12, d / 30), dx: (dest.x - p.x) / d, dz: (dest.z - p.z) / d, hit: new Set() };
-        p.iframes = Math.max(p.iframes, d / 30 + 0.15);
-        break;
-      }
-      case "burst":
-        p.burst = { left: t.count ?? 8, timer: 0 };
-        break;
-      case "leap": {
-        const T = this.tech;
-        const dest = this.aimPoint(T ? T.range : t.range ?? 10);
-        if (T && Math.hypot(dest.x - p.x, dest.z - p.z) < 20 / 12) {
-          p.techCd = 0;
+        if (!target) {
+          p.techCd = 0; // ninguém por perto: não gasta
           return;
         }
-        const dur = T?.leapTime ?? 0.42;
-        p.leap = { t: 0, dur, x0: p.x, z0: p.z, x1: dest.x, z1: dest.z };
-        p.iframes = Math.max(p.iframes, T ? dur : 0.55);
+        const x0 = p.x;
+        const z0 = p.z;
+        const dx = target.x - p.x;
+        const dz = target.z - p.z;
+        const len = Math.max(0.1, Math.hypot(dx, dz));
+        const back = target.radius + (T.behind ?? 2.2);
+        p.x = target.x + (dx / len) * back;
+        p.z = target.z + (dz / len) * back;
+        this.grid.resolve(p, 0.5);
+        p.facing = Math.atan2(target.x - p.x, target.z - p.z);
+        p.iframes = Math.max(p.iframes, T.invuln ?? 0.6);
+        p.shadowUntil = this.time + SHADOW.afterStep;
+        p.attackAnim = 0;
+        for (const [x, z] of [[x0, z0], [p.x, p.z]]) {
+          this.fx.burst(x, 1, z, 0x2a1a3d, 26, 4, 0.22, 0.6, -1);
+          this.fx.burst(x, 1, z, color, 12, 5, 0.12, 0.4);
+        }
+        this.fx.streak(x0, z0, p.x, p.z, 0.35, 0x6a4a9a, 0.35);
+        this.hitEnemy(target, T.damage, undefined, { crit: true });
+        this.fx.slash(p.x, p.z, p.facing, 2.6, 80, color);
+        this.fx.addShake(0.25);
+        this.hitstop = Math.max(this.hitstop, 0.05);
         break;
       }
       case "aegis": {
-        const r = (t.radius ?? 5) * s.area;
-        this.heal(s.maxHp * 0.25, true);
-        p.aegisUntil = this.time + (t.duration ?? 4);
-        this.areaHit(p.x, p.z, r, t.damage, undefined, 3);
-        this.fx.shockwave(p.x, p.z, r, color, 0.45);
-        this.fx.burst(p.x, 1, p.z, color, 40, 9, 0.16, 0.7, 3);
+        // Seraph: escudo de luz por 3 s que bloqueia o próximo golpe; ao acabar explode e cura
+        const T = this.tech!;
+        this.endAegis(false);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.22, depthWrite: false, toneMapped: false });
+        const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), mat);
+        mesh.scale.setScalar(1.25);
+        this.scene.add(mesh);
+        p.aegis = { until: this.time + (T.duration ?? 3), block: true, damage: T.damage, radius: T.radius ?? 7.5, heal: T.healFraction ?? 0.1, mesh };
+        this.fx.burst(p.x, 1.2, p.z, 0xffe9a8, 30, 6, 0.14, 0.5, 2);
+        this.fx.flashLight(p.x, 1.5, p.z, 0xffe9a8, 1.6, 0.3);
+        break;
+      }
+      case "leap": {
+        const T = this.tech!;
+        const dest = this.aimPoint(T.range);
+        if (Math.hypot(dest.x - p.x, dest.z - p.z) < 20 / 12) {
+          p.techCd = 0;
+          return;
+        }
+        const dur = T.leapTime ?? 0.45;
+        p.leap = { t: 0, dur, x0: p.x, z0: p.z, x1: dest.x, z1: dest.z };
+        p.iframes = Math.max(p.iframes, dur);
         break;
       }
       case "brood": {
-        for (let i = 0; i < (t.count ?? 3); i++) {
-          const rig = characterRig("bee", "hero");
-          this.scene.add(rig.root);
-          this.bees.push({ x: p.x, z: p.z, life: t.duration ?? 10, hitCd: 0, rig, phase: i * 1.7, sting: -1 });
-        }
+        // Vesper: 2 vespas grandes por 6 s
+        const T = this.tech!;
+        for (let i = 0; i < (T.spiders ?? 2); i++) this.spawnBee(true, T.duration ?? 6, i * 2.1);
         this.fx.burst(p.x, 1.2, p.z, 0xffe14a, 20, 5, 0.12, 0.5, 2);
         break;
       }
     }
+  }
+
+  /** Aegis: fim do escudo; `burst` = explode em volta e cura (fim natural). */
+  private endAegis(burst: boolean): void {
+    const p = this.player;
+    const a = p.aegis;
+    if (!a) return;
+    p.aegis = null;
+    a.mesh.removeFromParent();
+    a.mesh.geometry.dispose();
+    (a.mesh.material as THREE.Material).dispose();
+    if (!burst || !this.playerAlive) return;
+    this.areaHit(p.x, p.z, a.radius, a.damage);
+    this.heal(this.stats.maxHp * a.heal, true);
+    this.fx.shockwave(p.x, p.z, a.radius, 0xffe9a8, 0.5);
+    this.fx.burst(p.x, 1, p.z, 0xffe9a8, 40, 9, 0.16, 0.7, 3);
+    this.fx.flashLight(p.x, 1.5, p.z, 0xffe9a8, 2.4, 0.35);
+    this.fx.addShake(0.3);
+  }
+
+  /** Vespa grande (Brood) ou abelha pequena (Ninhada), como as aranhas de Tech.spawnSpider. */
+  private spawnBee(big: boolean, life: number, phase: number): void {
+    const T = this.tech;
+    const p = this.player;
+    const dmg = (T?.damage ?? 1.4) * (big ? 1 : 0.5) * 0.75; // BITE_MULT do original
+    // veneno: dps = metade do dano da técnica (pela metade na pequena), em fração da picada
+    const poisonDps = (T?.damage ?? 1.4) * 0.5 * (big ? 1 : 0.5);
+    const rig = characterRig("bee", "hero");
+    rig.root.scale.setScalar(big ? 1.35 : 0.8);
+    this.scene.add(rig.root);
+    const a = Math.random() * Math.PI * 2;
+    this.bees.push({
+      x: p.x + Math.cos(a) * 1.5, z: p.z + Math.sin(a) * 1.5, life, hitCd: 0, rig, phase, sting: -1,
+      big, dmg, every: big ? 0.7 : 0.9, speed: big ? 175 / 12 : 150 / 12,
+      poison: { kind: "poison", power: poisonDps / dmg, duration: T?.poisonDuration ?? 3, maxStacks: (T?.poisonStacks ?? 3) + 1 },
+    });
   }
 
   private updatePlayer(dt: number): void {
@@ -1147,15 +1205,9 @@ export class Game {
       lift = Math.sin(k * Math.PI) * 4.5;
       if (k >= 1) {
         p.leap = null;
-        const t = this.hero.technique;
-        const T = this.tech;
-        const r = T ? T.radius ?? 5.8 : (t.radius ?? 4) * s.area;
+        const T = this.tech!;
         this.grid.resolve(p, 0.5);
-        if (T) this.executionLanding(r, T);
-        else this.areaHit(p.x, p.z, r, t.damage, t.status, 1.5);
-        this.fx.shockwave(p.x, p.z, r, this.hero.color, 0.4);
-        this.fx.burst(p.x, 0.3, p.z, 0xc8b89a, 40, 10, 0.2, 0.7);
-        this.fx.addShake(0.6);
+        this.executionLanding(T.radius ?? 5.8, T);
         this.audio.play("kill");
       }
     } else if (p.rush) {
@@ -1167,7 +1219,6 @@ export class Game {
       const nx = p.x + r.dx * sp * step;
       const nz = p.z + r.dz * sp * step;
       if (T) this.lineHit(p.x, p.z, nx, nz, (T.width ?? 2.5) / 2, T.damage, this.chargeBurn(T), r.hit);
-      else this.lineHit(p.x, p.z, nx, nz, 1.7, this.hero.technique.damage, this.hero.technique.status, r.hit);
       // labareda ao longo do caminho
       for (let k = 0; k < 4; k++) {
         const q = Math.random();
@@ -1210,7 +1261,7 @@ export class Game {
         this.iceWalls.showGhost(p.techCd <= 0, pl.x, pl.z, pl.ax, pl.az, T.length ?? 12, T.thickness ?? 1.2);
       }
       if ((input.rmbPressed || input.wasPressed("KeyQ")) && p.techCd <= 0) this.useTechnique();
-      else if (input.lmb && p.attackCd <= 0 && !p.burst) this.autoAttack();
+      else if (input.lmb && p.attackCd <= 0) this.autoAttack();
       if (input.wasPressed("KeyF") && p.potionCd <= 0 && p.hp < s.maxHp) {
         p.potionCd = T.potionCooldown;
         this.heal(s.maxHp * T.potionHealPct, true);
@@ -1218,18 +1269,6 @@ export class Game {
       }
     }
 
-    if (p.burst) {
-      const b = p.burst;
-      b.timer -= dt;
-      while (b.timer <= 0 && b.left > 0) {
-        b.timer += 0.055;
-        b.left--;
-        this.firePlayer(p.facing + (Math.random() - 0.5) * 0.42, this.hero.auto, this.hero.technique.damage);
-        this.audio.play("shoot");
-        p.attackAnim = 0;
-      }
-      if (b.left <= 0) p.burst = null;
-    }
 
     if (!p.leap) this.grid.resolve(p, 0.5);
     const lim = this.layout.size / 2 - TUNING.world.margin + 1;
@@ -1257,15 +1296,35 @@ export class Game {
     if (p.flash > 0) {
       p.flash = Math.max(0, p.flash - dt * 6);
       flashRig(rig, p.flash);
-    } else if (this.time < p.aegisUntil) tintRig(rig, 0xffe9a8, 0.6);
-    else if (this.time < p.critUntil) tintRig(rig, 0xb87aff, 0.5);
+    } else if (p.aegis) tintRig(rig, 0xffe9a8, 0.35);
+    else if (this.time < p.shadowUntil) tintRig(rig, 0x6a4a9a, 0.4);
     else flashRig(rig, 0);
     rig.root.visible = p.iframes <= 0.3 || Math.floor(this.time * 24) % 2 === 0 || p.dashT > 0 || !!p.leap || !!p.rush;
   }
 
   private updateAllies(dt: number): void {
     const p = this.player;
-    const t = this.hero.technique;
+    // Seraph: o escudo de luz acompanha o herói e explode no fim
+    if (p.aegis) {
+      const a = p.aegis;
+      a.mesh.position.set(p.x, 1.05, p.z);
+      a.mesh.rotation.y += dt * 0.8;
+      (a.mesh.material as THREE.MeshBasicMaterial).opacity = (a.block ? 0.2 : 0.1) + Math.sin(this.time * 9) * 0.04;
+      if (this.time >= a.until) this.endAegis(true);
+    }
+    // Vesper, Ninhada: uma abelha pequena a cada VENOM.broodEvery s, até VENOM.broodMax, com inimigo por perto
+    if (this.hero.nest && this.playerAlive) {
+      p.nestT -= dt;
+      if (p.nestT <= 0) {
+        p.nestT = VENOM.broodEvery;
+        const small = this.bees.filter((b) => !b.big).length;
+        const near = this.enemies.some((e) => !e.dead && Math.hypot(e.x - p.x, e.z - p.z) < 400 / 12);
+        if (small < VENOM.broodMax && near) {
+          this.spawnBee(false, VENOM.broodLife, Math.random() * 6);
+          this.fx.burst(p.x, 1.2, p.z, 0xffe14a, 8, 3, 0.1, 0.4, 2);
+        }
+      }
+    }
     for (let i = this.bees.length - 1; i >= 0; i--) {
       const b = this.bees[i];
       b.life -= dt;
@@ -1275,6 +1334,7 @@ export class Game {
         this.bees.splice(i, 1);
         continue;
       }
+      // alvo: o inimigo mais próximo dela que está brigando (ou perto do herói)
       let target: Enemy | null = null;
       let bd = 15 * 15;
       for (const e of this.enemies) {
@@ -1288,40 +1348,25 @@ export class Game {
       const tx = target ? target.x : p.x + Math.cos(this.time * 2 + b.phase) * 1.8;
       const tz = target ? target.z : p.z + Math.sin(this.time * 2 + b.phase) * 1.8;
       const d = Math.hypot(tx - b.x, tz - b.z);
-      if (d > 0.3) {
-        b.x += ((tx - b.x) / d) * 12 * dt;
-        b.z += ((tz - b.z) / d) * 12 * dt;
+      const reach = target ? target.radius + 0.9 : 0.3;
+      if (d > reach) {
+        const step = Math.min(d - reach, b.speed * dt);
+        b.x += ((tx - b.x) / d) * step;
+        b.z += ((tz - b.z) / d) * step;
       }
-      if (target && d < target.radius + 0.9 && b.hitCd <= 0) {
-        b.hitCd = 0.6;
+      if (target && d < target.radius + 1.1 && b.hitCd <= 0) {
+        b.hitCd = b.every;
         b.sting = 0;
-        this.hitEnemy(target, t.damage, t.status);
+        this.hitEnemy(target, b.dmg, b.poison);
       }
       if (b.sting >= 0) {
         b.sting += dt / 0.3;
         if (b.sting >= 1) b.sting = -1;
       }
       // a forma `bat` já voa a meia altura do corpo; aqui só a altura do voo e para onde olha
-      b.rig.root.position.set(b.x, 0.9 + Math.sin(this.time * 5 + b.phase) * 0.15, b.z);
+      b.rig.root.position.set(b.x, (b.big ? 1.1 : 0.8) + Math.sin(this.time * 5 + b.phase) * 0.15, b.z);
       if (d > 0.05) b.rig.root.rotation.y = Math.atan2(tx - b.x, tz - b.z);
       animateRig(b.rig, { t: this.time, move: 1, attack: b.sting, windup: 0, dead: 0 });
-    }
-    for (let i = this.fields.length - 1; i >= 0; i--) {
-      const f = this.fields[i];
-      f.tick -= dt;
-      if (this.time >= f.until) {
-        f.mesh.removeFromParent();
-        f.mesh.geometry.dispose();
-        (f.mesh.material as THREE.Material).dispose();
-        this.fields.splice(i, 1);
-        continue;
-      }
-      (f.mesh.material as THREE.MeshBasicMaterial).opacity = 0.22 + Math.sin(this.time * 6) * 0.06;
-      if (f.tick <= 0) {
-        f.tick = 0.5;
-        this.areaHit(f.x, f.z, f.r, t.damage * 0.5, t.status);
-        this.fx.burst(f.x + (Math.random() - 0.5) * f.r, 0.2, f.z + (Math.random() - 0.5) * f.r, this.hero.color, 5, 2, 0.12, 0.6, -2);
-      }
     }
   }
 
