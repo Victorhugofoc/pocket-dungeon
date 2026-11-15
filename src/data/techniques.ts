@@ -156,7 +156,7 @@ export const TECHNIQUES: Record<string, TechDef> = {
   },
   shadow_step: {
     id: "shadow_step", hero: "umbra", name: "Shadow Step", school: "auto", kind: "shadowstep",
-    cooldown: 7.0, range: 240, autoMult: 3.0, invuln: 0.6, behind: 26,
+    cooldown: 7.0, range: 240, baseDamage: 0, damageScale: 0, autoMult: 3.0, invuln: 0.6, behind: 26,
     text: "Some por 0,6 s (invulnerável) e reaparece atrás do inimigo mais forte por perto com um golpe que sempre é crítico.",
     milestones: [
       m(2, "LONG SHADOW", "+20% distância", { rangePct: 0.20 }),

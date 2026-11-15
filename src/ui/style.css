@@ -147,3 +147,14 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .card .meta { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
 .controls { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 12px 0; }
 .controls kbd { background: #0d0f17; border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; font: 600 12px system-ui; text-align: center; }
+.kit { display: grid; gap: 8px; margin: 6px 0 8px; }
+.kit-row { display: grid; grid-template-columns: 70px 1fr; gap: 10px; align-items: start; }
+.kit-row > b { color: var(--gold); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; padding-top: 2px; }
+.kit-row ul { margin: 0; padding-left: 16px; color: #cfd3e2; }
+.kit-row li { margin: 2px 0; }
+.kit-row p { margin: 3px 0 0; color: #cfd3e2; }
+.kit-name { font-weight: 800; color: #fff; margin-right: 8px; }
+.kit-meta { color: var(--muted); font-size: 12px; }
+.skill-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.skill-name { font: 700 11px/1 system-ui; color: var(--gold); text-shadow: 0 1px 2px #000; white-space: nowrap; }
+.skill.big.ready { box-shadow: 0 0 10px rgba(255, 210, 90, 0.55); }

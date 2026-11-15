@@ -66,12 +66,13 @@ Um RPG de ação de 8 a 12 horas na primeira passada, com rejogabilidade por dif
 | 3 | M2 Heróis | O jogador olha para o herói o tempo todo |
 | 4 | M18 Atmosfera das zonas | Decidido em 2026-11-14: na câmera alta, o ambiente pesa mais na primeira impressão que o detalhe de cada personagem, e custa bem menos |
 | 5 | M19 Kit dos heróis do Dungeon Reign | Decidido em 2026-11-14: técnica, passiva e ataque básico de cada herói como no original, onde o design já foi muito trabalhado |
-| 5b | M6 Spells | Decidido em 2026-11-14: logo depois do M19, em teclas (D12) |
+| 5a | M20 Partida como no Dungeon Reign | Decidido em 2026-11-15 (D13): runs com seed, 20 ondas em 4 zonas, sem equipamento. Vem antes do M6 porque a escolha da spell inicial e a loja vivem dentro da partida |
+| 5b | M6 Spells | Decidido em 2026-11-14: logo depois do M19, em teclas (D12). `M6-01` (dados e núcleo) pode correr junto com o M20 |
 | 5c | M3 Inimigos atuais | Fecha o elenco que já está no jogo |
 | 6 | M4 Animação e sensação | Corpo novo pede movimento à altura |
 | 7 | M5 Efeitos de combate | Leitura das lutas; pré-requisito para spells e chefes novos |
-| 9 | M7 Economia | Dá destino ao loot e ao tempo de farm |
-| 10 | M8 Itens | Lendários e ícones, em cima da economia |
+| 9 | M7 Economia | Ouro e Magic Shop do original (refeito pela D13) |
+| 10 | ~~M8 Itens~~ | Cancelado pela D13: o original não tem equipamento |
 | 11 | M9 Inimigos novos e elites | Variedade antes de abrir zonas novas |
 | 12 | M11 Mundo: relevo e biomas | Casa para os 9 chefes que faltam |
 | 13 | M10 Chefes novos | Um por tarefa, cada um com sua mecânica |
@@ -236,6 +237,38 @@ Regras do marco:
 **M19-07 · Evolução das técnicas** · M [decisão D3]
 - Passos: os marcos de nível 2 a 5 e a evolução (Permafrost Bastion, Tempest Step, Stasis Field, Trick Shot, Kingslayer, Phoenix Rush, Eclipse, Sanctum, Broodmother). Depende de como se sobe de nível (`M6-06`/`M7`).
 
+### M20 — Partida como no Dungeon Reign [decisão D13]
+
+Pedido do usuário em 2026-11-15: a estrutura de jogo é a do Dungeon Reign. Uma partida tem seed própria, herói, dificuldade e spell inicial; 20 ondas em 4 zonas de mapa aberto (cada zona = 5 ondas, chefe nas ondas 5, 10, 15 e 20); melhorias de nível com 3 escolhas; mapa da partida entre ondas; loja; relíquias; morte encerra. Sem equipamento. O save guarda a partida em andamento (checkpoint antes de cada onda, como no original). Fontes em `dungeon-idle`: `src/run/` (`run_controller.lua`, `run_save.lua`, `wave_system.lua`, `run_map*.lua`, `run_intermission.lua`), `src/data/waves.lua`, `run_map.lua`, `upgrades.lua`, `difficulties.lua`, `src/progression/`, `src/core/game_state.lua`, `save.lua`, `unlocks.lua`.
+
+**M20-00 · Paridade da partida** · P
+- Linhas `R` em `docs/paridade.md` (ciclo da partida, ondas, mapa, nível, ouro, morte, vitória, checkpoint, dificuldades, desbloqueios) e o teste de paridade lendo `waves.lua`, `run_map.lua`, `upgrades.lua`, `difficulties.lua` e as constantes de XP e de ondas.
+- Pronto quando: toda regra da partida tem linha e os números entram em `src/data` conferidos pelo teste.
+
+**M20-01 · Núcleo da partida e save** · M
+- `src/core/run.ts`: estado da partida puro (seed, fluxos de RNG por rótulo, onda, ouro, XP, nível, melhorias, relíquias, spells, técnica), `newRun`, checkpoint antes de cada onda e `continueRun`. O save passa a guardar a partida em andamento e os registros; a versão do save sobe e o save contínuo antigo é descartado com aviso.
+- Pronto quando: há teste de que continuar uma partida no meio dá o mesmo mapa e os mesmos sorteios.
+
+**M20-02 · Zona = 5 ondas** · M
+- `worldgen` divide o mapa de cada zona em 5 trechos pela seed da partida. Como no original (Q2): entrar no trecho começa a onda; os inimigos chegam pelas bordas do trecho ao longo da duração, na contagem e composição de `waves.lua` (curva `COUNT_MULT`, campeões); a onda acaba no tempo ou quando não sobra ninguém; Apressar como lá; a onda 5 de cada zona é a arena do chefe. As 4 zonas em sequência na mesma partida.
+- Pronto quando: dá para jogar as 20 ondas em sequência e o checkpoint de cada onda volta ao começo dela.
+
+**M20-03 · Subir de nível como no original** · M
+- XP e curva de `constants.lua` (`XP_GROWTH`), 3 melhorias de `upgrades.lua` com raridade (comum, rara, épica), troca paga com ouro. Saem os pontos de atributo e o nível até 60.
+- Pronto quando: as melhorias e as chances batem com o teste de paridade.
+
+**M20-04 · Remover o equipamento** · P
+- Saem itens, afixos, inventário, drops de item e a tela de inventário; a ficha do herói vira a tela de status da partida (atributos calculados, melhorias, relíquias, spells).
+
+**M20-05 · Mapa da partida entre ondas** · M
+- 3 cartas por intervalo, com os 8 tipos de nó e os pesos de `run_map.lua`; loja garantida a cada 3 ondas. Os nós que dependem de sistema que ainda não existe (evento, pacto) entram desligados e ficam "falta" na paridade.
+
+**M20-06 · Início, morte e vitória** · P
+- Telas: herói, dificuldade, spell inicial (`M6-02` faz o lançamento). Morte encerra com tela de resultado; vencer a onda 20 dá vitória e a escolha de seguir no modo sem fim. Registros entre partidas.
+
+**M20-07 · Desbloqueios** · P
+- Heróis e relíquias liberados por conquista, como em `unlocks.lua` (Frostine, Kaelen, Aurelius e Ignis abertos desde o início). Junto com o `M13-04`.
+
 ### M3 — Inimigos atuais [validar em lote de 2 ou 3]
 
 Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de triângulos: são dezenas na tela.
@@ -302,6 +335,12 @@ Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de 
 
 Porta das 11 spells do Dungeon Reign: `fireball`, `iceball`, `chain_lightning`, `arcane_bolt`, `healing_field`, `blade_orbit`, `venom_nova`, `cyclone`, `rune_traps`, `prism_beam`, `quake_totem`. **D12 decidida:** não são lançadas sozinhas como lá; 2 espaços nas teclas 1 e 2, mira no cursor, técnica e esquiva sem mudança. Proposta para D2: qualquer herói usa qualquer spell, começando pelas 4 iniciais dele (`startingSpells`), nível de 1 a 5.
 
+**M6-00 · Tabela de paridade com o Dungeon Reign** · P
+- Arquivo: `docs/paridade.md`. Uma linha por regra do sistema de spells do original (escolha inicial em `ui/screens/spell_select.lua`, espaços e níveis em `core/constants.lua` e `spells/spell_system.lua`, ofertas da loja em `shop/shop_system.lua`, evolução em `spells/evolution.lua`, números em `data/spells.lua`), com arquivo e linha de lá, o equivalente daqui e o estado: igual, adaptado (com o motivo) ou falta.
+- Pronto quando: toda regra tem linha, e cada "adaptado" foi aceito pelo usuário. Nas tarefas seguintes do M6, o código só fica pronto quando a linha dele está "igual" ou "adaptado".
+- Garantia por teste: `tests/parity.test.ts` lê os `.lua` do repo local (`DUNGEON_IDLE`) com um leitor de Lua em Node e compara com `src/data`: as 4 spells iniciais de cada herói, os números das 11 spells, marcos, modificadores, evoluções, `MAX_SPELLS` e `SPELL_MAX_LEVEL`. Pula sozinho se o repo não estiver na máquina.
+- Funções do núcleo com o nome e o retorno das de lá (`addSpell` com `no_slot`/`owned`, `levelUp` com `max_level`, `addModifier` com `not_in_pool`), cada uma com teste do mesmo caso.
+
 **M6-01 · Dados e núcleo** · M
 - Arquivos: `src/data/spells.ts` (porta de `spells.lua`), `src/core/spells.ts` (dano, recarga, escala por nível e por atributo), testes.
 - Pronto quando: `spellStats(id, level, stats)` tem teste para as 11.
@@ -326,6 +365,8 @@ Porta das 11 spells do Dungeon Reign: `fireball`, `iceball`, `chain_lightning`, 
 
 ### M7 — Economia [decisão D4]
 
+**Refeito em 2026-11-15 (D13):** o M7 vira o ouro e a Magic Shop do original (`shop/shop_system.lua`, `data/shop.lua`): ofertas por visita, preços, troca de ofertas, relíquia na 4ª oferta. Desmontar, vender e ferreiro saem (não há itens). Reescrever as tarefas quando o M20 terminar.
+
 **M7-01 · Ouro** · P
 - Passos: `gold` no save; drop por inimigo e por chefe (números em `tuning.ts`); coleta com ímã; contador no HUD. Teste do cálculo em `core`.
 
@@ -343,6 +384,8 @@ Porta das 11 spells do Dungeon Reign: `fireball`, `iceball`, `chain_lightning`, 
 - Passos: cargas de poção compradas e melhoráveis em vez de recarga fixa; 2 ou 3 elixires de efeito temporário.
 
 ### M8 — Itens
+
+**Cancelado em 2026-11-15 (D13):** o Dungeon Reign não tem equipamento. As tarefas abaixo ficam só como registro.
 
 **M8-01 · Ícones por código** · M
 - Passos: renderizar cada tipo de item em um canvas pequeno (modelo 3D do item em fundo da raridade) e guardar em cache; substituir os emoji. Vale também para relíquias e spells.
@@ -631,16 +674,17 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 | ID | Decisão | Proposta | Trava |
 |---|---|---|---|
 | D1 | Textos do jogo em inglês com português como tradução, ou só código em inglês? | Inglês como base e português como tradução, com troca nas opções | M14-01 |
-| D2 | Spells: quantos espaços e quem usa o quê? | 2 espaços; qualquer herói usa qualquer spell | M6 |
-| D3 | Como se ganha spell? | Primeira no primeiro chefe; depois tomo raro e loja | M6-06 |
-| D4 | Entra ouro, mercador e ferreiro? | Sim, na fogueira de cada zona | M7 |
-| D5 | Mais espaços de equipamento? | De 3 para 6 (elmo, botas, anel) | M8-04 |
+| D2 | Spells: quantos espaços e quem usa o quê? | **Decidido em 2026-11-15: igual ao Dungeon Reign.** 2 espaços mais a técnica; cada herói escolhe 1 spell inicial entre as 4 dele (`startingSpells`, Healing Field nunca é inicial); a segunda spell, os níveis (até 5), os modificadores e o nível da técnica vêm da loja (Magic Shop), que vende qualquer spell. Estrutura conferida pela tabela de paridade (`M6-00`) | M6 |
+| D3 | Como se ganha spell? | **Decidido em 2026-11-15 (D2 e D13): como no original.** A inicial é escolhida no começo da partida entre as 4 do herói; as outras, os níveis e os modificadores vêm da loja | M6-06 |
+| D4 | Entra ouro, mercador e ferreiro? | **Decidido em 2026-11-15 (D13):** ouro e Magic Shop do original; sem ferreiro (não há itens) | M7 |
+| D5 | Mais espaços de equipamento? | **Caiu em 2026-11-15 (D13):** não há equipamento | — |
 | D6 | Quantas zonas no total e em que ordem? | 6 biomas, 2 ou 3 chefes por bioma, o jogador escolhe a ordem dentro do bioma | M11-05+ |
 | D7 | Relíquias com limite? | 12 ativas, resto no baú | M12-07 |
 | D8 | Endgame: dificuldades e Depths como no Dungeon Reign? | Sim | M13 |
 | D9 | Onde publicar? | GitHub Pages | M16-06 |
 | D10 | Nome definitivo do jogo | Em aberto | Nenhuma |
 | D12 | Spells como no Dungeon Reign: lançadas sozinhas (como lá) ou em teclas? | **Decidido em 2026-11-14: em teclas.** As mesmas spells do Dungeon Reign, sem lançamento automático: teclas 1 e 2 para as 2 spells; técnica e esquiva ficam onde estão. M6 vem logo depois do M19 | M6 |
+| D13 | Save contínuo ou partidas? | **Decidido em 2026-11-15: partidas como no Dungeon Reign.** Seed por partida, continuar no meio, morte encerra; sem equipamento; cada zona = 5 ondas, chefe nas ondas 5, 10, 15 e 20 | M20 |
 | D11 | Bosque Sombrio: deixar sombrio (fim de tarde, verdes fechados, luz fria, fogueira e cogumelos como contraste quente) ou manter ensolarado? | **Decidido em 2026-11-14: sombrio** | M18-07 |
 
 ---
@@ -662,6 +706,11 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`.
 | M19-03 | feito, falta validar | 2026-11-14 | **Kaelen, Storm Step:** teleporta até o mouse (16,7 m), fere o caminho (largura 2,2 m, ×2,7), 0,3 s invulnerável, não gasta se o destino estiver a menos de 1,7 m; rastro elétrico de 2 s que fere a cada 0,4 s com 35% do dano, desenhado como raios em zigue-zague (`boltAlong`); trovão pequeno na chegada (a evolução troca pelo choque em área). **Aurelius, Time Rift** (`src/game/rift.ts`): fenda no mouse (19,2 m de alcance, raio 6,7 m mais a área do herói) por 3 s, inimigos dentro 60% mais lentos, tiros inimigos dentro param no ar e não envelhecem; implode com dano ×(1 + 0,15 por inimigo dentro, até ×3), atordoa 1 s na evolução; anéis giram e se fecham no último quarto. Conferido por script no navegador (caminho e rastro ferem; lentidão 0,6; tiro parado; implosão de 3 inimigos ×4,5) e por captura. **Diferenças mantidas:** o ataque do Kaelen continua saltando para 2 inimigos e o do Aurelius atravessando 2 (no original o tiro é simples e isso vinha das melhorias Double e Cone, que não existem aqui; decidir no M6 ou M17). Chefes: lá ignoram atordoamento e levam lentidão a 20%; aqui atordoamento a 30% e lentidão a 40% (regra geral de `applyStatus`, fora do M19). **A conferir jogando:** com 12 px = 1 m as áreas ficam grandes na tela (a fenda cobre um terço da tela); se parecer demais, subir `DR_PX_PER_M` para 16 encolhe todas as técnicas de uma vez |
 | M19-04 | feito, falta validar | 2026-11-14 | **Zephyr, Fan the Hammer:** 5 tiros de uma vez em cone (0,16 rad entre eles), com o dano e o crítico do ataque básico, 15% mais rápidos, alcance de 21,7 m, empurram (0,85 do empurrão) e ricocheteiam pela passiva; recarga 5 s (era rajada de 10 em 8 s). No original só sai com inimigo no alcance; aqui sai sempre (o jogador escolhe). **Varok, Execution Leap:** salta até o mouse (até 26,7 m, 0,45 s invulnerável); o inimigo com mais vida no pouso (raio 5,8 m) leva o maior entre ×3,75 e 8% da vida máxima, os outros metade, todos atordoados 0,5 s (`executionLanding`); recarga 14 s (era 9). **Ignis, Inferno Charge:** avança 0,22 s até o mouse (até 16,7 m) atravessando e queimando (×2,65), invulnerável no avanço, e termina com anel de fogo de 6,25 m (×1,3 e queimadura) (`infernoRing`). A queimadura do original (4 de dano por segundo por 2,5 s) virou `power` = dps ÷ dano do golpe. O ataque básico do Ignis segue o leque de projéteis antigo (no original é um cone corpo a corpo a 65% do alcance, ×1,5): fica para decidir. Conferido por script no navegador (os acertos e multiplicadores batem) e por captura do Ignis |
 | M19-05 | feito, falta validar | 2026-11-15 | **Umbra, Shadow Step:** reaparece atrás do inimigo mais forte a até 20 m (chefe, depois campeão, depois mais vida), 0,6 s invulnerável, golpe ×3 o ataque básico sempre crítico; não gasta sem alvo. **Golpe pelas costas** agora como no original: +50% em quem está atordoado, se afastando dela (o inimigo ganhou `vx`/`vz`) ou nos 2 s depois do passo; matar assim cura 4% da vida (antes valia para atordoado ou lento, e a técnica dava 2,5 s de crítico). **Seraph, Aegis:** bolha de luz por 3 s que bloqueia o próximo golpe inteiro; no fim explode (raio 7,5 m, ×3,2) e cura 10% (antes curava 25% na hora e reduzia o dano em 60%); **a cada 4 arremessos do escudo cura 2%**. **Vesper, Brood:** 2 vespas grandes por 6 s (picada ×1,07 a cada 0,7 s, veneno até 4 acúmulos, 14,6 m/s); **Ninhada:** abelha pequena a cada 8 s, até 3, vive 15 s, metade do dano, só com inimigo a até 33 m. **Limpeza:** todas as técnicas antigas saíram de `game.ts` (`nova`, `field`, `dash`, `burst`, `critUntil`, `aegisUntil`, campos de dano); `Technique` em `heroes.ts` agora só tem nome, texto, tipo e recarga, montado por `tech(id)` a partir de `TECHNIQUES`. Conferido por script no navegador (alvo e posição do passo, crítico e bônus pelas costas; bloqueio, explosão e cura; picadas e veneno, vespas somem em 6 s, abelha da Ninhada nasce); a captura das vespas falhou (painel parou de desenhar), então o tamanho delas no jogo não foi visto |
+| M19-06 | feito | 2026-11-15 | Passiva de cada herói vira lista de regras (`HeroDef.passive: string[]`, textos do `passiveText` do original; Kaelen, Aurelius e Ignis não têm passiva lá e seguem com a descrição do ataque daqui). Bloco único `heroKit` em `ui.ts` com passiva, nome da técnica, tecla, recarga e texto, na escolha de herói e na pausa. No HUD, o nome da técnica fica embaixo do botão, com brilho dourado quando está pronta e a descrição no `title`. A ficha do inventário mostra a recarga real (`Game.tech.cooldown`, com o piso). Conferido no navegador (escolha, pausa e HUD) |
+| M6-00 | feito, falta validar | 2026-11-15 | `docs/paridade.md` com 22 regras de spell e 10 de herói, cada uma com fonte e estado. `tests/parity.test.ts` lê o original com o LuaJIT (`tools/dr-dump.lua`) e compara constantes, as 11 spells, os 9 heróis, as 4 spells iniciais de cada um, as 9 técnicas campo a campo (números, marcos, evolução) e as passivas (19 testes); pula se o repo ou o luajit faltarem. `src/data/spells.ts` com `MAX_SPELLS`, `SPELL_MAX_LEVEL` e `SPELL_ORDER`; `HeroDef.startingSpells`. **Achou e corrigiu:** o tiro da Vesper acumulava veneno até 4 vezes (lá são 3). Entrou `@types/node` (só para o teste). Falta o usuário aceitar os "adaptado" (H6, H7) e responder Q1 (save contínuo ou partidas), que muda S4, S20 e S22 |
+| D13 | decidida | 2026-11-15 | Partidas como no Dungeon Reign, sem equipamento, zona = 5 ondas. `docs/design.md` reescrito; marco M20 criado na frente do M6; M8 cancelado; M7 refeito como a Magic Shop; D3, D4 e D5 respondidas pela mesma decisão |
+| M20-00 | feito, falta validar | 2026-11-15 | 29 linhas `R` em `docs/paridade.md`. Números da partida em `src/data/run.ts` (ondas, sem fim, estágios e pesos de inimigos, XP, raridade e troca das melhorias, mapa da partida, dificuldades, chefes, cura em combate, dano dos inimigos, orbes, Apressar) e fórmulas em `src/core/waves.ts` (`baseEnemyCount`, `hpScale`, `damageScale`, `compositionFor`, `isBossWave`, `hasMapBefore`, `segmentOf`, ouro e XP, chefes). `tools/dr-dump.lua` aceita expressões (`=...`), e o teste compara as fórmulas com as do Lua onda a onda, até a 40 (9 testes novos, 63 no total). A lista de melhorias (`upgrades.lua`) fica para o `M20-03`, porque usa o modelo de atributos de lá. Perguntas abertas: **Q2** (onda cronometrada como lá ou trecho povoado) e **Q3** (esquiva e poção, que o original não tem) |
+| Q2, Q3 | decididas | 2026-11-15 | **Q2:** a onda é como no Dungeon Reign (cronometrada, inimigos chegando pelas bordas do trecho, Apressar); o ritmo se ajusta depois, jogando. **Q3:** esquiva e poção ficam por enquanto; a poção pode sair depois |
 | M1-01 | feito | 2026-11-13 | Aprovado pelo usuário. | Bloodfang: orelhas menores e achatadas, tufos da bochecha em leque curto, polegar e garras nas duas mãos, dedos nos pés, caveira esculpida com suturas e nuca, estrela na tanga (geometria fina, não cor por vértice: a tanga tem poucos vértices). De 19,4 mil para cerca de 12 mil triângulos (cabeça 36×26, tronco 22×16, `stud` de 80 triângulos para tachas e dedos). Conferido só na prévia |
 | M1-02 | feito | 2026-11-13 | Aprovado pelo usuário. | Gravekeeper refeito do sprite e já no jogo: capuz esculpido com abertura preta e olhos acesos, pelerine, saia rasgada (`robeMesh`), pernas por baixo da saia, pá apoiada no chão, lanterna com luz pontual. Cerca de 6,6 mil triângulos. Conferido só na prévia (parado, andando, ataque, câmera do jogo); a luta na Cripta não foi jogada. Kit novo: `sculptTube`, `robeMesh`, `Builder.lights`, `Builder.glowByVertex`; bípedes ganharam o osso `skirt` |
 | M1-04 | feito | 2026-11-13 | Aprovado pelo usuário. | Hollow King refeito do sprite e já no jogo: crânio esculpido com órbitas, nariz e dentes, coroa alta, gola de pelo aberta na frente, costelas à mostra, saia com painel azul e debrum dourado (`robeMesh` com `panel`), mãos de osso, cajado de crescente com orbe e luz turquesa, chama na mão esquerda. Cerca de 8,5 mil triângulos. Conferido só na prévia; a luta no Vazio não foi jogada. Kit: `restArm` e `hang` (objeto na vertical do mundo na pose de descanso) |

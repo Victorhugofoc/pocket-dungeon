@@ -1,32 +1,31 @@
-# Dungeon Reign RPG — design (protótipo 0.1)
+# Dungeon Reign RPG — design
 
 ## Visão
-RPG de ação para PC em que você joga com um herói só, explora mapas abertos procedurais, mata monstros, sobe de nível devagar e farma equipamentos e relíquias, enfrentando um chefe por zona até o chefe final.
+RPG de ação para PC em que cada partida é uma run do Dungeon Reign jogada em mapas abertos 3D: um herói, uma spell inicial, 20 ondas em 4 zonas procedurais, melhorias a cada nível, loja, relíquias e um chefe a cada 5 ondas até o chefe final. A estrutura de jogo é **a mesma do Dungeon Reign**; o que muda está escrito em `docs/paridade.md`, com o motivo.
 
 ## Decisões do usuário
 - Plataforma: PC (teclado e mouse).
-- Progressão persistente (um save contínuo), não runs.
+- **Partidas como no Dungeon Reign** (decisão D13, 2026-11-15; substitui "progressão persistente, não runs"). Cada partida tem uma seed gerada no início. O save guarda a partida em andamento, e quem parar no meio continua de onde estava, no mesmo mapa.
+- **Sem equipamento** (D13): como no original, o poder vem das melhorias de nível, da loja e das relíquias.
+- **Zona = 5 ondas** (D13): cada zona é um mapa aberto em 5 trechos; limpar um trecho é uma onda; o chefe fecha a zona nas ondas 5, 10, 15 e 20.
+- Spells como no original, em teclas (D2, D12).
 - Tecnologia: three.js no navegador. Toda a arte é gerada por código, em 3D estilizado; os sprites do Dungeon Reign são só referência de design.
-- Conteúdo: heróis, inimigos, chefes e relíquias do Dungeon Reign.
+- Conteúdo: heróis, inimigos, chefes, relíquias, spells, eventos e pactos do Dungeon Reign.
 
-## Loop
-1. Escolhe um dos 9 heróis (um por save).
-2. Entra numa zona: mapa novo a cada visita, com caminho da fogueira até a arena do chefe.
-3. Limpa acampamentos: XP, itens (9% por monstro; campeão sempre dropa), orbes de cura.
-4. Derrota o chefe: 3 itens, escolhe 1 de 3 relíquias, abre o portal e libera a próxima zona.
-5. Volta a zonas anteriores para farmar quando a próxima estiver difícil.
+## Loop de uma partida
+1. Escolhe o herói, a dificuldade e 1 das 4 spells iniciais dele. O jogo gera a seed.
+2. Zona 1, onda 1: o primeiro trecho do mapa aberto. Limpar os inimigos do trecho fecha a onda.
+3. Entre as ondas, o mapa da partida oferece 3 caminhos (sala de combate, sala amaldiçoada, pacto, evento, loja, elite, santuário de relíquia, emboscada de chefe); a loja aparece garantida a cada 3 ondas.
+4. Subir de nível abre 3 melhorias para escolher (comum, rara ou épica). Ouro dos inimigos vai para a loja: spell nova, nível de spell e da técnica, modificadores, relíquia.
+5. A onda 5 é o chefe da zona. Vencer leva à próxima zona (ondas 6 a 10), e assim até o chefe final na onda 20.
+6. Morrer encerra a partida. Vencer a onda 20 também, com a opção de seguir no modo sem fim, como no original.
+7. Entre partidas ficam só registros, conquistas e desbloqueios sem ganho de poder (heróis, relíquias, pactos, eventos), como no original.
 
 ## Controles
-WASD move · mouse mira · botão esquerdo ataca · botão direito ou Q usa a técnica · 1 e 2 lançam as spells (a partir do M6) · Espaço esquiva · F poção · E portal · I inventário · M mapa · Esc pausa.
-
-## Sistemas
-- **Atributos** (1 ponto por nível): Força, Vigor, Agilidade, Foco.
-- **Equipamento:** arma, armadura, amuleto. Raridades comum, incomum, raro, épico, lendário (0 a 4 afixos).
-- **Relíquias:** bônus permanentes, sem limite de quantidade.
-- **Morte:** volta à fogueira da zona sem perder nada; monstros vivos recuperam a vida.
+WASD move · mouse mira · botão esquerdo ataca · botão direito ou Q usa a técnica · 1 e 2 lançam as spells · Espaço esquiva · F poção · Esc pausa.
 
 ## Zonas
-| Zona | Nível | Chefe |
+| Zona | Ondas | Chefe |
 |---|---|---|
 | Bosque Sombrio | 1–5 | Bloodfang |
 | Campos da Cripta | 6–10 | Gravekeeper |
@@ -34,6 +33,5 @@ WASD move · mouse mira · botão esquerdo ataca · botão direito ou Q usa a t�
 | O Vazio | 16–20 | Hollow King (final) |
 
 ## Em aberto
-- Spells do Dungeon Reign em 2 espaços (teclas 1 e 2), lançadas pelo jogador, não automáticas (decisão D12). Falta decidir quem usa qual e como se ganha (D2, D3).
-- Economia: ouro, loja, desmontar itens.
-- O que acontece depois do chefe final (dificuldades, zonas mais fundas).
+- Ordem e sorteio das zonas e dos chefes quando houver mais de 4 (o original sorteia os chefes por onda).
+- Poção: o original não tem; fica até a paridade da partida (`M20-00`) decidir.

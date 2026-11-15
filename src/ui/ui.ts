@@ -3,7 +3,7 @@ import { itemName, itemScore, RARITY_COLOR, RARITY_LABEL, SLOT_LABEL, SLOTS, typ
 import { deleteSave, loadSave, newSave, safeStorage } from "../core/save";
 import { ATTR_INFO, ATTR_KEYS, formatStat, STAT_KEYS, xpToNext, type StatBlock } from "../core/stats";
 import { BOSSES } from "../data/enemies";
-import { HEROES, HERO_ORDER } from "../data/heroes";
+import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
 import { RELICS } from "../data/relics";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
@@ -19,6 +19,16 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", html = ""):
   if (cls) e.className = cls;
   if (html) e.innerHTML = html;
   return e;
+}
+
+/** Passiva e técnica do herói (escolha de herói e pausa); `cooldown` em s, já com os bônus quando houver. */
+function heroKit(h: HeroDef, cooldown: number): string {
+  const cd = cooldown.toFixed(cooldown % 1 ? 1 : 0).replace(".", ",");
+  return `<div class="kit">
+    <div class="kit-row"><b>Passiva</b><ul>${h.passive.map((t) => `<li>${t}</li>`).join("")}</ul></div>
+    <div class="kit-row"><b>Técnica</b><div><span class="kit-name">${h.technique.name}</span>
+      <span class="kit-meta">botão direito ou Q · recarga ${cd} s</span><p>${h.technique.text}</p></div></div>
+  </div>`;
 }
 
 function statLines(stats: StatBlock): string {
@@ -139,8 +149,7 @@ export class Ui {
         }).join("")}</div>
         <div class="hero-detail" style="--hc:${hex(h.color)}">
           <h3 style="color:${hex(h.color)}">${h.name} — ${h.title}</h3>
-          <p><b>Passiva:</b> ${h.passive}</p>
-          <p><b>Técnica (botão direito) — ${h.technique.name}:</b> ${h.technique.text}</p>
+          ${heroKit(h, h.technique.cooldown)}
           <p style="color:var(--muted)">${statLines(h.stats).replace(/<div class="st">/g, "").replace(/<\/div>/g, " · ").replace(/ · $/, "")}</p>
         </div>
         <div class="title-actions"><button class="primary" data-act="new">Começar com ${h.name}</button></div>`;
@@ -194,7 +203,8 @@ export class Ui {
         <div class="skills">
           <div class="level-badge"><div><small>NÍVEL</small><span data-r="level"></span></div></div>
           <div class="skill"><kbd>ESQ</kbd>⚔️</div>
-          <div class="skill big"><kbd>DIR</kbd>✨<div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div></div>
+          <div class="skill-wrap"><div class="skill big" data-r="techBox"><kbd>DIR</kbd>✨<div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div></div>
+            <small class="skill-name" data-r="techName"></small></div>
           <div class="skill"><kbd>ESPAÇO</kbd>💨<div class="cd" data-r="dashCd"></div></div>
           <div class="skill"><kbd>F</kbd>🧪<div class="cd" data-r="potCd"></div><div class="cdn" data-r="potN"></div></div>
         </div>
@@ -226,6 +236,12 @@ export class Ui {
     const tc = Math.max(0, p.techCd);
     r.techCd.style.height = `${(tc / p.techMax) * 100}%`;
     r.techN.textContent = tc > 0 ? tc.toFixed(tc < 3 ? 1 : 0) : "";
+    r.techBox.classList.toggle("ready", tc <= 0);
+    const tn = g.hero.technique.name;
+    if (r.techName.textContent !== tn) {
+      r.techName.textContent = tn;
+      r.techBox.title = `${tn} — ${g.hero.technique.text}`;
+    }
     r.dashCd.style.height = `${(Math.max(0, p.dashCd) / TUNING.hero.dashCooldown) * 100}%`;
     const pc = Math.max(0, p.potionCd);
     r.potCd.style.height = `${(pc / TUNING.hero.potionCooldown) * 100}%`;
@@ -334,7 +350,7 @@ export class Ui {
           <span>Esquiva</span><b>${pct(s.dodge)}</b>
           <span>Regeneração</span><b>${s.regen.toFixed(1)}/s</b>
           <span>Movimento</span><b>${s.moveSpeed.toFixed(1)}</b>
-          <span>Recarga da técnica</span><b>${(h.technique.cooldown * s.cooldownMult).toFixed(1)} s</b>
+          <span>Recarga da técnica</span><b>${(g.tech?.cooldown ?? h.technique.cooldown * s.cooldownMult).toFixed(1)} s</b>
           <span>Sorte de loot</span><b>+${pct(s.magicFind)}</b>
         </div>
       </div>
@@ -457,6 +473,8 @@ export class Ui {
     const panel = this.open("pause", "pause");
     const mins = Math.floor(g.save.playSeconds / 60);
     panel.innerHTML = `<h2>Pausa</h2><p class="sub">${g.save.kills} abates · ${g.save.deaths} mortes · ${mins} min de jogo</p>
+      <div class="section" style="color:${hex(g.hero.color)}">${g.hero.name} — ${g.hero.title}</div>
+      ${heroKit(g.hero, g.tech?.cooldown ?? g.hero.technique.cooldown * g.stats.cooldownMult)}
       <div class="controls">
         <kbd>W A S D</kbd><span>Mover</span>
         <kbd>Mouse</kbd><span>Mirar</span>
