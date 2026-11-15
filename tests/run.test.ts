@@ -97,8 +97,8 @@ describe("partida", () => {
     expect(plain(res.run)).toEqual(plain(run));
     // mapa: a seed de cada zona só depende da seed da partida
     for (const id of ZONE_ORDER) {
-      const a = generateZone(ZONES[id], zoneSeed(run.seed, id, run.legacy.visits));
-      const b = generateZone(ZONES[id], zoneSeed(res.run.seed, id, res.run.legacy.visits));
+      const a = generateZone(ZONES[id], zoneSeed(run.seed, id, 0));
+      const b = generateZone(ZONES[id], zoneSeed(res.run.seed, id, 0));
       expect(b).toEqual(a);
     }
   });

@@ -76,7 +76,9 @@ export const TUNING = {
   world: {
     size: 240,
     margin: 14,
-    campCount: 24,
     bossArenaRadius: 17,
+    /** raio das clareiras das ondas 1 a 4 de cada zona e onde ficam no caminho (fração do comprimento) */
+    segmentRadius: 16,
+    segmentAt: [0.17, 0.37, 0.57, 0.77],
   },
 } as const;

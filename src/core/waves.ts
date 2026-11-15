@@ -46,6 +46,14 @@ function endless(wave: number, key: "hpPerWave" | "damagePerWave"): number {
   return (1 + ENDLESS[key]) ** first * (1 + s2[key]) ** second;
 }
 
+/** waves.lua `endlessHp`, `endlessDamage`: a escala extra do modo sem fim (1 até a onda 20). */
+export function endlessHp(wave: number): number {
+  return endless(wave, "hpPerWave");
+}
+export function endlessDamage(wave: number): number {
+  return endless(wave, "damagePerWave");
+}
+
 /** waves.lua `hpScale`: vida dos inimigos por onda. */
 export function hpScale(wave: number): number {
   return (1 + Math.max(0, wave - 1) * WAVES.hpPerWave) * endless(wave, "hpPerWave");

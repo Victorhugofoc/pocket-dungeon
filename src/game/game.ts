@@ -1,14 +1,20 @@
-// Loop principal: herói, combate, loot, progressão e troca de zona.
+// Loop principal: herói, combate, loot, progressão e as ondas da partida (cada zona = 5 ondas, D13).
 import * as THREE from "three";
 import { generateItem, itemName, RARITIES, RARITY_COLOR, RARITY_LABEL, type Item, type Slot } from "../core/items";
 import { computeStats, xpToNext, type Attributes, type FinalStats, type StatBlock } from "../core/stats";
-import { generateZone, ObstacleGrid, type ZoneLayout } from "../core/worldgen";
-import { writeRun, safeStorage } from "../core/save";
-import { checkpoint, zoneSeed, type RunRng, type RunState } from "../core/run";
+import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
+import { loadRun, writeRun, safeStorage } from "../core/save";
+import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
+import {
+  canHasten, hasten, healOrbChance, hastenBonus, startWave, stepWave, survivorReward, timeLeft, waveMods, waveReward,
+  type WaveMods, type WaveSpawn, type WaveState,
+} from "../core/wave";
+import { bossGold, isBossWave, segmentOf } from "../core/waves";
+import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { FROST, SHADOW, SHIELD_THROW, TECHNIQUES, VENOM } from "../data/techniques";
-import { BOSSES } from "../data/enemies";
+import { BOSSES, ENEMIES } from "../data/enemies";
 import { HEROES, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { RELICS, RELIC_IDS } from "../data/relics";
 import { TUNING } from "../data/tuning";
@@ -34,7 +40,19 @@ export interface GameEvents {
   zoneChanged(): void;
   bagChanged(): void;
   victory(): void;
-  openTravel(): void;
+  /** letreiro grande no meio da tela ("Onda 3", "Onda concluída") */
+  banner(title: string, sub?: string): void;
+}
+
+/** Em que ponto da onda a partida está. */
+export type WavePhase = "walk" | "intro" | "fight" | "cleared" | "portal";
+
+/** aviso no chão antes de um inimigo da onda aparecer (spawner.lua) */
+interface SpawnMarker {
+  spawn: WaveSpawn;
+  boss: boolean;
+  x: number; z: number; t: number; dur: number;
+  mesh: THREE.Mesh;
 }
 
 interface Projectile {
@@ -53,6 +71,8 @@ interface Drop {
   item?: Item;
   relicId?: string;
   x: number; z: number; t: number;
+  /** orbe de cura da onda: some depois de tantos segundos */
+  life?: number;
   mesh: THREE.Object3D;
 }
 
@@ -89,6 +109,8 @@ const PROJ_GEO = new THREE.IcosahedronGeometry(1, 0);
 const DROP_GEO = new THREE.BoxGeometry(1, 1, 1);
 const GEM_GEO = new THREE.OctahedronGeometry(1, 0);
 
+const MARKER_GEO = new THREE.RingGeometry(0.35, 0.75, 6);
+
 export class Game {
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
@@ -121,6 +143,15 @@ export class Game {
   bossEngaged = false;
   bossDead = false;
   nearPortal = false;
+  /** a onda em andamento (core/wave.ts) e os modificadores dela; null entre as ondas */
+  wave: WaveState | null = null;
+  mods: WaveMods = waveMods(1, "normal");
+  phase: WavePhase = "walk";
+  private phaseT = 0;
+  /** o trecho (clareira) da onda atual */
+  segment!: Segment;
+  private markers: SpawnMarker[] = [];
+  private ring: THREE.Mesh | null = null;
   private projectiles: Projectile[] = [];
   private drops: Drop[] = [];
   private bees: Bee[] = [];
@@ -211,7 +242,7 @@ export class Game {
     this.recompute();
     this.player.hp = Math.min(this.stats.maxHp, run.hp ?? this.stats.maxHp);
     this.started = true;
-    this.enterZone(run.legacy.zone, false);
+    this.prepareWave(Math.max(1, run.wave), true);
   }
 
   /** 0 baixo, 1 médio, 2 alto: sombras, bloom e resolução */
@@ -277,7 +308,7 @@ export class Game {
 
   /**
    * Checkpoint da partida (run_save.lua): a partida inteira e os fluxos de sorteio, gravados antes de cada onda;
-   * continuar recomeça dali. Enquanto não há ondas (M20-02), o checkpoint é a entrada na zona.
+   * continuar recomeça aquela onda, na entrada do trecho dela.
    */
   saveCheckpoint(): void {
     if (!this.run) return;
@@ -285,13 +316,55 @@ export class Game {
     writeRun(this.storage, checkpoint(this.run, this.rng, Math.max(1, this.run.wave)));
   }
 
-  enterZone(zoneId: string, countVisit = true): void {
+  /** A zona de uma onda: 5 ondas por zona, na ordem do reino; o modo sem fim recomeça o ciclo com mapas novos. */
+  static zoneOfWave(wave: number): { zoneId: string; visit: number; index: number } {
+    const seg = segmentOf(wave) - 1;
+    return { zoneId: ZONE_ORDER[seg % ZONE_ORDER.length], visit: Math.floor(seg / ZONE_ORDER.length), index: (wave - 1) % WAVES_PER_ZONE };
+  }
+
+  /**
+   * Antes de cada onda: monta a zona se ela mudou, põe o herói no começo do trecho e grava o checkpoint.
+   * A onda começa quando o herói entra na clareira (Q2: como no Dungeon Reign, mas no mapa aberto).
+   */
+  prepareWave(wave: number, fresh = false): void {
+    // a relíquia do chefe nunca se perde: se o corpo ainda não sumiu, a escolha abre agora
+    const reward = this.bossReward;
+    this.bossReward = null;
+    reward?.();
+    const run = this.run;
+    run.wave = wave;
+    if (wave > TOTAL_WAVES) run.endless = true;
+    const z = Game.zoneOfWave(wave);
+    const zoneChanged = fresh || !this.world || this.zone.id !== z.zoneId || this.layout.seed !== zoneSeed(run.seed, z.zoneId, z.visit);
+    if (zoneChanged) this.enterZone(z.zoneId, z.visit);
+    this.clearWave();
+    this.segment = this.layout.segments[z.index];
+    this.wave = null;
+    this.mods = waveMods(wave, run.difficultyId);
+    this.phase = "walk";
+    this.phaseT = 0;
+    this.bossEngaged = false;
+    this.bossDead = false;
+    this.nearPortal = false;
+    if (this.world) this.world.portal.visible = false;
+    const p = this.player;
+    // na primeira onda da zona o herói começa na fogueira; nas outras, na entrada do trecho
+    if (zoneChanged) {
+      const at = z.index === 0 ? this.layout.spawn : this.segment.entry;
+      p.x = at.x;
+      p.z = at.z;
+      this.camTarget.set(p.x, 0, p.z);
+    }
+    this.showRing(false);
+    this.saveCheckpoint();
+    this.events.zoneChanged();
+  }
+
+  private enterZone(zoneId: string, visit: number): void {
     const zone = ZONES[zoneId] ?? ZONES.bosque;
     this.zone = zone;
-    this.run.legacy.zone = zone.id;
-    if (countVisit) this.run.legacy.visits++;
     this.clearZone();
-    const seed = zoneSeed(this.run.seed, zone.id, this.run.legacy.visits);
+    const seed = zoneSeed(this.run.seed, zone.id, visit);
     this.layout = generateZone(zone, seed);
     this.grid = new ObstacleGrid(this.layout.obstacles);
     this.world = buildWorld(this.scene, zone, this.layout);
@@ -303,16 +376,7 @@ export class Game {
     this.sun.intensity = zone.sunIntensity;
     setZoneAtmosphere(this.scene, zone);
 
-    for (const camp of this.layout.camps) {
-      camp.spawns.forEach((s, i) => {
-        const a = (i / camp.spawns.length) * Math.PI * 2;
-        const r = 1.5 + (i % 3);
-        this.spawnEnemy(s.id, camp.level, camp.x + Math.cos(a) * r, camp.z + Math.sin(a) * r, { champion: s.champion });
-      });
-    }
-    const bossDef = BOSSES[zone.boss];
-    this.boss = new Enemy(this, bossDef, zone.level + 4, this.layout.boss.x, this.layout.boss.z - 4);
-    this.enemies.push(this.boss);
+    this.boss = null;
     this.bossEngaged = false;
     this.bossDead = false;
     this.bossReward = null;
@@ -320,18 +384,18 @@ export class Game {
     const p = this.player;
     p.x = this.layout.spawn.x;
     p.z = this.layout.spawn.z;
-    p.hp = this.stats.maxHp;
     p.leap = p.rush = null;
     this.endAegis(false);
     p.shadowUntil = 0;
     p.dashT = 0;
     this.playerAlive = true;
     this.camTarget.set(p.x, 0, p.z);
-    this.saveCheckpoint();
-    this.events.zoneChanged();
   }
 
   private clearZone(): void {
+    this.clearWave();
+    this.ring?.removeFromParent();
+    this.ring = null;
     for (const e of this.enemies) e.dispose();
     this.enemies.length = 0;
     for (const pr of this.projectiles) this.freeProjectile(pr);
@@ -350,9 +414,13 @@ export class Game {
     this.boss = null;
   }
 
-  spawnEnemy(id: string, level: number, x: number, z: number, opts: { champion?: boolean; summoned?: boolean; aggro?: boolean } = {}): Enemy {
-    const e = new Enemy(this, enemyDef(id), level, x, z, opts);
-    if (opts.aggro) e.aggro = true;
+  spawnEnemy(id: string, wave: number, x: number, z: number,
+    opts: { champion?: boolean; summoned?: boolean; child?: boolean; aggro?: boolean } = {}): Enemy {
+    const e = new Enemy(this, enemyDef(id), wave, x, z, opts);
+    if (opts.aggro) {
+      e.aggro = true;
+      e.hunter = true;
+    }
     this.enemies.push(e);
     return e;
   }
@@ -604,7 +672,7 @@ export class Game {
     if (split) {
       for (let i = 0; i < split.count; i++) {
         const a = Math.random() * Math.PI * 2;
-        this.spawnEnemy(split.id, e.level, e.x + Math.cos(a) * 0.8, e.z + Math.sin(a) * 0.8, { summoned: true, aggro: true });
+        this.spawnEnemy(split.id, e.level, e.x + Math.cos(a) * 0.8, e.z + Math.sin(a) * 0.8, { summoned: true, child: true, aggro: true });
       }
     }
     if (!e.summoned) this.rollLoot(e);
@@ -626,7 +694,15 @@ export class Game {
         if (pool.length) this.addDrop({ kind: "relic", relicId: rng.pick(pool), x: e.x + 1, z: e.z, t: 0 }, 0xffc83d, true);
       }
     } else if (rng.chance(L.dropChance)) this.dropItem(generateItem(rng, e.level, mf), e.x, e.z, 0.5);
-    if (rng.chance(L.healOrbChance)) this.addDrop({ kind: "orb", x: e.x + rng.range(-0.6, 0.6), z: e.z + rng.range(-0.6, 0.6), t: 0 }, 0xff4a5a, false);
+    const w = this.wave;
+    const O = RUN_TUNING.healOrb;
+    if (w && !w.complete && w.healOrbs < O.maxPerWave && e.def) {
+      const c = healOrbChance({ id: e.def.id, category: e.def.category, champion: e.champion, boss: e.isBoss, summoned: e.summoned });
+      if (c > 0 && Math.random() < c) {
+        w.healOrbs++;
+        this.addDrop({ kind: "orb", x: e.x, z: e.z, t: 0, life: O.life }, 0xff4a5a, false);
+      }
+    }
   }
 
   private dropItem(item: Item, x: number, z: number, spread: number): void {
@@ -661,6 +737,11 @@ export class Game {
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i];
       d.t += dt;
+      if (d.life !== undefined && d.t >= d.life) {
+        d.mesh.removeFromParent();
+        this.drops.splice(i, 1);
+        continue;
+      }
       const core = d.mesh.children[0];
       core.rotation.y += dt * 2.2;
       core.position.y = Math.sin(d.t * 3) * 0.12 + Math.max(0, 1 - d.t * 3) * 1.2;
@@ -675,7 +756,7 @@ export class Game {
       if (dist > TUNING.hero.pickupRadius) continue;
       if (d.kind === "orb") {
         if (p.hp >= this.stats.maxHp) continue;
-        this.heal(this.stats.maxHp * TUNING.loot.healOrbPct, true);
+        this.heal(this.stats.maxHp * RUN_TUNING.healOrb.heal, true, true);
       } else if (d.kind === "relic") {
         this.addRelic(d.relicId!);
       } else {
@@ -706,9 +787,16 @@ export class Game {
     this.events.bagChanged();
   }
 
-  heal(amount: number, show: boolean): void {
+  /** O combate da onda está correndo: cura e regeneração valem `RUN_TUNING.combatHealMult` (damage.lua). */
+  get inCombat(): boolean {
+    return !!this.wave && this.wave.started && !this.wave.complete;
+  }
+
+  /** `full`: o orbe de cura não sofre o corte do combate. */
+  heal(amount: number, show: boolean, full = false): void {
     const p = this.player;
     const before = p.hp;
+    if (this.inCombat && !full) amount *= RUN_TUNING.combatHealMult;
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
     if (show && p.hp - before >= 1) {
       this.fx.text(p.x, 2.6, p.z, "+" + Math.round(p.hp - before), "heal");
@@ -792,17 +880,23 @@ export class Game {
     if (Math.hypot(p.x - x, p.z - z) < r + 0.3) this.hurtPlayer(dmg, source);
   }
 
+  /**
+   * Depois de cair: volta ao checkpoint da onda (o começo dela, com o que se tinha ali). Até o M20-06 a morte não
+   * encerra a partida; só conta.
+   */
   respawn(): void {
-    const p = this.player;
-    p.x = this.layout.spawn.x;
-    p.z = this.layout.spawn.z;
-    p.hp = this.stats.maxHp;
-    p.iframes = 1.5;
+    const deaths = this.run.legacy.deaths;
+    const cp = loadRun(this.storage);
     this.playerAlive = true;
-    for (const pr of this.projectiles) this.freeProjectile(pr);
-    this.projectiles.length = 0;
-    this.fx.clear();
-    this.camTarget.set(p.x, 0, p.z);
+    if (cp && cp.run.seed === this.run.seed) {
+      const c = continueRun(cp);
+      c.run.legacy.deaths = deaths;
+      this.start(c.run, c.rng);
+    } else {
+      this.player.hp = this.stats.maxHp;
+      this.prepareWave(Math.max(1, this.run.wave), true);
+    }
+    this.player.iframes = 1.5;
   }
 
   // ---------------------------------------------------------------- chefe
@@ -824,34 +918,236 @@ export class Game {
     this.fx.addShake(1);
     for (const m of this.enemies) if (m.summoned && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
     const s = this.run;
-    const first = !s.legacy.bossesKilled.includes(e.boss!.id);
-    if (first) s.legacy.bossesKilled.push(e.boss!.id);
-    const idx = ZONE_ORDER.indexOf(this.zone.id as (typeof ZONE_ORDER)[number]);
-    const next = ZONE_ORDER[idx + 1];
-    if (next && !s.legacy.zonesUnlocked.includes(next)) {
-      s.legacy.zonesUnlocked.push(next);
-      this.events.toast(`Nova zona liberada: ${ZONES[next].name}`, "#9be4ff");
-    }
+    const gold = Math.floor(bossGold(s.wave) * this.mods.reward);
+    s.gold += gold;
+    s.statistics.goldEarned += gold;
     const pool = RELIC_IDS.filter((id) => !s.relics.includes(id));
     this.rng.get("relics").shuffle(pool);
-    const offer = pool.slice(0, 3);
-    const final = !next && first;
-    const after = () => {
-      if (final) this.events.victory();
-    };
-    // portal e escolha de relíquia só depois que o corpo do chefe se desfaz (a escolha pausa o jogo)
+    const offer = pool.slice(0, BOSS.relicChoices);
+    // a escolha de relíquia só depois que o corpo do chefe se desfaz (a escolha pausa o jogo)
     this.bossReward = () => {
-      if (this.world) {
-        this.world.portal.visible = true;
-        this.world.portal.position.set(this.layout.boss.x, 0, this.layout.boss.z);
-      }
-      if (offer.length) {
-        this.events.relicChoice(offer, (id) => {
-          this.addRelic(id);
-          after();
-        });
-      } else after();
+      if (offer.length) this.events.relicChoice(offer, (id) => {
+        this.addRelic(id);
+        // escolhida já na onda seguinte (entrou no portal antes): o checkpoint dela precisa da relíquia
+        if (this.phase === "walk") this.saveCheckpoint();
+      });
     };
+  }
+
+  // ---------------------------------------------------------------- ondas (wave_system.lua, run_controller.lua)
+
+  /** Avança a fase da onda: caminhar até a clareira, letreiro, luta, onda concluída, portal. */
+  private updateWave(dt: number, raw: number): void {
+    const p = this.player;
+    const sg = this.segment;
+    if (!sg) return;
+    this.phaseT += raw;
+    if (this.ring) {
+      const m = this.ring.material as THREE.MeshBasicMaterial;
+      m.opacity = this.phase === "walk" ? 0.28 + Math.sin(this.time * 3) * 0.12 : this.phase === "intro" || this.phase === "fight" ? 0.7 : 0;
+      this.ring.visible = m.opacity > 0;
+    }
+    if (this.phase === "walk") {
+      if (this.playerAlive && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r - 1.5) this.beginWave();
+      return;
+    }
+    if (this.phase === "intro") {
+      if (this.phaseT >= RUN_TUNING.introTime) {
+        this.phase = "fight";
+        this.phaseT = 0;
+        this.wave!.started = true;
+        if (this.wave!.isBossWave) this.queueBoss();
+      }
+      return;
+    }
+    if (this.phase === "fight") {
+      const w = this.wave!;
+      this.updateMarkers(dt);
+      if (!this.playerAlive) return;
+      let alive = this.markers.length;
+      for (const e of this.enemies) if (!e.dead) alive++;
+      const bossAlive = this.markers.some((m) => m.boss) || (!!this.boss && !this.boss.dead);
+      const step = stepWave(w, dt, { alive, bossAlive }, this.rng.get("spawns"));
+      for (const sp of step.spawns) this.queueSpawn(sp);
+      if (step.completed) this.completeWave();
+      return;
+    }
+    // depois do chefe, o portal (e a vitória) só abrem com a relíquia já entregue: as telas não se atropelam
+    if (this.phase === "cleared" && this.phaseT >= RUN_TUNING.clearedTime && !this.bossReward) {
+      if (isBossWave(this.run.wave)) this.openPortal();
+      else this.prepareWave(this.run.wave + 1);
+    }
+  }
+
+  /** O herói entrou na clareira: letreiro "Onda N" e a clareira fecha. */
+  private beginWave(): void {
+    const n = this.run.wave;
+    this.wave = startWave(n, this.rng.get("champions"), (id) => id in ENEMIES);
+    this.phase = "intro";
+    this.phaseT = 0;
+    this.showRing(true);
+    const boss = this.wave.isBossWave;
+    this.events.banner(`Onda ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, boss ? `${BOSSES[this.zone.boss].name} se aproxima` : this.zone.name);
+    this.audio.play(boss ? "boss" : "level");
+  }
+
+  private hastenWave(): void {
+    const w = this.wave!;
+    const bonus = hastenBonus(w);
+    if (!hasten(w)) return;
+    this.events.toast(`Onda apressada: +${Math.round(bonus * 100)}% de recompensa`, "#ffc83d");
+    this.audio.play("dash");
+  }
+
+  /** spawner.lua `edgePoint`: um ponto na borda da clareira, longe do herói (16 tentativas, fica o mais longe). */
+  private edgePoint(): { x: number; z: number } {
+    const sg = this.segment, p = this.player;
+    const min = SPAWN.minDistancePx * TUNING.enemy.pxToUnit;
+    let best = { x: sg.x, z: sg.z }, bestD = -1;
+    for (let i = 0; i < 16; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = sg.r - 1.2 - Math.random() * 1.5;
+      const x = sg.x + Math.cos(a) * r, z = sg.z + Math.sin(a) * r;
+      const d = Math.hypot(x - p.x, z - p.z);
+      if (d >= min) return { x, z };
+      if (d > bestD) {
+        best = { x, z };
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  private queueSpawn(spawn: WaveSpawn, boss = false): void {
+    const at = boss ? this.bossPoint() : this.edgePoint();
+    const mesh = new THREE.Mesh(MARKER_GEO, new THREE.MeshBasicMaterial({
+      color: boss ? 0xff5a3a : spawn.champion ? 0xffc83d : 0xb06aff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false,
+    }));
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(at.x, 0.06, at.z);
+    mesh.scale.setScalar(boss ? 3 : spawn.champion ? 1.4 : 1);
+    this.scene.add(mesh);
+    this.markers.push({ spawn, boss, x: at.x, z: at.z, t: 0, dur: boss ? SPAWN.bossTelegraph : SPAWN.telegraph, mesh });
+  }
+
+  /** spawner.lua `queueBoss`: o chefe entra do lado oposto ao herói na arena. */
+  private bossPoint(): { x: number; z: number } {
+    const sg = this.segment, p = this.player;
+    const dx = sg.x - p.x, dz = sg.z - p.z, d = Math.hypot(dx, dz) || 1;
+    const r = sg.r * 0.55;
+    return { x: sg.x + (dx / d) * r, z: sg.z + (dz / d) * r };
+  }
+
+  private queueBoss(): void {
+    this.queueSpawn({ id: this.zone.boss, champion: false }, true);
+  }
+
+  private updateMarkers(dt: number): void {
+    for (let i = this.markers.length - 1; i >= 0; i--) {
+      const m = this.markers[i];
+      m.t += dt;
+      const k = Math.min(1, m.t / m.dur);
+      const mat = m.mesh.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.25 + k * 0.6;
+      m.mesh.rotation.z += dt * 3;
+      if (Math.random() < dt * 20) this.fx.spark(m.x + (Math.random() - 0.5), 0.2, m.z + (Math.random() - 0.5), mat.color.getHex(), 0.1, 0.4, 2);
+      if (m.t < m.dur) continue;
+      m.mesh.removeFromParent();
+      mat.dispose();
+      this.markers.splice(i, 1);
+      if (m.boss) {
+        const final = this.run.wave === BOSS.final.wave;
+        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final });
+        e.hunter = true;
+        this.boss = e;
+        this.enemies.push(e);
+        e.setAggro(this);
+      } else {
+        const e = this.spawnEnemy(m.spawn.id, this.run.wave, m.x, m.z, { champion: m.spawn.champion, aggro: true });
+        e.cd = Math.max(e.cd, 0.5);
+      }
+      this.fx.burst(m.x, 0.6, m.z, mat.color.getHex(), m.boss ? 40 : 10, m.boss ? 8 : 4, 0.14, 0.4);
+    }
+  }
+
+  /** wave_system.lua `complete`: recompensa dos sobreviventes e da onda, quem sobra some, cura do chefe. */
+  private completeWave(): void {
+    const w = this.wave!;
+    const run = this.run;
+    let gold = 0, xp = 0, survivors = 0;
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      if (e.def && !e.summoned) {
+        const r = survivorReward(e.def, e.champion, this.mods);
+        gold += r.gold;
+        xp += r.xp;
+        survivors++;
+      }
+      e.dead = true;
+      e.remove = true;
+      this.fx.burst(e.x, 0.8, e.z, 0x6a5a8a, 8, 3, 0.14, 0.5);
+    }
+    for (const m of this.markers) m.mesh.removeFromParent();
+    this.markers.length = 0;
+    for (const pr of this.projectiles) if (!pr.friendly) pr.life = 0;
+    for (let i = this.drops.length - 1; i >= 0; i--) {
+      if (this.drops[i].kind !== "orb") continue;
+      this.drops[i].mesh.removeFromParent();
+      this.drops.splice(i, 1);
+    }
+    if (w.isBossWave && w.bossesDefeated && this.playerAlive) {
+      const amount = Math.min(this.stats.maxHp - this.player.hp, this.stats.maxHp * BOSS.healPct);
+      this.heal(amount, true, true);
+    }
+    const r = waveReward(w, this.mods);
+    gold += r.gold;
+    run.gold += gold;
+    run.statistics.goldEarned += gold;
+    this.gainXp(xp + r.xp);
+    if (w.isBossWave && w.bossesDefeated && run.wave === TOTAL_WAVES) run.victory = true;
+    this.phase = "cleared";
+    this.phaseT = 0;
+    this.showRing(false);
+    const extra = w.clearedEarly ? ` · ${Math.ceil(w.timeSaved)} s antes` : "";
+    this.events.banner("Onda concluída", `+${gold} ouro · +${Math.round((xp + r.xp) * this.stats.xp)} XP${survivors ? ` · ${survivors} fugiram` : ""}${extra}`);
+    this.audio.play("pickup");
+  }
+
+  /** Depois do chefe da zona: o portal abre no meio da arena e leva à próxima zona (onda seguinte). */
+  private openPortal(): void {
+    this.phase = "portal";
+    if (this.world) {
+      this.world.portal.visible = true;
+      this.world.portal.position.set(this.segment.x, 0, this.segment.z);
+    }
+    if (this.run.victory && this.run.wave === TOTAL_WAVES) this.events.victory();
+    else this.events.toast("O portal abriu: E para seguir para a próxima zona", "#9be4ff");
+  }
+
+  /** Tira da cena o que é da onda (avisos de nascimento); os inimigos saem com a zona ou no fim da onda. */
+  private clearWave(): void {
+    for (const m of this.markers) m.mesh.removeFromParent();
+    this.markers.length = 0;
+  }
+
+  /** O círculo da clareira: pulsa enquanto espera o herói, fica firme durante a onda. */
+  private showRing(_closed: boolean): void {
+    if (!this.ring) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.3, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+      this.ring = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 96), mat);
+      this.ring.rotation.x = -Math.PI / 2;
+      this.ring.renderOrder = 9;
+      this.scene.add(this.ring);
+    }
+    const sg = this.segment;
+    if (!sg) return;
+    this.ring.position.set(sg.x, 0.08, sg.z);
+    this.ring.scale.setScalar(sg.r);
+  }
+
+  /** Tempo que falta da onda, em s (0 fora da luta). */
+  get waveTimeLeft(): number {
+    return this.wave && this.phase === "fight" ? timeLeft(this.wave) : 0;
   }
 
   // ---------------------------------------------------------------- inventário
@@ -1193,7 +1489,7 @@ export class Game {
       animateRig(rig, { t: this.time, move: 0, attack: -1, windup: 0, dead: 1 });
       return;
     }
-    if (s.regen > 0) p.hp = Math.min(s.maxHp, p.hp + s.regen * dt);
+    if (s.regen > 0) p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? RUN_TUNING.combatHealMult : 1));
     this.updateAim();
     p.facing = Math.atan2(this.aim.x - p.x, this.aim.z - p.z);
     let lift = 0;
@@ -1282,8 +1578,19 @@ export class Game {
     }
 
     // portal
-    this.nearPortal = this.bossDead && this.world !== null && this.world.portal.visible && Math.hypot(p.x - this.layout.boss.x, p.z - this.layout.boss.z) < 2.6;
-    if (this.nearPortal && input.wasPressed("KeyE")) this.events.openTravel();
+    this.nearPortal = this.phase === "portal" && this.world !== null && this.world.portal.visible
+      && Math.hypot(p.x - this.world.portal.position.x, p.z - this.world.portal.position.z) < 2.6;
+    if (this.nearPortal && input.wasPressed("KeyE")) this.prepareWave(this.run.wave + 1);
+    if (input.wasPressed("KeyH") && canHasten(this.wave)) this.hastenWave();
+    // durante a onda a clareira fecha: o herói não sai dela
+    if (this.phase === "intro" || this.phase === "fight") {
+      const sg = this.segment;
+      const dx = p.x - sg.x, dz = p.z - sg.z, d = Math.hypot(dx, dz), max = sg.r - 0.6;
+      if (d > max) {
+        p.x = sg.x + (dx / d) * max;
+        p.z = sg.z + (dz / d) * max;
+      }
+    }
 
     // visual
     this.marker?.position.set(p.x, 0.07, p.z);
@@ -1546,7 +1853,7 @@ export class Game {
           this.boss = null;
           const reward = this.bossReward;
           this.bossReward = null;
-          if (reward) setTimeout(reward, 600);
+          reward?.();
         }
         continue;
       }
@@ -1654,6 +1961,7 @@ export class Game {
       this.time += dt;
       this.run.statistics.elapsed += raw;
       this.updatePlayer(dt);
+      this.updateWave(dt, raw);
       this.updateEnemies(dt);
       this.updateProjectiles(dt);
       this.updateAllies(dt);
