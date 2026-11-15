@@ -1,50 +1,13 @@
-// Save persistente (localStorage). Um personagem por save; progresso contínuo.
-import type { Item, Slot } from "./items";
-import type { Attributes } from "./stats";
+// Save em localStorage, como no Dungeon Reign (save.lua): duas entradas separadas.
+// - partida em andamento: o checkpoint antes da onda atual (core/run.ts); some quando a partida acaba.
+// - registros entre partidas: só estatística, nunca dá poder a uma partida nova.
+// O save contínuo antigo (v1, um herói com itens e nível até 60) é descartado na primeira leitura.
+import { emptyRecords, isCheckpoint, isRecords, type Checkpoint, type Records } from "./run";
 
-export const SAVE_KEY = "dungeon-reign-rpg.save.v1";
-
-export interface SaveData {
-  v: 1;
-  seed: number;
-  heroId: string;
-  level: number;
-  xp: number;
-  attrs: Attributes;
-  attrPoints: number;
-  bag: Item[];
-  equipped: Partial<Record<Slot, Item>>;
-  relics: string[];
-  zonesUnlocked: string[];
-  bossesKilled: string[];
-  zone: string;
-  visits: number;
-  kills: number;
-  deaths: number;
-  playSeconds: number;
-}
-
-export function newSave(heroId: string, seed: number): SaveData {
-  return {
-    v: 1,
-    seed,
-    heroId,
-    level: 1,
-    xp: 0,
-    attrs: { forca: 0, vigor: 0, agilidade: 0, foco: 0 },
-    attrPoints: 0,
-    bag: [],
-    equipped: {},
-    relics: [],
-    zonesUnlocked: ["bosque"],
-    bossesKilled: [],
-    zone: "bosque",
-    visits: 0,
-    kills: 0,
-    deaths: 0,
-    playSeconds: 0,
-  };
-}
+export const RUN_KEY = "dungeon-reign-rpg.run.v2";
+export const RECORDS_KEY = "dungeon-reign-rpg.records.v2";
+/** chave do save contínuo antigo (até a D13) */
+export const LEGACY_SAVE_KEY = "dungeon-reign-rpg.save.v1";
 
 export interface Storage {
   getItem(k: string): string | null;
@@ -52,33 +15,66 @@ export interface Storage {
   removeItem(k: string): void;
 }
 
-export function loadSave(storage: Storage | undefined): SaveData | null {
+function readJson(storage: Storage | undefined, key: string): unknown {
   try {
-    const raw = storage?.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as SaveData;
-    if (data.v !== 1 || typeof data.heroId !== "string" || typeof data.level !== "number") return null;
-    return data;
+    const raw = storage?.getItem(key);
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-export function writeSave(storage: Storage | undefined, data: SaveData): boolean {
+function writeJson(storage: Storage | undefined, key: string, data: unknown): boolean {
   try {
-    storage?.setItem(SAVE_KEY, JSON.stringify(data));
+    if (!storage) return false;
+    storage.setItem(key, JSON.stringify(data));
     return true;
   } catch {
     return false;
   }
 }
 
-export function deleteSave(storage: Storage | undefined): void {
+function remove(storage: Storage | undefined, key: string): void {
   try {
-    storage?.removeItem(SAVE_KEY);
+    storage?.removeItem(key);
   } catch {
     /* sem armazenamento disponível */
   }
+}
+
+/** A partida em andamento, ou null se não há (ou se o checkpoint é de outra versão ou está estragado). */
+export function loadRun(storage: Storage | undefined): Checkpoint | null {
+  const cp = readJson(storage, RUN_KEY);
+  return isCheckpoint(cp) ? cp : null;
+}
+
+export function writeRun(storage: Storage | undefined, cp: Checkpoint): boolean {
+  return writeJson(storage, RUN_KEY, cp);
+}
+
+/** A partida acabou (morte, vitória ou desistência): não há mais o que continuar. */
+export function clearRun(storage: Storage | undefined): void {
+  remove(storage, RUN_KEY);
+}
+
+export function loadRecords(storage: Storage | undefined): Records {
+  const r = readJson(storage, RECORDS_KEY);
+  return isRecords(r) ? r : emptyRecords();
+}
+
+export function writeRecords(storage: Storage | undefined, r: Records): boolean {
+  return writeJson(storage, RECORDS_KEY, r);
+}
+
+/** Apaga o save contínuo antigo, se existir; devolve true quando apagou (para avisar o jogador uma vez). */
+export function discardLegacySave(storage: Storage | undefined): boolean {
+  try {
+    if (storage?.getItem(LEGACY_SAVE_KEY) == null) return false;
+  } catch {
+    return false;
+  }
+  remove(storage, LEGACY_SAVE_KEY);
+  return true;
 }
 
 export function safeStorage(): Storage | undefined {

@@ -64,7 +64,7 @@ Números em `src/data/run.ts` e fórmulas em `src/core/waves.ts`, conferidos por
 
 | # | Regra no Dungeon Reign | Fonte | Aqui | Estado |
 |---|---|---|---|---|
-| R1 | Cada partida tem uma seed, com um fluxo de sorteio por finalidade (inimigos, campeões, chefes, recompensas, relíquias...) | `run/run_controller.lua` `RNG.streams` | `core/rng.ts` já tem fluxo por rótulo; a partida não existe | falta (`M20-01`) |
+| R1 | Cada partida tem uma seed, com um fluxo de sorteio por finalidade (inimigos, campeões, chefes, recompensas, relíquias...) | `run/run_controller.lua` `RNG.streams` | `RUN_STREAMS` e `RunRng` em `core/run.ts`, mesmos 12 fluxos; código de seed de 7 letras (`encodeSeed`, `decodeSeed`) | igual (testado em `tests/run.test.ts`); o jogo ainda sorteia com `Math.random` fora de recompensas e relíquias (`M20-02`) |
 | R2 | Início em 3 passos: herói, dificuldade, spell inicial | `ui/screens/run_setup.lua`, `spell_select.lua` | escolha de herói só | falta (`M20-06`) |
 | R3 | 20 ondas; chefes nas ondas 5, 10, 15 e 20; no modo sem fim, a cada 5 | `core/constants.lua` `TOTAL_WAVES`, `BOSS_WAVES` | `TOTAL_WAVES`, `isBossWave` (testados) | igual (dado); falta no jogo (`M20-02`) |
 | R4 | Cada 5 ondas formam um trecho (`segmentOf`) | `run/run_map.lua` | zona = 5 ondas (D13); `segmentOf` testado | igual |
@@ -85,7 +85,7 @@ Números em `src/data/run.ts` e fórmulas em `src/core/waves.ts`, conferidos por
 | R19 | Intervalo entre ondas, nesta ordem: relíquia do chefe, relíquia de risco, loja automática, mapa; nível e evolução no meio; a loja nunca trava o início da onda | `run_intermission.lua` | — | falta (`M20-05`) |
 | R20 | Mapa: 3 cartas sorteadas entre 8 tipos com peso; não há mapa antes da onda 1 nem das ondas de chefe | `run_map.lua` `generate`, `hasMapBefore`; `data/run_map.lua` | `RUN_MAP`, `hasMapBefore` testados | igual (dado); falta no jogo (`M20-05`) |
 | R21 | Loja garantida antes de toda onda múltipla de 3, no lugar de uma carta de combate, maldição ou evento; loja automática antes de toda onda de chefe | `run_map.lua` `generate`; `wave_system.lua` | `RUN_MAP.shopEvery`, `shopBeforeWave` | igual (dado); falta no jogo (`M20-05`, `M7`) |
-| R22 | Checkpoint antes de cada onda (a partida inteira mais o estado dos sorteios); continuar recomeça aquela onda | `run/run_save.lua`; `run_controller.lua` `restore` | save contínuo | falta (`M20-01`) |
+| R22 | Checkpoint antes de cada onda (a partida inteira mais o estado dos sorteios); continuar recomeça aquela onda | `run/run_save.lua`; `run_controller.lua` `restore` | `checkpoint` e `continueRun` em `core/run.ts`; save v2 em `core/save.ts` | igual (testado: continuar no meio dá o mesmo mapa e os mesmos sorteios); enquanto não há ondas, o checkpoint é a entrada na zona (`M20-02`) |
 | R23 | Morrer encerra a partida, com tela de resultado e registros | `ui/screens/death.lua`, `results.lua`; `core/records.lua` | morrer volta à fogueira sem perder nada | falta (`M20-06`) |
 | R24 | Vencer a onda 20 dá vitória e a escolha de seguir no modo sem fim | `ui/screens/victory_choice.lua` | vencer o Hollow King libera o portal | falta (`M20-06`) |
 | R25 | Dificuldades Easy, Normal e Hard (Depths 1 a 5 em cima da Hard) | `data/difficulties.lua` | `DIFFICULTIES` testado; Depths no `M13` | igual (dado); falta no jogo (`M20-06`) |

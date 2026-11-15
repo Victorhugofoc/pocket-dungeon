@@ -21,6 +21,14 @@ export class Rng {
     return new Rng((seed ^ hashStr(label)) >>> 0);
   }
 
+  /** Estado interno, para gravar no checkpoint e retomar o fluxo no mesmo ponto. */
+  get state(): number {
+    return this.s;
+  }
+  set state(v: number) {
+    this.s = v >>> 0;
+  }
+
   next(): number {
     this.s = (this.s + 0x6d2b79f5) >>> 0;
     let t = this.s;
