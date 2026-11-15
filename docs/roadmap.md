@@ -66,10 +66,10 @@ Um RPG de ação de 8 a 12 horas na primeira passada, com rejogabilidade por dif
 | 3 | M2 Heróis | O jogador olha para o herói o tempo todo |
 | 4 | M18 Atmosfera das zonas | Decidido em 2026-11-14: na câmera alta, o ambiente pesa mais na primeira impressão que o detalhe de cada personagem, e custa bem menos |
 | 5 | M19 Kit dos heróis do Dungeon Reign | Decidido em 2026-11-14: técnica, passiva e ataque básico de cada herói como no original, onde o design já foi muito trabalhado |
-| 5b | M3 Inimigos atuais | Fecha o elenco que já está no jogo |
+| 5b | M6 Spells | Decidido em 2026-11-14: logo depois do M19, em teclas (D12) |
+| 5c | M3 Inimigos atuais | Fecha o elenco que já está no jogo |
 | 6 | M4 Animação e sensação | Corpo novo pede movimento à altura |
 | 7 | M5 Efeitos de combate | Leitura das lutas; pré-requisito para spells e chefes novos |
-| 8 | M6 Spells | Maior ganho de profundidade por tarefa |
 | 9 | M7 Economia | Dá destino ao loot e ao tempo de farm |
 | 10 | M8 Itens | Lendários e ícones, em cima da economia |
 | 11 | M9 Inimigos novos e elites | Variedade antes de abrir zonas novas |
@@ -300,7 +300,7 @@ Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de 
 
 ### M6 — Spells [decisão D2]
 
-Porta das 11 spells do Dungeon Reign: `fireball`, `iceball`, `chain_lightning`, `arcane_bolt`, `healing_field`, `blade_orbit`, `venom_nova`, `cyclone`, `rune_traps`, `prism_beam`, `quake_totem`. Proposta: 2 espaços de spell por herói (teclas 1 e 2), qualquer herói usa qualquer spell, com nível de 1 a 5.
+Porta das 11 spells do Dungeon Reign: `fireball`, `iceball`, `chain_lightning`, `arcane_bolt`, `healing_field`, `blade_orbit`, `venom_nova`, `cyclone`, `rune_traps`, `prism_beam`, `quake_totem`. **D12 decidida:** não são lançadas sozinhas como lá; 2 espaços nas teclas 1 e 2, mira no cursor, técnica e esquiva sem mudança. Proposta para D2: qualquer herói usa qualquer spell, começando pelas 4 iniciais dele (`startingSpells`), nível de 1 a 5.
 
 **M6-01 · Dados e núcleo** · M
 - Arquivos: `src/data/spells.ts` (porta de `spells.lua`), `src/core/spells.ts` (dano, recarga, escala por nível e por atributo), testes.
@@ -640,7 +640,7 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 | D8 | Endgame: dificuldades e Depths como no Dungeon Reign? | Sim | M13 |
 | D9 | Onde publicar? | GitHub Pages | M16-06 |
 | D10 | Nome definitivo do jogo | Em aberto | Nenhuma |
-| D12 | Spells como no Dungeon Reign: lançadas sozinhas (como lá) ou em teclas? Quantos espaços? Cada herói começa com as 4 iniciais dele (`startingSpells`)? | Lançadas sozinhas, 2 espaços, escolhidas entre as 4 iniciais do herói; vem logo depois do M19 | M6 |
+| D12 | Spells como no Dungeon Reign: lançadas sozinhas (como lá) ou em teclas? | **Decidido em 2026-11-14: em teclas.** As mesmas spells do Dungeon Reign, sem lançamento automático: teclas 1 e 2 para as 2 spells; técnica e esquiva ficam onde estão. M6 vem logo depois do M19 | M6 |
 | D11 | Bosque Sombrio: deixar sombrio (fim de tarde, verdes fechados, luz fria, fogueira e cogumelos como contraste quente) ou manter ensolarado? | **Decidido em 2026-11-14: sombrio** | M18-07 |
 
 ---
@@ -657,6 +657,7 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`.
 | M0-02 | feito | 2026-11-13 | `npm run refs` (`tools/make-refs.mjs`, usa `pngjs`): 37 sprites em `docs/ref/<id>.png` e 3 folhas de contato em ordem alfabética de id |
 | M0-03 | pendente | | |
 | Marco M19 | criado | 2026-11-14 | Pedido do usuário: kit dos heróis igual ao do Dungeon Reign, na frente do M3 |
+| M19-01 | feito | 2026-11-14 | `src/data/techniques.ts`: as 9 técnicas com os números do `spells.lua` em px (marcos de nível 2 a 5 e evolução) e as passivas (`FROST`, `SHADOW`, `SHIELD_THROW`, `VENOM`, `UNBREAKABLE`, `RICOCHET`). Conversão: **12 px = 1 m** (`DR_PX_PER_M`; o alcance do tiro lá, 160 px, vira 13,3 m, perto dos 13 a 16 m daqui), dano = (base + 8 × escala) / 8 sobre o dano do herói, curas fixas viram % da vida (÷ 100). `src/core/techniques.ts`: `techniqueStats(id, nível, ctx)` com escala de nível ×3,25 no 5, pool de percentuais igual ao `modifiers.lua` e piso de recarga de 35%. `src/core/frost.ts`: Estilhaçar, Frio profundo, Quebradiço e `IcicleCounter`. 14 testes em `tests/techniques.test.ts`. O jogo ainda usa as técnicas antigas de `heroes.ts`; cada herói troca nas tarefas `M19-02` a `M19-05`. O Execution Leap tem 26,7 m de alcance por essa conversão: conferir jogando se cabe na tela |
 | M1-01 | feito | 2026-11-13 | Aprovado pelo usuário. | Bloodfang: orelhas menores e achatadas, tufos da bochecha em leque curto, polegar e garras nas duas mãos, dedos nos pés, caveira esculpida com suturas e nuca, estrela na tanga (geometria fina, não cor por vértice: a tanga tem poucos vértices). De 19,4 mil para cerca de 12 mil triângulos (cabeça 36×26, tronco 22×16, `stud` de 80 triângulos para tachas e dedos). Conferido só na prévia |
 | M1-02 | feito | 2026-11-13 | Aprovado pelo usuário. | Gravekeeper refeito do sprite e já no jogo: capuz esculpido com abertura preta e olhos acesos, pelerine, saia rasgada (`robeMesh`), pernas por baixo da saia, pá apoiada no chão, lanterna com luz pontual. Cerca de 6,6 mil triângulos. Conferido só na prévia (parado, andando, ataque, câmera do jogo); a luta na Cripta não foi jogada. Kit novo: `sculptTube`, `robeMesh`, `Builder.lights`, `Builder.glowByVertex`; bípedes ganharam o osso `skirt` |
 | M1-04 | feito | 2026-11-13 | Aprovado pelo usuário. | Hollow King refeito do sprite e já no jogo: crânio esculpido com órbitas, nariz e dentes, coroa alta, gola de pelo aberta na frente, costelas à mostra, saia com painel azul e debrum dourado (`robeMesh` com `panel`), mãos de osso, cajado de crescente com orbe e luz turquesa, chama na mão esquerda. Cerca de 8,5 mil triângulos. Conferido só na prévia; a luta no Vazio não foi jogada. Kit: `restArm` e `hang` (objeto na vertical do mundo na pose de descanso) |
