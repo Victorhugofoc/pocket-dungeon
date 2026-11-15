@@ -36,7 +36,7 @@ export interface AutoAttack {
 }
 
 export type TechniqueKind =
-  | "nova" | "blink" | "field" | "dash" | "burst" | "leap" | "shadow" | "aegis" | "brood" | "icewall";
+  | "nova" | "blink" | "field" | "dash" | "burst" | "leap" | "shadow" | "aegis" | "brood" | "icewall" | "rift";
 
 export interface Technique {
   id: string;
@@ -94,8 +94,8 @@ export const HEROES: Record<string, HeroDef> = {
     stats: { attackSpeedPct: 0.18, moveSpeedPct: 0.10, critChance: 0.08, critDamagePct: 0.10, maxHpPct: -0.10, armor: -5 },
     auto: { kind: "projectile", rate: 2.1, damage: 0.85, range: 13, speed: 34, color: 0xfff29a,
       ricochet: 2, ricochetDamage: 0.6 },
-    technique: { id: "storm_step", name: "Passo da Tempestade", kind: "blink", cooldown: 7, damage: 2.6, range: 10,
-      text: "Teleporta na direção do cursor e eletrocuta tudo no caminho." },
+    technique: { id: "storm_step", name: TECHNIQUES.storm_step.name, kind: "blink", cooldown: TECHNIQUES.storm_step.cooldown,
+      damage: 0, text: TECHNIQUES.storm_step.text },
     passive: "Cada raio salta para até 2 inimigos próximos.",
   },
   aurelius: {
@@ -103,9 +103,8 @@ export const HEROES: Record<string, HeroDef> = {
     color: 0xd08cff, accent: 0xffe9a8, weapon: "staff", weaponName: "Cajado",
     stats: { cdrPct: 0.15, regen: 0.4, maxHpPct: 0.08, areaPct: 0.15, moveSpeedPct: -0.05 },
     auto: { kind: "projectile", rate: 1.5, damage: 1.15, range: 16, speed: 22, color: 0xd9a0ff, pierce: 2, size: 1.3 },
-    technique: { id: "time_rift", name: "Fenda Temporal", kind: "field", cooldown: 12, damage: 0.9, radius: 6, duration: 5,
-      text: "Abre uma fenda no cursor por 5 s: inimigos dentro ficam 70% mais lentos e sofrem dano contínuo.",
-      status: { kind: "slow", power: 0.7, duration: 0.6 } },
+    technique: { id: "time_rift", name: TECHNIQUES.time_rift.name, kind: "rift", cooldown: TECHNIQUES.time_rift.cooldown,
+      damage: 0, text: TECHNIQUES.time_rift.text },
     passive: "Projéteis arcanos atravessam até 2 inimigos.",
   },
   ignis: {

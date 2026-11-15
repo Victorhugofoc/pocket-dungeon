@@ -17,6 +17,7 @@ import { Audio } from "./audio";
 import { Enemy, enemyDef } from "./enemy";
 import { Fx } from "./fx";
 import { IceWalls, type IceWall } from "./icewall";
+import { Rifts, type Rift } from "./rift";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -54,6 +55,8 @@ interface Drop {
 }
 
 interface Bee { x: number; z: number; life: number; hitCd: number; rig: Rig; phase: number; sting: number }
+/** rastro que fere em pulsos ao longo de um segmento (Storm Step) */
+interface Trail { x0: number; z0: number; x1: number; z1: number; hw: number; until: number; tick: number; every: number; dmg: number; color: number; mesh: THREE.Mesh }
 interface Field { x: number; z: number; r: number; until: number; tick: number; mesh: THREE.Mesh }
 
 export interface PlayerState {
@@ -110,6 +113,8 @@ export class Game {
   private bees: Bee[] = [];
   private fields: Field[] = [];
   private iceWalls = new IceWalls(this.scene);
+  private rifts = new Rifts(this.scene);
+  private trails: Trail[] = [];
   private icicle = new IcicleCounter();
   /** números da técnica do herói no nível atual (src/core/techniques.ts); null se ainda for a técnica antiga */
   tech: TechStats | null = null;
@@ -320,6 +325,9 @@ export class Game {
     for (const f of this.fields) f.mesh.removeFromParent();
     this.fields.length = 0;
     this.iceWalls.clear();
+    this.rifts.clear();
+    for (const t of this.trails) this.disposeTrail(t);
+    this.trails.length = 0;
     this.fx.clear();
     this.world?.dispose();
     this.world = null;
@@ -386,9 +394,13 @@ export class Game {
     const p = this.player;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const pr = this.projectiles[i];
-      pr.life -= dt;
-      pr.x += pr.vx * dt;
-      pr.z += pr.vz * dt;
+      // Time Rift: tiro inimigo dentro da fenda fica parado no ar (e não envelhece)
+      const held = !pr.friendly && this.rifts.list.length > 0 && this.rifts.inside(pr.x, pr.z);
+      if (!held) {
+        pr.life -= dt;
+        pr.x += pr.vx * dt;
+        pr.z += pr.vz * dt;
+      }
       let dead = pr.life <= 0 || this.grid.hits(pr.x, pr.z, pr.r * 0.5);
       if (!dead && pr.friendly) {
         for (const e of this.enemies) {
@@ -927,7 +939,45 @@ export class Game {
     p.techCd = p.techMax;
     this.audio.play("tech");
     const color = this.hero.color;
-    switch (t.kind) {
+    switch (this.tech && t.kind === "blink" ? "storm_step" : t.kind) {
+      case "storm_step": {
+        // Kaelen: teleporta até o mouse ferindo o caminho; 0,3 s invulnerável e rastro elétrico que fere em pulsos
+        const T = this.tech!;
+        const dest = this.aimPoint(T.range);
+        const x0 = p.x;
+        const z0 = p.z;
+        const len = Math.hypot(dest.x - x0, dest.z - z0);
+        if (len < 20 / 12) {
+          p.techCd = 0; // perto demais: não gasta (como no original)
+          return;
+        }
+        const hw = (T.width ?? 2) / 2;
+        this.lineHit(x0, z0, dest.x, dest.z, hw, T.damage);
+        p.x = dest.x;
+        p.z = dest.z;
+        this.grid.resolve(p, 0.5);
+        p.iframes = Math.max(p.iframes, T.invuln ?? 0.3);
+        this.addTrail(x0, z0, p.x, p.z, hw, T.trail ?? 2, T.trailTick ?? 0.4, T.damage * (T.trailFraction ?? 0.35), color);
+        this.fx.streak(x0, z0, p.x, p.z, 1.4, 0xfff6c0, 0.3);
+        this.fx.burst(x0, 1, z0, color, 14, 5, 0.14, 0.4);
+        this.fx.burst(p.x, 1, p.z, 0xfff29a, 24, 7, 0.14, 0.4);
+        this.fx.flashLight(p.x, 1.6, p.z, 0xfff0a0, 2.4, 0.3);
+        if (T.shockRadius) {
+          this.areaHit(p.x, p.z, T.shockRadius, T.damage);
+          this.fx.shockwave(p.x, p.z, T.shockRadius, 0xfff29a, 0.45);
+        } else this.fx.shockwave(p.x, p.z, 34 / 12, 0xfff29a, 0.3);
+        this.fx.addShake(0.18);
+        break;
+      }
+      case "rift": {
+        // Aurelius: fenda no mouse que deixa lento, segura os tiros inimigos e implode
+        const T = this.tech!;
+        const dest = this.aimPoint(T.range);
+        this.rifts.add({ x: dest.x, z: dest.z, r: T.radius ?? 6.7, dur: T.duration ?? 3, slow: T.riftSlow ?? 0.6,
+          damage: T.damage, perEnemy: T.perEnemy ?? 0.15, maxMult: T.maxMult ?? 3, stun: T.stun ?? 0 });
+        this.fx.burst(dest.x, 0.5, dest.z, 0xc28cff, 30, 5, 0.14, 0.6, -2);
+        break;
+      }
       case "icewall": {
         const T = this.tech!;
         const pl = IceWalls.place(p.x, p.z, this.aim.x, this.aim.z, T.minRange ?? 4, T.maxRange ?? 16);
@@ -1242,6 +1292,94 @@ export class Game {
     });
   }
 
+  private addTrail(x0: number, z0: number, x1: number, z1: number, hw: number, dur: number, every: number, dmg: number, color: number): void {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.15, depthWrite: false, toneMapped: false });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
+    mesh.rotation.order = "YXZ";
+    mesh.rotation.set(-Math.PI / 2, Math.atan2(x1 - x0, z1 - z0), 0);
+    mesh.position.set((x0 + x1) / 2, 0.07, (z0 + z1) / 2);
+    mesh.scale.set(hw * 0.7, len, 1);
+    this.scene.add(mesh);
+    this.trails.push({ x0, z0, x1, z1, hw, until: this.time + dur, tick: every, every, dmg, color, mesh });
+  }
+
+  /** Raio em zigue-zague ao longo do rastro (traços finos com desvio lateral aleatório). */
+  private boltAlong(t: Trail, width: number, dur: number): void {
+    const len = Math.hypot(t.x1 - t.x0, t.z1 - t.z0);
+    const n = Math.max(4, Math.round(len / 1.3));
+    const nx = -(t.z1 - t.z0) / (len || 1);
+    const nz = (t.x1 - t.x0) / (len || 1);
+    let px = t.x0;
+    let pz = t.z0;
+    for (let i = 1; i <= n; i++) {
+      const k = i / n;
+      const off = i === n ? 0 : (Math.random() - 0.5) * t.hw * 1.4;
+      const qx = t.x0 + (t.x1 - t.x0) * k + nx * off;
+      const qz = t.z0 + (t.z1 - t.z0) * k + nz * off;
+      this.fx.streak(px, pz, qx, qz, width, 0xfff6c0, dur);
+      px = qx;
+      pz = qz;
+    }
+  }
+
+  private disposeTrail(t: Trail): void {
+    t.mesh.removeFromParent();
+    t.mesh.geometry.dispose();
+    (t.mesh.material as THREE.Material).dispose();
+  }
+
+  /** Storm Step (rastro) e Time Rift (lentidão e implosão). */
+  private updateZonesOfTech(dt: number): void {
+    for (let i = this.trails.length - 1; i >= 0; i--) {
+      const t = this.trails[i];
+      t.tick -= dt;
+      const left = t.until - this.time;
+      (t.mesh.material as THREE.MeshBasicMaterial).opacity = Math.min(1, left / 0.4) * (0.04 + Math.random() * 0.06);
+      if (Math.random() < dt * 9) this.boltAlong(t, 0.08, 0.1);
+      // faíscas correndo pelo rastro
+      if (Math.random() < 0.6) {
+        const k = Math.random();
+        this.fx.spark(t.x0 + (t.x1 - t.x0) * k + (Math.random() - 0.5) * t.hw, 0.2 + Math.random() * 0.6, t.z0 + (t.z1 - t.z0) * k + (Math.random() - 0.5) * t.hw, 0xfff29a, 0.1, 0.25, 1.5);
+      }
+      if (t.tick <= 0 && left > 0) {
+        t.tick = t.every;
+        this.lineHit(t.x0, t.z0, t.x1, t.z1, t.hw, t.dmg);
+        this.boltAlong(t, 0.16, 0.16);
+        this.boltAlong(t, 0.1, 0.12);
+      }
+      if (left <= 0) {
+        this.disposeTrail(t);
+        this.trails.splice(i, 1);
+      }
+    }
+    if (!this.rifts.list.length) return;
+    for (const r of this.rifts.list) {
+      for (const e of this.enemies) {
+        if (e.dead || (e.x - r.x) ** 2 + (e.z - r.z) ** 2 > (r.r + e.radius) ** 2) continue;
+        this.applyStatus(e, { kind: "slow", power: r.slow, duration: 0.25 }, 0);
+      }
+      if (Math.random() < 0.5) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.sqrt(Math.random()) * r.r;
+        // partículas sobem devagar: o tempo lá dentro anda devagar
+        this.fx.glow(r.x + Math.cos(a) * d, 0.2, r.z + Math.sin(a) * d, 0xc28cff, 0.25, 1.2, 0, 0.5, 0);
+      }
+    }
+    this.rifts.update(dt, (r: Rift) => {
+      const inside = this.enemies.filter((e) => !e.dead && (e.x - r.x) ** 2 + (e.z - r.z) ** 2 <= (r.r + e.radius) ** 2);
+      const mult = Math.min(r.maxMult, 1 + r.perEnemy * inside.length);
+      for (const e of inside) {
+        this.hitEnemy(e, r.damage * mult);
+        if (r.stun > 0 && !e.dead) this.applyStatus(e, { kind: "stun", power: 1, duration: r.stun }, 0);
+      }
+      this.fx.shockwave(r.x, r.z, r.r, 0xe0c0ff, 0.35);
+      this.fx.burst(r.x, 0.8, r.z, 0xc28cff, 30 + inside.length * 6, 9, 0.16, 0.5, 4);
+      this.fx.flashLight(r.x, 1.5, r.z, 0xc28cff, 2 + inside.length * 0.3, 0.35);
+      this.fx.addShake(0.2 + Math.min(0.3, inside.length * 0.04));
+    });
+  }
+
   private updateEnemies(dt: number): void {
     const p = this.player;
     const active: Enemy[] = [];
@@ -1296,6 +1434,7 @@ export class Game {
       }
     }
     this.updateIceWalls(dt, active);
+    this.updateZonesOfTech(dt);
   }
 
   private updateCamera(dt: number): void {
