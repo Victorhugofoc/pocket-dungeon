@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { Rng, hashStr, makeNoise2D } from "../src/core/rng";
 import { generateItem, itemScore, RARITIES, rollRarity } from "../src/core/items";
-import { armorReduction, computeStats, xpToNext } from "../src/core/stats";
+import { armorReduction, computeStats } from "../src/core/stats";
 import { generateZone, ObstacleGrid, distToPath } from "../src/core/worldgen";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { BOSSES, ENEMIES } from "../src/data/enemies";
 import { RELICS } from "../src/data/relics";
 import { ZONES, ZONE_ORDER } from "../src/data/zones";
 import { TUNING } from "../src/data/tuning";
-
-const noAttrs = { forca: 0, vigor: 0, agilidade: 0, foco: 0 };
 
 describe("rng", () => {
   it("é determinístico por seed", () => {
@@ -72,34 +70,28 @@ describe("dados", () => {
 
 describe("atributos", () => {
   it("herói nível 1 sem nada usa a base + bônus do herói", () => {
-    const s = computeStats(1, noAttrs, [HEROES.varok.stats]);
+    const s = computeStats([HEROES.varok.stats]);
     expect(s.maxHp).toBe(Math.round(TUNING.hero.baseHp * 1.6));
     expect(s.damage).toBeCloseTo(TUNING.hero.baseDamage * 1.35);
   });
-  it("nível, atributos e relíquias aumentam o poder", () => {
-    const base = computeStats(1, noAttrs, []);
-    const lvl = computeStats(10, noAttrs, []);
-    const str = computeStats(10, { ...noAttrs, forca: 10 }, []);
-    const relic = computeStats(10, noAttrs, [RELICS.glass_cannon.stats]);
-    expect(lvl.damage).toBeGreaterThan(base.damage);
-    expect(lvl.maxHp).toBeGreaterThan(base.maxHp);
-    expect(str.damage).toBeCloseTo(lvl.damage * 1.3);
-    expect(relic.damage).toBeCloseTo(lvl.damage * 1.5);
-    expect(relic.maxHp).toBeLessThan(lvl.maxHp);
+  it("relíquias e melhorias mudam o poder; o nível sozinho não", () => {
+    const base = computeStats([]);
+    const relic = computeStats([RELICS.glass_cannon.stats]);
+    const up = computeStats([{ damage: 2, maxHp: 20 }]);
+    expect(relic.damage).toBeCloseTo(base.damage * 1.5);
+    expect(relic.maxHp).toBeLessThan(base.maxHp);
+    expect(up.damage).toBeCloseTo(TUNING.hero.baseDamage + 2);
+    expect(up.maxHp).toBe(TUNING.hero.baseHp + 20);
   });
   it("armadura tem retorno decrescente e limites seguros", () => {
     expect(armorReduction(0)).toBe(0);
     expect(armorReduction(100)).toBeCloseTo(0.5);
     expect(armorReduction(1e6)).toBeLessThan(1);
-    const s = computeStats(1, noAttrs, [{ dodge: 5, critChance: 5, cdrPct: 5, maxHpPct: -5 }]);
+    const s = computeStats([{ dodge: 5, critChance: 5, cdrPct: 5, maxHpPct: -5 }]);
     expect(s.dodge).toBeLessThanOrEqual(0.6);
     expect(s.critChance).toBeLessThanOrEqual(0.75);
     expect(s.cooldownMult).toBeGreaterThanOrEqual(0.4);
     expect(s.maxHp).toBeGreaterThan(0);
-  });
-  it("a curva de XP é crescente", () => {
-    for (let l = 1; l < 59; l++) expect(xpToNext(l + 1)).toBeGreaterThan(xpToNext(l));
-    expect(xpToNext(1)).toBe(100);
   });
 });
 

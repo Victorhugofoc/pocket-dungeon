@@ -15,6 +15,9 @@ import {
   ARENA_CROWD, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SURVIVOR_FACTOR,
 } from "../src/data/run";
 import { ENEMIES } from "../src/data/enemies";
+import { UPGRADE_CAPS, UPGRADES } from "../src/data/upgrades";
+import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
+import { newRun } from "../src/core/run";
 import { bossStats, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, targetCount, waveMods } from "../src/core/wave";
 import { Rng } from "../src/core/rng";
 import {
@@ -31,7 +34,7 @@ const LUAJIT = process.env.LUAJIT ?? "luajit";
 const MODULES = [
   "src.core.constants", "src.data.spells", "src.data.characters",
   "src.data.waves", "src.data.tuning", "src.data.run_map", "src.data.difficulties", "src.data.bosses",
-  "src.progression.level_up", "src.data.enemies", "src.data.affixes",
+  "src.progression.level_up", "src.data.enemies", "src.data.affixes", "src.data.upgrades",
 ];
 /** Até que onda as fórmulas são comparadas (passa da 20 para cobrir o modo sem fim). */
 const WAVE_CHECK = 40;
@@ -91,12 +94,48 @@ type Lua = any;
 
 function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
-  const r = spawnSync(LUAJIT, [resolve(import.meta.dirname, "../tools/dr-dump.lua"), ROOT, ...MODULES, WAVE_TABLE, WAVE_LIFE], {
+  const r = spawnSync(LUAJIT, [resolve(import.meta.dirname, "../tools/dr-dump.lua"), ROOT, ...MODULES, WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE], {
     encoding: "utf8", maxBuffer: 64 << 20,
   });
   if (r.error || r.status !== 0) return null;
   return JSON.parse(r.stdout);
 }
+
+/** Cenários de build para o sorteio (peso por elemento e disponibilidade), montados aqui e avaliados lá e cá. */
+const FIT_RUNS = HERO_ORDER.flatMap((h) => [
+  { heroId: h, wave: 1, taken: [] as string[], tags: {} as Record<string, number> },
+  { heroId: h, wave: 6, taken: ["cone_shot", "piercing_round", "piercing_round", "piercing_round"], tags: { fire: 1, ice: 0 } },
+  { heroId: h, wave: 9, taken: ["double_shot", "double_shot", "double_shot", "double_shot", "boomerang"].filter((id) => h === "seraph" || id !== "boomerang"),
+    tags: { lightning: 2, arcane: 1 } },
+]);
+const luaStr = (x: string) => JSON.stringify(x);
+const FIT_LUA = `{${FIT_RUNS.map((r) => `{ characterId = ${luaStr(r.heroId)}, wave = ${r.wave},
+  upgradesTaken = {${r.taken.map(luaStr).join(",")}}, tags = {${Object.entries(r.tags).map(([k, v]) => `${k} = ${v}`).join(",")}},
+  spells = { [0] = { id = ${luaStr(HEROES[r.heroId].technique.id)} }, [1] = { id = ${luaStr(HEROES[r.heroId].startingSpells[0])} } } }`).join(",")}}`;
+/** level_up.lua e build_fit.lua: efeitos por raridade, pesos da raridade por nível, peso no sorteio e disponibilidade. */
+const UPGRADE_LIFE = `=(function()
+  local LU, U, Fit = require("src.progression.level_up"), require("src.data.upgrades"), require("src.build.build_fit")
+  local spy = { weighted = function(_, e) local w = {} for i, x in ipairs(e) do w[i] = { x.item, x.weight } end return w end }
+  local out = { effects = {}, canTier = {}, tiers = {}, fit = {}, avail = {} }
+  for _, u in ipairs(U.list) do
+    out.effects[u.id] = { common = LU.effectsFor(u, "common"), rare = LU.effectsFor(u, "rare"), epic = LU.effectsFor(u, "epic") }
+    out.canTier[u.id] = LU.canTier(u)
+    local t = {}
+    for i, lvl in ipairs({ 1, 5, 6, 11, 26, 60 }) do t[i] = LU.rollTier({ level = lvl }, spy, u) end
+    out.tiers[u.id] = t
+  end
+  for i, run in ipairs(${FIT_LUA}) do
+    local counts = {}
+    for _, id in ipairs(run.upgradesTaken) do
+      for _, e in ipairs(U.byId[id].effects) do counts[e.stat] = (counts[e.stat] or 0) + e.value end
+    end
+    run.stats = { rawCount = function(_, k) return counts[k] or 0 end }
+    local f, a = {}, {}
+    for _, u in ipairs(U.list) do f[u.id] = Fit.weight(run, u); a[u.id] = LU.isAvailable(run, u) end
+    out.fit[i], out.avail[i] = f, a
+  end
+  return out
+end)()`;
 
 const dr = loadOriginal();
 const C: Lua = dr?.["src.core.constants"];
@@ -244,6 +283,46 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     expect(UPGRADE_TIERS).toEqual(LU.TIERS);
     expect(UPGRADE_TIER_WEIGHTS).toEqual(LU.TIER_WEIGHTS);
     expect(LEVELUP_REROLL).toEqual(TU.LEVELUP_REROLL);
+    expect(LEVEL_UP_CHOICES).toBe(C.LEVEL_UP_CHOICES);
+    expect(UPGRADE_CAPS).toEqual(C.CAPS);
+  });
+
+  it("as melhorias de nível: a lista inteira, na mesma ordem e com os mesmos campos", () => {
+    const theirs = dr!["src.data.upgrades"].list;
+    expect(UPGRADES.map((u) => u.id)).toEqual(theirs.map((u: Lua) => u.id));
+    // o dump escreve tabela vazia como objeto
+    for (const [i, u] of UPGRADES.entries()) {
+      const t = theirs[i];
+      expect(JSON.parse(JSON.stringify(u)), u.id).toEqual({ ...t, tags: Array.isArray(t.tags) ? t.tags : [] });
+    }
+  });
+
+  it("melhorias: efeitos por raridade, quem muda de raridade e os pesos da raridade por nível", () => {
+    const L = dr![UPGRADE_LIFE];
+    const levels = [1, 5, 6, 11, 26, 60];
+    for (const u of UPGRADES) {
+      for (const t of TIER_ORDER) expect(effectsFor(u, t), `${u.id} ${t}`).toEqual(L.effects[u.id][t]);
+      expect(canTier(u), u.id).toBe(L.canTier[u.id]);
+      levels.forEach((lvl, i) => {
+        const theirs = L.tiers[u.id][i];
+        expect(canTier(u) ? tierWeights(lvl, u.minTier) : "common", `${u.id} nível ${lvl}`).toEqual(theirs);
+      });
+    }
+  });
+
+  it("melhorias: peso no sorteio pela build e disponibilidade (tetos, herói, onda, caminhos exclusivos)", () => {
+    const L = dr![UPGRADE_LIFE];
+    FIT_RUNS.forEach((r, i) => {
+      const run = newRun({ heroId: r.heroId, difficultyId: "normal", startingSpell: HEROES[r.heroId].startingSpells[0], randomSeed: 1 });
+      run.wave = r.wave;
+      run.upgradesTaken = [...r.taken];
+      run.upgradeTiers = r.taken.map(() => "common");
+      run.tags = { ...r.tags };
+      for (const u of UPGRADES) {
+        expect(fitWeight(run, u), `${r.heroId} #${i} ${u.id} peso`).toBeCloseTo(L.fit[i][u.id], 12);
+        expect(isAvailable(run, u), `${r.heroId} #${i} ${u.id}`).toBe(L.avail[i][u.id]);
+      }
+    });
   });
 
   it("mapa da partida: cartas, pesos, loja garantida", () => {

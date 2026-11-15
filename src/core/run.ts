@@ -3,10 +3,10 @@
 // não muda os outros. O checkpoint é a partida inteira mais o estado dos fluxos, gravado antes de cada onda;
 // continuar refaz a partida dali e recomeça aquela onda.
 import { Rng, hashStr } from "./rng";
-import type { Attributes } from "./stats";
 import type { Item, Slot } from "./items";
 import { DIFFICULTIES, RUN_START, type DifficultyId } from "../data/run";
 import { HEROES } from "../data/heroes";
+import type { UpgradeTier } from "./levelup";
 
 /** rng.lua `RNG.STREAMS`: um fluxo de sorteio por finalidade, na mesma ordem. */
 export const RUN_STREAMS = [
@@ -95,11 +95,9 @@ export interface RunStatistics {
 
 /**
  * Progresso do jogo antigo que ainda vive dentro da partida até o M20 terminar:
- * atributos saem no M20-03, itens no M20-04, a contagem de mortes no M20-06 (morrer encerra a partida).
+ * itens no M20-04, a contagem de mortes no M20-06 (morrer encerra a partida).
  */
 export interface LegacyProgress {
-  attrs: Attributes;
-  attrPoints: number;
   bag: Item[];
   equipped: Partial<Record<Slot, Item>>;
   deaths: number;
@@ -129,6 +127,10 @@ export interface RunState {
   technique: SpellSlot;
   relics: string[];
   upgradesTaken: string[];
+  /** raridade de cada melhoria pega, na mesma ordem de `upgradesTaken` */
+  upgradeTiers: UpgradeTier[];
+  /** pontos de tag das melhorias (level_up.lua `run.tags`; o sorteio olha os elementos) */
+  tags: Record<string, number>;
   endless: boolean;
   victory: boolean;
   /** quantas vezes a partida foi continuada */
@@ -171,13 +173,13 @@ export function newRun(opts: NewRunOptions): RunState {
     technique: newSpellSlot(hero.technique.id),
     relics: [],
     upgradesTaken: [],
+    upgradeTiers: [],
+    tags: {},
     endless: false,
     victory: false,
     resumes: 0,
     statistics: { kills: 0, damage: 0, damageTaken: 0, elapsed: 0, goldEarned: 0, goldSpent: 0, xpEarned: 0, healed: 0 },
     legacy: {
-      attrs: { forca: 0, vigor: 0, agilidade: 0, foco: 0 },
-      attrPoints: 0,
       bag: [],
       equipped: {},
       deaths: 0,
@@ -217,6 +219,9 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   const rng = new RunRng(run.seed);
   rng.restore(cp.rng);
   run.resumes = (run.resumes ?? 0) + 1;
+  // checkpoints de antes do M20-03
+  run.upgradeTiers ??= run.upgradesTaken.map(() => "common");
+  run.tags ??= {};
   run.wave = cp.wave;
   return { run, rng, wave: cp.wave };
 }

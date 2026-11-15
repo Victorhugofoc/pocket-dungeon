@@ -8,9 +8,7 @@ export const TUNING = {
   testBoost: { damage: 2, moveSpeed: 4 },
   hero: {
     baseHp: 100,
-    hpPerLevel: 12,
     baseDamage: 10,
-    damagePctPerLevel: 0.08,
     moveSpeed: 6.6,
     dashSpeed: 22,
     dashTime: 0.2,
@@ -21,22 +19,6 @@ export const TUNING = {
     pickupRadius: 1.6,
     baseCritChance: 0.05,
     baseCritDamage: 1.5,
-  },
-  attributes: {
-    // por ponto
-    forca: { damagePct: 0.03 },
-    vigor: { maxHpPct: 0.04, regen: 0.05 },
-    agilidade: { attackSpeedPct: 0.015, moveSpeedPct: 0.006 },
-    foco: { cdrPct: 0.012, statusPct: 0.03, areaPct: 0.01 },
-    pointsPerLevel: 1,
-  },
-  xp: {
-    // xp para subir do nível L para L+1: a * L^exp + b * L
-    a: 60,
-    exp: 1.6,
-    b: 40,
-    enemyPerLevel: 0.15,
-    maxLevel: 60,
   },
   enemy: {
     hpPerLevel: 1.17,
