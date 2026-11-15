@@ -1,10 +1,10 @@
 // Loop principal: herói, combate, loot, progressão e troca de zona.
 import * as THREE from "three";
-import { Rng, hashStr } from "../core/rng";
 import { generateItem, itemName, RARITIES, RARITY_COLOR, RARITY_LABEL, type Item, type Slot } from "../core/items";
 import { computeStats, xpToNext, type Attributes, type FinalStats, type StatBlock } from "../core/stats";
 import { generateZone, ObstacleGrid, type ZoneLayout } from "../core/worldgen";
-import { writeSave, safeStorage, type SaveData } from "../core/save";
+import { writeRun, safeStorage } from "../core/save";
+import { checkpoint, zoneSeed, type RunRng, type RunState } from "../core/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { FROST, SHADOW, SHIELD_THROW, TECHNIQUES, VENOM } from "../data/techniques";
@@ -98,7 +98,9 @@ export class Game {
   input: Input;
   events!: GameEvents;
 
-  save!: SaveData;
+  /** a partida em andamento (core/run.ts) e os fluxos de sorteio dela */
+  run!: RunState;
+  rng!: RunRng;
   hero!: HeroDef;
   stats!: FinalStats;
   zone!: ZoneDef;
@@ -137,9 +139,7 @@ export class Game {
   private hitstop = 0;
   /** recompensa do chefe, entregue quando o corpo dele some */
   private bossReward: (() => void) | null = null;
-  private saveTimer = 0;
   private bagFullToast = 0;
-  private lootRng = new Rng((Date.now() ^ 0x9e3779b9) >>> 0);
   private aim = new THREE.Vector3();
   private camTarget = new THREE.Vector3();
   private raycaster = new THREE.Raycaster();
@@ -192,9 +192,10 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- início / zona
-  start(save: SaveData): void {
-    this.save = save;
-    this.hero = HEROES[save.heroId];
+  start(run: RunState, rng: RunRng): void {
+    this.run = run;
+    this.rng = rng;
+    this.hero = HEROES[run.heroId];
     if (this.player.rig) disposeRig(this.player.rig);
     const h = this.hero;
     this.player.rig = characterRig(h.id, "hero");
@@ -208,9 +209,9 @@ export class Game {
     this.marker.renderOrder = 10;
     this.scene.add(this.marker);
     this.recompute();
-    this.player.hp = this.stats.maxHp;
+    this.player.hp = Math.min(this.stats.maxHp, run.hp ?? this.stats.maxHp);
     this.started = true;
-    this.enterZone(save.zone, false);
+    this.enterZone(run.legacy.zone, false);
   }
 
   /** 0 baixo, 1 médio, 2 alto: sombras, bloom e resolução */
@@ -254,17 +255,16 @@ export class Game {
 
   stop(): void {
     this.started = false;
-    this.persist();
   }
 
   recompute(): void {
     const sources: StatBlock[] = [this.hero.stats];
     for (const slot of ["weapon", "armor", "trinket"] as Slot[]) {
-      const it = this.save.equipped[slot];
+      const it = this.run.legacy.equipped[slot];
       if (it) sources.push(it.stats);
     }
-    for (const id of this.save.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
-    this.stats = computeStats(this.save.level, this.save.attrs, sources);
+    for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
+    this.stats = computeStats(this.run.level, this.run.legacy.attrs, sources);
     // reforço de teste (TUNING.testBoost): fora do core para não mexer nas contas testadas
     this.stats.damage *= TUNING.testBoost.damage;
     this.stats.moveSpeed *= TUNING.testBoost.moveSpeed;
@@ -275,17 +275,23 @@ export class Game {
     this.player.hp = Math.min(this.player.hp, this.stats.maxHp);
   }
 
-  persist(): void {
-    if (this.save) writeSave(this.storage, this.save);
+  /**
+   * Checkpoint da partida (run_save.lua): a partida inteira e os fluxos de sorteio, gravados antes de cada onda;
+   * continuar recomeça dali. Enquanto não há ondas (M20-02), o checkpoint é a entrada na zona.
+   */
+  saveCheckpoint(): void {
+    if (!this.run) return;
+    this.run.hp = this.playerAlive ? this.player.hp : null;
+    writeRun(this.storage, checkpoint(this.run, this.rng, Math.max(1, this.run.wave)));
   }
 
   enterZone(zoneId: string, countVisit = true): void {
     const zone = ZONES[zoneId] ?? ZONES.bosque;
     this.zone = zone;
-    this.save.zone = zone.id;
-    if (countVisit) this.save.visits++;
+    this.run.legacy.zone = zone.id;
+    if (countVisit) this.run.legacy.visits++;
     this.clearZone();
-    const seed = ((this.save.seed ^ hashStr(zone.id)) + this.save.visits * 7919) >>> 0;
+    const seed = zoneSeed(this.run.seed, zone.id, this.run.legacy.visits);
     this.layout = generateZone(zone, seed);
     this.grid = new ObstacleGrid(this.layout.obstacles);
     this.world = buildWorld(this.scene, zone, this.layout);
@@ -321,7 +327,7 @@ export class Game {
     p.dashT = 0;
     this.playerAlive = true;
     this.camTarget.set(p.x, 0, p.z);
-    this.persist();
+    this.saveCheckpoint();
     this.events.zoneChanged();
   }
 
@@ -591,7 +597,7 @@ export class Game {
     const color = e.boss?.color ?? e.def!.color;
     this.fx.burst(e.x, e.rig.height * 0.5, e.z, color, e.isBoss ? 80 : 14, e.isBoss ? 12 : 6, e.isBoss ? 0.3 : 0.18, e.isBoss ? 1.2 : 0.6);
     this.audio.play(e.isBoss ? "boss" : "kill");
-    this.save.kills++;
+    this.run.statistics.kills++;
     if (this.stats.lifeOnKill > 0 && this.playerAlive) this.heal(this.stats.lifeOnKill, false);
     if (e.xp > 0) this.gainXp(e.xp);
     const split = e.def?.splitInto;
@@ -608,7 +614,7 @@ export class Game {
   private rollLoot(e: Enemy): void {
     const L = TUNING.loot;
     const mf = this.stats.magicFind;
-    const rng = this.lootRng;
+    const rng = this.rng.get("rewards");
     if (e.isBoss) {
       for (let i = 0; i < L.bossDrops; i++) this.dropItem(generateItem(rng, e.level, mf, { minRarity: i === 0 ? "raro" : "incomum" }), e.x, e.z, 3);
       return;
@@ -616,7 +622,7 @@ export class Game {
     if (e.champion) {
       this.dropItem(generateItem(rng, e.level, mf, { minRarity: "incomum" }), e.x, e.z, 1);
       if (rng.chance(L.relicChanceChampion)) {
-        const pool = RELIC_IDS.filter((id) => !this.save.relics.includes(id));
+        const pool = RELIC_IDS.filter((id) => !this.run.relics.includes(id));
         if (pool.length) this.addDrop({ kind: "relic", relicId: rng.pick(pool), x: e.x + 1, z: e.z, t: 0 }, 0xffc83d, true);
       }
     } else if (rng.chance(L.dropChance)) this.dropItem(generateItem(rng, e.level, mf), e.x, e.z, 0.5);
@@ -673,7 +679,7 @@ export class Game {
       } else if (d.kind === "relic") {
         this.addRelic(d.relicId!);
       } else {
-        if (this.save.bag.length >= TUNING.loot.bagSize) {
+        if (this.run.legacy.bag.length >= TUNING.loot.bagSize) {
           if (this.bagFullToast <= 0) {
             this.bagFullToast = 3;
             this.events.toast("Mochila cheia (abra com I e descarte com o botão direito)", "#ff8a7a");
@@ -681,7 +687,7 @@ export class Game {
           continue;
         }
         const it = d.item!;
-        this.save.bag.push(it);
+        this.run.legacy.bag.push(it);
         this.events.toast(`${itemName(it, this.hero.weaponName)} · ${RARITY_LABEL[it.rarity]} nv ${it.ilvl}`, RARITY_COLOR[it.rarity]);
         this.audio.play("pickup");
         this.events.bagChanged();
@@ -692,13 +698,12 @@ export class Game {
   }
 
   addRelic(id: string): void {
-    if (this.save.relics.includes(id) || !RELICS[id]) return;
-    this.save.relics.push(id);
+    if (this.run.relics.includes(id) || !RELICS[id]) return;
+    this.run.relics.push(id);
     this.recompute();
     this.events.toast(`Relíquia: ${RELICS[id].name}`, "#ffc83d");
     this.audio.play("rare");
     this.events.bagChanged();
-    this.persist();
   }
 
   heal(amount: number, show: boolean): void {
@@ -712,14 +717,16 @@ export class Game {
   }
 
   gainXp(amount: number): void {
-    const s = this.save;
+    const s = this.run;
     if (s.level >= TUNING.xp.maxLevel) return;
-    s.xp += Math.round(amount * this.stats.xp);
+    const gained = Math.round(amount * this.stats.xp);
+    s.xp += gained;
+    s.statistics.xpEarned += gained;
     let leveled = false;
     while (s.level < TUNING.xp.maxLevel && s.xp >= xpToNext(s.level)) {
       s.xp -= xpToNext(s.level);
       s.level++;
-      s.attrPoints += TUNING.attributes.pointsPerLevel;
+      s.legacy.attrPoints += TUNING.attributes.pointsPerLevel;
       leveled = true;
     }
     if (leveled) {
@@ -732,7 +739,6 @@ export class Game {
       this.audio.play("level");
       this.events.toast(`Nível ${s.level}! +1 ponto de atributo (I)`, "#ffe066");
       this.events.bagChanged();
-      this.persist();
     }
   }
 
@@ -772,8 +778,7 @@ export class Game {
       this.playerAlive = false;
       p.leap = p.rush = null;
       this.endAegis(false);
-      this.save.deaths++;
-      this.persist();
+      this.run.legacy.deaths++;
       this.events.died();
     }
   }
@@ -818,18 +823,17 @@ export class Game {
     this.hitstop = 0.25;
     this.fx.addShake(1);
     for (const m of this.enemies) if (m.summoned && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
-    const s = this.save;
-    const first = !s.bossesKilled.includes(e.boss!.id);
-    if (first) s.bossesKilled.push(e.boss!.id);
+    const s = this.run;
+    const first = !s.legacy.bossesKilled.includes(e.boss!.id);
+    if (first) s.legacy.bossesKilled.push(e.boss!.id);
     const idx = ZONE_ORDER.indexOf(this.zone.id as (typeof ZONE_ORDER)[number]);
     const next = ZONE_ORDER[idx + 1];
-    if (next && !s.zonesUnlocked.includes(next)) {
-      s.zonesUnlocked.push(next);
+    if (next && !s.legacy.zonesUnlocked.includes(next)) {
+      s.legacy.zonesUnlocked.push(next);
       this.events.toast(`Nova zona liberada: ${ZONES[next].name}`, "#9be4ff");
     }
-    this.persist();
     const pool = RELIC_IDS.filter((id) => !s.relics.includes(id));
-    this.lootRng.shuffle(pool);
+    this.rng.get("relics").shuffle(pool);
     const offer = pool.slice(0, 3);
     const final = !next && first;
     const after = () => {
@@ -852,7 +856,7 @@ export class Game {
 
   // ---------------------------------------------------------------- inventário
   equip(item: Item): void {
-    const s = this.save;
+    const s = this.run.legacy;
     const i = s.bag.indexOf(item);
     if (i < 0) return;
     const prev = s.equipped[item.slot];
@@ -863,26 +867,24 @@ export class Game {
     this.recompute();
     this.player.hp = Math.max(1, Math.round(this.stats.maxHp * ratio));
     this.audio.play("pickup");
-    this.persist();
     this.events.bagChanged();
   }
 
   discard(item: Item): void {
-    const i = this.save.bag.indexOf(item);
+    const i = this.run.legacy.bag.indexOf(item);
     if (i < 0) return;
-    this.save.bag.splice(i, 1);
-    this.persist();
+    this.run.legacy.bag.splice(i, 1);
     this.events.bagChanged();
   }
 
   spendPoint(attr: keyof Attributes): void {
-    if (this.save.attrPoints <= 0) return;
-    this.save.attrPoints--;
-    this.save.attrs[attr]++;
+    const L = this.run.legacy;
+    if (L.attrPoints <= 0) return;
+    L.attrPoints--;
+    L.attrs[attr]++;
     const ratio = this.player.hp / this.stats.maxHp;
     this.recompute();
     this.player.hp = Math.max(1, Math.round(this.stats.maxHp * ratio));
-    this.persist();
     this.events.bagChanged();
   }
 
@@ -1650,7 +1652,7 @@ export class Game {
         dt *= 0.06;
       }
       this.time += dt;
-      this.save.playSeconds += raw;
+      this.run.statistics.elapsed += raw;
       this.updatePlayer(dt);
       this.updateEnemies(dt);
       this.updateProjectiles(dt);
@@ -1658,11 +1660,6 @@ export class Game {
       this.updateDrops(dt);
       this.fx.update(dt, this.camera, window.innerWidth, window.innerHeight);
       this.updateCamera(dt);
-      this.saveTimer += raw;
-      if (this.saveTimer > 12) {
-        this.saveTimer = 0;
-        this.persist();
-      }
     }
     this.input.endFrame();
     this.pipeline.render();

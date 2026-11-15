@@ -3,7 +3,6 @@ import { Rng, hashStr, makeNoise2D } from "../src/core/rng";
 import { generateItem, itemScore, RARITIES, rollRarity } from "../src/core/items";
 import { armorReduction, computeStats, xpToNext } from "../src/core/stats";
 import { generateZone, ObstacleGrid, distToPath } from "../src/core/worldgen";
-import { loadSave, newSave, writeSave, SAVE_KEY, type Storage } from "../src/core/save";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { BOSSES, ENEMIES } from "../src/data/enemies";
 import { RELICS } from "../src/data/relics";
@@ -182,31 +181,5 @@ describe("geração de zona", () => {
     expect(Math.hypot(p.x, p.z)).toBeCloseTo(1.5);
     expect(grid.hits(0.2, 0, 0.1)).toBe(true);
     expect(grid.hits(3, 3, 0.1)).toBe(false);
-  });
-});
-
-describe("save", () => {
-  const mem = (): Storage & { data: Record<string, string> } => ({
-    data: {},
-    getItem(k) { return this.data[k] ?? null; },
-    setItem(k, v) { this.data[k] = v; },
-    removeItem(k) { delete this.data[k]; },
-  });
-  it("grava e lê de volta", () => {
-    const st = mem();
-    const s = newSave("zephyr", 9);
-    s.level = 7;
-    s.bag.push(generateItem(new Rng(1), 3, 0));
-    expect(writeSave(st, s)).toBe(true);
-    expect(loadSave(st)).toEqual(s);
-  });
-  it("ignora save corrompido ou ausente", () => {
-    const st = mem();
-    expect(loadSave(st)).toBeNull();
-    st.data[SAVE_KEY] = "{nao é json";
-    expect(loadSave(st)).toBeNull();
-    st.data[SAVE_KEY] = JSON.stringify({ v: 99 });
-    expect(loadSave(st)).toBeNull();
-    expect(loadSave(undefined)).toBeNull();
   });
 });

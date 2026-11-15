@@ -1,6 +1,7 @@
 // Interface em DOM: título, HUD, inventário, viagem, relíquias, pausa.
 import { itemName, itemScore, RARITY_COLOR, RARITY_LABEL, SLOT_LABEL, SLOTS, type Item, type Slot } from "../core/items";
-import { deleteSave, loadSave, newSave, safeStorage } from "../core/save";
+import { clearRun, discardLegacySave, loadRun, safeStorage } from "../core/save";
+import { RunRng, continueRun, newRun, type RunState } from "../core/run";
 import { ATTR_INFO, ATTR_KEYS, formatStat, STAT_KEYS, xpToNext, type StatBlock } from "../core/stats";
 import { BOSSES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
@@ -133,15 +134,18 @@ export class Ui {
     this.hud.classList.add("hidden");
     const panel = this.open("title", "title");
     this.game.paused = true;
-    const save = loadSave(this.storage);
+    if (discardLegacySave(this.storage)) {
+      this.toast("O save antigo (herói contínuo, com itens) foi descartado: o jogo agora é por partidas, como no Dungeon Reign", "#ffc83d");
+    }
+    const save = loadRun(this.storage);
     const render = () => {
       const h = HEROES[this.selectedHero];
       panel.innerHTML = `
         <h1>DUNGEON REIGN</h1>
         <p class="tag">RPG de ação · protótipo 0.3 · mapas procedurais, um herói, loot e chefes</p>
         ${save ? `<div class="continue"><button class="primary" data-act="continue" style="padding:12px 30px;font-size:16px">
-          Continuar — ${HEROES[save.heroId]?.name ?? "?"} nível ${save.level}</button></div>` : ""}
-        <div class="section">${save ? "Ou comece um novo herói (apaga o save atual)" : "Escolha seu herói"}</div>
+          Continuar — ${HEROES[save.run.heroId]?.name ?? "?"} nível ${save.run.level} · seed ${save.run.seedCode}</button></div>` : ""}
+        <div class="section">${save ? "Ou comece uma partida nova (encerra a atual)" : "Escolha seu herói"}</div>
         <div class="heroes">${HERO_ORDER.map((id) => {
           const d = HEROES[id];
           return `<div class="hero-card ${id === this.selectedHero ? "sel" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}">
@@ -164,28 +168,35 @@ export class Ui {
         return;
       }
       const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
-      if (act === "continue" && save) this.begin(save);
+      if (act === "continue" && save) {
+        const c = continueRun(save);
+        this.begin(c.run, c.rng);
+      }
       else if (act === "new") {
         // confirmação em dois cliques (sem confirm(): alguns ambientes bloqueiam diálogos)
         if (save && this.confirmNew !== this.selectedHero) {
           this.confirmNew = this.selectedHero;
           const b = t.closest<HTMLElement>("[data-act]")!;
-          b.textContent = "Isso apaga o save atual. Clique de novo para confirmar";
+          b.textContent = "Isso encerra a partida atual. Clique de novo para confirmar";
           b.classList.add("danger");
           return;
         }
-        deleteSave(this.storage);
-        this.begin(newSave(this.selectedHero, (Math.random() * 0xffffffff) >>> 0));
+        clearRun(this.storage);
+        // dificuldade e spell inicial ainda sem tela (M20-06): Normal e a primeira das 4 do herói
+        const h = HEROES[this.selectedHero];
+        const run = newRun({ heroId: h.id, difficultyId: "normal", startingSpell: h.startingSpells[0], randomSeed: (Math.random() * 0x7fffffff) >>> 0 });
+        this.begin(run, new RunRng(run.seed));
       }
     };
   }
 
-  private begin(save: ReturnType<typeof newSave>): void {
+  /** Começa a partida; o jogo grava o checkpoint ao entrar na zona. */
+  private begin(run: RunState, rng: RunRng): void {
     this.game.audio.unlock();
     this.close();
     this.hud.classList.remove("hidden");
-    this.game.start(save);
-    if (save.kills === 0) this.toast("WASD move · mouse mira · segure o botão esquerdo para atacar", "#9be4ff");
+    this.game.start(run, rng);
+    if (run.statistics.kills === 0) this.toast("WASD move · mouse mira · segure o botão esquerdo para atacar", "#9be4ff");
   }
 
   // ---------------------------------------------------------------- HUD
@@ -228,7 +239,7 @@ export class Ui {
     const p = g.player;
     const s = g.stats;
     const r = this.r;
-    const sv = g.save;
+    const sv = legacyView(g);
     r.hpFill.style.width = `${(p.hp / s.maxHp) * 100}%`;
     r.hpText.textContent = `${Math.ceil(p.hp)} / ${s.maxHp}`;
     r.xpFill.style.width = `${Math.min(100, (sv.xp / xpToNext(sv.level)) * 100)}%`;
@@ -319,7 +330,7 @@ export class Ui {
   // ---------------------------------------------------------------- inventário
   private showInventory(): void {
     const g = this.game;
-    const sv = g.save;
+    const sv = legacyView(g);
     const s = g.stats;
     const h = g.hero;
     const panel = this.overlayKind === "inv" ? (this.overlay!.firstChild as HTMLElement) : this.open("inv", "inv");
@@ -399,7 +410,7 @@ export class Ui {
 
   private itemTip(it: Item, inBag: boolean): string {
     const g = this.game;
-    const eq = g.save.equipped[it.slot];
+    const eq = g.run.legacy.equipped[it.slot];
     let cmp = "";
     if (inBag) {
       const lines: string[] = [];
@@ -432,8 +443,8 @@ export class Ui {
     panel.innerHTML = `<h2>Mapa do reino</h2><p class="sub">Viajar gera um mapa novo da zona, com todos os monstros e o chefe de volta.</p>
       <div class="cards">${ZONE_ORDER.map((id) => {
         const z = ZONES[id];
-        const open = g.save.zonesUnlocked.includes(id);
-        const killed = g.save.bossesKilled.includes(z.boss);
+        const open = g.run.legacy.zonesUnlocked.includes(id);
+        const killed = g.run.legacy.bossesKilled.includes(z.boss);
         return `<div class="card ${open ? "" : "locked"}" data-zone="${id}" style="--cc:${hex(z.path)}">
           <div class="meta">Nível ${z.level}–${z.level + 4}${id === g.zone.id ? " · você está aqui" : ""}</div>
           <h3>${open ? z.name : "???"}</h3><p>${open ? z.subtitle : "Derrote o chefe da zona anterior."}</p>
@@ -444,7 +455,7 @@ export class Ui {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=close]")) return this.close();
       const id = t.closest<HTMLElement>("[data-zone]")?.dataset.zone;
-      if (id && g.save.zonesUnlocked.includes(id)) {
+      if (id && g.run.legacy.zonesUnlocked.includes(id)) {
         this.close();
         g.enterZone(id);
       }
@@ -471,8 +482,8 @@ export class Ui {
   private showPause(): void {
     const g = this.game;
     const panel = this.open("pause", "pause");
-    const mins = Math.floor(g.save.playSeconds / 60);
-    panel.innerHTML = `<h2>Pausa</h2><p class="sub">${g.save.kills} abates · ${g.save.deaths} mortes · ${mins} min de jogo</p>
+    const mins = Math.floor(g.run.statistics.elapsed / 60);
+    panel.innerHTML = `<h2>Pausa</h2><p class="sub">${g.run.statistics.kills} abates · ${g.run.legacy.deaths} mortes · ${mins} min de jogo · seed ${g.run.seedCode}</p>
       <div class="section" style="color:${hex(g.hero.color)}">${g.hero.name} — ${g.hero.title}</div>
       ${heroKit(g.hero, g.tech?.cooldown ?? g.hero.technique.cooldown * g.stats.cooldownMult)}
       <div class="controls">
@@ -520,11 +531,17 @@ export class Ui {
     const g = this.game;
     const panel = this.open("victory", "victory");
     panel.innerHTML = `<h2 style="color:var(--gold)">O Rei Oco caiu</h2>
-      <p class="sub">${g.hero.name} chegou ao fim do reino no nível ${g.save.level}, com ${g.save.kills} abates e ${g.save.deaths} mortes.</p>
+      <p class="sub">${g.hero.name} chegou ao fim do reino no nível ${g.run.level}, com ${g.run.statistics.kills} abates e ${g.run.legacy.deaths} mortes.</p>
       <p>Este é o fim do protótipo. Você pode continuar explorando e farmando em qualquer zona.</p>
       <div class="row end"><button class="primary" data-act="close">Continuar jogando</button></div>`;
     panel.onclick = (ev) => {
       if ((ev.target as HTMLElement).closest("[data-act=close]")) this.close();
     };
   }
+}
+
+/** Os campos que as telas antigas (HUD, inventário) liam do save contínuo; saem com o M20-03 e o M20-04. */
+function legacyView(g: Game) {
+  const r = g.run;
+  return { ...r.legacy, level: r.level, xp: r.xp, relics: r.relics };
 }
