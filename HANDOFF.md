@@ -65,6 +65,8 @@ Recursos opcionais do kit além da escultura: `Builder.dims`, `Builder.fur()` e 
 
 **`M18-10` feito e aprovado:** Vazio com cristais ciano sem estourar o bloom, paleta violeta, chão mais limpo. **O marco M18 está completo e aprovado**; as pendências de cada zona estão nas linhas `M18-07` a `M18-10` do registro.
 
+**Desempenho (2026-11-14):** MSAA conforme a densidade e resolução adaptativa mirando 60 fps (`TUNING.frame`, F3 mostra o tempo de GPU e a escala). **Modo de teste ligado**: `TUNING.testBoost` dá dano ×2 e velocidade ×4 a todos os heróis, a pedido do usuário; voltar para 1 ao balancear.
+
 Próxima sessão (sugestão): o roadmap volta ao M3 (inimigos atuais), agora com o crítico cego e a prévia de zona para conferir os inimigos no cenário. Antes, vale jogar uma volta completa para sentir as quatro zonas novas em movimento (nada do M18 foi conferido em vídeo nem jogando). Cada passada tem as pendências do crítico nas linhas `M18-03` a `M18-06` do registro. Os defeitos que o crítico achou no Kaelen (lâmina ciano no peito, franja, forro da capa, espada sumindo no golpe) ficam para o usuário decidir se reabre. Continuam pendentes: retorno sobre a presença de chefe (`M1-05`), `M2-10` e `M0-03`.
 
 Decisões desta conversa:

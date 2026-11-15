@@ -158,7 +158,7 @@ export class Game {
   private resize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality === 0 ? 1 : 1.5));
+    this.renderer.setPixelRatio(this.pixelRatio());
     this.renderer.setSize(w, h, false);
     this.pipeline.setSize(w, h, this.renderer.getPixelRatio());
     this.fx.setPointScale(this.pipeline.bufferSize.y / (2 * Math.tan((this.camera.fov * Math.PI) / 360)));
@@ -190,6 +190,32 @@ export class Game {
 
   /** 0 baixo, 1 médio, 2 alto: sombras, bloom e resolução */
   quality = 2;
+  /** escala da resolução interna (resolução adaptativa, ver `adaptResolution`) */
+  resScale = 1;
+  private resTimer = 0;
+  private gpuAvg = 0;
+
+  /** densidade de pixels: a da tela (até o teto da qualidade) vezes a escala adaptativa */
+  private pixelRatio(): number {
+    const max = Math.min(window.devicePixelRatio, this.quality === 0 ? 1 : TUNING.frame.maxRatio);
+    return Math.max(0.5, max * this.resScale);
+  }
+
+  /** Mira 60 fps: média do tempo de GPU; acima do teto baixa a resolução interna um degrau, abaixo do piso sobe um degrau. */
+  private adaptResolution(dt: number): void {
+    const f = TUNING.frame, gpu = this.pipeline.gpuMs;
+    if (gpu < 0) return;
+    this.gpuAvg += (gpu - this.gpuAvg) * Math.min(1, dt * 4);
+    this.resTimer += dt;
+    if (this.resTimer < f.every) return;
+    this.resTimer = 0;
+    const next = this.gpuAvg > f.gpuHigh ? this.resScale - f.step : this.gpuAvg < f.gpuLow ? this.resScale + f.step / 2 : this.resScale;
+    const clamped = Math.min(1, Math.max(f.minScale, next));
+    if (Math.abs(clamped - this.resScale) > 1e-3) {
+      this.resScale = clamped;
+      this.resize();
+    }
+  }
 
   setQuality(q: number): void {
     this.quality = q;
@@ -214,6 +240,9 @@ export class Game {
     }
     for (const id of this.save.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
     this.stats = computeStats(this.save.level, this.save.attrs, sources);
+    // reforço de teste (TUNING.testBoost): fora do core para não mexer nas contas testadas
+    this.stats.damage *= TUNING.testBoost.damage;
+    this.stats.moveSpeed *= TUNING.testBoost.moveSpeed;
     this.player.hp = Math.min(this.player.hp, this.stats.maxHp);
   }
 
@@ -1252,5 +1281,6 @@ export class Game {
     }
     this.input.endFrame();
     this.pipeline.render();
+    this.adaptResolution(raw);
   }
 }

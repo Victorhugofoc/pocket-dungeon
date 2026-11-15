@@ -215,4 +215,31 @@ async function criticShots(prefix: string): Promise<{ name: string; calls: numbe
   return out;
 }
 
-Object.assign(window, { __zone: { zone, layout, camera, scene, renderer, POSES, setPose, shot, criticShots } });
+/** Mede o tempo de GPU do quadro inteiro em w×h com consulta de tempo da GPU (EXT_disjoint_timer_query_webgl2): média e pior de
+ * `frames` quadros, em ms. Faz o resize e espera antes de medir, para a realocação dos alvos não entrar na conta. */
+async function bench(frames = 40, w = 1920, h = 1080, ratio = 1): Promise<{ avg: number; max: number }> {
+  resize(w, h, ratio);
+  pipeline.timing = false;
+  const gl = renderer.getContext() as WebGL2RenderingContext;
+  const ext = gl.getExtension("EXT_disjoint_timer_query_webgl2");
+  for (let i = 0; i < 20; i++) { tick(1 / 60); pipeline.render(); }
+  gl.finish();
+  const times: number[] = [];
+  for (let i = 0; i < frames; i++) {
+    tick(1 / 60);
+    const q = gl.createQuery()!;
+    gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
+    pipeline.render();
+    gl.endQuery(ext.TIME_ELAPSED_EXT);
+    while (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) await new Promise((r) => setTimeout(r, 1));
+    if (!gl.getParameter(ext.GPU_DISJOINT_EXT)) times.push(gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6);
+    gl.deleteQuery(q);
+  }
+  resize();
+  pipeline.timing = true;
+  times.sort((x, y) => x - y);
+  const avg = times.reduce((x, y) => x + y, 0) / Math.max(1, times.length);
+  return { avg: +avg.toFixed(2), max: +(times[Math.floor(times.length * 0.95)] ?? 0).toFixed(2) };
+}
+
+Object.assign(window, { __zone: { zone, layout, camera, scene, renderer, pipeline, sun, POSES, setPose, shot, criticShots, bench } });

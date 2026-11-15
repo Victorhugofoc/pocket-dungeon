@@ -38,6 +38,12 @@ export class Pipeline {
   bloom: UnrealBloomPass;
   private grade: ShaderPass;
   bufferSize = new THREE.Vector2(1, 1);
+  /** tempo de GPU do último quadro medido (ms), ou -1 sem a extensão de consulta de tempo */
+  gpuMs = -1;
+  private timer: { ext: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number }; query: WebGLQuery | null } | null = null;
+  private samples = 4;
+  /** desligar quando outra medida de tempo da GPU estiver aberta (duas ao mesmo tempo dão erro) */
+  timing = true;
 
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -50,9 +56,21 @@ export class Pipeline {
     this.grade = new ShaderPass(GradeShader);
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
+    const gl = renderer.getContext() as WebGL2RenderingContext;
+    const ext = gl.getExtension("EXT_disjoint_timer_query_webgl2");
+    if (ext) this.timer = { ext, query: null };
   }
 
   setSize(w: number, h: number, pixelRatio: number): void {
+    // acima de 1x a própria densidade já suaviza as bordas: MSAA 4x em cima disso dobrava o custo do quadro em telas grandes
+    const samples = pixelRatio > 1.05 ? 2 : 4;
+    if (samples !== this.samples) {
+      this.samples = samples;
+      for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+        rt.samples = samples;
+        rt.dispose();
+      }
+    }
     this.composer.setPixelRatio(pixelRatio);
     this.composer.setSize(w, h);
     this.bufferSize.set(Math.floor(w * pixelRatio), Math.floor(h * pixelRatio));
@@ -73,6 +91,20 @@ export class Pipeline {
   }
 
   render(): void {
+    const t = this.timer;
+    const gl = this.renderer.getContext() as WebGL2RenderingContext;
+    // lê a medida anterior quando ficar pronta; só começa outra depois disso (nunca espera a GPU)
+    if (t?.query && gl.getQueryParameter(t.query, gl.QUERY_RESULT_AVAILABLE)) {
+      if (!gl.getParameter(t.ext.GPU_DISJOINT_EXT)) this.gpuMs = gl.getQueryParameter(t.query, gl.QUERY_RESULT) / 1e6;
+      gl.deleteQuery(t.query);
+      t.query = null;
+    }
+    const measure = this.timing && t && !t.query;
+    if (measure) {
+      t.query = gl.createQuery();
+      gl.beginQuery(t.ext.TIME_ELAPSED_EXT, t.query!);
+    }
     this.composer.render();
+    if (measure) gl.endQuery(t.ext.TIME_ELAPSED_EXT);
   }
 }
