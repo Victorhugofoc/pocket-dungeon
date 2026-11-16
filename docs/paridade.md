@@ -35,7 +35,7 @@ Primeira rodada (2026-11-15): o teste achou 1 divergência real. O tiro da Vespe
 | S13 | A recarga só é gasta se o lançamento der certo; sem alvo, não gasta | `spell_system.lua` `tryCast` | `SpellCaster.tryCast`: a spell sai sempre que o jogador aperta a tecla, com ou sem inimigo no alcance, e gasta a recarga mesmo errando | **adaptado**, aceito em 2026-11-16 (pedido do usuário: com a spell na tecla, quem decide é o jogador; lá a regra existia porque a spell saía sozinha) |
 | S14 | As spells saem sozinhas quando prontas, na direção do mouse | `spell_system.lua` `update` (D-139) | teclas 1 e 2 (decisão D12) | **adaptado**, aceito em 2026-11-14 |
 | S15 | A técnica é ativada pelo jogador | `spell_system.lua` `useTechnique` | botão direito ou Q | igual |
-| S16 | Eco: chance de relançar de graça 0,2 s depois | `spell_system.lua` `doCast` | — | falta (`M6-08`) |
+| S16 | Eco: chance de relançar de graça 0,2 s depois | `spell_system.lua` `doCast` | `SpellCaster.tryCast` guarda o Eco; sai 0,2 s depois, igual, sem gastar recarga e sem novo Eco (só o Arcane Bolt tem chance) | igual |
 | S17 | Volátil: inimigo queimando pelo Fireball pode explodir ao morrer | `SpellCaster.onKill`: queimadura do Fireball marca o espaço; ao morrer, chance `volatile`, 35% do dano em 3,5 m (42 px, sem escala de área, como lá) | igual |
 | S18 | Evolução de spell: nível 5 mais **uma** relíquia da receita; até 3 opções, pode recusar; não gasta a relíquia | `spells/evolution.lua` | — | falta (`M6-06`) |
 | S19 | A técnica também sobe de nível na loja; o nível 5 é a evolução dela | `shop_system.lua` `candidates` (`spells[0]`) | dados prontos (`M19-01`), sem como subir | falta (`M19-07`, `M7`) |

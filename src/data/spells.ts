@@ -350,6 +350,12 @@ export const SPELL_CAST = {
   volatileFraction: 0.35,
   /** chefes levam o Slow a 20% da força (status.lua `BOSS_SLOW_EFFECT`) */
   bossSlowEffect: 0.2,
+  /** Chain Lightning: velocidade do dardo que começa a cadeia (behaviors.lua `CHAIN_BOLT_SPEED`, 900 px/s) */
+  chainBoltSpeed: 900 / DR_PX_PER_M,
+  /** Eco: atraso do relançamento grátis (tuning.lua `SPELL_ECHO_DELAY`) */
+  echoDelay: 0.2,
+  /** passo máximo do projétil por verificação de colisão, em metros */
+  maxStep: 0.4,
   /** visual: altura e tamanho da bola */
   height: 1.2,
   ballSize: 0.38,
