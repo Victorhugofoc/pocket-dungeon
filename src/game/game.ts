@@ -638,7 +638,7 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- dano
-  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean }): void {
+  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean; noKnock?: boolean }): void {
     if (e.dead) return;
     const s = this.stats;
     const now = this.time;
@@ -667,7 +667,7 @@ export class Game {
     if (crit) amount *= s.critDamage;
     // Brittle Chill (Iceball): inimigo com Slow recebe dano extra (damage.lua §37)
     if (now < e.slowUntil) amount *= 1 + this.spells.brittle;
-    this.damageEnemy(e, amount, { crit });
+    this.damageEnemy(e, amount, { crit, noKnock: hit?.noKnock });
     if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount);
     if (back && e.dead) this.heal(s.maxHp * SHADOW.backstabKillHeal, true); // Umbra: matar pelas costas cura
     if (deepChill && !e.dead) {
@@ -706,7 +706,7 @@ export class Game {
     }
   }
 
-  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string } = {}): void {
+  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean } = {}): void {
     if (e.dead) return;
     amount = Math.max(1, Math.round(amount));
     this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
@@ -725,7 +725,7 @@ export class Game {
       kdz /= kd;
       const power = Math.min(1, 0.22 + (amount / e.maxHp) * 2.2) * (opts.crit ? 1.35 : 1) * (this.hero.auto.kind === "melee" ? 1.5 : 1);
       kickRig(e.rig, kdx, kdz, e.isBoss ? power * 0.5 : power);
-      if (!e.isBoss) {
+      if (!e.isBoss && !opts.noKnock) {
         e.kx += kdx * power * TUNING.enemy.knockback;
         e.kz += kdz * power * TUNING.enemy.knockback;
       }
@@ -1304,10 +1304,13 @@ export class Game {
     this.raycaster.ray.intersectPlane(this.groundPlane, this.aim);
   }
 
-  /** Golpe de spell: mesmo caminho do dano do herói (crítico, Frostine), contado como "other" nas conquistas. */
-  spellHit(e: Enemy, mult: number): void {
+  /**
+   * Golpe de spell: mesmo caminho do dano do herói (crítico, Frostine), contado como "other" nas conquistas. `noKnock`:
+   * sem o empurrão para longe do herói (Cyclone puxa para o centro; o Quake Totem empurra a partir dele).
+   */
+  spellHit(e: Enemy, mult: number, noKnock = false): void {
     this.hitSource = "other";
-    this.hitEnemy(e, mult);
+    this.hitEnemy(e, mult, undefined, noKnock ? { noKnock } : undefined);
   }
 
   aimPoint(maxRange: number): { x: number; z: number } {

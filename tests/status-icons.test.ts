@@ -30,6 +30,10 @@ describe("enemyStatuses (M5-05)", () => {
     expect(enemyStatuses(e, ctx)).toEqual([{ kind: "poison", n: 3 }, { kind: "slow" }]);
     expect(enemyStatuses(e, { ...ctx, brittleChill: 0.15 })).toEqual([{ kind: "poison", n: 3 }, { kind: "brittleChill" }]);
   });
+  it("Venom Nova conta os acúmulos do efeito dela junto com os da Vesper", () => {
+    const e = enemy({ dots: [{ kind: "poison", dps: 1, until: 12, spell: "venom_nova", stacks: 3 }, { kind: "poison", dps: 1, until: 12 }] });
+    expect(enemyStatuses(e, ctx)).toEqual([{ kind: "poison", n: 4 }]);
+  });
   it("Frostine: acúmulos de gelo, e Quebradiço no lugar deles", () => {
     expect(enemyStatuses(enemy({ frost: { frostStacks: 4, brittleUntil: 0 } }), ctx)).toEqual([{ kind: "frost", n: 4 }]);
     expect(enemyStatuses(enemy({ frost: { frostStacks: 4, brittleUntil: 11 } }), ctx)).toEqual([{ kind: "shatter" }]);
