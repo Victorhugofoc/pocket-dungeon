@@ -265,7 +265,28 @@ const SPELL_LIFE = `=(function()
   return out
 end)()`;
 
-const dr = loadOriginal();
+/**
+ * D1: nosso texto é o inglês do Dungeon Reign. As chaves do `lang/en.lua` dele são o texto em português
+ * dos `.lua`; aqui trocamos cada texto do original pela tradução dele antes de comparar.
+ */
+function loadEnglish(): Record<string, string> {
+  const file = resolve(ROOT, "src/data/lang/en.lua");
+  if (!existsSync(file)) return {};
+  const un = (s: string) => s.replace(/\\"/g, '"').replace(/\\n/g, "\n").replace(/\\\\/g, "\\");
+  const map: Record<string, string> = {};
+  for (const m of readFileSync(file, "utf8").matchAll(/\[\s*"((?:[^"\\]|\\.)*)"\s*\]\s*=\s*"((?:[^"\\]|\\.)*)"/g)) map[un(m[1])] = un(m[2]);
+  return map;
+}
+const EN_TEXT = loadEnglish();
+const english = (s: string): string => EN_TEXT[s] ?? s;
+function toEnglish(v: Lua): Lua {
+  if (typeof v === "string") return english(v);
+  if (Array.isArray(v)) return v.map(toEnglish);
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toEnglish(x)]));
+  return v;
+}
+
+const dr = ((o) => (o ? toEnglish(o) : null))(loadOriginal());
 const C: Lua = dr?.["src.core.constants"];
 const S: Lua = dr?.["src.data.spells"];
 const CH: Lua = dr?.["src.data.characters"];
@@ -659,7 +680,10 @@ describe.skipIf(!dr)("paridade das conquistas e desbloqueios com o Dungeon Reign
 
   it("nomes dos cosméticos", () => {
     const lua = readFileSync(resolve(ROOT, "src/core/unlocks.lua"), "utf8");
-    for (const [id, name] of Object.entries(COSMETIC_NAMES)) expect(lua, id).toContain(`${id} = "${name}"`);
+    for (const [id, name] of Object.entries(COSMETIC_NAMES)) {
+      const pt = lua.match(new RegExp(`${id} = "([^"]+)"`))?.[1];
+      expect(pt && english(pt), id).toBe(name);
+    }
   });
 });
 

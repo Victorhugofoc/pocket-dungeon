@@ -61,9 +61,9 @@ up("cone_shot", "CONE SHOT", [["coneShot", 1]], ["auto", "projectile", "spread"]
 up("piercing_round", "PIERCING ROUND", [["pierce", 1]], ["auto", "projectile", "pierce"]);
 up("glass_cannon", "GLASS CANNON", [["autoDamagePct", 0.20], ["armor", -15]], ["auto", "damage", "risk"]);
 up("heavy_shot", "HEAVY SHOT", [["autoDamagePct", 0.18], ["knockbackPct", 0.15], ["autoProjectileSpeedPct", -0.15]],
-  ["auto", "damage", "projectile", "tradeoff"], { note: "Empurra o inimigo atingido para trás (bosses e Elites são imunes)." });
+  ["auto", "damage", "projectile", "tradeoff"], { note: "Pushes the enemy you hit backwards (bosses and Champions are immune)." });
 up("concussive_rounds", "CONCUSSIVE ROUNDS", [["knockbackPct", 0.25]], ["auto", "control"],
-  { note: "Empurra o inimigo atingido para trás (bosses e Elites são imunes).", extension: true });
+  { note: "Pushes the enemy you hit backwards (bosses and Champions are immune).", extension: true });
 up("wide_bore", "WIDE BORE", [["coneShot", 1], ["autoDamagePct", -0.08]], ["auto", "spread", "tradeoff"]);
 up("focused_volley", "FOCUSED VOLLEY", [["autoDamagePct", 0.12], ["coneShot", -1]], ["auto", "damage", "projectile", "tradeoff"],
   { requiresConeShot: 1 });
@@ -71,33 +71,33 @@ up("focused_volley", "FOCUSED VOLLEY", [["autoDamagePct", 0.12], ["coneShot", -1
 // A técnica
 up("signature", "SIGNATURE", [["techniqueDamagePct", 0.20]], ["damage", "technique"]);
 up("follow_through", "FOLLOW-THROUGH", [["followThroughPct", 0.15]], ["damage", "technique"],
-  { note: "Depois de usar a técnica, todo o seu dano fica maior por 3 s." });
+  { note: "After using the technique, all your damage is higher for 3 s." });
 up("kindling", "KINDLING", [["burnPct", 0.20]], ["fire", "burn"], { notFor: { frostine: true } });
 
 // Uma exclusiva por herói: mais rara, a partir da onda 5, uma vez por partida
 function heroUp(id: string, name: string, hero: string, effects: [string, number][], tags: string[], note: string): UpgradeDef {
   return up(id, name, effects, tags, { hero, minWave: 5, unique: true, weight: 0.6, noTier: true, hideEffects: true, note });
 }
-heroUp("quickdraw", "QUICKDRAW", "zephyr", [["fanShots", 2]], ["auto", "technique"], "Fan the Hammer dispara +2 tiros.");
+heroUp("quickdraw", "QUICKDRAW", "zephyr", [["fanShots", 2]], ["auto", "technique"], "Fan the Hammer fires +2 shots.");
 heroUp("permafrost", "PERMAFROST", "frostine", [["permafrost", 1]], ["ice", "technique"],
-  "Glacial Wall: quem encosta fica congelado +1 s, e a parede dura +2 s.");
+  "Glacial Wall: enemies that touch it stay frozen +1 s, and the wall lasts +2 s.");
 heroUp("static_charge", "STATIC CHARGE", "kaelen", [["staticCharge", 1]], ["lightning", "technique"],
-  "Storm Step: o rastro elétrico dá o dobro de dano e dura +1 s.");
-heroUp("time_loop", "TIME LOOP", "aurelius", [["riftDurationFlat", 1]], ["arcane", "technique"], "Time Rift dura +1 s.");
+  "Storm Step: the electric trail deals double damage and lasts +1 s.");
+heroUp("time_loop", "TIME LOOP", "aurelius", [["riftDurationFlat", 1]], ["arcane", "technique"], "Time Rift lasts +1 s.");
 heroUp("wildfire", "WILDFIRE", "ignis", [["wildfire", 1]], ["fire", "burn"],
-  "Um inimigo com Burn que morre espalha o Burn para quem está perto.");
+  "An enemy that dies while Burning spreads the Burn to those nearby.");
 heroUp("executioner", "EXECUTIONER", "varok", [["executionerPct", 0.25]], ["damage"],
-  "+25% de dano em boss com menos de 30% de vida.");
+  "+25% damage to bosses below 30% HP.");
 heroUp("nightfall", "NIGHTFALL", "umbra", [["nightfall", 1]], ["dodge", "technique"],
-  "Cada esquiva tira 0,5 s do cooldown do Shadow Step.");
+  "Every dodge takes 0.5 s off Shadow Step's cooldown.");
 heroUp("judgement", "JUDGEMENT", "seraph", [["judgement", 1]], ["survival", "technique"],
-  "Quando o Aegis bloqueia um golpe, devolve 200% dele ao atacante.");
+  "When Aegis blocks a hit, 200% of it goes back to the attacker.");
 heroUp("contagion", "CONTAGION", "vesper", [["contagion", 1]], ["technique"],
-  "Um inimigo envenenado que morre passa metade do Veneno para o mais próximo.");
+  "A poisoned enemy that dies passes half its Poison to the nearest enemy.");
 heroUp("boomerang", "BOOMERANG", "seraph", [["shieldBoomerang", 1]], ["auto"],
-  "O escudo vai em linha reta até o alcance máximo e volta, acertando todos no caminho, nos dois sentidos.").excludes = "holy_ricochet";
+  "The shield flies straight out to full reach and back, hitting everyone on the way, both ways.").excludes = "holy_ricochet";
 heroUp("holy_ricochet", "HOLY RICOCHET", "seraph", [["shieldRicochet", 1]], ["auto"],
-  "+2 ricochetes do escudo, e cada ricochete perde menos dano (90% em vez de 70%).").excludes = "boomerang";
+  "+2 shield ricochets, and each ricochet keeps more damage (90% instead of 70%).").excludes = "boomerang";
 
 // Defesa e utilidade
 up("fleetfoot", "FLEETFOOT", [["moveSpeedPct", 0.12]], ["speed", "survival"]);
@@ -105,7 +105,7 @@ up("vitality", "VITALITY", [["maxHpFlat", 20]], ["survival"], { fullHeal: true }
 up("long_reach", "LONG REACH", [["rangePct", 0.10]], ["range"]);
 up("evasive_footwork", "EVASIVE FOOTWORK", [["dodge", 0.08]], ["survival", "dodge"]);
 up("phantom_step", "PHANTOM STEP", [["dodge", 0.12], ["maxHpPct", -0.05]], ["survival", "dodge", "risk"]);
-up("blood_rite", "BLOOD RITE", [["deathHealChance", 0.05]], ["auto", "magic", "sustain"], { note: "(ao matar um inimigo)" });
+up("blood_rite", "BLOOD RITE", [["deathHealChance", 0.05]], ["auto", "magic", "sustain"], { note: "(on enemy kill)" });
 up("second_wind", "SECOND WIND", [["regen", 0.35]], ["survival", "healing", "sustain"]);
 up("iron_skin", "IRON SKIN", [["armor", 20], ["spellDamagePct", -0.08]], ["survival", "armor"]);
 up("runic_ward", "RUNIC WARD", [["armor", 10], ["spellDamagePct", 0.10], ["autoDamagePct", -0.10]], ["magic", "survival", "risk"]);

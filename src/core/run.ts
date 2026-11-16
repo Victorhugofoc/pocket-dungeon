@@ -151,9 +151,9 @@ export interface NewRunOptions {
 /** game_state.lua `newRun`. */
 export function newRun(opts: NewRunOptions): RunState {
   const hero = HEROES[opts.heroId];
-  if (!hero) throw new Error(`herói inválido: ${opts.heroId}`);
-  if (!DIFFICULTIES[opts.difficultyId]) throw new Error(`dificuldade inválida: ${opts.difficultyId}`);
-  if (!hero.startingSpells.includes(opts.startingSpell as never)) throw new Error(`spell inicial inválida: ${opts.startingSpell}`);
+  if (!hero) throw new Error(`invalid hero: ${opts.heroId}`);
+  if (!DIFFICULTIES[opts.difficultyId]) throw new Error(`invalid difficulty: ${opts.difficultyId}`);
+  if (!hero.startingSpells.includes(opts.startingSpell as never)) throw new Error(`invalid starting spell: ${opts.startingSpell}`);
   const seed = normalizeSeed(opts.seed ?? opts.randomSeed);
   return {
     seed,

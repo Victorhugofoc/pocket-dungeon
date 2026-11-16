@@ -98,7 +98,7 @@ const num = (def: TechDef, k: string): number | undefined => {
 
 export function techniqueStats(id: string, level: number, ctx: TechContext): TechStats {
   const def = TECHNIQUES[id];
-  if (!def) throw new Error(`técnica desconhecida: ${id}`);
+  if (!def) throw new Error(`unknown technique: ${id}`);
   const lv = clampLevel(level);
   const evolved = lv >= TECH_MAX_LEVEL;
   const M = milestoneTotals(def, lv);

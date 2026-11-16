@@ -15,53 +15,53 @@ export interface AchievementDef {
 const list: AchievementDef[] = [];
 const add = (id: string, name: string, text: string, opts: Partial<AchievementDef> = {}) => list.push({ id, name, text, ...opts });
 
-add("first_blood", "Primeiro sangue", "Derrote o primeiro boss (W5) com qualquer herói.");
-add("survivor", "Sobrevivente", "Vença uma run (W20) em qualquer dificuldade.");
-add("veteran", "Veterano", "Vença no Normal.");
-add("relentless", "Implacável", "Vença no Hard.");
-add("six_crowns", "Todas as coroas", "Vença com todos os heróis (qualquer dificuldade).");
-add("dominion", "Domínio", "Vença no Hard com todos os heróis.");
-add("depths_1", "Nas profundezas", "Vença o Depths 1.");
-add("depths_3", "Abismo", "Vença o Depths 3.");
-add("depths_5", "Ascensão", "Vença o Depths 5.");
-add("well_equipped", "Bem equipado", "Compre todas as perks do Depths com um herói.");
-add("forge", "Forja", "Evolua uma spell.");
-add("alchemy", "Alquimia", "Evolua uma relic.");
-add("grimoire", "Grimório completo", "Faça todas as evoluções de spell (somando todas as runs).");
-add("full_table", "Mesa cheia", "Tenha 3 sinergias ativas ao mesmo tempo.");
-add("identity", "Identidade", "Complete uma evolução de build (8 pontos num caminho).");
-add("untouchable", "Intocável", "Vença uma wave de boss sem levar dano.");
-add("lightning_duel", "Duelo relâmpago", "Derrote um boss em menos de 20 s.");
-add("elite_hunter", "Caçador de Elites", "Derrote 50 Elites (somando todas as runs).", { counter: { name: "elites", goal: 50 } });
-add("exterminator", "Exterminador", "10.000 abates (somando todas as runs).", { counter: { name: "kills", goal: 10000 } });
-add("bestiary", "Bestiário", "Derrote todos os tipos de inimigo.");
-add("kingslayer", "Matador de reis", "Derrote os 13 bosses.");
-add("reliquary", "Relicário", "Descubra todas as relics.");
-add("wardrobe", "Guarda-roupa", "Libere todas as skins de um herói.");
-add("endless", "Sem fim", "Chegue à W30 no modo infinito.");
-add("daily", "Semente do dia", "Vença uma semente do dia.");
-add("challenger", "Desafiante", "Complete 25 desafios da run.", { counter: { name: "challenges", goal: 25 } });
-add("supreme", "O desafio supremo", "Vença o Depths 5 com todos os heróis.");
-add("quick_trigger", "Gatilho rápido", "Mate 2.000 inimigos com ataque básico (somando runs).", { counter: { name: "auto_kills", goal: 2000 } });
-add("medicine", "Medicina", "Cure 1.000 de vida numa run.");
-add("shadow", "Sombra", "Esquive 100 golpes (somando runs).", { counter: { name: "dodges", goal: 100 } });
-add("plague", "Peste", "Mate 500 inimigos com dano ao longo do tempo, veneno ou queimadura (somando runs).", { counter: { name: "dot_kills", goal: 500 } });
+add("first_blood", "First Blood", "Defeat the first boss (W5) with any hero.");
+add("survivor", "Survivor", "Win a run (W20) on any difficulty.");
+add("veteran", "Veteran", "Win on Normal.");
+add("relentless", "Relentless", "Win on Hard.");
+add("six_crowns", "All Crowns", "Win with every hero (any difficulty).");
+add("dominion", "Dominion", "Win on Hard with every hero.");
+add("depths_1", "Into the Depths", "Win Depths 1.");
+add("depths_3", "Abyss", "Win Depths 3.");
+add("depths_5", "Ascension", "Win Depths 5.");
+add("well_equipped", "Well Equipped", "Buy every Depths perk with one hero.");
+add("forge", "Forge", "Evolve a spell.");
+add("alchemy", "Alchemy", "Evolve a relic.");
+add("grimoire", "Complete Grimoire", "Make every spell evolution (across all runs).");
+add("full_table", "Full Table", "Have 3 synergies active at the same time.");
+add("identity", "Identity", "Complete a build evolution (8 points in one path).");
+add("untouchable", "Untouchable", "Clear a boss wave without taking damage.");
+add("lightning_duel", "Lightning Duel", "Defeat a boss in under 20 s.");
+add("elite_hunter", "Champion Hunter", "Defeat 50 Champions (across all runs).", { counter: { name: "elites", goal: 50 } });
+add("exterminator", "Exterminator", "10,000 kills (across all runs).", { counter: { name: "kills", goal: 10000 } });
+add("bestiary", "Bestiary", "Defeat every kind of enemy.");
+add("kingslayer", "Kingslayer", "Defeat all 13 bosses.");
+add("reliquary", "Reliquary", "Discover every relic.");
+add("wardrobe", "Wardrobe", "Unlock every skin of one hero.");
+add("endless", "Endless", "Reach W30 in endless mode.");
+add("daily", "Daily Seed", "Win a daily seed.");
+add("challenger", "Challenger", "Complete 25 run challenges.", { counter: { name: "challenges", goal: 25 } });
+add("supreme", "The Supreme Challenge", "Win Depths 5 with every hero.");
+add("quick_trigger", "Quick Trigger", "Kill 2,000 enemies with the basic attack (across runs).", { counter: { name: "auto_kills", goal: 2000 } });
+add("medicine", "Medicine", "Heal 1,000 HP in one run.");
+add("shadow", "Shadow", "Dodge 100 hits (across runs).", { counter: { name: "dodges", goal: 100 } });
+add("plague", "Plague", "Kill 500 enemies with damage over time, poison or burn (across runs).", { counter: { name: "dot_kills", goal: 500 } });
 for (const [hero, name, text] of [
-  ["frostine", "Guardiã do gelo", "Vença com a Frostine."], ["kaelen", "Duelista", "Vença com o Kaelen."],
-  ["aurelius", "Sábio", "Vença com o Aurelius."], ["ignis", "Inferno", "Vença com o Ignis."],
-  ["zephyr", "Pistoleiro", "Vença com o Zephyr."], ["varok", "Matador de bosses", "Vença com o Varok."],
-  ["umbra", "Assassina", "Vença com a Umbra."], ["seraph", "Paladino", "Vença com o Seraph."],
-  ["vesper", "Tecelã", "Vença com a Vesper."],
+  ["frostine", "Ice Warden", "Win with Frostine."], ["kaelen", "Duelist", "Win with Kaelen."],
+  ["aurelius", "Sage", "Win with Aurelius."], ["ignis", "Inferno", "Win with Ignis."],
+  ["zephyr", "Gunslinger", "Win with Zephyr."], ["varok", "Boss Slayer", "Win with Varok."],
+  ["umbra", "Assassin", "Win with Umbra."], ["seraph", "Paladin", "Win with Seraph."],
+  ["vesper", "Weaver", "Win with Vesper."],
 ]) add(`win_${hero}`, name, text);
 for (const [spell, name, label] of [
-  ["fireball", "Mestre do fogo", "Fireball"], ["iceball", "Mestre do gelo", "Iceball"],
-  ["chain_lightning", "Mestre do raio", "Chain Lightning"], ["arcane_bolt", "Mestre arcano", "Arcane Bolt"],
-  ["healing_field", "Mestre da cura", "Healing Field"],
-]) add(`max_${spell}`, name, `Leve a ${label} ao nível máximo numa run.`);
-add("by_a_thread", "Por um fio", "Vença uma wave de boss com 5% de vida ou menos.", { secret: true });
-add("miser", "Avarento", "Tenha 2.500 de ouro guardado até a W10.", { secret: true });
-add("glass_cannon_win", "Canhão de vidro", "Vença uma run com a Glass Cannon.", { secret: true });
-add("pactmaster", "Pactuário", "Aceite 3 pactos na mesma run.", { secret: true });
+  ["fireball", "Fire Master", "Fireball"], ["iceball", "Ice Master", "Iceball"],
+  ["chain_lightning", "Lightning Master", "Chain Lightning"], ["arcane_bolt", "Arcane Master", "Arcane Bolt"],
+  ["healing_field", "Healing Master", "Healing Field"],
+]) add(`max_${spell}`, name, `Take ${label} to its max level in one run.`);
+add("by_a_thread", "By a Thread", "Win a boss wave at 5% HP or less.", { secret: true });
+add("miser", "Miser", "Hold 2,500 gold by W10.", { secret: true });
+add("glass_cannon_win", "Glass Cannon", "Win a run with Glass Cannon.", { secret: true });
+add("pactmaster", "Pact Keeper", "Accept 3 pacts in the same run.", { secret: true });
 
 export const ACHIEVEMENTS: readonly AchievementDef[] = list;
 export const ACHIEVEMENT_BY_ID: Readonly<Record<string, AchievementDef>> = Object.fromEntries(list.map((a) => [a.id, a]));
@@ -146,5 +146,5 @@ export const LOCKED_BY: Readonly<Record<UnlockKind, Readonly<Record<string, stri
 
 /** unlocks.lua `COSMETIC_NAMES` */
 export const COSMETIC_NAMES: Readonly<Record<string, string>> = {
-  frame_bronze: "Moldura de bronze", frame_silver: "Moldura de prata", frame_gold: "Moldura de ouro", animated_portrait: "Retrato animado",
+  frame_bronze: "Bronze frame", frame_silver: "Silver frame", frame_gold: "Gold frame", animated_portrait: "Animated portrait",
 };

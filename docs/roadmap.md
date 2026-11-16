@@ -595,6 +595,11 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 **M16-07 · Dividir arquivos grandes** · M
 - `game.ts` (1.245 linhas) em `combat.ts`, `player.ts`, `loot.ts`, `progression.ts`; `chars.ts` conforme `M0-01`. Sem mudar comportamento.
 
+**M16-08 · Troca de zona sem travada** · M [pedido do usuário, 2026-11-16]
+- Problema: ao matar o chefe da zona (ondas 5, 10, 15) e entrar no portal, o jogo para um instante montando a zona nova e parece que travou.
+- Passos: medir onde vai o tempo (geração, montagem da cena, compilação de shaders); cobrir a troca com uma transição (escurecer a tela com o nome da zona nova, por exemplo) e montar a zona por trás dela; se der, pré-compilar os materiais (`renderer.compileAsync`) e espalhar a montagem em vários quadros.
+- Pronto quando: a troca não congela a imagem; o jogador vê a transição em vez da tela parada.
+
 ### M17 — Balanceamento
 
 **M17-01 · Simulador** · M
@@ -771,5 +776,7 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`. **
 | M5-05 | feito, falta validar | 2026-11-16 | Feita antes do `M6-03`, a pedido do usuário. `src/game/status-icons.ts`: fileira de ícones desenhados em canvas sobre a cabeça de cada inimigo (queimando; Volátil, quando a queimadura é do Fireball e há chance; envenenado com acúmulos; lento; Brittle Chill, quando há o modificador; atordoado; gelo da Frostine com acúmulos; Quebradiço) e partículas no corpo (brasas, bolhas, cristais). A tinta do corpo continua. Conferido por captura com os 8 estados; o crítico cego não foi rodado. Falta "marcado" (não há estado assim ainda) |
 | M6-03 | feito, falta validar | 2026-11-16 | Em `SpellCaster`: **Chain Lightning** (dardo de 75 m/s na mira; o primeiro inimigo que toca começa a cadeia, que salta ao mais perto não atingido até `targets`; Static Field acerta o primeiro 2x; errando, apaga e a recarga já foi), **Arcane Bolt** (projétil com área; Eco), **Prism Beam** (raio de 18 m saindo do herói, gira com a mira por 1,8 s e fere a linha a cada 0,15 s; relançar troca). Eco (S16) pronto. Conferido por script e captura; visuais provisórios até o `M5-08`. Sem estado novo, então sem ícone novo |
 | D1, M14-00 | decidida, criada | 2026-11-16 | Pedido do usuário: todo texto do jogo em inglês, valendo já para o código novo (o Eco e o Volátil do M6 viraram Echo e Volatile). O pente-fino do que já existe é a `M14-00`, antes do `M6-04` |
+| M14-00 | feito | 2026-11-16 | Todo texto do jogo em inglês: dados (conquistas, spells, técnicas, melhorias, salas, heróis, zonas, inimigos, títulos dos chefes), textos flutuantes, avisos e toda a `ui.ts`, mais as mensagens de erro. A maior parte veio direto do `lang/en.lua` do Dungeon Reign (Elite virou Champion, como lá); o resto foi escrito no mesmo tom. Números com ponto decimal e `en-US`. `tests/parity.test.ts` traduz o texto do original pelo `en.lua` antes de comparar. Conferido no navegador: título, dificuldade, spell, HUD, status, pausa, melhoria, mapa, relíquia, vitória |
+| M16-08 | criada | 2026-11-16 | Feedback do usuário jogando: a troca de zona depois do chefe dá uma travadinha; esconder com uma transição e montar a zona por trás |
 
 O M1 está completo, faltando só a validação da `M1-05`. No M2, os nove heróis estão refeitos: oito aprovados e Vesper (com as abelhas) esperando validação. Próxima sessão, sugestão: `M2-10`. `M0-03` (prévia com seletor, lineup e contagem) continua pendente.

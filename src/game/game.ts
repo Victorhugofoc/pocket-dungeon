@@ -235,7 +235,7 @@ export class Game {
       scene: this.scene,
       fx: this.fx,
       player: () => ({ x: this.player.x, z: this.player.z, alive: this.playerAlive }),
-      hurt: (n) => this.hurtPlayer(n, "Raio"),
+      hurt: (n) => this.hurtPlayer(n, "Lightning"),
       heal: (n) => this.heal(n, true),
       maxHp: () => this.stats.maxHp,
       zap: () => this.audio.play("zap"),
@@ -380,7 +380,7 @@ export class Game {
     for (const id of news) {
       const a = ACHIEVEMENT_BY_ID[id];
       const reward = (UNLOCK_REWARDS[id] ?? []).filter(([k]) => k === "hero").map(([, h]) => HEROES[h]?.name).filter(Boolean);
-      this.events.toast(`Conquista: ${a.name}${reward.length ? ` · libera ${reward.join(", ")}` : ""}`, "#ffd34d");
+      this.events.toast(`Achievement: ${a.name}${reward.length ? ` · unlocks ${reward.join(", ")}` : ""}`, "#ffd34d");
     }
     this.audio.play("rare");
     this.saveAchievements();
@@ -533,7 +533,7 @@ export class Game {
 
   spawnEnemyProjectile(x: number, z: number, angle: number, speed: number, dmg: number, color: number, r: number): void {
     this.addProjectile({ x, z, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed, r, dmg, life: 26 / speed, friendly: false,
-      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projétil" });
+      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile" });
   }
 
   private firePlayer(angle: number, auto: AutoAttack, mult: number, rangeMult = 1): void {
@@ -574,7 +574,7 @@ export class Game {
             this.icicle.onHit(e, pr.icicle === true);
             if (pr.icicle) {
               this.fx.burst(e.x, 1.2, e.z, 0xe8f8ff, 18, 7, 0.14, 0.45, 6);
-              this.fx.text(e.x, 2.4, e.z, "Pingente", "frost");
+              this.fx.text(e.x, 2.4, e.z, "Icicle", "frost");
             }
           }
           this.hitSource = pr.source === "auto" ? "auto" : "other";
@@ -656,12 +656,12 @@ export class Game {
       if (r.shatter) {
         e.stunUntil = 0;
         this.fx.burst(e.x, 1, e.z, 0xdff6ff, 26, 9, 0.16, 0.55, 10);
-        this.fx.text(e.x, 2.6, e.z, "Estilhaçou", "frost");
+        this.fx.text(e.x, 2.6, e.z, "Shattered", "frost");
         this.fx.addShake(0.12);
       }
       if (r.brittle) {
         this.fx.burst(e.x, 1.4, e.z, 0xe6f8ff, 30, 6, 0.14, 0.7, 2);
-        this.fx.text(e.x, 3, e.z, "Quebradiço", "frost");
+        this.fx.text(e.x, 3, e.z, "Brittle", "frost");
       }
     }
     if (crit) amount *= s.critDamage;
@@ -824,7 +824,7 @@ export class Game {
     this.run.relics.push(id);
     this.ach.relicFound(id);
     this.recompute();
-    this.events.toast(`Relíquia: ${RELICS[id].name}`, "#ffc83d");
+    this.events.toast(`Relic: ${RELICS[id].name}`, "#ffc83d");
     this.audio.play("rare");
     this.events.statusChanged();
   }
@@ -855,9 +855,9 @@ export class Game {
       const p = this.player;
       this.fx.shockwave(p.x, p.z, 6, 0xffe066, 0.6);
       this.fx.burst(p.x, 1.5, p.z, 0xffe066, 40, 8, 0.16, 0.9, 6);
-      this.fx.text(p.x, 3.2, p.z, `NÍVEL ${s.level}`, "level");
+      this.fx.text(p.x, 3.2, p.z, `LEVEL ${s.level}`, "level");
       this.audio.play("level");
-      this.events.toast(`Nível ${s.level}! A melhoria sai no fim da onda`, "#ffe066");
+      this.events.toast(`Level ${s.level}! Pick your upgrade at the end of the wave`, "#ffe066");
     }
   }
 
@@ -918,7 +918,7 @@ export class Game {
     const p = this.player;
     if (!this.playerAlive || p.iframes > 0) return;
     if (Math.random() < this.stats.dodge) {
-      this.fx.text(p.x, 2.6, p.z, "Esquiva", "dodge");
+      this.fx.text(p.x, 2.6, p.z, "Dodge", "dodge");
       p.iframes = 0.15;
       this.ach.dodge();
       return;
@@ -927,7 +927,7 @@ export class Game {
       // Aegis: o escudo come o golpe inteiro
       p.aegis.block = false;
       p.iframes = 0.2;
-      this.fx.text(p.x, 2.6, p.z, "Bloqueado", "frost");
+      this.fx.text(p.x, 2.6, p.z, "Blocked", "frost");
       this.fx.burst(p.x, 1.2, p.z, 0xffe9a8, 24, 7, 0.14, 0.4, 2);
       this.fx.flashLight(p.x, 1.5, p.z, 0xffe9a8, 1.8, 0.2);
       this.audio.play("crit");
@@ -1071,8 +1071,8 @@ export class Game {
     this.showRing(true);
     const boss = this.wave.isBossWave;
     const room = this.mods.room;
-    const sub = boss ? `${BOSSES[this.zone.boss].name} se aproxima` : room ? `${room.name}` : this.zone.name;
-    this.events.banner(`Onda ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, sub);
+    const sub = boss ? `${BOSSES[this.zone.boss].name} approaches` : room ? `${room.name}` : this.zone.name;
+    this.events.banner(`Wave ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, sub);
     this.audio.play(boss ? "boss" : "level");
   }
 
@@ -1080,7 +1080,7 @@ export class Game {
     const w = this.wave!;
     const bonus = hastenBonus(w);
     if (!hasten(w)) return;
-    this.events.toast(`Onda apressada: +${Math.round(bonus * 100)}% de recompensa`, "#ffc83d");
+    this.events.toast(`Rushed wave: +${Math.round(bonus * 100)}% reward`, "#ffc83d");
     this.audio.play("dash");
   }
 
@@ -1212,8 +1212,8 @@ export class Game {
     this.phase = "cleared";
     this.phaseT = 0;
     this.showRing(false);
-    const extra = w.clearedEarly ? ` · ${Math.ceil(w.timeSaved)} s antes` : "";
-    this.events.banner("Onda concluída", `+${gold} ouro · +${Math.round((xp + r.xp) * this.stats.xp)} XP${survivors ? ` · ${survivors} fugiram` : ""}${extra}`);
+    const extra = w.clearedEarly ? ` · ${Math.ceil(w.timeSaved)} s early` : "";
+    this.events.banner("Wave cleared", `+${gold} gold · +${Math.round((xp + r.xp) * this.stats.xp)} XP${survivors ? ` · ${survivors} fled` : ""}${extra}`);
     this.audio.play("pickup");
   }
 
@@ -1266,7 +1266,7 @@ export class Game {
       this.world.portal.position.set(this.segment.x, 0, this.segment.z);
     }
     if (this.run.victory && this.run.wave === TOTAL_WAVES) this.events.victory();
-    else this.events.toast("O portal abriu: E para seguir para a próxima zona", "#9be4ff");
+    else this.events.toast("The portal opened: E to go on to the next zone", "#9be4ff");
   }
 
   /** Tira da cena o que é da onda (avisos de nascimento); os inimigos saem com a zona ou no fim da onda. */
