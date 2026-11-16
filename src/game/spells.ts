@@ -1,17 +1,19 @@
-// Conjuração das spells (M6-02, M6-03): teclas 1 e 2 (D12), recarga, mira no cursor. Porta de dungeon-idle
+// Conjuração das spells (M6-02 a M6-04): teclas 1 e 2 (D12), recarga, mira no cursor. Porta de dungeon-idle
 // src/spells/spell_system.lua (`tryCast`, `doCast`, `onKill`), src/spells/behaviors.lua (`Projectile`, `Chain`) e
-// src/spells/techniques.lua (`Tech.beam`). Os números saem de core/spells.ts (`spellStats`); aqui só o tempo real:
-// projéteis, raio em cadeia, raio contínuo, impacto, queimadura, lentidão, Eco e Volátil.
+// src/spells/techniques.lua (`Tech.beam`, `Tech.nova`, `Tech.vortex`, `Tech.totem`). Os números saem de core/spells.ts
+// (`spellStats`); aqui só o tempo real: projéteis, raio em cadeia, raio contínuo, onda de veneno, tornado, totem,
+// impacto, queimadura, lentidão, veneno, empurrão, atordoamento, Eco e Volátil.
 import * as THREE from "three";
 import { isSpellId, spellStats, type SpellStats } from "../core/spells";
 import { MAX_SPELLS, SPELL_CAST } from "../data/spells";
 import { FROST } from "../data/techniques";
-import type { Enemy } from "./enemy";
+import { KNOCK_DECAY, type Enemy } from "./enemy";
 import type { Game } from "./game";
 
 /** Cor de cada spell no jogo (projétil, impacto e raio). */
 export const SPELL_COLOR: Record<string, number> = {
   fireball: 0xff7a1a, iceball: 0x9fdcff, chain_lightning: 0xfff29a, arcane_bolt: 0xc28cff, prism_beam: 0xfff6d8,
+  venom_nova: 0x7be04a, cyclone: 0xcfe8ff, quake_totem: 0xffa040,
 };
 
 interface SpellProjectile {
@@ -38,12 +40,71 @@ interface Beam {
   core: THREE.Mesh;
 }
 
+/** Cyclone em pé (techniques.lua `world.vortexes`): parado na mira, puxa e fere a cada tique. */
+interface Vortex {
+  slot: number;
+  st: SpellStats;
+  x: number; z: number;
+  time: number;
+  tickLeft: number;
+  group: THREE.Group;
+  cones: THREE.Mesh[];
+}
+
+/** Quake Totem em pé (techniques.lua `world.totems`): bate no chão a cada tique. */
+interface Totem {
+  slot: number;
+  st: SpellStats;
+  x: number; z: number;
+  time: number;
+  tickLeft: number;
+  /** tempo desde que surgiu (o totem sobe do chão) */
+  age: number;
+  /** tranco da batida, de 1 a 0 */
+  bob: number;
+  group: THREE.Group;
+  runes: THREE.MeshBasicMaterial;
+}
+
 /** Eco à espera (spell_system.lua `pendingCasts`). */
 interface PendingCast { slot: number; t: number }
 
 const BALL_GEO = new THREE.IcosahedronGeometry(1, 1);
 /** faixa deitada no chão, de 0 a 1 no eixo z local */
 const BEAM_GEO = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0).rotateX(Math.PI / 2);
+
+/** Funil do tornado: cone aberto, torcido em espiral, com faixas claras e escuras (somadas, o escuro some). */
+function funnelGeometry(): THREE.BufferGeometry {
+  const radial = 15;
+  const rows = 8;
+  const geo = new THREE.CylinderGeometry(1, 0.14, 1, radial, rows, true);
+  const pos = geo.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = i % (radial + 1);
+    const y = Math.floor(i / (radial + 1));
+    const h = 1 - y / rows; // 0 embaixo, 1 em cima
+    const a = h * 2.4; // torção
+    const px = pos.getX(i);
+    const pz = pos.getZ(i);
+    pos.setXYZ(i, px * Math.cos(a) - pz * Math.sin(a), pos.getY(i), px * Math.sin(a) + pz * Math.cos(a));
+    const stripe = x % 3 === 0 ? 1 : x % 3 === 1 ? 0.45 : 0.15;
+    const fade = Math.min(1, h * 4) * Math.min(1, (1 - h) * 3 + 0.25);
+    col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = stripe * fade;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  return geo.translate(0, 0.5, 0);
+}
+const FUNNEL_GEO = funnelGeometry();
+/** altura e raio (em raios da spell) de cada funil, de fora para dentro, e a opacidade */
+const FUNNELS: readonly [number, number, number][] = [[0.5, 4.2, 0.16], [0.34, 3.4, 0.22], [0.2, 3.8, 0.2]];
+
+/** Totem de pedra: laje, coluna, cabeça e duas faixas de runas (a cor da escola da terra). */
+const TOTEM_BASE = new THREE.CylinderGeometry(0.62, 0.7, 0.26, 7).translate(0, 0.13, 0);
+const TOTEM_PILLAR = new THREE.CylinderGeometry(0.34, 0.44, 1.35, 6).translate(0, 0.9, 0);
+const TOTEM_HEAD = new THREE.BoxGeometry(0.66, 0.5, 0.56).translate(0, 1.82, 0);
+const TOTEM_BAND = new THREE.CylinderGeometry(0.42, 0.45, 0.1, 6, 1, true);
+const TOTEM_EYE = new THREE.BoxGeometry(0.14, 0.06, 0.04);
 
 export class SpellCaster {
   /** recarga restante de cada espaço (spell_system.lua `cooldownLeft`); não vai para o save, como lá começa zerada */
@@ -54,6 +115,8 @@ export class SpellCaster {
   noTarget: number[] = [];
   private shots: SpellProjectile[] = [];
   private beams: Beam[] = [];
+  private vortices: Vortex[] = [];
+  private totems: Totem[] = [];
   private pending: PendingCast[] = [];
   private mats = new Map<number, THREE.MeshBasicMaterial>();
 
@@ -104,9 +167,11 @@ export class SpellCaster {
     }
     this.updateShots(dt);
     this.updateBeams(dt);
+    this.updateVortices(dt);
+    this.updateTotems(dt);
   }
 
-  /** spell_system.lua `tryCast`: a recarga é gasta quando a spell sai; spell sem efeito ainda (M6-04, M6-05) não gasta. */
+  /** spell_system.lua `tryCast`: a recarga é gasta quando a spell sai; spell sem efeito ainda (M6-05) não gasta. */
   tryCast(i: number): boolean {
     const st = this.stats[i];
     if (!st || this.cooldown[i] > 0 || !this.game.playerAlive) return false;
@@ -128,8 +193,14 @@ export class SpellCaster {
         return this.castChain(i, st);
       case "beam":
         return this.castBeam(i, st);
+      case "nova":
+        return this.castNova(st);
+      case "vortex":
+        return this.castVortex(i, st);
+      case "totem":
+        return this.castTotem(i, st);
       default:
-        return false; // as outras spells entram no M6-04 e no M6-05
+        return false; // as outras spells entram no M6-05
     }
   }
 
@@ -338,6 +409,253 @@ export class SpellCaster {
     this.beams.splice(k, 1);
   }
 
+  // ---------------------------------------------------------------- Venom Nova
+  /**
+   * techniques.lua `Tech.nova.cast`: onda de veneno em volta do herói; cada inimigo dentro ganha um acúmulo. Lá só saía
+   * com inimigo no raio; aqui sai sempre (D15).
+   */
+  private castNova(st: SpellStats): boolean {
+    const g = this.game;
+    const p = g.player;
+    const r = st.radius;
+    const color = SPELL_COLOR.venom_nova;
+    const dps = g.stats.damage * st.damage;
+    for (const e of g.enemies) {
+      if (e.dead) continue;
+      if ((e.x - p.x) ** 2 + (e.z - p.z) ** 2 > (r + e.radius) ** 2) continue;
+      this.applyPoison(e, dps, st.duration ?? 0, st.stacks ?? 1);
+      if (!e.aggro) e.setAggro(g);
+      g.fx.burst(e.x, 0.4, e.z, color, 10, 3, 0.15, 0.5, -1); // respingo aos pés de cada um (D-417)
+    }
+    g.fx.shockwave(p.x, p.z, r, color, 0.45);
+    g.fx.shockwave(p.x, p.z, r * 0.8, 0x3f8f2a, 0.75);
+    for (let k = 0; k < 26; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = r * (0.25 + 0.75 * Math.random());
+      const out = 1.2 + Math.random() * 1.5;
+      g.fx.glow(p.x + Math.sin(a) * d, 0.35, p.z + Math.cos(a) * d, k % 3 ? color : 0x2f6b1f, 0.9 + Math.random() * 0.6,
+        0.6 + Math.random() * 0.4, Math.sin(a) * out, 0.7, Math.cos(a) * out);
+    }
+    g.fx.flashLight(p.x, 1, p.z, color, 2, 0.35);
+    g.audio.play("tech");
+    return true;
+  }
+
+  /**
+   * status.lua `applyPoison`: um efeito só por inimigo; cada aplicação soma um acúmulo (até o máximo) e renova a duração;
+   * fica o maior dano por segundo. Vive à parte do veneno do tiro da Vesper (que aqui é um efeito por acúmulo).
+   */
+  private applyPoison(e: Enemy, dps: number, duration: number, maxStacks: number): void {
+    const until = this.game.time + duration;
+    const cur = e.dots.find((d) => d.kind === "poison" && d.spell === "venom_nova");
+    if (cur) {
+      cur.dps = Math.max(cur.dps, dps);
+      cur.until = Math.max(cur.until, until);
+      cur.maxStacks = Math.max(cur.maxStacks ?? 1, maxStacks);
+      cur.stacks = Math.min(cur.maxStacks, (cur.stacks ?? 1) + 1);
+    } else e.dots.push({ kind: "poison", dps, until, spell: "venom_nova", stacks: 1, maxStacks });
+  }
+
+  // ---------------------------------------------------------------- Cyclone
+  /** techniques.lua `Tech.vortex.cast`: tornado na mira (até o alcance); relançar troca o tornado do mesmo espaço. */
+  private castVortex(i: number, st: SpellStats): boolean {
+    const g = this.game;
+    for (let k = this.vortices.length - 1; k >= 0; k--) if (this.vortices[k].slot === i) this.freeVortex(k);
+    const a = g.aimPoint(st.range);
+    const group = new THREE.Group();
+    const cones: THREE.Mesh[] = [];
+    for (const [rad, h, op] of FUNNELS) {
+      const m = new THREE.Mesh(FUNNEL_GEO, new THREE.MeshBasicMaterial({
+        color: SPELL_COLOR.cyclone, vertexColors: true, transparent: true, opacity: op, depthWrite: false,
+        toneMapped: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      }));
+      m.scale.set(st.radius * rad, h, st.radius * rad);
+      m.renderOrder = 3;
+      group.add(m);
+      cones.push(m);
+    }
+    group.position.set(a.x, 0, a.z);
+    g.scene.add(group);
+    this.vortices.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 0.5, group, cones });
+    g.fx.shockwave(a.x, a.z, st.radius, SPELL_COLOR.cyclone, 0.4);
+    g.audio.play("tech");
+    return true;
+  }
+
+  /** techniques.lua `updateVortex`: puxa todos no alcance do funil para o olho (chefes, `bossPull`) e fere os de dentro. */
+  private updateVortices(dt: number): void {
+    const g = this.game;
+    for (let k = this.vortices.length - 1; k >= 0; k--) {
+      const v = this.vortices[k];
+      const st = v.st;
+      v.time -= dt;
+      const reach = st.radius * SPELL_CAST.vortexReach;
+      const pull = st.pull ?? 0;
+      const eye = SPELL_CAST.vortexEye;
+      for (const e of g.enemies) {
+        if (e.dead) continue;
+        const dx = v.x - e.x;
+        const dz = v.z - e.z;
+        const d = Math.hypot(dx, dz);
+        if (d > reach + e.radius || d < eye) continue;
+        const step = Math.min(d - eye * 0.5, pull * (e.isBoss ? st.bossPull ?? 0 : 1) * dt);
+        e.x += (dx / d) * step;
+        e.z += (dz / d) * step;
+      }
+      v.tickLeft -= dt;
+      while (v.tickLeft <= 0 && v.time > -1e-6) {
+        v.tickLeft += st.tick ?? 0.5;
+        for (const e of g.enemies) {
+          if (e.dead) continue;
+          if ((e.x - v.x) ** 2 + (e.z - v.z) ** 2 > (st.radius + e.radius) ** 2) continue;
+          g.spellHit(e, st.damage, true);
+        }
+      }
+      if (v.time <= 0) {
+        g.fx.burst(v.x, 1.2, v.z, 0xdfeeff, 18, 5, 0.18, 0.5, 2);
+        this.freeVortex(k);
+        continue;
+      }
+      // visual: os funis giram, crescem no começo e somem no fim
+      const fade = Math.min(1, ((st.duration ?? 1) - v.time) / 0.25, v.time / 0.35);
+      v.cones.forEach((m, n) => {
+        const [, h, op] = FUNNELS[n];
+        m.rotation.y += dt * (7 + n * 3) * (n % 2 ? -1 : 1);
+        (m.material as THREE.MeshBasicMaterial).opacity = op * fade;
+        m.scale.y = h * (0.6 + 0.4 * fade);
+      });
+      v.group.rotation.z = Math.sin(g.time * 3.1 + v.x) * 0.05;
+      v.group.rotation.x = Math.cos(g.time * 2.7 + v.z) * 0.05;
+      // poeira girando em volta do pé do funil
+      for (let n = 0; n < 3; n++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = reach * (0.4 + 0.6 * Math.random());
+        const sx = Math.sin(a);
+        const sz = Math.cos(a);
+        g.fx.glow(v.x + sx * d, 0.25 + Math.random() * 0.4, v.z + sz * d, n ? 0xb9a98a : 0xe8f4ff, 0.5 + Math.random() * 0.4,
+          0.45, sz * 6 - sx * 3, 1.8 + Math.random() * 2, -sx * 6 - sz * 3);
+      }
+    }
+  }
+
+  private freeVortex(k: number): void {
+    const v = this.vortices[k];
+    v.group.removeFromParent();
+    for (const m of v.cones) (m.material as THREE.Material).dispose();
+    this.vortices.splice(k, 1);
+  }
+
+  // ---------------------------------------------------------------- Quake Totem
+  /** techniques.lua `Tech.totem.cast`: totem na mira (até o alcance); relançar troca o totem do mesmo espaço. */
+  private castTotem(i: number, st: SpellStats): boolean {
+    const g = this.game;
+    for (let k = this.totems.length - 1; k >= 0; k--) if (this.totems[k].slot === i) this.freeTotem(k);
+    const a = g.aimPoint(st.range);
+    const group = new THREE.Group();
+    const stone = new THREE.MeshStandardMaterial({ color: 0x8b8072, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x5f564c, roughness: 1, flatShading: true });
+    const runes = new THREE.MeshBasicMaterial({ color: SPELL_COLOR.quake_totem, toneMapped: false });
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, y = 0, shadow = true) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.y = y;
+      m.castShadow = shadow;
+      group.add(m);
+      return m;
+    };
+    add(TOTEM_BASE, dark);
+    add(TOTEM_PILLAR, stone);
+    add(TOTEM_HEAD, stone).rotation.y = Math.PI / 6;
+    add(TOTEM_BAND, runes, 0.6, false);
+    add(TOTEM_BAND, runes, 1.25, false).scale.set(0.9, 1, 0.9);
+    // olhos em fenda na cabeça, virados para o herói
+    const p = g.player;
+    const face = Math.atan2(p.x - a.x, p.z - a.z);
+    const fx = Math.sin(face);
+    const fz = Math.cos(face);
+    for (const side of [-0.15, 0.15]) {
+      const eye = add(TOTEM_EYE, runes, 1.88, false);
+      eye.position.x = fz * side + fx * 0.3;
+      eye.position.z = -fx * side + fz * 0.3;
+      eye.rotation.y = face;
+    }
+    group.position.set(a.x, 0, a.z);
+    g.scene.add(group);
+    this.totems.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 1, age: 0, bob: 0, group, runes });
+    g.fx.burst(a.x, 0.3, a.z, 0x9a8a72, 22, 5, 0.18, 0.5, 10);
+    g.fx.addShake(0.08);
+    g.audio.play("tech");
+    return true;
+  }
+
+  /** techniques.lua `updateTotem`: bate a cada tique enquanto dura; com o Aftershock, chance de bater de novo. */
+  private updateTotems(dt: number): void {
+    const g = this.game;
+    for (let k = this.totems.length - 1; k >= 0; k--) {
+      const t = this.totems[k];
+      t.time -= dt;
+      t.age += dt;
+      t.tickLeft -= dt;
+      while (t.tickLeft <= 0 && t.time > -1e-6) {
+        t.tickLeft += t.st.tick ?? 1;
+        this.slam(t);
+        if (t.st.doubleHit && Math.random() < t.st.doubleHit) this.slam(t);
+      }
+      if (t.time <= 0) {
+        g.fx.burst(t.x, 0.6, t.z, 0x8b8072, 26, 5, 0.2, 0.6, 12);
+        this.freeTotem(k);
+        continue;
+      }
+      // sobe do chão, dá o tranco da batida e afunda no fim
+      t.bob = Math.max(0, t.bob - dt * 5);
+      const rise = Math.min(1, t.age / 0.22) * Math.min(1, t.time / 0.25);
+      const b = t.bob;
+      t.group.position.y = -2.2 * (1 - rise) + 0.25 * Math.sin(b * Math.PI);
+      t.group.scale.set(1 + 0.1 * b, 1 - 0.12 * b, 1 + 0.1 * b);
+      t.runes.color.setHex(SPELL_COLOR.quake_totem).multiplyScalar(0.45 + 0.55 * b + 0.1 * Math.sin(g.time * 6));
+    }
+  }
+
+  /**
+   * techniques.lua `slam`: dano no raio; quem não é chefe nem Campeão é empurrado para fora (`knockback`) e, do nível 4,
+   * atordoado (`stun`).
+   */
+  private slam(t: Totem): void {
+    const g = this.game;
+    const st = t.st;
+    const r = st.radius;
+    const kb = (st.knockback ?? 0) * KNOCK_DECAY;
+    for (const e of g.enemies) {
+      if (e.dead) continue;
+      const dx = e.x - t.x;
+      const dz = e.z - t.z;
+      if (dx * dx + dz * dz > (r + e.radius) ** 2) continue;
+      g.spellHit(e, st.damage, true);
+      if (e.dead || e.isBoss || e.champion) continue;
+      const d = Math.hypot(dx, dz);
+      e.kx += (d < 0.08 ? 1 : dx / d) * kb;
+      e.kz += (d < 0.08 ? 0 : dz / d) * kb;
+      if (st.stun) g.applyStatus(e, { kind: "stun", power: 1, duration: st.stun }, 0);
+    }
+    t.bob = 1;
+    g.fx.shockwave(t.x, t.z, r, SPELL_COLOR.quake_totem, 0.4);
+    g.fx.shockwave(t.x, t.z, r * 0.6, 0x9a8a72, 0.3);
+    g.fx.burst(t.x, 0.3, t.z, 0x9a8a72, 30, 6, 0.2, 0.55, 12);
+    g.fx.burst(t.x, 0.2, t.z, 0xffc070, 12, 4, 0.12, 0.35, 6);
+    g.fx.flashLight(t.x, 1, t.z, SPELL_COLOR.quake_totem, 1.8, 0.25);
+    g.fx.addShake(0.1);
+    g.audio.play("hit");
+  }
+
+  private freeTotem(k: number): void {
+    const t = this.totems[k];
+    t.group.removeFromParent();
+    const mats = new Set<THREE.Material>();
+    t.group.traverse((o) => { if (o instanceof THREE.Mesh) mats.add(o.material as THREE.Material); });
+    for (const m of mats) m.dispose();
+    this.totems.splice(k, 1);
+  }
+
+
   private mat(color: number): THREE.MeshBasicMaterial {
     let m = this.mats.get(color);
     if (!m) this.mats.set(color, (m = new THREE.MeshBasicMaterial({ color, toneMapped: false })));
@@ -457,6 +775,8 @@ export class SpellCaster {
     for (const pr of this.shots) this.free(pr);
     this.shots.length = 0;
     while (this.beams.length) this.freeBeam(this.beams.length - 1);
+    while (this.vortices.length) this.freeVortex(this.vortices.length - 1);
+    while (this.totems.length) this.freeTotem(this.totems.length - 1);
     this.pending.length = 0;
   }
 
@@ -466,11 +786,13 @@ export class SpellCaster {
     this.cooldown.fill(0);
   }
 
-  /** Para os testes de console: projéteis e raios em voo. */
+  /** Para os testes de console: projéteis, raios, tornados e totens em jogo. */
   snapshot(): { id: string; x: number; z: number; remaining: number }[] {
     return [
       ...this.shots.map((s) => ({ id: s.id, x: +s.x.toFixed(2), z: +s.z.toFixed(2), remaining: +s.remaining.toFixed(2) })),
       ...this.beams.map((b) => ({ id: b.st.id, x: +b.dx.toFixed(2), z: +b.dz.toFixed(2), remaining: +b.time.toFixed(2) })),
+      ...[...this.vortices, ...this.totems].map((o) => ({ id: o.st.id, x: +o.x.toFixed(2), z: +o.z.toFixed(2),
+        remaining: +o.time.toFixed(2) })),
     ];
   }
 }

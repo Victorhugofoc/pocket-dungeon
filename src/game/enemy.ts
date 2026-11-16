@@ -18,7 +18,13 @@ export interface Dot {
   /** spell que aplicou (Fireball: o Volátil olha isto) e o espaço dela */
   spell?: string;
   slot?: number;
+  /** Venom Nova: um efeito só com contador de acúmulos (status.lua `applyPoison`); o dano por segundo vale por acúmulo */
+  stacks?: number;
+  maxStacks?: number;
 }
+
+/** freio do empurrão (`kx`, `kz`): a velocidade cai por exp(-KNOCK_DECAY·t), então um empurrão de d metros é d·KNOCK_DECAY */
+export const KNOCK_DECAY = 9;
 
 export class Enemy {
   x: number;
@@ -188,7 +194,7 @@ export class Enemy {
         let kind: StatusKind = "burn";
         this.dots = this.dots.filter((d) => d.until > now);
         for (const d of this.dots) {
-          total += d.dps * 0.5;
+          total += d.dps * (d.stacks ?? 1) * 0.5;
           kind = d.kind;
         }
         if (total > 0) game.damageEnemy(this, total, { dot: kind });
@@ -245,7 +251,7 @@ export class Enemy {
 
     this.x += this.kx * dt;
     this.z += this.kz * dt;
-    const kdec = Math.exp(-dt * 9);
+    const kdec = Math.exp(-dt * KNOCK_DECAY);
     this.kx *= kdec;
     this.kz *= kdec;
     game.grid.resolve(this, this.radius);

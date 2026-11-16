@@ -28,7 +28,7 @@ export function enemyStatuses(e: Enemy, ctx: StatusContext): StatusBadge[] {
     const fire = burns.some((d) => d.spell === "fireball");
     out.push({ kind: fire && ctx.volatile > 0 ? "volatile" : "burn" });
   }
-  const poison = dots.filter((d) => d.kind === "poison").length;
+  const poison = dots.filter((d) => d.kind === "poison").reduce((n, d) => n + (d.stacks ?? 1), 0);
   if (poison) out.push({ kind: "poison", n: poison > 1 ? poison : undefined });
   if (now < e.stunUntil) out.push({ kind: "stun" });
   if (now < e.frost.brittleUntil) out.push({ kind: "shatter" });

@@ -356,6 +356,10 @@ export const SPELL_CAST = {
   echoDelay: 0.2,
   /** passo máximo do projétil por verificação de colisão, em metros */
   maxStep: 0.4,
+  /** Cyclone: o puxão alcança este tanto de raios, mais do que o dano (techniques.lua `VORTEX_REACH`) */
+  vortexReach: 1.5,
+  /** Cyclone: o olho, onde o puxão para (techniques.lua: 2 px) */
+  vortexEye: 2 / DR_PX_PER_M,
   /** visual: altura e tamanho da bola */
   height: 1.2,
   ballSize: 0.38,
