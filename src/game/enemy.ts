@@ -76,11 +76,13 @@ export class Enemy {
   roarDur = 1;
   /** fúria suavizada para a postura e o anel */
   rage = 0;
+  /** chefe da emboscada (Boss Ambush): entra numa onda normal, sem relíquia de chefe */
+  ambush = false;
   private emberT = 0;
   private ring: BossRing | null = null;
 
   constructor(game: Game, def: EnemyDef | BossDef, wave: number, x: number, z: number,
-    opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean } = {}) {
+    opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean; ambush?: { hp: number; damage: number } | null } = {}) {
     this.x = this.homeX = x;
     this.z = this.homeZ = z;
     this.level = wave;
@@ -92,7 +94,8 @@ export class Enemy {
     this.def = isBoss ? null : (def as EnemyDef);
     this.name = def.name;
     // vida, dano e velocidade como no Dungeon Reign (enemy.lua, boss.lua): pela onda e pela dificuldade
-    const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final) : enemyStats(def, wave, game.mods, this.champion);
+    this.ambush = isBoss && !!opts.ambush;
+    const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final, opts.ambush ?? null) : enemyStats(def, wave, game.mods, this.champion);
     const derived = opts.child ? CHILD_SCALE : this.summoned ? MINION_SCALE : null;
     const hpK = isBoss ? TUNING.boss.hpMult : 1;
     this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1) * hpK);

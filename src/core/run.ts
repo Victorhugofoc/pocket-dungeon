@@ -128,6 +128,14 @@ export interface RunState {
   upgradeTiers: UpgradeTier[];
   /** pontos de tag das melhorias (level_up.lua `run.tags`; o sorteio olha os elementos) */
   tags: Record<string, number>;
+  /** sala ou maldição da carta do mapa, valendo para a onda atual (rooms.ts); null = sem sala */
+  room: string | null;
+  /** ondas que a maldição ainda dura (run_map.lua `curseWavesLeft`) */
+  curseWavesLeft: number;
+  /** a maldição segue na próxima onda: ela não tem mapa (D-150) */
+  curseContinues: boolean;
+  /** cartas escolhidas no mapa, em ordem */
+  mapHistory: string[];
   endless: boolean;
   victory: boolean;
   /** quantas vezes a partida foi continuada */
@@ -172,6 +180,10 @@ export function newRun(opts: NewRunOptions): RunState {
     upgradesTaken: [],
     upgradeTiers: [],
     tags: {},
+    room: null,
+    curseWavesLeft: 0,
+    curseContinues: false,
+    mapHistory: [],
     endless: false,
     victory: false,
     resumes: 0,
@@ -215,6 +227,11 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   // checkpoints de antes do M20-03
   run.upgradeTiers ??= run.upgradesTaken.map(() => "common");
   run.tags ??= {};
+  // checkpoints de antes do M20-05
+  run.room ??= null;
+  run.curseWavesLeft ??= 0;
+  run.curseContinues ??= false;
+  run.mapHistory ??= [];
   // checkpoints de antes do M20-04 guardavam mochila e equipamento
   run.legacy = { deaths: run.legacy.deaths ?? 0 };
   run.wave = cp.wave;

@@ -10,6 +10,8 @@ import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
 import { BOSSES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
 import { RELICS } from "../data/relics";
+import { ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
+import type { MapCard, MapNodeId } from "../core/runmap";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game } from "../game/game";
@@ -25,6 +27,23 @@ const UPGRADE_LABEL: Record<string, string> = {
   armor: "Armadura", moveSpeedPct: "Vel. de movimento", maxHpFlat: "Vida", maxHpPct: "Vida", rangePct: "Alcance",
   dodge: "Esquiva", regen: "Regeneração/s", xpPct: "XP ganho", goldPct: "Ouro ganho", spellCooldownPct: "Recarga da técnica",
 };
+/** Nome e texto de cada carta do mapa, como em data/run_map.lua (o nome fica em inglês, igual ao de lá). */
+const MAP_NODE: Record<MapNodeId, { name: string; text: string; color: string }> = {
+  combat_room: { name: "Combat Room", text: "Sala com modificador na próxima wave", color: "#e0a050" },
+  cursed_room: { name: "Cursed Room", text: "Maldição por 2 waves seguidas, sem mapa entre elas; depois da 1ª, uma relic amaldiçoada", color: "#b36bff" },
+  pact: { name: "Risk Pact", text: "Pact pelo resto da run + relic de pact (1 a cada 5 waves)", color: "#ff5a5a" },
+  event: { name: "Event", text: "Escolha 1 de 3 eventos", color: "#5fd3c8" },
+  shop: { name: "Shop", text: "Compre poder permanente", color: "#ffd34d" },
+  elite: { name: "Elite", text: "Enfrente um Elite com 2 afixos: relic de risco e loja depois da wave", color: "#ffc83d" },
+  relic_shrine: { name: "Relic Shrine", text: "Uma relic sem combate extra", color: "#4fa3ff" },
+  boss_ambush: { name: "Boss Ambush", text: "Um boss enfraquecido entra na wave: relic de risco", color: "#ff7a5a" },
+};
+/** Linhas da sala na carta; na recompensa, mais é bom; no resto, mais é ruim. */
+const ROOM_MOD_LABEL: [keyof RoomMods, string][] = [
+  ["reward", "recompensa"], ["enemyHp", "vida dos inimigos"], ["enemyDamage", "dano dos inimigos"],
+  ["enemyCount", "inimigos"], ["enemySpeed", "velocidade dos inimigos"], ["projectileSpeed", "velocidade dos projéteis"],
+];
+
 /** Na recarga, negativo é bom (format.lua `INVERTED`). */
 const INVERTED: Record<string, true> = { spellCooldownPct: true };
 
@@ -76,7 +95,8 @@ export class Ui {
     this.buildHud();
     game.events = {
       toast: (m, c) => this.toast(m, c),
-      relicChoice: (ids, pick) => this.showRelicChoice(ids, pick),
+      relicChoice: (ids, pick, title) => this.showRelicChoice(ids, pick, title),
+      mapOpen: () => this.showMap(),
       levelUp: () => this.showLevelUp(),
       died: () => setTimeout(() => this.showDeath(), 900),
       zoneChanged: () => this.onZoneChanged(),
@@ -122,7 +142,7 @@ export class Ui {
   private onKey(e: KeyboardEvent): void {
     if (!this.game.started || e.repeat) return;
     const k = e.code;
-    const locked = ["title", "relic", "levelup", "death", "victory"].includes(this.overlayKind);
+    const locked = ["title", "relic", "levelup", "map", "death", "victory"].includes(this.overlayKind);
     if (locked) return;
     if (k === "Escape") {
       if (this.overlay) this.close();
@@ -295,7 +315,7 @@ export class Ui {
     const showBoss = !!boss && g.bossEngaged && !boss.dead;
     r.boss.classList.toggle("hidden", !showBoss);
     if (showBoss && boss) {
-      r.bossName.textContent = `${boss.boss!.name} — ${boss.boss!.title}${boss.enraged ? " (enfurecido)" : ""}`;
+      r.bossName.textContent = `${boss.ambush ? "Ambush: " : ""}${boss.boss!.name} — ${boss.boss!.title}${boss.enraged ? " (enfurecido)" : ""}`;
       r.bossFill.style.width = `${(boss.hp / boss.maxHp) * 100}%`;
       r.bossText.textContent = `${Math.ceil(boss.hp)} / ${boss.maxHp}`;
     }
@@ -461,10 +481,10 @@ export class Ui {
   }
 
   // ---------------------------------------------------------------- relíquia / pausa / morte
-  private showRelicChoice(ids: string[], pick: (id: string) => void): void {
+  private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Chefe derrotado!"): void {
     const panel = this.open("relic", "relic");
     panel.style.width = "min(820px, 96vw)";
-    panel.innerHTML = `<h2>Chefe derrotado!</h2><p class="sub">Escolha uma relíquia. O bônus é permanente.</p>
+    panel.innerHTML = `<h2>${title}</h2><p class="sub">Escolha uma relíquia. O bônus é permanente.</p>
       <div class="cards">${ids.map((id) => {
         const d = RELICS[id];
         return `<div class="card" data-relic="${id}" style="--cc:${hex(d.color)}"><div class="meta">Relíquia ${RELIC_RARITY[d.rarity]}</div>
@@ -475,6 +495,24 @@ export class Ui {
       if (!id) return;
       this.close();
       pick(id);
+    };
+  }
+
+  /** O mapa da partida (run_map.lua): 3 cartas para a próxima onda, com a sala já sorteada à mostra (D-083). */
+  private showMap(): void {
+    const g = this.game;
+    const cards = g.mapCards;
+    if (!cards) return;
+    const panel = this.open("map", "map");
+    panel.style.width = "min(860px, 96vw)";
+    const next = g.run.wave + 1;
+    panel.innerHTML = `<h2>Mapa da partida</h2><p class="sub">Escolha o caminho da onda ${next}.</p>
+      <div class="cards">${cards.map((c, i) => mapCardHtml(c, i)).join("")}</div>`;
+    panel.onclick = (ev) => {
+      const el = (ev.target as HTMLElement).closest<HTMLElement>("[data-card]");
+      if (!el) return;
+      this.close();
+      g.chooseMapCard(Number(el.dataset.card));
     };
   }
 
@@ -575,6 +613,30 @@ export class Ui {
 /** Nome da spell até o M6-01 trazer as definições: o id com espaços ("arcane_bolt" → "Arcane Bolt"), como em spells.lua. */
 function spellName(id: string): string {
   return id.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+}
+
+/** Uma carta do mapa: o tipo, a sala sorteada e o que ela muda na onda. */
+function mapCardHtml(c: MapCard, i: number): string {
+  const n = MAP_NODE[c.node];
+  const room: RoomDef | undefined = c.room ? ROOM_BY_ID[c.room] : undefined;
+  let body = `<p class="note">${n.text}</p>`;
+  if (room) {
+    const lines = ROOM_MOD_LABEL.flatMap(([k, label]) => {
+      const v = room.mods[k];
+      if (v === undefined || v === 1) return [];
+      const pct = Math.round((v - 1) * 100);
+      const good = k === "reward" ? pct > 0 : pct < 0;
+      return [`<div class="stat${good ? "" : " neg"}">${pct > 0 ? "+" : ""}${pct}% ${label}</div>`];
+    });
+    if (room.ambush) {
+      lines.push(`<div class="stat neg">Chefe com ${Math.round(room.ambush.hp * 100)}% da vida e ${Math.round(room.ambush.damage * 100)}% do dano</div>`);
+    }
+    // perigos de chão e poças de cura ainda não existem aqui (M20-08)
+    const later = room.hazards || room.pools;
+    const notes = (room.notes ?? []).map((t) => `<p class="note">${t}${later && (t.includes("raio") || t.includes("Raios") || t.includes("Poças")) ? " (em breve)" : ""}</p>`);
+    body = `<h3 style="margin-top:6px">${room.name}</h3>${lines.join("")}${notes.join("")}<p class="note">${n.text}</p>`;
+  }
+  return `<div class="card" data-card="${i}" style="--cc:${n.color}"><div class="meta">${n.name}</div>${body}</div>`;
 }
 
 function fmtTime(sec: number): string {

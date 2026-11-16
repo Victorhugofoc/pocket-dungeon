@@ -18,7 +18,9 @@ import { ENEMIES } from "../src/data/enemies";
 import { UPGRADE_CAPS, UPGRADES } from "../src/data/upgrades";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
 import { newRun } from "../src/core/run";
-import { bossStats, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, targetCount, waveMods } from "../src/core/wave";
+import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, ROOM_BIAS, ROOM_BY_ID, ROOMS } from "../src/data/rooms";
+import { generateMap, type MapRng } from "../src/core/runmap";
+import { ambushFor, biasedComposition, bossStats, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, targetCount, waveMods } from "../src/core/wave";
 import { Rng } from "../src/core/rng";
 import {
   baseDuration, baseEnemyCount, bossGold, bossTier, bossXp, compositionFor, damageScale, hasMapBefore, hpScale,
@@ -34,7 +36,7 @@ const LUAJIT = process.env.LUAJIT ?? "luajit";
 const MODULES = [
   "src.core.constants", "src.data.spells", "src.data.characters",
   "src.data.waves", "src.data.tuning", "src.data.run_map", "src.data.difficulties", "src.data.bosses",
-  "src.progression.level_up", "src.data.enemies", "src.data.affixes", "src.data.upgrades",
+  "src.progression.level_up", "src.data.enemies", "src.data.affixes", "src.data.upgrades", "src.data.rooms",
 ];
 /** Até que onda as fórmulas são comparadas (passa da 20 para cobrir o modo sem fim). */
 const WAVE_CHECK = 40;
@@ -89,15 +91,105 @@ const WAVE_LIFE = `=(function()
   return out
 end)()`;
 
+/** Sorteio roteirizado igual nos dois lados: os números vêm de uma lista; `weighted` e `pick` usam o mesmo algoritmo. */
+function scripted(u: number[]): MapRng {
+  let i = 0;
+  const next = () => u[i++ % u.length];
+  return {
+    weighted<T>(entries: readonly (readonly [T, number])[]): T {
+      let r = next() * entries.reduce((a, e) => a + e[1], 0);
+      for (const [item, w] of entries) { r -= w; if (r < 0) return item; }
+      return entries[entries.length - 1][0];
+    },
+    pick<T>(arr: readonly T[]): T { return arr[Math.floor(next() * arr.length)]; },
+  };
+}
+/** Cenários do mapa: onda, pacto e santuário disponíveis, e os números do sorteio. */
+const MAP_PACTS = ["blood_pact", "glass_oath"];
+// gerador de Park-Miller (16807 × x mod 2^31-1): conta exata em double, igual no LuaJIT e aqui
+const MAP_SCEN = (() => {
+  let x = 12345;
+  const rnd = () => { x = (x * 16807) % 2147483647; return x / 2147483647; };
+  const out: { wave: number; pact: boolean; shrine: boolean; u: number[] }[] = [];
+  for (let wave = 2; wave <= 24; wave++) {
+    if (wave % 5 === 0) continue;
+    for (let k = 0; k < 6; k++) out.push({ wave, pact: k % 2 === 0, shrine: k !== 3, u: Array.from({ length: 12 }, rnd) });
+  }
+  return out;
+})();
+const MAP_LIFE = `=(function()
+  local RM = require("src.run.run_map")
+  require("src.relics.relic_system").draftPool = function(run) return run._shrine and { 1 } or {} end
+  RM.unownedPacts = function(run) return run._pacts end
+  local function spy(u)
+    local i = 0
+    local function nx() i = i + 1 return u[((i - 1) % #u) + 1] end
+    return {
+      weighted = function(_, e)
+        local t = 0 for _, x in ipairs(e) do t = t + x.weight end
+        local r = nx() * t
+        for _, x in ipairs(e) do r = r - x.weight if r < 0 then return x.item end end
+        return e[#e].item
+      end,
+      pick = function(_, l) return l[math.floor(nx() * #l) + 1] end,
+    }
+  end
+  local scen, x = {}, 12345
+  local function rnd() x = (x * 16807) % 2147483647 return x / 2147483647 end
+  for wave = 2, 24 do
+    if wave % 5 ~= 0 then
+      for k = 0, 5 do
+        local u = {} for j = 1, 12 do u[j] = rnd() end
+        scen[#scen + 1] = { wave = wave, pact = k % 2 == 0, shrine = k ~= 3, u = u }
+      end
+    end
+  end
+  local out = {}
+  for i, sc in ipairs(scen) do
+    local run = { pacts = {}, noPacts = not sc.pact, _shrine = sc.shrine, _pacts = { ${MAP_PACTS.map((p) => JSON.stringify(p)).join(",")} } }
+    out[i] = RM.generate(run, spy(sc.u), sc.wave)
+  end
+  return out
+end)()`;
+/** A sala na onda: modifier_engine, viés da composição, pesados do Iron Pack e o chefe da emboscada. */
+const ROOM_LIFE = `=(function()
+  local E, WS, R = require("src.run.modifier_engine"), require("src.run.wave_system"), require("src.data.rooms")
+  local DF, W = require("src.data.difficulties"), require("src.data.waves")
+  local Boss, Enemy = require("src.bosses.boss"), require("src.enemies.enemy")
+  local out = {}
+  local ids = {}
+  for _, id in ipairs(R.roomOrder) do ids[#ids + 1] = id end
+  for _, id in ipairs(R.curseOrder) do ids[#ids + 1] = id end
+  for _, id in ipairs(ids) do
+    local room = R.rooms[id] or R.curses[id]
+    out[id] = {}
+    for _, did in ipairs({ "normal", "hard" }) do
+      for _, w in ipairs({ 3, 12 }) do
+        local m = E.compute({ difficulty = DF[did], wave = w, roomModifier = room, pacts = {} })
+        local comp = {}
+        for i, e in ipairs(WS.biasedComposition(W.compositionFor(w), room)) do comp[i] = { id = e.item, weight = e.weight } end
+        local orc = Enemy.create("orc", w, m, 0, 0)
+        local amb = WS.ambushFor(m)
+        local b = Boss.stats("gravekeeper", w, m, { ambush = amb })
+        out[id][did .. w] = { reward = m.reward, enemyHp = m.enemyHp, enemyDamage = m.enemyDamage, enemySpeed = m.enemySpeed,
+          projectileSpeed = m.projectileSpeed, bossHp = m.bossHp, bossDamage = m.bossDamage, bossSpeed = m.bossSpeed,
+          enemyCount = m.enemyCount, target = WS.targetCount(w, m), comp = comp, orcHp = orc.hp, orcDamage = orc.damage,
+          bossHpStat = b.hp, bossDamageStat = b.damage, champions = m.champions }
+      end
+    end
+  end
+  return out
+end)()`;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Lua = any;
 
 function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
-  const r = spawnSync(LUAJIT, [resolve(import.meta.dirname, "../tools/dr-dump.lua"), ROOT, ...MODULES, WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE], {
+  const r = spawnSync(LUAJIT, [resolve(import.meta.dirname, "../tools/dr-dump.lua"), ROOT, ...MODULES, WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE], {
     encoding: "utf8", maxBuffer: 64 << 20,
   });
-  if (r.error || r.status !== 0) return null;
+  if (r.error || r.status !== 0) { if (process.env.PARITY_DEBUG) console.error(r.error ?? r.stderr); return null; }
   return JSON.parse(r.stdout);
 }
 
@@ -330,6 +422,54 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     expect(RUN_MAP.choices).toBe(RM.CHOICES);
     expect(RUN_MAP.shopEvery).toBe(RM.SHOP_EVERY);
     expect([...RUN_MAP.replaceable].sort()).toEqual(Object.keys(RM.REPLACEABLE).sort());
+  });
+
+  it("salas e maldições: modificadores, viés, grupos, emboscada, campeão e perigos iguais aos de rooms.lua", () => {
+    const R = dr!["src.data.rooms"];
+    expect(ROOMS.map((r) => r.id)).toEqual(R.roomOrder);
+    expect(CURSES.map((r) => r.id)).toEqual(R.curseOrder);
+    const strip = (r: Record<string, unknown>) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== "kind"));
+    for (const r of [...ROOMS, ...CURSES]) {
+      const lua = r.kind === "room" ? R.rooms[r.id] : R.curses[r.id];
+      expect(strip(r as unknown as Record<string, unknown>), r.id).toEqual(strip(lua));
+    }
+    for (const [g, ids] of Object.entries(ENEMY_GROUPS)) expect([...ids].sort(), g).toEqual(Object.keys(R.GROUPS[g]).sort());
+    expect(ROOM_BIAS).toEqual(R.BIAS);
+    expect(COMBAT_ROOM_POOL).toEqual(ROOMS.filter((r) => !r.ambushOnly).map((r) => r.id));
+    expect(AMBUSH_DELAY).toBe(TU.AMBUSH_DELAY);
+    expect(CURSE_WAVES).toBe(2);
+  });
+
+  it(`mapa da partida: as cartas sorteadas iguais às de run_map.lua em ${MAP_SCEN.length} sorteios`, () => {
+    const L = dr![MAP_LIFE];
+    MAP_SCEN.forEach((sc, i) => {
+      const cards = generateMap(scripted(sc.u), sc.wave, { pacts: sc.pact ? MAP_PACTS : [], shrine: sc.shrine });
+      expect(cards, `onda ${sc.wave} #${i}`).toEqual(L[i + 1 - 1]);
+    });
+  });
+
+  it("a sala na onda: modificadores, contagem, viés, pesados e chefe da emboscada iguais aos de lá", () => {
+    const L = dr![ROOM_LIFE];
+    for (const id of Object.keys(ROOM_BY_ID)) {
+      const room = ROOM_BY_ID[id];
+      for (const did of ["normal", "hard"] as const) {
+        for (const w of [3, 12]) {
+          const o = L[id][did + w], m = waveMods(w, did, room), ctx = `${id} ${did} ${w}`;
+          for (const k of ["reward", "enemyHp", "enemyDamage", "enemySpeed", "projectileSpeed", "bossHp", "bossDamage", "bossSpeed", "enemyCount"] as const) {
+            expect(m[k], `${ctx} ${k}`).toBeCloseTo(o[k], 10);
+          }
+          expect(targetCount(w, m.enemyCount), ctx).toBe(o.target);
+          expect(biasedComposition(compositionFor(w), room), ctx).toEqual(o.comp);
+          const orc = enemyStats(ENEMIES.orc, w, m);
+          expect(orc.hp, ctx).toBeCloseTo(o.orcHp, 8);
+          expect(orc.damage, ctx).toBeCloseTo(o.orcDamage, 8);
+          const b = bossStats("gravekeeper", w, m, false, ambushFor(m));
+          expect(b.hp, ctx).toBeCloseTo(o.bossHpStat, 6);
+          expect(b.damage, ctx).toBeCloseTo(o.bossDamageStat, 8);
+          expect(room.champions ?? 0, ctx).toBe(o.champions);
+        }
+      }
+    }
   });
 
   it("dificuldades", () => {
