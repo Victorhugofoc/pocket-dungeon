@@ -405,7 +405,7 @@ export class Ui {
     this.mapCtx = this.hud.querySelector<HTMLCanvasElement>("#minimap")!.getContext("2d")!;
   }
 
-  /** Espaços de spell nas teclas 1 e 2: ícone, nível, recarga e o aviso de "sem alvo". */
+  /** Espaços de spell nas teclas 1 e 2: ícone, nível, recarga e o aviso de spell que não saiu. */
   private updateSpellHud(): void {
     const g = this.game;
     const r = this.r;

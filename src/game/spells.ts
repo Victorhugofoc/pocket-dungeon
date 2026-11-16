@@ -28,7 +28,7 @@ export class SpellCaster {
   cooldown: number[] = [];
   /** números de cada espaço, refeitos a cada `refresh` */
   stats: (SpellStats | null)[] = [];
-  /** o espaço piscou sem alvo (tecla apertada sem inimigo no alcance) */
+  /** o espaço pisca quando a tecla foi apertada e a spell não saiu (spell ainda sem efeito no jogo) */
   noTarget: number[] = [];
   private shots: SpellProjectile[] = [];
   private mats = new Map<number, THREE.MeshBasicMaterial>();
@@ -64,7 +64,7 @@ export class SpellCaster {
     this.updateShots(dt);
   }
 
-  /** spell_system.lua `tryCast`: a recarga só é gasta se o lançamento der certo (S13). */
+  /** spell_system.lua `tryCast`: a recarga é gasta quando a spell sai; spell sem efeito ainda (M6-03 a M6-05) não gasta. */
   tryCast(i: number): boolean {
     const st = this.stats[i];
     if (!st || this.cooldown[i] > 0 || !this.game.playerAlive) return false;
@@ -85,11 +85,13 @@ export class SpellCaster {
     }
   }
 
-  /** behaviors.lua `Projectile.cast`: sem inimigo no alcance não sai; vai na direção do mouse até o fim do alcance. */
+  /**
+   * behaviors.lua `Projectile.cast`: vai na direção do mouse até o fim do alcance. Lá só saía com inimigo no alcance;
+   * aqui sai sempre e gasta a recarga, porque o jogador é quem aperta (S13, adaptado a pedido do usuário).
+   */
   private castProjectile(i: number, st: SpellStats): boolean {
     const g = this.game;
     const p = g.player;
-    if (!g.enemyWithin(p.x, p.z, st.range)) return false;
     const aim = g.aimPoint(st.range);
     let dx = aim.x - p.x;
     let dz = aim.z - p.z;

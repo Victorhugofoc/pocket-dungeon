@@ -1306,14 +1306,6 @@ export class Game {
     this.hitEnemy(e, mult);
   }
 
-  /** world:enemyWithin de lá: há inimigo vivo a até `r` metros? */
-  enemyWithin(x: number, z: number, r: number): boolean {
-    for (const e of this.enemies) {
-      if (!e.dead && (e.x - x) ** 2 + (e.z - z) ** 2 <= (r + e.radius) ** 2) return true;
-    }
-    return false;
-  }
-
   aimPoint(maxRange: number): { x: number; z: number } {
     const p = this.player;
     const dx = this.aim.x - p.x;

@@ -5,6 +5,7 @@ Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada
 ## Agora (2026-11-16)
 - **Marco em andamento: M6, spells** (D2, D12: teclas 1 e 2). O M20 (partida como no Dungeon Reign) está completo. Feito no M6: `M6-00` (paridade), `M6-01` (dados e `spellStats`) e `M6-02` (conjuração: `SpellCaster` em `src/game/spells.ts`, teclas 1 e 2, Fireball e Iceball completas com Volátil e Brittle Chill, HUD com os dois espaços). As outras 9 spells ainda não fazem nada (o espaço pisca).
 - **Próxima tarefa:** `M6-03` (`chain_lightning`, `arcane_bolt`, `prism_beam`), em `SpellCaster.cast`.
+- **Decidido em 2026-11-16 (D15):** spell na tecla sai sempre e gasta a recarga, mesmo sem inimigo no alcance. **Pedidos para depois:** indicador sobre o inimigo de cada estado (`M5-05`, ampliada) e efeitos próprios das spells (`M5-08`, nova).
 - **Rever com o usuário (D14):** os atributos do herói contra os do original (poder de magia, "efeitos", recarga e área globais). Ele aceitou o S12 assim por enquanto; decidir antes do `M6-08`.
 - **Falta o usuário jogar:** `M6-02` (Fireball e Iceball nas teclas 1 e 2), `M20-02` a `M20-08`, `M19-02` a `M19-05` (técnicas dos heróis), `M1-05` (presença de chefe), Ninhada da Vesper. Tudo foi conferido só pelo console.
 - **Régua de paridade:** `docs/paridade.md` mais `tests/parity.test.ts` (lê os `.lua` do original pelo LuaJIT, `tools/dr-dump.lua`). Toda tarefa do M20 e do M6 confere as linhas dela ali.
