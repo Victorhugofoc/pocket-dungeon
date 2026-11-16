@@ -55,6 +55,13 @@ export class SpellCaster {
     return b;
   }
 
+  /** maior chance de Volátil entre os Fireballs equipados (o ícone de queimadura muda quando há) */
+  get volatile(): number {
+    let v = 0;
+    for (const st of this.stats) if (st?.volatile) v = Math.max(v, st.volatile);
+    return v;
+  }
+
   update(dt: number, castKeys: boolean[]): void {
     for (let i = 0; i < this.cooldown.length; i++) {
       this.cooldown[i] = Math.max(0, this.cooldown[i] - dt);

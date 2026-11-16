@@ -29,6 +29,7 @@ import { IceWalls, type IceWall } from "./icewall";
 import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
 import { SpellCaster } from "./spells";
+import { StatusIcons } from "./status-icons";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -183,6 +184,8 @@ export class Game {
   tech: TechStats | null = null;
   /** spells nas teclas 1 e 2 (M6-02) */
   spells = new SpellCaster(this);
+  /** ícones de estado sobre os inimigos (M5-05) */
+  private statusIcons = new StatusIcons(this.scene);
   private projPool: THREE.Mesh[] = [];
   private projMats = new Map<number, THREE.MeshBasicMaterial>();
 
@@ -472,6 +475,7 @@ export class Game {
     for (const pr of this.projectiles) this.freeProjectile(pr);
     this.projectiles.length = 0;
     this.spells.clear();
+    this.statusIcons.clear();
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
     for (const b of this.bees) disposeRig(b.rig);
@@ -2087,6 +2091,7 @@ export class Game {
       this.updateWave(dt, raw);
       this.flushAchievements();
       this.updateEnemies(dt);
+      this.statusIcons.update(this.enemies, { now: this.time, volatile: this.spells.volatile, brittleChill: this.spells.brittle }, this.camera, this.fx, dt);
       this.updateProjectiles(dt);
       const inp = this.input;
       this.spells.update(dt, [inp.wasPressed("Digit1") || inp.wasPressed("Numpad1"), inp.wasPressed("Digit2") || inp.wasPressed("Numpad2")]);
