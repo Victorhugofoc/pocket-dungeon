@@ -41,7 +41,7 @@ describe("partida", () => {
   it("começa como no game_state.lua", () => {
     const r = start(42);
     expect(r).toMatchObject({ seed: 42, customSeed: true, heroId: "frostine", wave: 0, level: 1, xp: 0, xpToNext: 50, gold: 0 });
-    expect(r.spells).toEqual([{ id: "iceball", level: 1, evolution: null }]);
+    expect(r.spells).toEqual([{ id: "iceball", level: 1, modifiers: [], evolution: null }]);
     expect(r.technique.id).toBe("glacial_wall");
     expect(start().seed).toBe(123456);
     expect(start().customSeed).toBe(false);

@@ -21,17 +21,17 @@ Primeira rodada (2026-11-15): o teste achou 1 divergência real. O tiro da Vespe
 | # | Regra no Dungeon Reign | Fonte | Aqui | Estado |
 |---|---|---|---|---|
 | S1 | 2 espaços de spell, mais a técnica num espaço próprio (o 0) | `core/constants.lua` `MAX_SPELLS`; `core/game_state.lua` `newRun` | `MAX_SPELLS` em `src/data/spells.ts` (testado) | igual (dado); falta no jogo (`M6-02`) |
-| S2 | 11 spells, na ordem de `S.order` | `data/spells.lua` | `SPELL_ORDER` (testado) | igual (lista); definições faltam (`M6-01`) |
+| S2 | 11 spells, na ordem de `S.order` | `data/spells.lua` | `SPELL_ORDER` e `SPELLS` em `src/data/spells.ts` (testado campo a campo: números, marcos, modificadores, evoluções) | igual |
 | S3 | Cada herói tem 4 spells iniciais próprias | `data/characters.lua` `startingSpells` | `HeroDef.startingSpells` (testado) | igual |
 | S4 | No início o jogador escolhe **1** das 4 (tela "Spell inicial", passo 3 de 3) | `ui/screens/spell_select.lua` | não existe | falta (`M6-02`, `M20-06`): a cada partida, como lá |
 | S5 | Healing Field nunca é spell inicial | `spell_select.lua` (texto) e `startingSpells` | testado | igual |
-| S6 | Começa no nível 1, com a recarga zerada | `game_state.lua` `newSpellSlot` | — | falta (`M6-01`) |
-| S7 | Spell nova só entra com espaço livre; recusa com `no_slot` ou `owned` | `spells/spell_system.lua` `addSpell` | — | falta (`M6-01`) |
-| S8 | Nível de 1 a 5, e só a loja sobe nível de spell | `spell_system.lua` `levelUp`; `SPELL_MAX_LEVEL` | `SPELL_MAX_LEVEL` (testado) | igual (dado); compra falta (`M7`) |
-| S9 | Marcos nos níveis 2 a 5, cumulativos | `spells/spell_stats.lua` `collect` | — | falta (`M6-01`) |
-| S10 | Modificadores comprados na loja, cada um do conjunto da própria spell, uma vez por spell | `spell_system.lua` `addModifier`; `shop/shop_system.lua` `candidates` | — | falta (`M6-08`, `M7`) |
-| S11 | Relíquias específicas de spell somam efeito | `spell_stats.lua` (`r.spell`, `r.spellEffect`) | — | falta (`M6-01`, ao portar as relíquias) |
-| S12 | Dano = base + poder de magia × escala, mais os percentuais globais (dano de spell, área, recarga) | `spell_stats.lua`; `player/stats.lua` `spellPower` | a fórmula das técnicas já segue isso (`src/core/techniques.ts`) | falta para spells (`M6-01`) |
+| S6 | Começa no nível 1, com a recarga zerada | `game_state.lua` `newSpellSlot` | `newSpellSlot` em `core/run.ts` (nível 1, sem modificadores) | igual; a recarga entra no jogo no `M6-02` |
+| S7 | Spell nova só entra com espaço livre; recusa com `no_slot` ou `owned` | `spells/spell_system.lua` `addSpell` | `addSpell` em `core/spells.ts` (testado) | igual |
+| S8 | Nível de 1 a 5, e só a loja sobe nível de spell | `spell_system.lua` `levelUp`; `SPELL_MAX_LEVEL` | `levelUpSpell` com `max_level` (testado) | igual; compra falta (`M7`) |
+| S9 | Marcos nos níveis 2 a 5, cumulativos | `spells/spell_stats.lua` `collect` | `collectSpellEffects` (comparado com o `compute` de lá) | igual |
+| S10 | Modificadores comprados na loja, cada um do conjunto da própria spell, uma vez por spell | `spell_system.lua` `addModifier`; `shop/shop_system.lua` `candidates` | `addModifier` com `not_in_pool` e os conjuntos em `SPELLS` (testado) | igual no núcleo; compra falta (`M6-08`, `M7`) |
+| S11 | Relíquias específicas de spell somam efeito | `spell_stats.lua` (`r.spell`, `r.spellEffect`) | `spellStats` recebe os efeitos (`relicEffects`) | núcleo pronto; faltam as relíquias de spell em `data/relics.ts` |
+| S12 | Dano = base + poder de magia × escala, mais os percentuais globais (dano de spell, área, recarga) | `spell_stats.lua`; `player/stats.lua` `spellPower` | `spellStats` em `core/spells.ts`: igual a `SpellStats.compute` em 165 cenários (11 spells × 5 níveis × sem modificador, todos, poder de magia 16) | **adaptado**, aceito em 2026-11-16 (os atributos voltam a ser revistos na D14): o dano vira multiplicador sobre o dano do herói (÷ 8) e as distâncias, metros (÷ 12), como nas técnicas; recarga e área globais multiplicam o pool da spell em vez de entrar nele (iguais sem bônus global); "efeitos" (`status`) multiplica queimadura e duração da lentidão; ainda não há atributo de poder de magia (fica 8) |
 | S13 | A recarga só é gasta se o lançamento der certo; sem alvo, não gasta | `spell_system.lua` `tryCast` | técnicas: já é assim (Shadow Step, Storm Step) | falta para spells (`M6-02`) |
 | S14 | As spells saem sozinhas quando prontas, na direção do mouse | `spell_system.lua` `update` (D-139) | teclas 1 e 2 (decisão D12) | **adaptado**, aceito em 2026-11-14 |
 | S15 | A técnica é ativada pelo jogador | `spell_system.lua` `useTechnique` | botão direito ou Q | igual |

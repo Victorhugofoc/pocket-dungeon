@@ -6,7 +6,7 @@ import { RunRng, addRecord, continueRun, decodeSeed, newRun, summarize, type New
 import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unlockCondition } from "../core/achievements";
 import { ACHIEVEMENTS } from "../data/achievements";
 import { formatStat, STAT_KEYS, type StatBlock } from "../core/stats";
-import { SPELL_MAX_LEVEL, SPELL_TEXT, type SpellId } from "../data/spells";
+import { SPELL_MAX_LEVEL, SPELL_TEXT, SPELLS, type SpellId } from "../data/spells";
 import { effectsFor, rerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
 import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
 import { BOSSES } from "../data/enemies";
@@ -782,8 +782,9 @@ export class Ui {
   }
 }
 
-/** Nome da spell até o M6-01 trazer as definições: o id com espaços ("arcane_bolt" → "Arcane Bolt"), como em spells.lua. */
+/** Nome da spell (spells.lua `name`); técnica sem definição aqui cai no id com espaços ("storm_step" → "Storm Step"). */
 function spellName(id: string): string {
+  if (id in SPELLS) return SPELLS[id as SpellId].name;
   return id.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
 }
 
