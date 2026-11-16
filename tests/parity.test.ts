@@ -3,10 +3,11 @@
 // Se um número mudar de um lado só, este teste quebra. Tabela de regras: docs/paridade.md.
 // Pula sozinho se o repo do original ou o luajit não estiverem na máquina (DUNGEON_IDLE e LUAJIT mudam os caminhos).
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
+import { ACHIEVEMENT_RULES, ACHIEVEMENTS, COSMETIC_NAMES, UNLOCK_REWARDS } from "../src/data/achievements";
 import { MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER } from "../src/data/spells";
 import {
   BOSS, DEPTHS_FROM, DEPTHS_STEP, DIFFICULTIES, DIFFICULTY_ORDER, ENDLESS, ENEMY_WEIGHT, LEVEL_UP_CHOICES,
@@ -37,6 +38,7 @@ const MODULES = [
   "src.core.constants", "src.data.spells", "src.data.characters",
   "src.data.waves", "src.data.tuning", "src.data.run_map", "src.data.difficulties", "src.data.bosses",
   "src.progression.level_up", "src.data.enemies", "src.data.affixes", "src.data.upgrades", "src.data.rooms",
+  "src.data.achievements", "src.data.unlocks",
 ];
 /** Até que onda as fórmulas são comparadas (passa da 20 para cobrir o modo sem fim). */
 const WAVE_CHECK = 40;
@@ -242,6 +244,8 @@ const PER_WAVE: Lua[] = dr?.[WAVE_TABLE];
 const LIFE: Lua = dr?.[WAVE_LIFE];
 const EN: Lua = dr?.["src.data.enemies"];
 const AF: Lua = dr?.["src.data.affixes"];
+const ACH: Lua = dr?.["src.data.achievements"];
+const UNL: Lua = dr?.["src.data.unlocks"];
 
 /** Campos numéricos de lá que não têm equivalente aqui, com o motivo (vira linha "adaptado" em docs/paridade.md). */
 const TECH_NOT_PORTED: Record<string, string[]> = {};
@@ -561,3 +565,23 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     }
   });
 });
+
+describe.skipIf(!dr)("paridade das conquistas e desbloqueios com o Dungeon Reign", () => {
+  it("as conquistas: mesma lista, mesma ordem, mesmos textos, secretas e contadores", () => {
+    const theirs = (ACH.list as Lua[]).map((a) => ({ id: a.id, name: a.name, text: a.text, secret: a.secret === true }));
+    expect(ACHIEVEMENTS.map((a) => ({ id: a.id, name: a.name, text: a.text, secret: a.secret === true }))).toEqual(theirs);
+    expect(ACHIEVEMENTS.length).toBe(ACH.COUNT);
+    expect(ACHIEVEMENT_RULES.miserGold).toBe(ACH.MISER_GOLD);
+    expect(ACHIEVEMENT_RULES.miserWave).toBe(ACH.MISER_WAVE);
+  });
+
+  it("o que cada conquista libera (unlocks.lua REWARDS)", () => {
+    expect(UNLOCK_REWARDS).toEqual(UNL.REWARDS);
+  });
+
+  it("nomes dos cosméticos", () => {
+    const lua = readFileSync(resolve(ROOT, "src/core/unlocks.lua"), "utf8");
+    for (const [id, name] of Object.entries(COSMETIC_NAMES)) expect(lua, id).toContain(`${id} = "${name}"`);
+  });
+});
+
