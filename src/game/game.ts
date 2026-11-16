@@ -1,16 +1,16 @@
-// Loop principal: herói, combate, loot, progressão e as ondas da partida (cada zona = 5 ondas, D13).
+// Loop principal: herói, combate, progressão e as ondas da partida (cada zona = 5 ondas, D13).
 import * as THREE from "three";
-import { generateItem, itemName, RARITIES, RARITY_COLOR, RARITY_LABEL, type Item, type Slot } from "../core/items";
 import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
 import { addXp, applyUpgrade, draft, draftTiers, rerollCost, rerollsLeft, upgradeStats, type UpgradeTier } from "../core/levelup";
 import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
 import { loadRun, writeRun, safeStorage } from "../core/save";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
+import { chooseCard, expireWaveScope, generateMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
   canHasten, hasten, healOrbChance, hastenBonus, startWave, stepWave, survivorReward, timeLeft, waveMods, waveReward,
   type WaveMods, type WaveSpawn, type WaveState,
 } from "../core/wave";
-import { bossGold, isBossWave, segmentOf } from "../core/waves";
+import { bossGold, hasMapBefore, isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
@@ -36,12 +36,15 @@ import { buildWorld, driftSun, fireFlicker, setZoneAtmosphere, type WorldView } 
 
 export interface GameEvents {
   toast(msg: string, color?: string): void;
-  relicChoice(ids: string[], pick: (id: string) => void): void;
+  relicChoice(ids: string[], pick: (id: string) => void, title?: string): void;
+  /** abriu o mapa da partida; as cartas estão em `Game.mapCards` */
+  mapOpen(): void;
   /** abriu (ou mudou) a escolha de melhoria de nível; o estado está em `Game.levelUp` */
   levelUp(): void;
   died(): void;
   zoneChanged(): void;
-  bagChanged(): void;
+  /** a ficha da partida mudou (relíquia nova) */
+  statusChanged(): void;
   victory(): void;
   /** letreiro grande no meio da tela ("Onda 3", "Onda concluída") */
   banner(title: string, sub?: string): void;
@@ -80,13 +83,11 @@ interface Projectile {
   push?: number;
 }
 
+/** orbe de cura da onda caído no chão */
 interface Drop {
-  kind: "item" | "orb" | "relic";
-  item?: Item;
-  relicId?: string;
   x: number; z: number; t: number;
-  /** orbe de cura da onda: some depois de tantos segundos */
-  life?: number;
+  /** some depois de tantos segundos */
+  life: number;
   mesh: THREE.Object3D;
 }
 
@@ -120,7 +121,6 @@ export interface PlayerState {
 
 const UP = new THREE.Vector3(0, 1, 0);
 const PROJ_GEO = new THREE.IcosahedronGeometry(1, 0);
-const DROP_GEO = new THREE.BoxGeometry(1, 1, 1);
 const GEM_GEO = new THREE.OctahedronGeometry(1, 0);
 
 const MARKER_GEO = new THREE.RingGeometry(0.35, 0.75, 6);
@@ -187,7 +187,12 @@ export class Game {
   /** escolha de melhoria aberta; o jogo fica pausado pela tela */
   levelUp: LevelUpDraft | null = null;
   private levelUpIndex = 0;
-  private bagFullToast = 0;
+  /** cartas do mapa da partida abertas no fim da onda (run_map.lua); null = fechado */
+  mapCards: MapCard[] | null = null;
+  /** a carta da próxima onda já foi escolhida (ou não há mapa antes dela) */
+  private mapResolved = false;
+  /** o santuário de relíquias está com a escolha aberta */
+  private shrineOpen = false;
   private aim = new THREE.Vector3();
   private camTarget = new THREE.Vector3();
   private raycaster = new THREE.Raycaster();
@@ -307,10 +312,6 @@ export class Game {
 
   recompute(): void {
     const sources: StatBlock[] = [this.hero.stats];
-    for (const slot of ["weapon", "armor", "trinket"] as Slot[]) {
-      const it = this.run.legacy.equipped[slot];
-      if (it) sources.push(it.stats);
-    }
     for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
     sources.push(upgradeStats(this.run));
     this.stats = computeStats(sources);
@@ -358,7 +359,10 @@ export class Game {
     this.clearWave();
     this.segment = this.layout.segments[z.index];
     this.wave = null;
-    this.mods = waveMods(wave, run.difficultyId);
+    this.mods = waveMods(wave, run.difficultyId, roomOf(run));
+    this.mapCards = null;
+    this.mapResolved = false;
+    this.shrineOpen = false;
     this.phase = "walk";
     this.phaseT = 0;
     this.bossEngaged = false;
@@ -693,57 +697,31 @@ export class Game {
         this.spawnEnemy(split.id, e.level, e.x + Math.cos(a) * 0.8, e.z + Math.sin(a) * 0.8, { summoned: true, child: true, aggro: true });
       }
     }
-    if (!e.summoned) this.rollLoot(e);
+    if (!e.summoned) this.rollHealOrb(e);
     if (e.isBoss) this.onBossKilled(e);
   }
 
-  private rollLoot(e: Enemy): void {
-    const L = TUNING.loot;
-    const mf = this.stats.magicFind;
-    const rng = this.rng.get("rewards");
-    if (e.isBoss) {
-      for (let i = 0; i < L.bossDrops; i++) this.dropItem(generateItem(rng, e.level, mf, { minRarity: i === 0 ? "raro" : "incomum" }), e.x, e.z, 3);
-      return;
-    }
-    if (e.champion) {
-      this.dropItem(generateItem(rng, e.level, mf, { minRarity: "incomum" }), e.x, e.z, 1);
-      if (rng.chance(L.relicChanceChampion)) {
-        const pool = RELIC_IDS.filter((id) => !this.run.relics.includes(id));
-        if (pool.length) this.addDrop({ kind: "relic", relicId: rng.pick(pool), x: e.x + 1, z: e.z, t: 0 }, 0xffc83d, true);
-      }
-    } else if (rng.chance(L.dropChance)) this.dropItem(generateItem(rng, e.level, mf), e.x, e.z, 0.5);
+  /** Orbe de cura da onda (wave_system.lua): chance por tipo de inimigo, com teto por onda. */
+  private rollHealOrb(e: Enemy): void {
     const w = this.wave;
     const O = RUN_TUNING.healOrb;
     if (w && !w.complete && w.healOrbs < O.maxPerWave && e.def) {
       const c = healOrbChance({ id: e.def.id, category: e.def.category, champion: e.champion, boss: e.isBoss, summoned: e.summoned });
       if (c > 0 && Math.random() < c) {
         w.healOrbs++;
-        this.addDrop({ kind: "orb", x: e.x, z: e.z, t: 0, life: O.life }, 0xff4a5a, false);
+        this.addDrop({ x: e.x, z: e.z, t: 0, life: O.life });
       }
     }
   }
 
-  private dropItem(item: Item, x: number, z: number, spread: number): void {
-    const a = Math.random() * Math.PI * 2;
-    const color = new THREE.Color(RARITY_COLOR[item.rarity]).getHex();
-    this.addDrop({ kind: "item", item, x: x + Math.cos(a) * spread, z: z + Math.sin(a) * spread, t: 0 }, color, RARITIES.indexOf(item.rarity) >= 2);
-    if (RARITIES.indexOf(item.rarity) >= 3) this.audio.play("rare");
-  }
-
-  private addDrop(d: Omit<Drop, "mesh">, color: number, beam: boolean): void {
+  private addDrop(d: Omit<Drop, "mesh">): void {
     const g = new THREE.Group();
+    const color = 0xff4a5a;
     const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.1, flatShading: true });
-    const core = new THREE.Mesh(d.kind === "item" ? DROP_GEO : GEM_GEO, mat);
-    core.scale.setScalar(d.kind === "orb" ? 0.22 : d.kind === "relic" ? 0.4 : 0.36);
+    const core = new THREE.Mesh(GEM_GEO, mat);
+    core.scale.setScalar(0.22);
     core.castShadow = true;
     g.add(core);
-    if (beam) {
-      const bm = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, depthWrite: false, toneMapped: false });
-      const b = new THREE.Mesh(DROP_GEO, bm);
-      b.scale.set(0.12, 9, 0.12);
-      b.position.y = 4.2;
-      g.add(b);
-    }
     g.position.set(d.x, 0.6, d.z);
     this.scene.add(g);
     this.drops.push({ ...d, mesh: g });
@@ -751,11 +729,10 @@ export class Game {
 
   private updateDrops(dt: number): void {
     const p = this.player;
-    this.bagFullToast -= dt;
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i];
       d.t += dt;
-      if (d.life !== undefined && d.t >= d.life) {
+      if (d.t >= d.life) {
         d.mesh.removeFromParent();
         this.drops.splice(i, 1);
         continue;
@@ -765,32 +742,15 @@ export class Game {
       core.position.y = Math.sin(d.t * 3) * 0.12 + Math.max(0, 1 - d.t * 3) * 1.2;
       if (d.t < 0.35 || !this.playerAlive) continue;
       const dist = Math.hypot(p.x - d.x, p.z - d.z);
-      if (d.kind === "orb" && dist < 5 && p.hp < this.stats.maxHp) {
+      if (dist < 5 && p.hp < this.stats.maxHp) {
         // orbes de cura são atraídos
         d.x += ((p.x - d.x) / dist) * 12 * dt;
         d.z += ((p.z - d.z) / dist) * 12 * dt;
         d.mesh.position.set(d.x, 0.6, d.z);
       }
       if (dist > TUNING.hero.pickupRadius) continue;
-      if (d.kind === "orb") {
-        if (p.hp >= this.stats.maxHp) continue;
-        this.heal(this.stats.maxHp * RUN_TUNING.healOrb.heal, true, true);
-      } else if (d.kind === "relic") {
-        this.addRelic(d.relicId!);
-      } else {
-        if (this.run.legacy.bag.length >= TUNING.loot.bagSize) {
-          if (this.bagFullToast <= 0) {
-            this.bagFullToast = 3;
-            this.events.toast("Mochila cheia (abra com I e descarte com o botão direito)", "#ff8a7a");
-          }
-          continue;
-        }
-        const it = d.item!;
-        this.run.legacy.bag.push(it);
-        this.events.toast(`${itemName(it, this.hero.weaponName)} · ${RARITY_LABEL[it.rarity]} nv ${it.ilvl}`, RARITY_COLOR[it.rarity]);
-        this.audio.play("pickup");
-        this.events.bagChanged();
-      }
+      if (p.hp >= this.stats.maxHp) continue;
+      this.heal(this.stats.maxHp * RUN_TUNING.healOrb.heal, true, true);
       d.mesh.removeFromParent();
       this.drops.splice(i, 1);
     }
@@ -802,7 +762,7 @@ export class Game {
     this.recompute();
     this.events.toast(`Relíquia: ${RELICS[id].name}`, "#ffc83d");
     this.audio.play("rare");
-    this.events.bagChanged();
+    this.events.statusChanged();
   }
 
   /** O combate da onda está correndo: cura e regeneração valem `RUN_TUNING.combatHealMult` (damage.lua). */
@@ -978,6 +938,8 @@ export class Game {
     const gold = Math.floor(bossGold(s.wave) * this.mods.reward * this.stats.gold);
     s.gold += gold;
     s.statistics.goldEarned += gold;
+    // a emboscada dá a relíquia de risco (falta, M12), não a escolha de chefe
+    if (e.ambush) return;
     const pool = RELIC_IDS.filter((id) => !s.relics.includes(id));
     this.rng.get("relics").shuffle(pool);
     const offer = pool.slice(0, BOSS.relicChoices);
@@ -1026,6 +988,7 @@ export class Game {
       const bossAlive = this.markers.some((m) => m.boss) || (!!this.boss && !this.boss.dead);
       const step = stepWave(w, dt, { alive, bossAlive }, this.rng.get("spawns"));
       for (const sp of step.spawns) this.queueSpawn(sp);
+      if (step.ambush) this.queueAmbush();
       if (step.completed) this.completeWave();
       return;
     }
@@ -1037,6 +1000,11 @@ export class Game {
         this.openLevelUp();
         if (this.levelUp) return;
       }
+      // R19/R20: depois do nível, o mapa da onda seguinte (a maldição que continua pula o mapa)
+      if (!this.mapResolved && this.playerAlive) {
+        if (this.mapCards || this.shrineOpen) return;
+        if (this.openMap()) return;
+      }
       if (isBossWave(this.run.wave)) this.openPortal();
       else this.prepareWave(this.run.wave + 1);
     }
@@ -1045,12 +1013,14 @@ export class Game {
   /** O herói entrou na clareira: letreiro "Onda N" e a clareira fecha. */
   private beginWave(): void {
     const n = this.run.wave;
-    this.wave = startWave(n, this.rng.get("champions"), (id) => id in ENEMIES);
+    this.wave = startWave(n, this.rng.get("champions"), (id) => id in ENEMIES, this.mods);
     this.phase = "intro";
     this.phaseT = 0;
     this.showRing(true);
     const boss = this.wave.isBossWave;
-    this.events.banner(`Onda ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, boss ? `${BOSSES[this.zone.boss].name} se aproxima` : this.zone.name);
+    const room = this.mods.room;
+    const sub = boss ? `${BOSSES[this.zone.boss].name} se aproxima` : room ? `${room.name}` : this.zone.name;
+    this.events.banner(`Onda ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, sub);
     this.audio.play(boss ? "boss" : "level");
   }
 
@@ -1105,6 +1075,17 @@ export class Game {
     this.queueSpawn({ id: this.zone.boss, champion: false }, true);
   }
 
+  /**
+   * §7.9 Emboscada: um chefe enfraquecido entra na onda normal. Lá ele sai do saco dos 13; aqui, de um dos 4 chefes
+   * que não é o da zona (o da zona fica para a arena), no fluxo `bosses`.
+   */
+  private queueAmbush(): void {
+    const pool = ZONE_ORDER.map((z) => ZONES[z].boss).filter((b) => b !== this.zone.boss && BOSSES[b]);
+    const id = this.rng.get("bosses").pick(pool);
+    this.queueSpawn({ id, champion: false }, true);
+    this.events.toast(`Boss Ambush: ${BOSSES[id].name}!`, "#ff7a5a");
+  }
+
   private updateMarkers(dt: number): void {
     for (let i = this.markers.length - 1; i >= 0; i--) {
       const m = this.markers[i];
@@ -1119,8 +1100,9 @@ export class Game {
       mat.dispose();
       this.markers.splice(i, 1);
       if (m.boss) {
-        const final = this.run.wave === BOSS.final.wave;
-        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final });
+        const ambush = this.wave?.ambush ?? null;
+        const final = !ambush && this.run.wave === BOSS.final.wave;
+        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush });
         e.hunter = true;
         this.boss = e;
         this.enemies.push(e);
@@ -1153,12 +1135,10 @@ export class Game {
     for (const m of this.markers) m.mesh.removeFromParent();
     this.markers.length = 0;
     for (const pr of this.projectiles) if (!pr.friendly) pr.life = 0;
-    for (let i = this.drops.length - 1; i >= 0; i--) {
-      if (this.drops[i].kind !== "orb") continue;
-      this.drops[i].mesh.removeFromParent();
-      this.drops.splice(i, 1);
-    }
-    if (w.isBossWave && w.bossesDefeated && this.playerAlive) {
+    for (const d of this.drops) d.mesh.removeFromParent();
+    this.drops.length = 0;
+    // D-159: vencer um chefe (da arena ou da emboscada) cura 20%
+    if (((w.isBossWave && w.bossesDefeated) || w.ambushSpawned) && this.playerAlive) {
       const amount = Math.min(this.stats.maxHp - this.player.hp, this.stats.maxHp * BOSS.healPct);
       this.heal(amount, true, true);
     }
@@ -1168,12 +1148,55 @@ export class Game {
     run.statistics.goldEarned += gold;
     this.gainXp(xp + r.xp);
     if (w.isBossWave && w.bossesDefeated && run.wave === TOTAL_WAVES) run.victory = true;
+    // §6: a sala vale só para esta onda; a maldição segue para a próxima, que fica sem mapa
+    if (expireWaveScope(run)) this.mapResolved = true;
     this.phase = "cleared";
     this.phaseT = 0;
     this.showRing(false);
     const extra = w.clearedEarly ? ` · ${Math.ceil(w.timeSaved)} s antes` : "";
     this.events.banner("Onda concluída", `+${gold} ouro · +${Math.round((xp + r.xp) * this.stats.xp)} XP${survivors ? ` · ${survivors} fugiram` : ""}${extra}`);
     this.audio.play("pickup");
+  }
+
+  // ---------------------------------------------------------------- mapa da partida (run_map.lua)
+
+  /** Cartas que dependem de sistema que ainda não existe aqui: pacto (M12), evento (M12) e loja (M7). */
+  static readonly MAP_DISABLED: ReadonlySet<MapNodeId> = new Set<MapNodeId>(["pact", "event", "shop"]);
+
+  /** Abre o mapa da onda seguinte, se houver; devolve false quando não há mapa (a onda segue direto). */
+  private openMap(): boolean {
+    const run = this.run;
+    const next = run.wave + 1;
+    if (run.curseContinues || !hasMapBefore(next)) {
+      this.mapResolved = true;
+      return false;
+    }
+    const shrine = RELIC_IDS.some((id) => !run.relics.includes(id));
+    this.mapCards = generateMap(this.rng.get("map"), next, { disabled: Game.MAP_DISABLED, shrine });
+    this.events.mapOpen();
+    return true;
+  }
+
+  /** run_map_flow.lua `chooseMapCard`: a sala vale para a onda seguinte; o santuário abre 1 de 3 relíquias. */
+  chooseMapCard(index: number): void {
+    const card = this.mapCards?.[index];
+    if (!card) return;
+    this.mapCards = null;
+    const step = chooseCard(this.run, card);
+    this.audio.play("pickup");
+    if (step === "relic") {
+      const pool = RELIC_IDS.filter((id) => !this.run.relics.includes(id));
+      this.rng.get("relics").shuffle(pool);
+      const offer = pool.slice(0, BOSS.relicChoices);
+      this.shrineOpen = true;
+      this.events.relicChoice(offer, (id) => {
+        this.addRelic(id);
+        this.shrineOpen = false;
+        this.mapResolved = true;
+      }, "Relic Shrine");
+      return;
+    }
+    this.mapResolved = true;
   }
 
   /** Depois do chefe da zona: o portal abre no meio da arena e leva à próxima zona (onda seguinte). */
@@ -1213,29 +1236,6 @@ export class Game {
   /** Tempo que falta da onda, em s (0 fora da luta). */
   get waveTimeLeft(): number {
     return this.wave && this.phase === "fight" ? timeLeft(this.wave) : 0;
-  }
-
-  // ---------------------------------------------------------------- inventário
-  equip(item: Item): void {
-    const s = this.run.legacy;
-    const i = s.bag.indexOf(item);
-    if (i < 0) return;
-    const prev = s.equipped[item.slot];
-    s.bag.splice(i, 1);
-    if (prev) s.bag.push(prev);
-    s.equipped[item.slot] = item;
-    const ratio = this.player.hp / this.stats.maxHp;
-    this.recompute();
-    this.player.hp = Math.max(1, Math.round(this.stats.maxHp * ratio));
-    this.audio.play("pickup");
-    this.events.bagChanged();
-  }
-
-  discard(item: Item): void {
-    const i = this.run.legacy.bag.indexOf(item);
-    if (i < 0) return;
-    this.run.legacy.bag.splice(i, 1);
-    this.events.bagChanged();
   }
 
   // ---------------------------------------------------------------- herói

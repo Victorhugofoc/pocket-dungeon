@@ -4,7 +4,6 @@ import {
   summarize, zoneSeed, type RunState, type StreamId,
 } from "../src/core/run";
 import { generateZone } from "../src/core/worldgen";
-import { generateItem } from "../src/core/items";
 import {
   LEGACY_SAVE_KEY, RECORDS_KEY, RUN_KEY, clearRun, discardLegacySave, loadRecords, loadRun, writeRecords, writeRun,
   type Storage,
@@ -34,7 +33,7 @@ function playWave(run: RunState, rng: RunRng, wave: number): number[] {
   run.gold += 10 + wave;
   run.xp += 7 * wave;
   if (wave % 3 === 0) run.relics.push("r" + wave);
-  run.legacy.bag.push(generateItem(rng.get("rewards"), wave, 0));
+  run.gold += Math.floor(rng.get("rewards").next() * 10);
   return draws;
 }
 
@@ -92,8 +91,8 @@ describe("partida", () => {
     expect(res.wave).toBe(5);
     expect(res.run.resumes).toBe(1);
     for (let w = 5; w <= 8; w++) expect(playWave(res.run, res.rng, w)).toEqual(straight[w - 1]);
-    // o estado final é o mesmo, menos a contagem de continuações e o id dos itens antigos (vem do relógio; sai no M20-04)
-    const plain = (r: RunState) => ({ ...r, resumes: 0, legacy: { ...r.legacy, bag: r.legacy.bag.map((it) => ({ ...it, id: "" })) } });
+    // o estado final é o mesmo, menos a contagem de continuações
+    const plain = (r: RunState) => ({ ...r, resumes: 0 });
     expect(plain(res.run)).toEqual(plain(run));
     // mapa: a seed de cada zona só depende da seed da partida
     for (const id of ZONE_ORDER) {
@@ -108,8 +107,16 @@ describe("partida", () => {
     const cp = checkpoint(run, rng, 1);
     playWave(run, rng, 1);
     expect(cp.run.statistics.kills).toBe(0);
-    expect(cp.run.legacy.bag).toEqual([]);
+    expect(cp.run.gold).toBe(0);
     expect(continueRun(cp).rng.get("spawns").next()).toBe(new RunRng(5).get("spawns").next());
+  });
+
+  it("checkpoint de antes do M20-04 perde mochila e equipamento ao continuar", () => {
+    const cp = checkpoint(start(9), new RunRng(9), 3);
+    (cp.run.legacy as unknown as Record<string, unknown>).bag = [{ id: "x" }];
+    (cp.run.legacy as unknown as Record<string, unknown>).equipped = { weapon: { id: "y" } };
+    cp.run.legacy.deaths = 2;
+    expect(continueRun(cp).run.legacy).toEqual({ deaths: 2 });
   });
 
   it("seeds diferentes dão mapas diferentes", () => {

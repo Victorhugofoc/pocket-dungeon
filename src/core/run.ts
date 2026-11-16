@@ -3,7 +3,6 @@
 // não muda os outros. O checkpoint é a partida inteira mais o estado dos fluxos, gravado antes de cada onda;
 // continuar refaz a partida dali e recomeça aquela onda.
 import { Rng, hashStr } from "./rng";
-import type { Item, Slot } from "./items";
 import { DIFFICULTIES, RUN_START, type DifficultyId } from "../data/run";
 import { HEROES } from "../data/heroes";
 import type { UpgradeTier } from "./levelup";
@@ -95,11 +94,9 @@ export interface RunStatistics {
 
 /**
  * Progresso do jogo antigo que ainda vive dentro da partida até o M20 terminar:
- * itens no M20-04, a contagem de mortes no M20-06 (morrer encerra a partida).
+ * a contagem de mortes, até o M20-06 (morrer encerra a partida).
  */
 export interface LegacyProgress {
-  bag: Item[];
-  equipped: Partial<Record<Slot, Item>>;
   deaths: number;
 }
 
@@ -131,6 +128,14 @@ export interface RunState {
   upgradeTiers: UpgradeTier[];
   /** pontos de tag das melhorias (level_up.lua `run.tags`; o sorteio olha os elementos) */
   tags: Record<string, number>;
+  /** sala ou maldição da carta do mapa, valendo para a onda atual (rooms.ts); null = sem sala */
+  room: string | null;
+  /** ondas que a maldição ainda dura (run_map.lua `curseWavesLeft`) */
+  curseWavesLeft: number;
+  /** a maldição segue na próxima onda: ela não tem mapa (D-150) */
+  curseContinues: boolean;
+  /** cartas escolhidas no mapa, em ordem */
+  mapHistory: string[];
   endless: boolean;
   victory: boolean;
   /** quantas vezes a partida foi continuada */
@@ -175,15 +180,15 @@ export function newRun(opts: NewRunOptions): RunState {
     upgradesTaken: [],
     upgradeTiers: [],
     tags: {},
+    room: null,
+    curseWavesLeft: 0,
+    curseContinues: false,
+    mapHistory: [],
     endless: false,
     victory: false,
     resumes: 0,
     statistics: { kills: 0, damage: 0, damageTaken: 0, elapsed: 0, goldEarned: 0, goldSpent: 0, xpEarned: 0, healed: 0 },
-    legacy: {
-      bag: [],
-      equipped: {},
-      deaths: 0,
-    },
+    legacy: { deaths: 0 },
   };
 }
 
@@ -222,6 +227,13 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   // checkpoints de antes do M20-03
   run.upgradeTiers ??= run.upgradesTaken.map(() => "common");
   run.tags ??= {};
+  // checkpoints de antes do M20-05
+  run.room ??= null;
+  run.curseWavesLeft ??= 0;
+  run.curseContinues ??= false;
+  run.mapHistory ??= [];
+  // checkpoints de antes do M20-04 guardavam mochila e equipamento
+  run.legacy = { deaths: run.legacy.deaths ?? 0 };
   run.wave = cp.wave;
   return { run, rng, wave: cp.wave };
 }

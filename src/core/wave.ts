@@ -1,7 +1,10 @@
 // Ciclo de uma onda, puro (wave_system.lua, modifier_engine.lua, enemy.lua, boss.lua, rewards.lua do Dungeon Reign).
 // O jogo (game.ts) chama `stepWave` a cada quadro e põe no mapa o que ela pede; aqui não há three.js nem posição.
-// Sem pactos, salas, afixos e modificadores de herói por enquanto (M20-05, M9, M13): o que não existe vale 1.
+// A sala do mapa da partida entra pela camada da onda (runmap.ts). Sem pactos, eventos, afixos e modificadores de
+// herói por enquanto (M9, M13 e o resto do M20-05): o que não existe vale 1.
 import type { Rng } from "./rng";
+import { waveLayer } from "./runmap";
+import { AMBUSH_DELAY, ENEMY_GROUPS, type RoomDef } from "../data/rooms";
 import {
   baseDuration, baseEnemyCount, bossTier, compositionFor, damageScale, endlessDamage, endlessHp, hpScale, isBossWave, waveGold, waveXp,
 } from "./waves";
@@ -10,8 +13,13 @@ import {
   TOTAL_WAVES, WAVES, type Difficulty, type DifficultyId,
 } from "../data/run";
 
-/** modifier_engine.lua `compute`, para uma partida sem pacto, sala nem modificador de herói. */
+/** modifier_engine.lua `compute`, para uma partida sem pacto nem modificador de herói. */
 export interface WaveMods {
+  /** sala ou maldição da onda (viés, campeão da Toca, emboscada, pesados do Iron Pack) */
+  room: RoomDef | null;
+  enemyCount: number;
+  /** corte de vida da emboscada por sala, da dificuldade (Hard) */
+  ambushHp: Record<string, number>;
   enemyHp: number;
   enemyDamage: number;
   enemySpeed: number;
@@ -29,17 +37,22 @@ function lateHp(d: Difficulty, wave: number): number {
   return 1;
 }
 
-export function waveMods(wave: number, difficultyId: DifficultyId): WaveMods {
+/** A camada da onda (a sala) vezes a dificuldade; o chefe leva a mesma pressão da sala com a coluna de chefe. */
+export function waveMods(wave: number, difficultyId: DifficultyId, room: RoomDef | null = null): WaveMods {
   const d = DIFFICULTIES[difficultyId];
+  const w = waveLayer(room);
   return {
-    enemyHp: d.enemyHp * lateHp(d, wave),
-    enemyDamage: d.earlyDamage?.[wave - 1] ?? d.enemyDamage,
-    enemySpeed: d.enemySpeed,
-    projectileSpeed: d.projectileSpeed,
-    bossHp: d.bossHp,
-    bossDamage: d.bossDamage,
-    bossSpeed: d.bossSpeed,
-    reward: d.reward,
+    room,
+    enemyCount: w.enemyCount,
+    ambushHp: d.ambushHp ?? {},
+    enemyHp: w.enemyHp * d.enemyHp * lateHp(d, wave),
+    enemyDamage: w.enemyDamage * (d.earlyDamage?.[wave - 1] ?? d.enemyDamage),
+    enemySpeed: w.enemySpeed * d.enemySpeed,
+    projectileSpeed: w.projectileSpeed * d.projectileSpeed,
+    bossHp: w.enemyHp * d.bossHp,
+    bossDamage: w.enemyDamage * d.bossDamage,
+    bossSpeed: w.enemySpeed * d.bossSpeed,
+    reward: w.reward * d.reward,
     earlyBossCut: d.earlyBossCut === true,
     crownHp: d.crownHp ?? 1,
   };
@@ -83,6 +96,12 @@ export interface WaveState {
   /** inimigos sorteáveis, com peso (só os que existem no jogo) */
   composition: [string, number][];
   isBossWave: boolean;
+  /** Toca dos Campeões: posição no cronograma do campeão da sala */
+  championAt: number | null;
+  /** Emboscada: corte de vida e dano do chefe que entra na onda normal */
+  ambush: { hp: number; damage: number } | null;
+  ambushAt: number;
+  ambushSpawned: boolean;
   /** posição no cronograma do campeão sorteado (onda normal) */
   randomChampionAt: number | null;
   extraChampions: number[];
@@ -101,25 +120,45 @@ export interface WaveState {
   healOrbs: number;
 }
 
+/** wave_system.lua `ambushFor`: o corte do chefe da emboscada; a dificuldade pode ter o seu corte de vida (D-303). */
+export function ambushFor(mods: WaveMods): { hp: number; damage: number } | null {
+  const a = mods.room?.ambush;
+  if (!a || !mods.room) return null;
+  return { hp: mods.ambushHp[mods.room.id] ?? a.hp, damage: a.damage };
+}
+
+/** wave_system.lua `biasedComposition`: a sala multiplica o peso do grupo dela dentro do sorteio normal. */
+export function biasedComposition(list: readonly { id: string; weight: number }[], room: RoomDef | null): { id: string; weight: number }[] {
+  const bias = room?.bias;
+  if (!bias) return list.map((c) => ({ ...c }));
+  const group = ENEMY_GROUPS[bias.group];
+  return list.map((c) => ({ id: c.id, weight: c.weight * (group.includes(c.id) ? bias.mult : 1) }));
+}
+
 /**
  * wave_system.lua `start`. `known` diz quais inimigos o jogo tem: os que faltam (M9) saem do sorteio e o peso dos
- * outros fica como está. O campeão sorteado usa o fluxo `champions`.
+ * outros fica como está. O campeão sorteado usa o fluxo `champions`; não há sorteado em onda de chefe, de emboscada
+ * nem na Toca dos Campeões.
  */
-export function startWave(wave: number, champions: Rng, known: (id: string) => boolean): WaveState {
+export function startWave(wave: number, champions: Rng, known: (id: string) => boolean, mods?: WaveMods): WaveState {
+  const room = mods?.room ?? null;
   const duration = baseDuration(wave);
-  const target = targetCount(wave);
+  const target = targetCount(wave, mods?.enemyCount ?? 1);
   const boss = isBossWave(wave);
-  const composition = compositionFor(wave).filter((c) => known(c.id)).map((c) => [c.id, c.weight] as [string, number]);
+  const composition = biasedComposition(compositionFor(wave), room).filter((c) => known(c.id)).map((c) => [c.id, c.weight] as [string, number]);
   if (!composition.length) composition.push(["goblin", 1]);
+  const championAt = (room?.champions ?? 0) > 0 ? Math.max(1, Math.ceil(target / 2)) : null;
+  const ambush = room && mods ? ambushFor(mods) : null;
   let randomChampionAt: number | null = null;
-  if (!boss && champions.chance(randomChampionChance(wave))) {
+  if (!boss && !ambush && championAt === null && champions.chance(randomChampionChance(wave))) {
     randomChampionAt = champions.int(Math.max(1, Math.floor(target * 0.25)), Math.max(1, Math.ceil(target * 0.75)));
   }
   return {
     number: wave, duration, elapsed: 0, target, spawned: 0,
     interval: (duration * WAVES.spawnWindow) / target,
     nextSpawn: WAVES.firstSpawnDelay,
-    composition, isBossWave: boss, randomChampionAt,
+    composition, isBossWave: boss, randomChampionAt, championAt,
+    ambush, ambushAt: AMBUSH_DELAY, ambushSpawned: false,
     extraChampions: [...endlessChampions(wave, target)],
     started: false, complete: false, heldByBoss: false, bossesDefeated: false, clearedEarly: false, timeSaved: 0,
     hastened: false, hastenBonus: 0, timeMult: 1, healOrbs: 0,
@@ -135,19 +174,25 @@ export interface WaveWorld {
 
 export interface WaveStep {
   spawns: WaveSpawn[];
+  /** a emboscada chegou: o jogo sorteia o chefe (fluxo `bosses`) e põe o aviso */
+  ambush: boolean;
   /** a onda acabou neste quadro */
   completed: boolean;
 }
 
 /** wave_system.lua `update`: avança o relógio, pede os nascimentos do cronograma e diz quando a onda acaba. */
 export function stepWave(w: WaveState, dt: number, world: WaveWorld, spawns: Rng): WaveStep {
-  const out: WaveStep = { spawns: [], completed: false };
+  const out: WaveStep = { spawns: [], ambush: false, completed: false };
   if (w.complete || !w.started) return out;
   w.elapsed += dt * w.timeMult;
+  if (w.ambush && !w.ambushSpawned && w.elapsed >= w.ambushAt) {
+    w.ambushSpawned = true;
+    out.ambush = true;
+  }
   while (w.spawned < w.target && w.elapsed >= w.nextSpawn) {
     const id = spawns.weighted(w.composition);
     w.spawned++;
-    const champion = w.randomChampionAt === w.spawned || w.extraChampions.includes(w.spawned);
+    const champion = w.championAt === w.spawned || w.randomChampionAt === w.spawned || w.extraChampions.includes(w.spawned);
     out.spawns.push({ id, champion });
     w.nextSpawn += w.interval;
   }
@@ -160,8 +205,11 @@ export function stepWave(w: WaveState, dt: number, world: WaveWorld, spawns: Rng
     w.heldByBoss = w.elapsed >= w.duration;
     return out;
   }
-  if (w.elapsed >= w.duration) complete(w, out);
-  else if (w.spawned >= w.target && out.spawns.length === 0 && world.alive === 0) {
+  // §7.9: o chefe da emboscada precisa cair; o relógio para no zero enquanto ele vive (D-091)
+  const held = !!w.ambush && (!w.ambushSpawned || out.ambush || world.bossAlive);
+  w.heldByBoss = held && w.elapsed >= w.duration;
+  if (w.elapsed >= w.duration && !held) complete(w, out);
+  else if (w.spawned >= w.target && out.spawns.length === 0 && world.alive === 0 && !held) {
     // nada vivo e nada por nascer: a onda acabou antes do tempo
     w.clearedEarly = true;
     w.timeSaved = w.duration - w.elapsed;
@@ -215,11 +263,16 @@ export interface FoeStats {
   speed: number;
 }
 
-/** enemy.lua `create`, com `makeChampion` quando é campeão. */
-export function enemyStats(def: { hp: number; damage: number }, wave: number, mods: WaveMods, champion = false): FoeStats {
+/** enemy.lua `create` (com os pesados do Iron Pack), e `makeChampion` quando é campeão. */
+export function enemyStats(def: { id?: string; hp: number; damage: number }, wave: number, mods: WaveMods, champion = false): FoeStats {
   let hp = def.hp * hpScale(wave) * mods.enemyHp;
   let damage = def.damage * damageScale(wave) * mods.enemyDamage * RUN_TUNING.enemyDamageMult;
   let speed = mods.enemySpeed;
+  const heavy = mods.room?.heavyScaling;
+  if (heavy && def.id && ENEMY_GROUPS.heavy.includes(def.id)) {
+    hp *= heavy.hp;
+    damage *= heavy.damage;
+  }
   if (champion) {
     hp = Math.max(hp, CHAMPION.hpBase + wave * CHAMPION.hpPerWave) * CHAMPION.hpMult;
     damage *= CHAMPION.damageMult;
@@ -228,8 +281,9 @@ export function enemyStats(def: { hp: number; damage: number }, wave: number, mo
   return { hp, damage, speed };
 }
 
-/** boss.lua `stats`. `final` = a onda 20, o rei coroado. */
-export function bossStats(bossId: string, wave: number, mods: WaveMods, final = wave === BOSS.final.wave): FoeStats {
+/** boss.lua `stats`. `final` = a onda 20, o rei coroado; `ambush` = o corte do chefe da emboscada. */
+export function bossStats(bossId: string, wave: number, mods: WaveMods, final = wave === BOSS.final.wave,
+  ambush: { hp: number; damage: number } | null = null): FoeStats {
   const m = BOSS_MULTS[bossId] ?? { hp: 1, damage: 1, speed: 1 };
   const up = bossTier(wave) - 1;
   const b = BOSS.base;
@@ -247,6 +301,10 @@ export function bossStats(bossId: string, wave: number, mods: WaveMods, final = 
   if (final) {
     hp *= BOSS.final.hp * mods.crownHp;
     damage *= BOSS.final.damage;
+  }
+  if (ambush) {
+    hp *= ambush.hp;
+    damage *= ambush.damage;
   }
   return { hp, damage, speed };
 }

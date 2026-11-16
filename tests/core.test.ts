@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { Rng, hashStr, makeNoise2D } from "../src/core/rng";
-import { generateItem, itemScore, RARITIES, rollRarity } from "../src/core/items";
 import { armorReduction, computeStats } from "../src/core/stats";
 import { generateZone, ObstacleGrid, distToPath } from "../src/core/worldgen";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
@@ -92,43 +91,6 @@ describe("atributos", () => {
     expect(s.critChance).toBeLessThanOrEqual(0.75);
     expect(s.cooldownMult).toBeGreaterThanOrEqual(0.4);
     expect(s.maxHp).toBeGreaterThan(0);
-  });
-});
-
-describe("itens", () => {
-  it("o mesmo seed gera os mesmos atributos", () => {
-    const a = generateItem(new Rng(5), 8, 0);
-    const b = generateItem(new Rng(5), 8, 0);
-    expect(a.stats).toEqual(b.stats);
-    expect(a.rarity).toBe(b.rarity);
-    expect(a.id).not.toBe(b.id);
-  });
-  it("raridade define a quantidade de afixos e respeita o mínimo", () => {
-    const r = new Rng(11);
-    for (let i = 0; i < 300; i++) {
-      const it = generateItem(r, 5, 0, { slot: "weapon", minRarity: "raro" });
-      expect(RARITIES.indexOf(it.rarity)).toBeGreaterThanOrEqual(2);
-      expect(Object.keys(it.stats).length).toBeGreaterThanOrEqual(2);
-      expect(it.stats.damage).toBeGreaterThan(0);
-    }
-  });
-  it("nível de item mais alto vale mais, na média", () => {
-    const avg = (ilvl: number) => {
-      const r = new Rng(3);
-      let s = 0;
-      for (let i = 0; i < 400; i++) s += itemScore(generateItem(r, ilvl, 0));
-      return s / 400;
-    };
-    expect(avg(10)).toBeGreaterThan(avg(1) * 1.5);
-  });
-  it("sorte de loot aumenta as raridades altas", () => {
-    const count = (mf: number) => {
-      const r = new Rng(21);
-      let n = 0;
-      for (let i = 0; i < 4000; i++) if (rollRarity(r, mf) !== "comum") n++;
-      return n;
-    };
-    expect(count(1)).toBeGreaterThan(count(0));
   });
 });
 
