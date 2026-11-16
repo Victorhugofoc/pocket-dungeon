@@ -360,6 +360,15 @@ export const SPELL_CAST = {
   vortexReach: 1.5,
   /** Cyclone: o olho, onde o puxão para (techniques.lua: 2 px) */
   vortexEye: 2 / DR_PX_PER_M,
+  /** Blade Orbit: rad/s do giro (techniques.lua `updateOrbit`: 5,5) e raio do golpe de cada lâmina (12 px) */
+  orbitSpin: 5.5,
+  bladeHit: 12 / DR_PX_PER_M,
+  /** Healing Field: distância dos campos extras do Blooming Sanctuary (tuning.lua `SPELL_FIELD_EXTRA_DISTANCE`, 70 px)
+   * e o teto de campos extras ao mesmo tempo (constants.lua `CAPS.healingFields`) */
+  fieldExtraDistance: 70 / DR_PX_PER_M,
+  fieldExtraCap: 4,
+  /** Rune Traps: o herói conta como andando acima desta velocidade (m/s), e a runa deixada anda sozinha enquanto ele anda */
+  runeWalkSpeed: 0.5,
   /** visual: altura e tamanho da bola */
   height: 1.2,
   ballSize: 0.38,

@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { ACHIEVEMENT_RULES, ACHIEVEMENTS, COSMETIC_NAMES, UNLOCK_REWARDS } from "../src/data/achievements";
-import { MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TUNING, SPELLS } from "../src/data/spells";
+import { MAX_SPELLS, SPELL_CAST, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TUNING, SPELLS } from "../src/data/spells";
 import { spellStats } from "../src/core/spells";
 import { DR_PX_PER_M } from "../src/data/techniques";
 import {
@@ -378,6 +378,9 @@ describe.skipIf(!dr)("paridade com o Dungeon Reign", () => {
   it("números gerais das spells (escala de nível, piso de recarga, teto de lentidão, queimadura, poder de magia)", () => {
     expect(SPELL_TUNING.levelStep).toBe(S.LEVEL_STEP);
     expect(SPELL_TUNING.cooldownFloor).toBe(C.COOLDOWN_FLOOR);
+    // M6-05: campos extras do Blooming Sanctuary (S26)
+    expect(SPELL_CAST.fieldExtraDistance * DR_PX_PER_M).toBeCloseTo(TU.SPELL_FIELD_EXTRA_DISTANCE);
+    expect(SPELL_CAST.fieldExtraCap).toBe(C.CAPS.healingFields);
     expect(SPELL_TUNING.slowMax).toBe(TU.SLOW_MAX);
     expect(SPELL_TUNING.burnSpScale).toBe(TU.BURN_SP_SCALE);
     expect(SPELL_TUNING.burnLevelStep).toBe(TU.BURN_LEVEL_STEP);
