@@ -100,7 +100,7 @@ export class SpellCaster {
       this.pending.splice(k, 1);
       const st = this.stats[pc.slot];
       const g = this.game;
-      if (st && g.playerAlive && this.cast(pc.slot, st)) g.fx.text(g.player.x, 2.8, g.player.z, "Eco", "frost");
+      if (st && g.playerAlive && this.cast(pc.slot, st)) g.fx.text(g.player.x, 2.8, g.player.z, "Echo", "frost");
     }
     this.updateShots(dt);
     this.updateBeams(dt);
@@ -445,7 +445,7 @@ export class SpellCaster {
     }
     g.fx.shockwave(x, z, r, 0xff5a1a, 0.35);
     g.fx.burst(x, 0.8, z, 0xff8a2a, 26, 7, 0.15, 0.5, -2);
-    g.fx.text(x, 2.4, z, "Volátil", "burn");
+    g.fx.text(x, 2.4, z, "Volatile", "burn");
   }
 
   private free(pr: SpellProjectile): void {

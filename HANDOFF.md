@@ -4,7 +4,7 @@ Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada
 
 ## Agora (2026-11-16)
 - **Marco em andamento: M6, spells** (D2, D12: teclas 1 e 2). O M20 (partida como no Dungeon Reign) está completo. Feito no M6: `M6-00` (paridade), `M6-01` (dados e `spellStats`) `M6-02` (conjuração: `SpellCaster` em `src/game/spells.ts`, teclas 1 e 2, Fireball e Iceball com Volátil e Brittle Chill) e `M6-03` (Chain Lightning, Arcane Bolt com Eco, Prism Beam). As outras 6 spells ainda não fazem nada (o espaço pisca).
-- **Próxima tarefa:** `M6-04` (`venom_nova`, `cyclone`, `quake_totem`), em `SpellCaster.cast`; o veneno e o empurrão/atordoamento entram em `enemyStatuses`.
+- **Próxima tarefa:** `M14-00` (pente-fino: passar para inglês todo texto do jogo que está em português), pedido do usuário em 2026-11-16. Depois, `M6-04` (`venom_nova`, `cyclone`, `quake_totem`), em `SpellCaster.cast`; o veneno e o empurrão/atordoamento entram em `enemyStatuses`.
 - **Decidido em 2026-11-16 (D15):** spell na tecla sai sempre e gasta a recarga, mesmo sem inimigo no alcance. `M5-05` (ícones de estado sobre os inimigos, `src/game/status-icons.ts`) feita antes do `M6-03`, a pedido dele; cada spell nova do M6 precisa pôr o estado dela em `enemyStatuses`. Efeitos próprios das spells ficam na `M5-08`.
 - **Rever com o usuário (D14):** os atributos do herói contra os do original (poder de magia, "efeitos", recarga e área globais). Ele aceitou o S12 assim por enquanto; decidir antes do `M6-08`.
 - **Falta o usuário jogar:** `M5-05` (ícones de estado), `M6-02` e `M6-03` (5 spells nas teclas 1 e 2), `M20-02` a `M20-08`, `M19-02` a `M19-05` (técnicas dos heróis), `M1-05` (presença de chefe), Ninhada da Vesper. Tudo foi conferido só pelo console.
@@ -23,7 +23,7 @@ Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada
 ## Decisões do usuário (não reabrir sem ele pedir)
 - PC, teclado e mouse. Partidas como no Dungeon Reign (D13), sem equipamento por enquanto (pode voltar se encaixar com as relíquias).
 - **Toda a arte é gerada por código, em 3D.** Sem sprites nem modelos importados; modelos por IA (Meshy, Hunyuan3D) foram descartados. O sprite do Dungeon Reign é a fonte do design; método na seção 4 do roadmap.
-- **Nomes, ids e código em inglês**, iguais aos do Dungeon Reign (cartas, salas, spells). Textos do jogo em português até a decisão D1.
+- **Tudo do jogo em inglês** (D1, decidido em 2026-11-16): nomes, ids, código e também os textos que o jogador lê (interface, mecânicas como Echo e Volatile, textos flutuantes, descrições), com a palavra do Dungeon Reign (`en.lua`) quando existir. Português só como tradução no `M14-01`. Documentos e conversa seguem em português.
 - Esquiva e poção ficam por enquanto (Q3). Onda cronometrada como no original (Q2).
 - Crítico cego (`docs/critic.md`) antes de mostrar arte ao usuário.
 - Ele faz push, PR e merge; eu só faço commit local no branch de trabalho.

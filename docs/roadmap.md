@@ -535,6 +535,10 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 
 ### M14 — Interface
 
+**M14-00 · Pente-fino: tudo em inglês** · M [pedido do usuário, 2026-11-16; vem antes do `M6-04`]
+- Passos: listar todo texto que o jogador lê e está em português (`src/ui/ui.ts`, `src/data/*` como `SPELL_TEXT`, marcos e modificadores, cartas, salas, relíquias, conquistas, heróis e técnicas; textos flutuantes em `src/game/*`, como Estilhaçou, Quebradiço e Pingente da Frostine) e trocar pelo texto de `dungeon-idle/src/data/lang/en.lua` (ou pelo original em inglês do `.lua` de dados); o que não existir lá, escrever em inglês no mesmo tom. Ajustar testes de paridade que comparem texto.
+- Pronto quando: `grep` por acentos e palavras comuns em português em `src/` só acha comentários; o jogo inteiro aparece em inglês.
+
 **M14-01 · Localização** · M [decisão D1]
 - Passos: tirar todos os textos de `ui.ts` e `data/*` para `src/data/lang/en.ts` e `pt.ts`; função `t(key)`; idioma nas opções.
 
@@ -683,7 +687,7 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 
 | ID | Decisão | Proposta | Trava |
 |---|---|---|---|
-| D1 | Textos do jogo em inglês com português como tradução, ou só código em inglês? | Inglês como base e português como tradução, com troca nas opções | M14-01 |
+| D1 | Textos do jogo em inglês com português como tradução, ou só código em inglês? | **Decidido em 2026-11-16: tudo em inglês.** Todo texto do jogo é em inglês, com a palavra do Dungeon Reign (`en.lua`) quando existir; português só como tradução depois. Vale para todo código novo a partir de agora | M14-00, M14-01 |
 | D2 | Spells: quantos espaços e quem usa o quê? | **Decidido em 2026-11-15: igual ao Dungeon Reign.** 2 espaços mais a técnica; cada herói escolhe 1 spell inicial entre as 4 dele (`startingSpells`, Healing Field nunca é inicial); a segunda spell, os níveis (até 5), os modificadores e o nível da técnica vêm da loja (Magic Shop), que vende qualquer spell. Estrutura conferida pela tabela de paridade (`M6-00`) | M6 |
 | D3 | Como se ganha spell? | **Decidido em 2026-11-15 (D2 e D13): como no original.** A inicial é escolhida no começo da partida entre as 4 do herói; as outras, os níveis e os modificadores vêm da loja | M6-06 |
 | D4 | Entra ouro, mercador e ferreiro? | **Decidido em 2026-11-15 (D13):** ouro e Magic Shop do original; sem ferreiro (não há itens) | M7 |
@@ -766,5 +770,6 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`. **
 | M5-05, M5-08 | ampliadas | 2026-11-16 | Pedido do usuário: indicador sobre o inimigo para cada estado (queimando, lento e os das próximas spells) e efeitos próprios das 11 spells (`M5-08`, nova) |
 | M5-05 | feito, falta validar | 2026-11-16 | Feita antes do `M6-03`, a pedido do usuário. `src/game/status-icons.ts`: fileira de ícones desenhados em canvas sobre a cabeça de cada inimigo (queimando; Volátil, quando a queimadura é do Fireball e há chance; envenenado com acúmulos; lento; Brittle Chill, quando há o modificador; atordoado; gelo da Frostine com acúmulos; Quebradiço) e partículas no corpo (brasas, bolhas, cristais). A tinta do corpo continua. Conferido por captura com os 8 estados; o crítico cego não foi rodado. Falta "marcado" (não há estado assim ainda) |
 | M6-03 | feito, falta validar | 2026-11-16 | Em `SpellCaster`: **Chain Lightning** (dardo de 75 m/s na mira; o primeiro inimigo que toca começa a cadeia, que salta ao mais perto não atingido até `targets`; Static Field acerta o primeiro 2x; errando, apaga e a recarga já foi), **Arcane Bolt** (projétil com área; Eco), **Prism Beam** (raio de 18 m saindo do herói, gira com a mira por 1,8 s e fere a linha a cada 0,15 s; relançar troca). Eco (S16) pronto. Conferido por script e captura; visuais provisórios até o `M5-08`. Sem estado novo, então sem ícone novo |
+| D1, M14-00 | decidida, criada | 2026-11-16 | Pedido do usuário: todo texto do jogo em inglês, valendo já para o código novo (o Eco e o Volátil do M6 viraram Echo e Volatile). O pente-fino do que já existe é a `M14-00`, antes do `M6-04` |
 
 O M1 está completo, faltando só a validação da `M1-05`. No M2, os nove heróis estão refeitos: oito aprovados e Vesper (com as abelhas) esperando validação. Próxima sessão, sugestão: `M2-10`. `M0-03` (prévia com seletor, lineup e contagem) continua pendente.
