@@ -19,31 +19,31 @@ import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game } from "../game/game";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
-const QUALITY = ["baixa", "média", "alta"];
-const RELIC_RARITY: Record<string, string> = { incomum: "Incomum", raro: "Rara", epico: "Épica" };
-const TIER_LABEL: Record<UpgradeTier, string> = { common: "Comum", rare: "Rara", epic: "Épica" };
+const QUALITY = ["low", "medium", "high"];
+const RELIC_RARITY: Record<string, string> = { incomum: "Uncommon", raro: "Rare", epico: "Epic" };
+const TIER_LABEL: Record<UpgradeTier, string> = { common: "Common", rare: "Rare", epic: "Epic" };
 const TIER_COLOR: Record<UpgradeTier, string> = { common: "#c9c4b8", rare: "#4fa3ff", epic: "#b36bff" };
 /** Nome dos atributos de lá que as melhorias oferecidas usam (o original diz "Auto Damage"; aqui vale para todo o dano). */
 const UPGRADE_LABEL: Record<string, string> = {
-  damageFlat: "Dano", attackSpeedPct: "Vel. de ataque", autoDamagePct: "Dano", critChance: "Chance de crítico",
-  armor: "Armadura", moveSpeedPct: "Vel. de movimento", maxHpFlat: "Vida", maxHpPct: "Vida", rangePct: "Alcance",
-  dodge: "Esquiva", regen: "Regeneração/s", xpPct: "XP ganho", goldPct: "Ouro ganho", spellCooldownPct: "Recarga da técnica",
+  damageFlat: "Damage", attackSpeedPct: "Attack Speed", autoDamagePct: "Damage", critChance: "Crit Chance",
+  armor: "Armor", moveSpeedPct: "Move Speed", maxHpFlat: "HP", maxHpPct: "HP", rangePct: "Range",
+  dodge: "Dodge", regen: "Regeneration/s", xpPct: "XP earned", goldPct: "Gold earned", spellCooldownPct: "Technique Cooldown",
 };
 /** Nome e texto de cada carta do mapa, como em data/run_map.lua (o nome fica em inglês, igual ao de lá). */
 const MAP_NODE: Record<MapNodeId, { name: string; text: string; color: string }> = {
-  combat_room: { name: "Combat Room", text: "Sala com modificador na próxima wave", color: "#e0a050" },
-  cursed_room: { name: "Cursed Room", text: "Maldição por 2 waves seguidas, sem mapa entre elas; depois da 1ª, uma relic amaldiçoada", color: "#b36bff" },
-  pact: { name: "Risk Pact", text: "Pact pelo resto da run + relic de pact (1 a cada 5 waves)", color: "#ff5a5a" },
-  event: { name: "Event", text: "Escolha 1 de 3 eventos", color: "#5fd3c8" },
-  shop: { name: "Shop", text: "Compre poder permanente", color: "#ffd34d" },
-  elite: { name: "Elite", text: "Enfrente um Elite com 2 afixos: relic de risco e loja depois da wave", color: "#ffc83d" },
-  relic_shrine: { name: "Relic Shrine", text: "Uma relic sem combate extra", color: "#4fa3ff" },
-  boss_ambush: { name: "Boss Ambush", text: "Um boss enfraquecido entra na wave: relic de risco", color: "#ff7a5a" },
+  combat_room: { name: "Combat Room", text: "A room with a modifier on the next wave", color: "#e0a050" },
+  cursed_room: { name: "Cursed Room", text: "A curse for 2 waves in a row, no map between them; after the 1st, a cursed relic", color: "#b36bff" },
+  pact: { name: "Risk Pact", text: "A pact for the rest of the run + a pact relic (1 every 5 waves)", color: "#ff5a5a" },
+  event: { name: "Event", text: "Choose 1 of 3 events", color: "#5fd3c8" },
+  shop: { name: "Shop", text: "Buy permanent power", color: "#ffd34d" },
+  elite: { name: "Champion", text: "Face a Champion with 2 affixes: risk relic and shop after the wave", color: "#ffc83d" },
+  relic_shrine: { name: "Relic Shrine", text: "A relic with no extra fight", color: "#4fa3ff" },
+  boss_ambush: { name: "Boss Ambush", text: "A weakened boss joins the wave: a risk relic", color: "#ff7a5a" },
 };
 /** Linhas da sala na carta; na recompensa, mais é bom; no resto, mais é ruim. */
 const ROOM_MOD_LABEL: [keyof RoomMods, string][] = [
-  ["reward", "recompensa"], ["enemyHp", "vida dos inimigos"], ["enemyDamage", "dano dos inimigos"],
-  ["enemyCount", "inimigos"], ["enemySpeed", "velocidade dos inimigos"], ["projectileSpeed", "velocidade dos projéteis"],
+  ["reward", "reward"], ["enemyHp", "enemy HP"], ["enemyDamage", "enemy damage"],
+  ["enemyCount", "enemies"], ["enemySpeed", "enemy speed"], ["projectileSpeed", "projectile speed"],
 ];
 
 /** Na recarga, negativo é bom (format.lua `INVERTED`). */
@@ -52,7 +52,7 @@ const INVERTED: Record<string, true> = { spellCooldownPct: true };
 function upgradeLine(e: UpgradeEffect): string {
   const good = INVERTED[e.stat] ? e.value < 0 : e.value > 0;
   const n = PCT_STATS[e.stat] ? `${Math.round(e.value * 1000) / 10}%` : String(Math.round(e.value * 100) / 100);
-  const txt = `${e.value >= 0 ? "+" : ""}${n.replace(".", ",")} ${UPGRADE_LABEL[e.stat] ?? e.stat}`;
+  const txt = `${e.value >= 0 ? "+" : ""}${n} ${UPGRADE_LABEL[e.stat] ?? e.stat}`;
   return `<div class="stat ${good ? "" : "neg"}">${txt}</div>`;
 }
 
@@ -70,11 +70,11 @@ type RunSetup = Pick<NewRunOptions, "heroId" | "difficultyId" | "startingSpell">
 const DIFF_COLOR: Record<DifficultyId, string> = { easy: "#7ee08a", normal: "#9be4ff", hard: "#ff7a6a" };
 
 function heroKit(h: HeroDef, cooldown: number): string {
-  const cd = cooldown.toFixed(cooldown % 1 ? 1 : 0).replace(".", ",");
+  const cd = cooldown.toFixed(cooldown % 1 ? 1 : 0);
   return `<div class="kit">
-    <div class="kit-row"><b>Passiva</b><ul>${h.passive.map((t) => `<li>${t}</li>`).join("")}</ul></div>
-    <div class="kit-row"><b>Técnica</b><div><span class="kit-name">${h.technique.name}</span>
-      <span class="kit-meta">botão direito ou Q · recarga ${cd} s</span><p>${h.technique.text}</p></div></div>
+    <div class="kit-row"><b>Passive</b><ul>${h.passive.map((t) => `<li>${t}</li>`).join("")}</ul></div>
+    <div class="kit-row"><b>Technique</b><div><span class="kit-name">${h.technique.name}</span>
+      <span class="kit-meta">right click or Q · cooldown ${cd} s</span><p>${h.technique.text}</p></div></div>
   </div>`;
 }
 
@@ -193,7 +193,7 @@ export class Ui {
     const panel = this.open("title", "title");
     this.game.paused = true;
     if (discardLegacySave(this.storage)) {
-      this.toast("O save antigo (herói contínuo, com itens) foi descartado: o jogo agora é por partidas, como no Dungeon Reign", "#ffc83d");
+      this.toast("The old save (persistent hero with items) was discarded: the game is now played in runs, like Dungeon Reign", "#ffc83d");
     }
     const save = loadRun(this.storage);
     const rec = loadRecords(this.storage);
@@ -204,37 +204,37 @@ export class Ui {
     const lockText = (id: string) => {
       const a = unlockCondition("hero", id);
       if (!a) return "";
-      if (isSecret(ach, "hero", id)) return "Trancado · ???";
+      if (isSecret(ach, "hero", id)) return "Locked · ???";
       const p = progress(ach, a, rec.kills);
-      return `Trancado · ${a.text}${p ? ` (${Math.min(p.current, p.goal).toLocaleString("pt-BR")} / ${p.goal.toLocaleString("pt-BR")})` : ""}`;
+      return `Locked · ${a.text}${p ? ` (${Math.min(p.current, p.goal).toLocaleString("en-US")} / ${p.goal.toLocaleString("en-US")})` : ""}`;
     };
     const render = () => {
       const h = HEROES[this.selectedHero];
       const best = DIFFICULTY_ORDER.flatMap((d) => {
         const b = rec.best[`${h.id}/${d}`];
-        return b ? [`${DIFFICULTIES[d].name}: onda ${b.wave}${b.victory ? " (vitória)" : ""}`] : [];
+        return b ? [`${DIFFICULTIES[d].name}: wave ${b.wave}${b.victory ? " (victory)" : ""}`] : [];
       });
       panel.innerHTML = `
         <h1>DUNGEON REIGN</h1>
-        <p class="tag">RPG de ação · protótipo 0.3 · mapas procedurais, um herói, ondas e chefes</p>
+        <p class="tag">Action RPG · prototype 0.3 · procedural maps, one hero, waves and bosses</p>
         ${save ? `<div class="continue"><button class="primary" data-act="continue" style="padding:12px 30px;font-size:16px">
-          Continuar — ${HEROES[save.run.heroId]?.name ?? "?"} · ${DIFFICULTIES[save.run.difficultyId].name} · onda ${save.wave} · nível ${save.run.level} · seed ${save.run.seedCode}</button></div>` : ""}
-        ${rec.runs ? `<p class="tag" style="margin:-8px 0 14px">${rec.runs} partidas · ${rec.wins} vitórias · maior onda ${rec.highestWave}${rec.bestEndless ? ` · sem fim até a onda ${rec.bestEndless}` : ""} · ${rec.kills} abates · ${achievementCount(ach)} de ${ACHIEVEMENTS.length} conquistas</p>` : ""}
-        <div class="section">Passo 1 de 3 · ${save ? "escolha o herói de uma partida nova (encerra a atual)" : "escolha seu herói"}</div>
+          Continue — ${HEROES[save.run.heroId]?.name ?? "?"} · ${DIFFICULTIES[save.run.difficultyId].name} · wave ${save.wave} · level ${save.run.level} · seed ${save.run.seedCode}</button></div>` : ""}
+        ${rec.runs ? `<p class="tag" style="margin:-8px 0 14px">${rec.runs} runs · ${rec.wins} wins · best wave ${rec.highestWave}${rec.bestEndless ? ` · endless to wave ${rec.bestEndless}` : ""} · ${rec.kills} kills · ${achievementCount(ach)} of ${ACHIEVEMENTS.length} achievements</p>` : ""}
+        <div class="section">Step 1 of 3 · ${save ? "choose the hero for a new run (ends the current one)" : "choose your hero"}</div>
         <div class="heroes">${HERO_ORDER.map((id) => {
           const d = HEROES[id];
           const locked = !open(id);
           return `<div class="hero-card ${id === this.selectedHero ? "sel" : ""} ${locked ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}">
-            <div class="swatch"></div><b>${d.name}${isNew(ach, "hero", id) ? ` <em class="new">NOVO</em>` : ""}</b><i>${d.title}</i>
+            <div class="swatch"></div><b>${d.name}${isNew(ach, "hero", id) ? ` <em class="new">NEW</em>` : ""}</b><i>${d.title}</i>
             <span>${locked ? lockText(id) : d.identity}</span></div>`;
         }).join("")}</div>
         <div class="hero-detail" style="--hc:${hex(h.color)}">
           <h3 style="color:${hex(h.color)}">${h.name} — ${h.title}</h3>
           ${heroKit(h, h.technique.cooldown)}
           <p style="color:var(--muted)">${statLines(h.stats).replace(/<div class="st">/g, "").replace(/<\/div>/g, " · ").replace(/ · $/, "")}</p>
-          ${best.length ? `<p style="color:var(--gold)">Recorde: ${best.join(" · ")}</p>` : ""}
+          ${best.length ? `<p style="color:var(--gold)">Best: ${best.join(" · ")}</p>` : ""}
         </div>
-        <div class="title-actions"><button class="primary" data-act="next">Continuar com ${h.name} ›</button></div>`;
+        <div class="title-actions"><button class="primary" data-act="next">Continue with ${h.name} ›</button></div>`;
     };
     render();
     panel.onclick = (ev) => {
@@ -258,7 +258,7 @@ export class Ui {
         if (save && this.confirmNew !== this.selectedHero) {
           this.confirmNew = this.selectedHero;
           const b = t.closest<HTMLElement>("[data-act]")!;
-          b.textContent = "Isso encerra a partida atual. Clique de novo para confirmar";
+          b.textContent = "This ends the current run. Click again to confirm";
           b.classList.add("danger");
           return;
         }
@@ -276,21 +276,21 @@ export class Ui {
     const x = (v: number) => `x${v.toFixed(2)}`;
     const render = (err = "") => {
       panel.innerHTML = `
-        <div class="section">Passo 2 de 3 · dificuldade · herói: ${h.name}</div>
+        <div class="section">Step 2 of 3 · difficulty · hero: ${h.name}</div>
         <div class="cards">${DIFFICULTY_ORDER.map((id) => {
           const d = DIFFICULTIES[id];
           const sel = id === this.selectedDifficulty;
           return `<div class="card" data-diff="${id}" style="--cc:${DIFF_COLOR[id]};${sel ? "border-color:var(--cc)" : ""}">
             <h3>${d.name}</h3><p>${DIFFICULTY_TEXT[id]}</p>
-            <p class="note">Vida do inimigo ${x(d.enemyHp)} · dano inimigo ${x(d.enemyDamage)} · vel. inimigo ${x(d.enemySpeed)}</p>
-            <p class="note">Vida do boss ${x(d.bossHp)} · recompensa ${x(d.reward)}</p>
-            ${sel ? `<div class="meta" style="margin-top:6px">[ selecionada ]</div>` : ""}</div>`;
+            <p class="note">Enemy HP ${x(d.enemyHp)} · enemy damage ${x(d.enemyDamage)} · enemy speed ${x(d.enemySpeed)}</p>
+            <p class="note">Boss HP ${x(d.bossHp)} · reward ${x(d.reward)}</p>
+            ${sel ? `<div class="meta" style="margin-top:6px">[ selected ]</div>` : ""}</div>`;
         }).join("")}</div>
         <div class="section">Seed</div>
-        <p class="note" style="color:var(--muted)">Mesma seed = mesmo mapa, salas, relíquias e chefes. Cole o código de 7 letras de uma partida (pausa ou fim) ou digite qualquer palavra. Vazio = aleatória.</p>
-        <input class="seed" data-r="seed" maxlength="24" placeholder="Aleatória" value="${this.seedText}" spellcheck="false">
+        <p class="note" style="color:var(--muted)">Same seed = same map, rooms, relics and bosses. Paste the 7-letter code of a run (pause or results) or type any word. Empty = random.</p>
+        <input class="seed" data-r="seed" maxlength="24" placeholder="Random" value="${this.seedText}" spellcheck="false">
         ${err ? `<p style="color:var(--bad)">${err}</p>` : ""}
-        <div class="title-actions"><button data-act="back">‹ Voltar</button><button class="primary" data-act="next">Continuar ›</button></div>`;
+        <div class="title-actions"><button data-act="back">‹ Back</button><button class="primary" data-act="next">Continue ›</button></div>`;
       const input = panel.querySelector<HTMLInputElement>("[data-r=seed]")!;
       input.oninput = () => (this.seedText = input.value.toUpperCase());
       input.onkeydown = (e) => {
@@ -301,7 +301,7 @@ export class Ui {
     const next = () => {
       const code = this.seedText.trim();
       if (code && decodeSeed(code) === null) {
-        render("Seed inválida: use letras e números.");
+        render("Invalid seed: use letters and numbers.");
         return;
       }
       this.showStartingSpell();
@@ -328,15 +328,15 @@ export class Ui {
     if (!h.startingSpells.includes(this.selectedSpell as SpellId)) this.selectedSpell = h.startingSpells[0];
     const render = () => {
       panel.innerHTML = `
-        <div class="section">Passo 3 de 3 · spell inicial · ${h.name} · ${DIFFICULTIES[this.selectedDifficulty].name}</div>
-        <p class="note" style="color:var(--muted)">As outras spells vêm da loja e das melhorias. As spells ainda não disparam no jogo (M6).</p>
+        <div class="section">Step 3 of 3 · starting spell · ${h.name} · ${DIFFICULTIES[this.selectedDifficulty].name}</div>
+        <p class="note" style="color:var(--muted)">Other spells come from the shop and from upgrades.</p>
         <div class="cards">${h.startingSpells.map((id) => {
           const sel = id === this.selectedSpell;
           return `<div class="card" data-spell="${id}" style="--cc:${hex(h.color)};${sel ? "border-color:var(--cc)" : ""}">
             <h3>${spellName(id)}</h3><p>${SPELL_TEXT[id]}</p>
-            ${sel ? `<div class="meta" style="margin-top:6px">[ selecionada ]</div>` : ""}</div>`;
+            ${sel ? `<div class="meta" style="margin-top:6px">[ selected ]</div>` : ""}</div>`;
         }).join("")}</div>
-        <div class="title-actions"><button data-act="back">‹ Voltar</button><button class="primary" data-act="go">Começar a partida</button></div>`;
+        <div class="title-actions"><button data-act="back">‹ Back</button><button class="primary" data-act="go">Start the run</button></div>`;
     };
     render();
     panel.onclick = (ev) => {
@@ -370,7 +370,7 @@ export class Ui {
     this.close();
     this.hud.classList.remove("hidden");
     this.game.start(run, rng);
-    if (run.statistics.kills === 0) this.toast("WASD move · mouse mira · segure o botão esquerdo para atacar", "#9be4ff");
+    if (run.statistics.kills === 0) this.toast("WASD to move · mouse to aim · hold left click to attack", "#9be4ff");
   }
 
   // ---------------------------------------------------------------- HUD
@@ -381,20 +381,20 @@ export class Ui {
       <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
       <div id="banner" data-r="banner"></div>
       <canvas id="minimap" width="176" height="176"></canvas>
-      <div class="hud-help">1 e 2 spells · H apressar a onda · I status · Esc pausa<br>F3 desempenho</div>
+      <div class="hud-help">1 and 2 spells · H hasten the wave · I status · Esc pause<br>F3 performance</div>
       <div id="bossbar" class="hidden" data-r="boss"><h3 data-r="bossName"></h3><div class="bar"><i data-r="bossFill"></i><span data-r="bossText"></span></div></div>
       <div id="hint" class="hidden" data-r="hint"></div>
       <div id="perf" class="hidden" data-r="perf"></div>
       <div id="toasts"></div>
       <div class="hud-bottom">
         <div class="skills">
-          <div class="level-badge"><div><small>NÍVEL</small><span data-r="level"></span></div></div>
-          <div class="skill"><kbd>ESQ</kbd>⚔️</div>
-          <div class="skill-wrap"><div class="skill big" data-r="techBox"><kbd>DIR</kbd>✨<div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div></div>
+          <div class="level-badge"><div><small>LEVEL</small><span data-r="level"></span></div></div>
+          <div class="skill"><kbd>LMB</kbd>⚔️</div>
+          <div class="skill-wrap"><div class="skill big" data-r="techBox"><kbd>RMB</kbd>✨<div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div></div>
             <small class="skill-name" data-r="techName"></small></div>
           ${[0, 1].map((i) => `<div class="skill-wrap"><div class="skill spell" data-r="spBox${i}"><kbd>${i + 1}</kbd><span data-r="spIcon${i}"></span><div class="cd" data-r="spCd${i}"></div><div class="cdn" data-r="spN${i}"></div></div>
             <small class="skill-name" data-r="spName${i}"></small></div>`).join("")}
-          <div class="skill"><kbd>ESPAÇO</kbd>💨<div class="cd" data-r="dashCd"></div></div>
+          <div class="skill"><kbd>SPACE</kbd>💨<div class="cd" data-r="dashCd"></div></div>
           <div class="skill"><kbd>F</kbd>🧪<div class="cd" data-r="potCd"></div><div class="cdn" data-r="potN"></div></div>
         </div>
         <div class="bar"><i data-r="hpFill"></i><span data-r="hpText"></span></div>
@@ -418,7 +418,7 @@ export class Ui {
       if (r[`spName${i}`].textContent !== name) {
         r[`spName${i}`].textContent = name;
         r[`spIcon${i}`].textContent = slot ? (SPELL_ICON[slot.id] ?? "✦") : "";
-        box.title = slot && isSpellKey(slot.id) ? `${spellName(slot.id)} — ${SPELL_TEXT[slot.id]}` : "Espaço de spell vazio";
+        box.title = slot && isSpellKey(slot.id) ? `${spellName(slot.id)} — ${SPELL_TEXT[slot.id]}` : "Empty spell slot";
       }
       const cd = g.spells.cooldown[i] ?? 0;
       const max = st?.cooldown ?? 1;
@@ -434,7 +434,7 @@ export class Ui {
     this.r.zone.textContent = z.name;
     const w = this.game.run.wave;
     const first = w - ((w - 1) % 5);
-    this.r.zoneSub.textContent = `${z.subtitle} · ondas ${first}–${first + 4}`;
+    this.r.zoneSub.textContent = `${z.subtitle} · waves ${first}–${first + 4}`;
   }
 
   private updateHud(): void {
@@ -463,41 +463,41 @@ export class Ui {
     r.potN.textContent = pc > 0 ? String(Math.ceil(pc)) : "";
     const pend = g.run.pendingLevelUps;
     r.points.classList.toggle("hidden", pend <= 0);
-    r.points.textContent = `+${pend} melhoria${pend > 1 ? "s" : ""} no fim da onda`;
+    r.points.textContent = `+${pend} upgrade${pend > 1 ? "s" : ""} at the end of the wave`;
     (this.hud.querySelector("#vignette") as HTMLElement).style.opacity = String(Math.max(p.hurtT * 0.6, p.hp / s.maxHp < 0.25 ? 0.35 : 0));
     const boss = g.boss;
     const showBoss = !!boss && g.bossEngaged && !boss.dead;
     r.boss.classList.toggle("hidden", !showBoss);
     if (showBoss && boss) {
-      r.bossName.textContent = `${boss.ambush ? "Ambush: " : ""}${boss.boss!.name} — ${boss.boss!.title}${boss.enraged ? " (enfurecido)" : ""}`;
+      r.bossName.textContent = `${boss.ambush ? "Ambush: " : ""}${boss.boss!.name} — ${boss.boss!.title}${boss.enraged ? " (enraged)" : ""}`;
       r.bossFill.style.width = `${(boss.hp / boss.maxHp) * 100}%`;
       r.bossText.textContent = `${Math.ceil(boss.hp)} / ${boss.maxHp}`;
     }
     // onda: número, relógio, Apressar
     const n = g.run.wave;
-    const total = n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : " · sem fim";
-    r.waveN.textContent = `Onda ${n}${total}`;
+    const total = n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : " · endless";
+    r.waveN.textContent = `Wave ${n}${total}`;
     const w = g.wave;
     let t = "";
-    if (g.phase === "walk") t = "vá até o círculo";
-    else if (g.phase === "intro") t = "prepare-se";
+    if (g.phase === "walk") t = "go to the circle";
+    else if (g.phase === "intro") t = "get ready";
     else if (g.phase === "fight" && w) {
       const left = Math.ceil(g.waveTimeLeft);
-      t = w.isBossWave ? (w.heldByBoss ? "derrote o chefe" : `${fmtTime(left)} · chefe`) : fmtTime(left);
-      if (w.hastened) t += " · apressada";
-    } else if (g.phase === "cleared") t = "concluída";
-    else if (g.phase === "portal") t = "portal aberto";
+      t = w.isBossWave ? (w.heldByBoss ? "defeat the boss" : `${fmtTime(left)} · boss`) : fmtTime(left);
+      if (w.hastened) t += " · hastened";
+    } else if (g.phase === "cleared") t = "cleared";
+    else if (g.phase === "portal") t = "portal open";
     r.waveT.textContent = t;
     const can = canHasten(w);
     r.hasten.classList.toggle("hidden", !can);
-    if (can && w) r.hasten.textContent = `H apressar +${Math.round(hastenBonus(w) * 100)}%`;
-    r.gold.textContent = `${g.run.gold} ouro`;
+    if (can && w) r.hasten.textContent = `H hasten +${Math.round(hastenBonus(w) * 100)}%`;
+    r.gold.textContent = `${g.run.gold} gold`;
     r.boss.style.top = "64px";
-    const hint = g.nearPortal ? "E — seguir para a próxima zona" : g.phase === "walk" && g.playerAlive ? `Entre no círculo para começar a onda ${n}` : "";
+    const hint = g.nearPortal ? "E — go on to the next zone" : g.phase === "walk" && g.playerAlive ? `Step into the circle to start wave ${n}` : "";
     if (r.hint.textContent !== hint) r.hint.textContent = hint;
     r.hint.classList.toggle("hidden", !hint || !!this.overlay);
     if (this.frameN % 15 === 0 && !r.perf.classList.contains("hidden")) {
-      r.perf.textContent = `${Math.round(g.fps)} fps · GPU ${g.pipeline.gpuMs < 0 ? "?" : g.pipeline.gpuMs.toFixed(1) + " ms"} · qualidade ${QUALITY[g.quality]} · ${g.pipeline.bufferSize.x}×${g.pipeline.bufferSize.y} (${Math.round(g.resScale * 100)}%)`;
+      r.perf.textContent = `${Math.round(g.fps)} fps · GPU ${g.pipeline.gpuMs < 0 ? "?" : g.pipeline.gpuMs.toFixed(1) + " ms"} · quality ${QUALITY[g.quality]} · ${g.pipeline.bufferSize.x}×${g.pipeline.bufferSize.y} (${Math.round(g.resScale * 100)}%)`;
     }
     if (this.frameN++ % 5 === 0) this.drawMinimap();
   }
@@ -573,44 +573,44 @@ export class Ui {
     const panel = this.overlayKind === "status" ? (this.overlay!.firstChild as HTMLElement) : this.open("status", "status");
     const pct = (v: number) => `${Math.round(v * 100)}%`;
     const spellLine = (name: string, level: number, note: string) =>
-      `<div class="relic">${name} <small>nv ${level}/${SPELL_MAX_LEVEL}${note ? " · " + note : ""}</small></div>`;
+      `<div class="relic">${name} <small>Lv ${level}/${SPELL_MAX_LEVEL}${note ? " · " + note : ""}</small></div>`;
     const spells = [
-      spellLine(h.technique.name, run.technique.level, "técnica"),
-      ...run.spells.map((sp) => spellLine(spellName(sp.id), sp.level, sp.evolution ? "evoluída" : "")),
+      spellLine(h.technique.name, run.technique.level, "technique"),
+      ...run.spells.map((sp) => spellLine(spellName(sp.id), sp.level, sp.evolution ? "evolved" : "")),
     ];
     panel.innerHTML = `
       <div>
         <h2 style="color:${hex(h.color)}">${h.name}</h2>
-        <p class="sub">${h.title} · nível ${run.level} · ${run.xp}/${run.xpToNext} XP</p>
-        <p class="sub">onda ${run.wave} de ${TOTAL_WAVES}${run.endless ? " · sem fim" : ""} · ${run.gold} ouro · seed ${run.seedCode}</p>
-        <div class="section">Ficha</div>
+        <p class="sub">${h.title} · level ${run.level} · ${run.xp}/${run.xpToNext} XP</p>
+        <p class="sub">wave ${run.wave} of ${TOTAL_WAVES}${run.endless ? " · endless" : ""} · ${run.gold} gold · seed ${run.seedCode}</p>
+        <div class="section">Attributes</div>
         <div class="statlist">
-          <span>Vida</span><b>${s.maxHp}</b>
-          <span>Dano por golpe</span><b>${Math.round(s.damage * h.auto.damage)}</b>
-          <span>Ataques por segundo</span><b>${(h.auto.rate * s.attackSpeed).toFixed(2)}</b>
-          <span>Crítico</span><b>${pct(s.critChance)} · x${s.critDamage.toFixed(2)}</b>
-          <span>Armadura</span><b>${Math.round(s.armor)} (-${pct(1 - s.damageTaken)} dano)</b>
-          <span>Esquiva</span><b>${pct(s.dodge)}</b>
-          <span>Regeneração</span><b>${s.regen.toFixed(1)}/s</b>
-          <span>Movimento</span><b>${s.moveSpeed.toFixed(1)}</b>
-          <span>Alcance</span><b>+${pct(s.range - 1)}</b>
-          <span>Recarga da técnica</span><b>${(g.tech?.cooldown ?? h.technique.cooldown * s.cooldownMult).toFixed(1)} s</b>
-          <span>XP ganho</span><b>+${pct(s.xp - 1)}</b>
-          <span>Ouro ganho</span><b>+${pct(s.gold - 1)}</b>
+          <span>HP</span><b>${s.maxHp}</b>
+          <span>Damage per hit</span><b>${Math.round(s.damage * h.auto.damage)}</b>
+          <span>Attacks per second</span><b>${(h.auto.rate * s.attackSpeed).toFixed(2)}</b>
+          <span>Crit</span><b>${pct(s.critChance)} · x${s.critDamage.toFixed(2)}</b>
+          <span>Armor</span><b>${Math.round(s.armor)} (-${pct(1 - s.damageTaken)} damage)</b>
+          <span>Dodge</span><b>${pct(s.dodge)}</b>
+          <span>Regeneration</span><b>${s.regen.toFixed(1)}/s</b>
+          <span>Move Speed</span><b>${s.moveSpeed.toFixed(1)}</b>
+          <span>Range</span><b>+${pct(s.range - 1)}</b>
+          <span>Technique Cooldown</span><b>${(g.tech?.cooldown ?? h.technique.cooldown * s.cooldownMult).toFixed(1)} s</b>
+          <span>XP earned</span><b>+${pct(s.xp - 1)}</b>
+          <span>Gold earned</span><b>+${pct(s.gold - 1)}</b>
         </div>
       </div>
       <div>
         <div class="section" style="margin-top:0">Spells</div>
         <div class="relics">${spells.join("")}</div>
-        <div class="section">Melhorias (${run.upgradesTaken.length})</div>
+        <div class="section">Upgrades (${run.upgradesTaken.length})</div>
         <div class="relics">${run.upgradesTaken.length ? run.upgradesTaken.map((id, i) => {
           const t = run.upgradeTiers[i] ?? "common";
           return `<div class="relic" style="border-color:${TIER_COLOR[t]}" title="${TIER_LABEL[t]}">${UPGRADE_BY_ID[id]?.name ?? id}</div>`;
-        }).join("") : `<span style="color:var(--muted)">Suba de nível e escolha no fim da onda.</span>`}</div>
-        <div class="section">Relíquias (${run.relics.length})</div>
+        }).join("") : `<span style="color:var(--muted)">Level up and choose at the end of the wave.</span>`}</div>
+        <div class="section">Relics (${run.relics.length})</div>
         <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic" data-relic="${id}" style="border-color:${hex(RELICS[id].color)}">${RELICS[id].name}</div>`).join("")
-          : `<span style="color:var(--muted)">Derrote um chefe para escolher a primeira.</span>`}</div>
-        <div class="row end"><button data-act="close">Fechar (I)</button></div>
+          : `<span style="color:var(--muted)">Defeat a boss to pick the first one.</span>`}</div>
+        <div class="row end"><button data-act="close">Close (I)</button></div>
       </div>`;
     panel.onclick = (ev) => {
       if ((ev.target as HTMLElement).closest("[data-act=close]")) this.close();
@@ -619,7 +619,7 @@ export class Ui {
       const rel = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]");
       if (rel) {
         const d = RELICS[rel.dataset.relic!];
-        return this.showTip(`<h4 style="color:${hex(d.color)}">${d.name}</h4><div class="meta">Relíquia ${RELIC_RARITY[d.rarity]}</div>${statLines(d.stats)}`, ev);
+        return this.showTip(`<h4 style="color:${hex(d.color)}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>${statLines(d.stats)}`, ev);
       }
       this.tip.classList.add("hidden");
     };
@@ -635,13 +635,13 @@ export class Ui {
   }
 
   // ---------------------------------------------------------------- relíquia / pausa / morte
-  private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Chefe derrotado!"): void {
+  private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!"): void {
     const panel = this.open("relic", "relic");
     panel.style.width = "min(820px, 96vw)";
-    panel.innerHTML = `<h2>${title}</h2><p class="sub">Escolha uma relíquia. O bônus é permanente.</p>
+    panel.innerHTML = `<h2>${title}</h2><p class="sub">Choose a relic. The bonus is permanent.</p>
       <div class="cards">${ids.map((id) => {
         const d = RELICS[id];
-        return `<div class="card" data-relic="${id}" style="--cc:${hex(d.color)}"><div class="meta">Relíquia ${RELIC_RARITY[d.rarity]}</div>
+        return `<div class="card" data-relic="${id}" style="--cc:${hex(d.color)}"><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
           <h3>${d.name}</h3>${statLines(d.stats)}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
@@ -660,7 +660,7 @@ export class Ui {
     const panel = this.open("map", "map");
     panel.style.width = "min(860px, 96vw)";
     const next = g.run.wave + 1;
-    panel.innerHTML = `<h2>Mapa da partida</h2><p class="sub">Escolha o caminho da onda ${next}.</p>
+    panel.innerHTML = `<h2>Run map</h2><p class="sub">Choose the path for wave ${next}.</p>
       <div class="cards">${cards.map((c, i) => mapCardHtml(c, i)).join("")}</div>`;
     panel.onclick = (ev) => {
       const el = (ev.target as HTMLElement).closest<HTMLElement>("[data-card]");
@@ -680,8 +680,8 @@ export class Ui {
     const cost = rerollCost(g.run);
     const left = rerollsLeft(L.rerolls);
     const can = left > 0 && g.run.gold >= cost;
-    panel.innerHTML = `<h2>Nível ${g.run.level - g.run.pendingLevelUps + 1}${L.total > 1 ? ` <small>(${L.index} de ${L.total})</small>` : ""}</h2>
-      <p class="sub">Escolha uma melhoria. Ela vale até o fim da partida.</p>
+    panel.innerHTML = `<h2>Level ${g.run.level - g.run.pendingLevelUps + 1}${L.total > 1 ? ` <small>(${L.index} of ${L.total})</small>` : ""}</h2>
+      <p class="sub">Choose an upgrade. It lasts until the end of the run.</p>
       <div class="cards">${L.ids.map((id, i) => {
         const u = UPGRADE_BY_ID[id];
         const t = L.tiers[i];
@@ -689,7 +689,7 @@ export class Ui {
         return `<div class="card" data-up="${i}" style="--cc:${TIER_COLOR[t]}"><div class="meta">${TIER_LABEL[t]}</div>
           <h3>${u.name}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}</div>`;
       }).join("")}</div>
-      <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Trocar as 3 — ${cost} ouro${left > 0 ? "" : " (já trocou)"}</button></div>`;
+      <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost} gold${left > 0 ? "" : " (already rerolled)"}</button></div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=reroll]")) {
@@ -707,24 +707,24 @@ export class Ui {
     const g = this.game;
     const panel = this.open("pause", "pause");
     const mins = Math.floor(g.run.statistics.elapsed / 60);
-    panel.innerHTML = `<h2>Pausa</h2><p class="sub">onda ${g.run.wave} · ${g.run.gold} ouro · ${g.run.statistics.kills} abates · ${mins} min de jogo · seed ${g.run.seedCode}</p>
+    panel.innerHTML = `<h2>Paused</h2><p class="sub">wave ${g.run.wave} · ${g.run.gold} gold · ${g.run.statistics.kills} kills · ${mins} min played · seed ${g.run.seedCode}</p>
       <div class="section" style="color:${hex(g.hero.color)}">${g.hero.name} — ${g.hero.title}</div>
       ${heroKit(g.hero, g.tech?.cooldown ?? g.hero.technique.cooldown * g.stats.cooldownMult)}
       <div class="controls">
-        <kbd>W A S D</kbd><span>Mover</span>
-        <kbd>Mouse</kbd><span>Mirar</span>
-        <kbd>Botão esquerdo</kbd><span>Atacar (segure)</span>
-        <kbd>Botão direito / Q</kbd><span>Técnica do herói: ${g.hero.technique.name}</span>
-        <kbd>Espaço</kbd><span>Esquiva (invulnerável por um instante)</span>
-        <kbd>F</kbd><span>Poção de cura</span>
-        <kbd>H</kbd><span>Apressar a onda (depois de 5 s; mais recompensa, inimigos mais rápidos)</span>
-        <kbd>E</kbd><span>Entrar no portal (depois do chefe da zona)</span>
-        <kbd>I / Tab</kbd><span>Status da partida</span>
-        <kbd>Roda do mouse</kbd><span>Aproximar ou afastar a câmera</span>
-        <kbd>F3</kbd><span>Mostrar quadros por segundo</span>
+        <kbd>W A S D</kbd><span>Move</span>
+        <kbd>Mouse</kbd><span>Aim</span>
+        <kbd>Left click</kbd><span>Attack (hold)</span>
+        <kbd>Right click / Q</kbd><span>Hero technique: ${g.hero.technique.name}</span>
+        <kbd>Space</kbd><span>Dodge (invulnerable for an instant)</span>
+        <kbd>F</kbd><span>Healing potion</span>
+        <kbd>H</kbd><span>Hasten the wave (after 5 s; more reward, faster enemies)</span>
+        <kbd>E</kbd><span>Enter the portal (after the zone boss)</span>
+        <kbd>I / Tab</kbd><span>Run status</span>
+        <kbd>Mouse wheel</kbd><span>Zoom the camera in or out</span>
+        <kbd>F3</kbd><span>Show frames per second</span>
       </div>
-      <div class="row end"><button data-act="quality">Qualidade: ${QUALITY[g.quality]}</button><button data-act="mute">${g.audio.muted ? "Ligar som" : "Desligar som"}</button>
-        <button data-act="title">Sair para o título</button><button class="primary" data-act="close">Continuar</button></div>`;
+      <div class="row end"><button data-act="quality">Quality: ${QUALITY[g.quality]}</button><button data-act="mute">${g.audio.muted ? "Sound on" : "Sound off"}</button>
+        <button data-act="title">Quit to title</button><button class="primary" data-act="close">Resume</button></div>`;
     panel.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
       if (act === "close") this.close();
@@ -748,10 +748,10 @@ export class Ui {
   /** Vencer a onda 20: a partida já conta como vencida; seguir leva ao modo sem fim (R24). */
   private showVictory(): void {
     const panel = this.open("victory", "victory");
-    panel.innerHTML = `<h2 style="color:var(--gold)">Vitória!</h2>
-      <p>Você venceu a onda 20: esta partida já conta como vencida.</p>
-      <p class="sub">Continuar leva ao modo sem fim: ondas mais fortes a cada rodada, chefe a cada 5 ondas, o mapa segue. Morrer depois não tira a vitória; a maior onda vira um recorde separado.</p>
-      <div class="row end"><button data-act="end">Encerrar com a vitória</button><button class="primary" data-act="endless">Continuar (sem fim)</button></div>`;
+    panel.innerHTML = `<h2 style="color:var(--gold)">Victory!</h2>
+      <p>You beat wave 20: this run already counts as a win.</p>
+      <p class="sub">Continuing leads to endless mode: stronger waves each round, a boss every 5 waves, and the map goes on. Dying later does not take the win away; your best wave becomes a separate record.</p>
+      <div class="row end"><button data-act="end">End with the win</button><button class="primary" data-act="endless">Continue (endless)</button></div>`;
     panel.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
       if (act === "endless") this.close();
@@ -771,35 +771,35 @@ export class Ui {
     const best = rec.best[`${run.heroId}/${run.difficultyId}`];
     const setup: RunSetup = { heroId: run.heroId, difficultyId: run.difficultyId, startingSpell: run.startingSpell };
     const s = run.statistics;
-    const n = (v: number) => Math.round(v).toLocaleString("pt-BR");
+    const n = (v: number) => Math.round(v).toLocaleString("en-US");
     const diff = DIFFICULTIES[run.difficultyId].name;
     const sub = kind === "death"
-      ? `A partida terminou na onda ${run.wave}${run.killedBy ? ` — golpe final: ${run.killedBy}` : ""}.${run.victory ? " A vitória da onda 20 continua valendo." : ""}`
-      : `Você completou as 20 ondas (${diff}).`;
+      ? `The run ended on wave ${run.wave}${run.killedBy ? ` — final blow: ${run.killedBy}` : ""}.${run.victory ? " The wave 20 win still counts." : ""}`
+      : `You cleared all 20 waves (${diff}).`;
     const panel = this.open("results", "results");
-    panel.innerHTML = `<h2 style="color:${kind === "death" ? "var(--bad)" : "var(--gold)"}">${kind === "death" ? "Você caiu" : "Vitória!"}</h2>
+    panel.innerHTML = `<h2 style="color:${kind === "death" ? "var(--bad)" : "var(--gold)"}">${kind === "death" ? "You fell" : "Victory!"}</h2>
       <p class="sub">${sub}</p>
       <div class="results-cols">
         <div>
-          <div class="kv"><span>Herói</span><b>${g.hero.name} · ${diff}</b></div>
-          <div class="kv"><span>Onda / nível</span><b>${run.wave} / ${run.level}</b></div>
-          <div class="kv"><span>Abates</span><b>${n(s.kills)}</b></div>
-          <div class="kv"><span>Dano causado</span><b>${n(s.damage)}</b></div>
-          <div class="kv"><span>Dano recebido</span><b>${n(s.damageTaken)}</b></div>
-          <div class="kv"><span>Cura</span><b>${n(s.healed)}</b></div>
-          <div class="kv"><span>Ouro ganho / gasto</span><b>${n(s.goldEarned)} / ${n(s.goldSpent)}</b></div>
-          <div class="kv"><span>Tempo de combate</span><b>${fmtTime(Math.floor(s.elapsed))}</b></div>
-          <div class="kv"><span>Melhorias / relíquias</span><b>${run.upgradesTaken.length} / ${run.relics.length}</b></div>
+          <div class="kv"><span>Hero</span><b>${g.hero.name} · ${diff}</b></div>
+          <div class="kv"><span>Wave / level</span><b>${run.wave} / ${run.level}</b></div>
+          <div class="kv"><span>Kills</span><b>${n(s.kills)}</b></div>
+          <div class="kv"><span>Damage dealt</span><b>${n(s.damage)}</b></div>
+          <div class="kv"><span>Damage taken</span><b>${n(s.damageTaken)}</b></div>
+          <div class="kv"><span>Healing</span><b>${n(s.healed)}</b></div>
+          <div class="kv"><span>Gold earned / spent</span><b>${n(s.goldEarned)} / ${n(s.goldSpent)}</b></div>
+          <div class="kv"><span>Combat time</span><b>${fmtTime(Math.floor(s.elapsed))}</b></div>
+          <div class="kv"><span>Upgrades / relics</span><b>${run.upgradesTaken.length} / ${run.relics.length}</b></div>
         </div>
         <div>
-          <div class="section">Relíquias (${run.relics.length})</div>
-          <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic" style="border-color:${hex(RELICS[id].color)}">${RELICS[id].name}</div>`).join("") : `<p class="note">Nenhuma relíquia nesta partida.</p>`}</div>
+          <div class="section">Relics (${run.relics.length})</div>
+          <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic" style="border-color:${hex(RELICS[id].color)}">${RELICS[id].name}</div>`).join("") : `<p class="note">No relics this run.</p>`}</div>
           <div class="section">Seed</div><p><b style="letter-spacing:2px">${run.seedCode}</b></p>
-          <div class="section">Pontuação</div>
-          <p style="color:${isBest ? "var(--gold)" : "inherit"}">${isBest ? `Novo recorde! (${g.hero.name} · ${diff})` : `Recorde (${g.hero.name} · ${diff}): onda ${best.wave}, ${n(best.kills)} abates`}</p>
+          <div class="section">Score</div>
+          <p style="color:${isBest ? "var(--gold)" : "inherit"}">${isBest ? `New record! (${g.hero.name} · ${diff})` : `Record (${g.hero.name} · ${diff}): wave ${best.wave}, ${n(best.kills)} kills`}</p>
         </div>
       </div>
-      <div class="row end"><button data-act="menu">Menu principal</button><button data-act="seed">Repetir esta seed</button><button class="primary" data-act="again">Jogar de novo</button></div>`;
+      <div class="row end"><button data-act="menu">Main menu</button><button data-act="seed">Replay this seed</button><button class="primary" data-act="again">Play again</button></div>`;
     panel.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
       if (act === "again") this.newRunWith(setup);
@@ -839,7 +839,7 @@ function mapCardHtml(c: MapCard, i: number): string {
       return [`<div class="stat${good ? "" : " neg"}">${pct > 0 ? "+" : ""}${pct}% ${label}</div>`];
     });
     if (room.ambush) {
-      lines.push(`<div class="stat neg">Chefe com ${Math.round(room.ambush.hp * 100)}% da vida e ${Math.round(room.ambush.damage * 100)}% do dano</div>`);
+      lines.push(`<div class="stat neg">Boss with ${Math.round(room.ambush.hp * 100)}% HP and ${Math.round(room.ambush.damage * 100)}% damage</div>`);
     }
     // perigos de chão e poças de cura ainda não existem aqui (M20-08)
     const notes = (room.notes ?? []).map((t) => `<p class="note">${t}</p>`);

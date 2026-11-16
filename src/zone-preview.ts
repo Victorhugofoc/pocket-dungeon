@@ -182,7 +182,7 @@ function frame(now: number): void {
   renderer.info.reset();
   pipeline.render();
   const i = renderer.info.render;
-  hint.textContent = `${zone.name} · seed ${seed} · ${current} · ${fps.toFixed(0)} fps · ${i.calls} draw calls · ${(i.triangles / 1000).toFixed(0)} mil triângulos`;
+  hint.textContent = `${zone.name} · seed ${seed} · ${current} · ${fps.toFixed(0)} fps · ${i.calls} draw calls · ${(i.triangles / 1000).toFixed(0)}k triangles`;
   requestAnimationFrame(frame);
 }
 

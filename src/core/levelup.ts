@@ -164,8 +164,8 @@ export function rerollsLeft(uses: number): number {
 /** level_up.lua `apply`: grava a melhoria, a raridade e as tags, e gasta um nível pendente. */
 export function applyUpgrade(run: RunState, id: string, tier: UpgradeTier): UpgradeDef {
   const u = UPGRADE_BY_ID[id];
-  if (!u) throw new Error(`melhoria desconhecida: ${id}`);
-  if (!isAvailable(run, u)) throw new Error(`melhoria indisponível: ${id}`);
+  if (!u) throw new Error(`unknown upgrade: ${id}`);
+  if (!isAvailable(run, u)) throw new Error(`unavailable upgrade: ${id}`);
   const t = canTier(u) ? tier : "common";
   run.upgradesTaken.push(id);
   run.upgradeTiers.push(t);

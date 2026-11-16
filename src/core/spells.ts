@@ -95,7 +95,7 @@ export function isSpellId(id: string): id is SpellId {
 }
 
 function spellDef(id: string): SpellDef {
-  if (!isSpellId(id)) throw new Error(`spell desconhecida: ${id}`);
+  if (!isSpellId(id)) throw new Error(`unknown spell: ${id}`);
   return SPELLS[id];
 }
 
@@ -131,7 +131,7 @@ export function collectSpellEffects(slot: SpellSlotLike, relicEffects: readonly 
       if (v === undefined) continue;
       if (k in lists) lists[k as SpellListKey].push(v);
       else if (k in flats) flats[k as SpellFlatKey] += v;
-      else throw new Error(`efeito de spell desconhecido: ${k}`);
+      else throw new Error(`unknown spell effect: ${k}`);
     }
   };
   const reached: string[] = [];
@@ -140,7 +140,7 @@ export function collectSpellEffects(slot: SpellSlotLike, relicEffects: readonly 
   }
   for (const modId of slot.modifiers ?? []) {
     const m = modifierDef(def.id, modId);
-    if (!m) throw new Error(`modificador ${modId} não é do conjunto de ${def.id}`);
+    if (!m) throw new Error(`modifier ${modId} is not in the set of ${def.id}`);
     add(m.effect);
   }
   for (const e of relicEffects) add(e);

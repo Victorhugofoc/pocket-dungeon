@@ -132,9 +132,9 @@ export const DIFFICULTIES: Record<DifficultyId, Difficulty> = {
 };
 /** run_setup.lua: o texto de cada dificuldade na escolha. */
 export const DIFFICULTY_TEXT: Readonly<Record<DifficultyId, string>> = {
-  easy: "Inimigos mais fracos e lentos. Recompensa x0.90.",
-  normal: "A experiência de referência. Wave 20 é um teste real da build.",
-  hard: "Inimigos muito mais fortes. Recompensa x1.35.",
+  easy: "Weaker, slower enemies. Rewards x0.90.",
+  normal: "The reference experience. Wave 20 is a real test of your build.",
+  hard: "Much stronger enemies. Rewards x1.35.",
 };
 export const DEPTHS_STEP = 0.08;
 export const DEPTHS_FROM = 6;

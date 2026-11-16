@@ -477,7 +477,7 @@ export class Enemy {
     if (!this.enraged && this.hp < this.maxHp * TUNING.boss.enrageAt) {
       this.enraged = true;
       game.fx.shockwave(this.x, this.z, 8, 0xff2a1a, 0.6);
-      game.fx.text(this.x, this.rig.height + 1, this.z, "ENFURECIDO!", "crit");
+      game.fx.text(this.x, this.rig.height + 1, this.z, "ENRAGED!", "crit");
       game.audio.play("boss");
       this.startRoar(TUNING.boss.enrageRoarTime);
       return;
@@ -607,6 +607,6 @@ export class Enemy {
 
 export function enemyDef(id: string): EnemyDef {
   const d = ENEMIES[id];
-  if (!d) throw new Error("inimigo desconhecido: " + id);
+  if (!d) throw new Error("unknown enemy: " + id);
   return d;
 }
