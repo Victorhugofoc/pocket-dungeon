@@ -18,7 +18,7 @@ import { ENEMIES } from "../src/data/enemies";
 import { UPGRADE_CAPS, UPGRADES } from "../src/data/upgrades";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
 import { newRun } from "../src/core/run";
-import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, ROOM_BIAS, ROOM_BY_ID, ROOMS } from "../src/data/rooms";
+import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, POOL_TICK, ROOM_BIAS, ROOM_BY_ID, ROOMS, STORM } from "../src/data/rooms";
 import { generateMap, type MapRng } from "../src/core/runmap";
 import { ambushFor, biasedComposition, bossStats, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, targetCount, waveMods } from "../src/core/wave";
 import { Rng } from "../src/core/rng";
@@ -438,6 +438,10 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     expect(COMBAT_ROOM_POOL).toEqual(ROOMS.filter((r) => !r.ambushOnly).map((r) => r.id));
     expect(AMBUSH_DELAY).toBe(TU.AMBUSH_DELAY);
     expect(CURSE_WAVES).toBe(2);
+    const { nearPlayerPx, ...storm } = STORM;
+    expect(storm).toEqual(R.STORM);
+    expect(nearPlayerPx).toBe(110); // fixo em room_effects.lua `spawnStorm`
+    expect(POOL_TICK).toBe(R.POOL_TICK);
   });
 
   it(`mapa da partida: as cartas sorteadas iguais às de run_map.lua em ${MAP_SCEN.length} sorteios`, () => {

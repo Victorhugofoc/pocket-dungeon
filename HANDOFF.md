@@ -3,15 +3,15 @@
 Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada tarefa está no registro de progresso (`docs/roadmap.md`, seção 9) e no git. **Mantenha este arquivo curto:** ao fechar uma tarefa, troque o parágrafo "Agora" em vez de acrescentar.
 
 ## Agora (2026-11-16)
-- **Marco em andamento: M20, partida como no Dungeon Reign** (decisão D13). Feitos: `M20-00` a `M20-06`. A partida tem seed, herói, dificuldade e spell inicial; 20 ondas em 4 zonas (5 ondas por zona, chefes nas ondas 5, 10, 15 e 20); nível com 3 melhorias; mapa da partida entre ondas; morte encerra com tela de resultado e registros; vitória na onda 20 com a escolha do modo sem fim. Sem equipamento.
-- **Próxima tarefa:** `M20-08` (perigos de chão das salas) ou `M20-07` (desbloqueios). Depois, `M6` (spells; D2 e D12: spells em teclas 1 e 2, como no original).
-- **Falta o usuário jogar:** `M20-02` a `M20-06`, `M19-02` a `M19-05` (técnicas dos heróis), `M1-05` (presença de chefe), Ninhada da Vesper. Tudo foi conferido só pelo console.
+- **Marco em andamento: M20, partida como no Dungeon Reign** (decisão D13). Feitos: `M20-00` a `M20-06` e `M20-08`. A partida tem seed, herói, dificuldade e spell inicial; 20 ondas em 4 zonas (5 ondas por zona, chefes nas ondas 5, 10, 15 e 20); nível com 3 melhorias; mapa da partida entre ondas; morte encerra com tela de resultado e registros; vitória na onda 20 com a escolha do modo sem fim; raios e poças de cura nas salas que os têm. Sem equipamento.
+- **Próxima tarefa:** `M20-07` (desbloqueios). Depois, `M6` (spells; D2 e D12: spells em teclas 1 e 2, como no original).
+- **Falta o usuário jogar:** `M20-02` a `M20-06` e `M20-08`, `M19-02` a `M19-05` (técnicas dos heróis), `M1-05` (presença de chefe), Ninhada da Vesper. Tudo foi conferido só pelo console.
 - **Régua de paridade:** `docs/paridade.md` mais `tests/parity.test.ts` (lê os `.lua` do original pelo LuaJIT, `tools/dr-dump.lua`). Toda tarefa do M20 e do M6 confere as linhas dela ali.
 - **Modo de teste ligado:** `TUNING.testBoost` dá dano ×2 e velocidade ×4 aos heróis, a pedido do usuário; voltar para 1 ao balancear. A vida dos chefes ainda leva o corte antigo de 0,55 (`TUNING.boss.hpMult`) até haver spells.
 
 ## Atalhos de teste (console do jogo)
 - `__game.prepareWave(n)` pula para a onda n · `__game.gainXp(200)` e terminar a onda abre as melhorias.
-- `__game.run.room = "boss_ambush"; __game.prepareWave(7)` testa uma sala.
+- `__game.run.room = "boss_ambush"; __game.prepareWave(7)` testa uma sala; `__game.hazards.snapshot()` mostra raios e poças.
 - Morte: `__game.player.iframes = 0; __game.hurtPlayer(99999, "Goblin")`.
 - No painel de navegador do Claude o jogo só avança com o painel visível; oculto, chamar `__game.frame(ts)` em laço.
 - Conferir pelo console (`get_page_text`, `javascript_tool`) e tirar captura só quando a mudança for visual.

@@ -784,8 +784,7 @@ function mapCardHtml(c: MapCard, i: number): string {
       lines.push(`<div class="stat neg">Chefe com ${Math.round(room.ambush.hp * 100)}% da vida e ${Math.round(room.ambush.damage * 100)}% do dano</div>`);
     }
     // perigos de chão e poças de cura ainda não existem aqui (M20-08)
-    const later = room.hazards || room.pools;
-    const notes = (room.notes ?? []).map((t) => `<p class="note">${t}${later && (t.includes("raio") || t.includes("Raios") || t.includes("Poças")) ? " (em breve)" : ""}</p>`);
+    const notes = (room.notes ?? []).map((t) => `<p class="note">${t}</p>`);
     body = `<h3 style="margin-top:6px">${room.name}</h3>${lines.join("")}${notes.join("")}<p class="note">${n.text}</p>`;
   }
   return `<div class="card" data-card="${i}" style="--cc:${n.color}"><div class="meta">${n.name}</div>${body}</div>`;
