@@ -4,6 +4,7 @@ import { newRun } from "../src/core/run";
 import { chooseCard, expireWaveScope, generateMap, nodePool, roomOf, type MapNodeId } from "../src/core/runmap";
 import { startWave, stepWave, waveMods } from "../src/core/wave";
 import { ROOM_BY_ID } from "../src/data/rooms";
+import { startRoomFx, stepRoomFx, stormDps, tickCount } from "../src/core/roomfx";
 
 const OFF = new Set<MapNodeId>(["pact", "event", "shop"]);
 const run = () => newRun({ heroId: "varok", difficultyId: "normal", startingSpell: "fireball", seed: 7, randomSeed: 7 });
@@ -80,5 +81,31 @@ describe("mapa da partida", () => {
     expect(stepWave(w, 0.1, { alive: 0, bossAlive: false }, spawns).completed).toBe(true);
     // na Hard, o corte de vida é o da dificuldade
     expect(startWave(4, new Rng(1), () => true, waveMods(4, "hard", ROOM_BY_ID.boss_ambush)).ambush?.hp).toBe(0.9);
+  });
+
+  it("perigos de chão: raios e poças nos intervalos de room_effects.lua", () => {
+    expect(startRoomFx(null)).toBeNull();
+    expect(startRoomFx(ROOM_BY_ID.blood_moon)).toBeNull();
+    const count = (id: string, secs: number) => {
+      const fx = startRoomFx(ROOM_BY_ID[id])!;
+      let storms = 0, pools = 0;
+      for (let t = 0; t < secs; t += 0.05) {
+        const s = stepRoomFx(fx, 0.05);
+        storms += +s.storm;
+        pools += +s.pool;
+      }
+      return { storms, pools };
+    };
+    expect(count("storm_floor", 30)).toEqual({ storms: 9, pools: 0 }); // a cada 3,25 s
+    expect(count("storm_vault", 30)).toEqual({ storms: 9, pools: 0 });
+    expect(count("fractured_floor", 30)).toEqual({ storms: 16, pools: 0 }); // 3,25 / 1,8 = 1,8 s
+    expect(count("sanctuary_floor", 30)).toEqual({ storms: 0, pools: 5 }); // 5,6 s
+    expect(count("blessed_onslaught", 30)).toEqual({ storms: 0, pools: 6 }); // 4,6 s
+    expect(stormDps(10)).toBe(9);
+    // 4,25 s de raio com tique de 0,5 s: 8 tiques (o 1º aos 0,5 s)
+    const z = { time: 4.25, tickLeft: 0.5, tick: 0.5 };
+    let n = 0;
+    for (let t = 0; t < 6; t += 0.05) n += tickCount(z, 0.05);
+    expect(n).toBe(8);
   });
 });

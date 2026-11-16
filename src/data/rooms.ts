@@ -1,6 +1,6 @@
 // Salas (§9) e salas amaldiçoadas (§10) do mapa da partida, valendo só para a onda seguinte.
 // Fonte em dungeon-idle: src/data/rooms.lua (conferido por tests/parity.test.ts). Os perigos de chão (`hazards`,
-// raios) e as poças de cura (`pools`) estão nos dados, mas o jogo ainda não os faz (M20-08).
+// raios) e as poças de cura (`pools`) seguem src/run/room_effects.lua (núcleo em src/core/roomfx.ts).
 
 /** As chaves da camada da onda em modifier_engine.lua; o que a sala não diz vale 1. */
 export interface RoomMods {
@@ -104,6 +104,12 @@ export const CURSES: readonly RoomDef[] = [
   curse({ id: "deadly_crossroads", name: "Deadly Crossroads",
     mods: { enemyHp: 1.12, enemyDamage: 1.12, enemySpeed: 1.12, enemyCount: 1.20, reward: 1.55 } }),
 ];
+
+/** rooms.lua `STORM` (D-080, provisório lá também): aviso, raio em px, tique, dano por segundo = base + onda × perWave,
+ * chance de cair perto do herói (até `nearPlayerPx`, número fixo em room_effects.lua). Distâncias × TUNING.enemy.pxToUnit. */
+export const STORM = { warning: 0.8, radius: 44, tick: 0.5, dpsBase: 4, dpsPerWave: 0.5, nearPlayerChance: 0.6, nearPlayerPx: 110 } as const;
+/** rooms.lua `POOL_TICK` (D-081): s entre as curas da poça. */
+export const POOL_TICK = 1.0;
 
 export const ROOM_BY_ID: Readonly<Record<string, RoomDef>> = Object.fromEntries([...ROOMS, ...CURSES].map((r) => [r.id, r]));
 

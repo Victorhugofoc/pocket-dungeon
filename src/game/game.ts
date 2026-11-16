@@ -25,6 +25,7 @@ import { Enemy, enemyDef } from "./enemy";
 import { Fx } from "./fx";
 import { IceWalls, type IceWall } from "./icewall";
 import { Rifts, type Rift } from "./rift";
+import { RoomHazards } from "./roomhazards";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -171,6 +172,8 @@ export class Game {
   private bees: Bee[] = [];
   private iceWalls = new IceWalls(this.scene);
   private rifts = new Rifts(this.scene);
+  /** raios e poças de cura da sala (M20-08) */
+  hazards!: RoomHazards;
   private trails: Trail[] = [];
   private icicle = new IcicleCounter();
   /** números da técnica do herói no nível atual (src/core/techniques.ts); null se ainda for a técnica antiga */
@@ -215,6 +218,15 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(38, 1, 1, 400);
     this.pipeline = new Pipeline(this.renderer, this.scene, this.camera);
     this.fx = new Fx(this.scene, textLayer);
+    this.hazards = new RoomHazards({
+      scene: this.scene,
+      fx: this.fx,
+      player: () => ({ x: this.player.x, z: this.player.z, alive: this.playerAlive }),
+      hurt: (n) => this.hurtPlayer(n, "Raio"),
+      heal: (n) => this.heal(n, true),
+      maxHp: () => this.stats.maxHp,
+      zap: () => this.audio.play("zap"),
+    });
     this.input = new Input(canvas);
 
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x334433, 1);
@@ -350,6 +362,7 @@ export class Game {
     const reward = this.bossReward;
     this.bossReward = null;
     reward?.();
+    this.hazards.clear();
     const run = this.run;
     run.wave = wave;
     if (wave > TOTAL_WAVES) run.endless = true;
@@ -428,6 +441,7 @@ export class Game {
     this.bees.length = 0;
     this.iceWalls.clear();
     this.rifts.clear();
+    this.hazards.clear();
     for (const t of this.trails) this.disposeTrail(t);
     this.trails.length = 0;
     this.fx.clear();
@@ -959,6 +973,7 @@ export class Game {
         this.phase = "fight";
         this.phaseT = 0;
         this.wave!.started = true;
+        this.hazards.start(this.mods.room, this.segment, this.run.wave);
         if (this.wave!.isBossWave) this.queueBoss();
       }
       return;
@@ -1102,6 +1117,7 @@ export class Game {
   /** wave_system.lua `complete`: recompensa dos sobreviventes e da onda, quem sobra some, cura do chefe. */
   private completeWave(): void {
     const w = this.wave!;
+    this.hazards.stop();
     const run = this.run;
     let gold = 0, xp = 0, survivors = 0;
     for (const e of this.enemies) {
@@ -1937,6 +1953,7 @@ export class Game {
     }
     this.updateIceWalls(dt, active);
     this.updateZonesOfTech(dt);
+    this.hazards.update(dt, this.time);
   }
 
   private updateCamera(dt: number): void {
