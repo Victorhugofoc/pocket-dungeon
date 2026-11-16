@@ -3,8 +3,8 @@
 // `levelUp`, `addModifier`). Lógica pura: recebe o espaço e os atributos do herói, devolve metros, segundos e
 // multiplicadores sobre o dano do herói, como `techniqueStats`.
 import {
-  MAX_SPELLS, SPELL_FLAT_KEYS, SPELL_LIST_KEYS, SPELL_MAX_LEVEL, SPELL_TUNING, SPELLS, modifierDef,
-  type SpellDef, type SpellEffect, type SpellFlatKey, type SpellId, type SpellKind, type SpellListKey,
+  EVOLUTIONS, MAX_SPELLS, SPELL_FLAT_KEYS, SPELL_LIST_KEYS, SPELL_MAX_LEVEL, SPELL_TUNING, SPELLS, modifierDef,
+  type EvolutionDef, type EvolutionId, type SpellDef, type SpellEffect, type SpellFlatKey, type SpellId, type SpellKind, type SpellListKey,
 } from "../data/spells";
 import { DR_BASE_DAMAGE, DR_BASE_HP, DR_SPELL_POWER } from "../data/techniques";
 import { px, stackMultiplier } from "./techniques";
@@ -28,6 +28,8 @@ export interface SpellSlotLike {
   id: string;
   level: number;
   modifiers?: readonly string[];
+  /** evolução da spell (`EVOLUTIONS`); null ou ausente = sem */
+  evolution?: string | null;
 }
 
 export interface SpellStats {
@@ -82,6 +84,37 @@ export interface SpellStats {
   /** metros */
   knockback?: number;
   stun?: number;
+  // ---- evolução (M6-06): só com `evolution`
+  evolution?: EvolutionId;
+  /** metros (Firewave, Lightning Strike) */
+  length?: number;
+  /** Blizzard e Firestorm: dano de cada tique, sobre o dano do herói */
+  tickDamage?: number;
+  /** Blade Storm: o raio abre até aqui durante o giro (metros) */
+  maxRadius?: number;
+  /** Plague Bloom: quem morre envenenado passa `spreadStacks` acúmulos a quem está a até `spreadRadius` m */
+  spreadRadius?: number;
+  spreadStacks?: number;
+  /** Maelstrom: m/s atrás da mira; arremesso (m), raio do choque (m) e fração do dano do choque */
+  followSpeed?: number;
+  flingDistance?: number;
+  flingRadius?: number;
+  flingFraction?: number;
+  /** Rune Circle: alcance da ligação e largura da linha (m), tique e dano da linha */
+  linkRange?: number;
+  lineWidth?: number;
+  lineTick?: number;
+  lineDamage?: number;
+  /** Spectrum: ângulo e comprimento (m) dos 3 raios, dano deles, saltos do amarelo */
+  splitAngle?: number;
+  splitLength?: number;
+  rayDamage?: number;
+  jumps?: number;
+  jumpRange?: number;
+  jumpDamage?: number;
+  /** Earthen Ward: raio que atrai (m) e golpes até quebrar */
+  lureRadius?: number;
+  wardHits?: number;
 }
 
 interface Collected {
@@ -147,9 +180,18 @@ export function collectSpellEffects(slot: SpellSlotLike, relicEffects: readonly 
   return { lists, flats, reached };
 }
 
+/** A evolução do espaço, se é desta spell (a de outra spell é ignorada). */
+export function slotEvolution(slot: SpellSlotLike): EvolutionDef | undefined {
+  const id = slot.evolution;
+  if (!id || !Object.prototype.hasOwnProperty.call(EVOLUTIONS, id)) return undefined;
+  const evo = EVOLUTIONS[id as EvolutionId];
+  return evo.spell === slot.id ? evo : undefined;
+}
+
 /**
- * spell_stats.lua `compute` (sem evolução). O dano de lá é dividido pelo dano base do herói de lá (8) e vira
- * multiplicador sobre o dano do herói daqui, que já leva o dano percentual global; distâncias passam a metros.
+ * spell_stats.lua `compute`. O dano de lá é dividido pelo dano base do herói de lá (8) e vira multiplicador sobre o
+ * dano do herói daqui, que já leva o dano percentual global; distâncias passam a metros. Com evolução, os números da
+ * forma nova (`EVOLUTIONS`) e a conversão dos modificadores que ela não usa (D-437).
  */
 export function spellStats(
   slot: SpellSlotLike, ctx: SpellContext, relicEffects: readonly SpellEffect[] = [],
@@ -159,25 +201,29 @@ export function spellStats(
   const { lists: L, flats: F, reached } = collectSpellEffects({ ...slot, level }, relicEffects);
   const sp = spMult(ctx.spellPower);
   const levelScale = spellLevelScale(level);
+  const evo = slotEvolution(slot);
   const areaMult = ctx.area * stackMultiplier(L.areaPct);
-  const cooldownMult = Math.max(SPELL_TUNING.cooldownFloor, ctx.cooldownMult * stackMultiplier(L.cooldownPct));
+  const cooldownMult = Math.max(SPELL_TUNING.cooldownFloor,
+    ctx.cooldownMult * stackMultiplier(L.cooldownPct) * (evo?.cooldownMult ?? 1));
   const st: SpellStats = {
     id: def.id, kind: def.kind, level, milestones: reached, levelScale,
     damage: def.baseDamage !== undefined
-      ? ((def.baseDamage + DR_SPELL_POWER * (def.damageScale ?? 0)) * sp * levelScale * stackMultiplier(L.damagePct)) / DR_BASE_DAMAGE
+      ? ((def.baseDamage + DR_SPELL_POWER * (def.damageScale ?? 0)) * sp * levelScale * stackMultiplier(L.damagePct)
+        * (evo?.damageMult ?? 1)) / DR_BASE_DAMAGE
       : 0,
     cooldown: def.cooldown * cooldownMult,
     cooldownMult,
     range: px(def.range) * ctx.range * stackMultiplier(L.rangePct),
     areaMult,
-    radius: px(def.radius ?? 0) * areaMult,
+    radius: px(evo?.radius ?? def.radius ?? 0) * areaMult,
   };
+  if (evo) st.evolution = evo.id;
   if (def.projectileSpeed !== undefined) st.speed = px(def.projectileSpeed);
 
   if (def.burnDps !== undefined) {
     const burnBase = (def.burnDps + DR_SPELL_POWER * SPELL_TUNING.burnSpScale) * sp * (1 + SPELL_TUNING.burnLevelStep * (level - 1));
-    st.burnDps = (burnBase / DR_BASE_DAMAGE) * ctx.status;
-    st.burnDuration = (def.burnDuration ?? 0) + F.burnDurationFlat;
+    st.burnDps = (burnBase / DR_BASE_DAMAGE) * ctx.status * (evo?.burnDpsMult ?? 1);
+    st.burnDuration = (evo?.burnDuration ?? def.burnDuration ?? 0) + F.burnDurationFlat;
     st.volatile = stackChance(L.volatileChance);
   }
   if (def.slow !== undefined) {
@@ -194,28 +240,39 @@ export function spellStats(
   if (def.id === "arcane_bolt") st.echo = stackChance(L.echoChance);
   if (def.heal !== undefined) {
     // como lá, o nível não escala a cura; só os marcos (D-029)
-    st.heal = (def.heal + F.healFlat) / DR_BASE_HP;
-    st.duration = (def.duration ?? 0) + F.durationFlat;
-    st.tick = def.tick;
+    st.heal = ((def.heal + F.healFlat) * (evo?.healMult ?? 1)) / DR_BASE_HP;
+    st.duration = (evo?.duration ?? def.duration ?? 0) + F.durationFlat;
+    st.tick = evo?.tick ?? def.tick;
     st.surge = stackChance(L.surgeChance);
     st.extraFields = F.extraFields;
   }
 
   switch (def.kind) {
     case "orbit":
-      st.blades = (def.blades ?? 0) + F.targets;
+      st.blades = (def.blades ?? 0) + F.targets + (evo?.extraBlades ?? 0);
       st.duration = (def.duration ?? 0) + F.durationFlat;
       st.hitCooldown = def.hitCooldown;
+      if (evo?.maxRadius !== undefined) st.maxRadius = px(evo.maxRadius);
       break;
     case "nova":
       st.stacks = (def.stacks ?? 0) + F.targets + (ctx.poisonStacks ?? 0);
       st.duration = (def.duration ?? 0) + F.durationFlat;
+      if (evo) {
+        st.spreadRadius = px(evo.spreadRadius ?? 0);
+        st.spreadStacks = evo.spreadStacks;
+      }
       break;
     case "vortex":
       st.duration = (def.duration ?? 0) + F.durationFlat;
       st.tick = def.tick;
       st.pull = px(def.pull ?? 0) * stackMultiplier(L.pullPct);
       st.bossPull = def.bossPull;
+      if (evo) {
+        st.followSpeed = px(evo.followSpeed ?? 0);
+        st.flingDistance = px(evo.flingDistance ?? 0);
+        st.flingRadius = px(evo.flingRadius ?? 0);
+        st.flingFraction = evo.flingFraction;
+      }
       break;
     case "rune":
       st.duration = (def.duration ?? 0) + F.durationFlat;
@@ -224,11 +281,30 @@ export function spellStats(
       st.trigger = px(def.trigger ?? 0);
       st.arm = def.arm;
       st.doubleHit = stackChance(L.doubleHitChance);
+      if (evo) {
+        st.linkRange = px(evo.linkRange ?? 0);
+        st.lineWidth = px(evo.lineWidth ?? 0);
+        st.lineTick = evo.lineTick;
+        st.lineDamage = st.damage * (evo.lineFraction ?? 0);
+      }
       break;
     case "beam":
       st.duration = (def.duration ?? 0) + F.durationFlat;
       st.tick = def.tick;
       st.width = px(def.width ?? 0) * stackMultiplier(L.widthPct) * areaMult;
+      if (evo) {
+        // Spectrum: os 3 raios coloridos a partir do primeiro inimigo
+        st.splitAngle = evo.splitAngle;
+        st.splitLength = px(evo.splitLength ?? 0);
+        st.rayDamage = st.damage * (evo.rayFraction ?? 0);
+        st.burnDps = st.damage * (evo.burnFraction ?? 0) * ctx.status;
+        st.burnDuration = evo.burnDuration;
+        st.slow = evo.slow;
+        st.slowDuration = (evo.slowDuration ?? 0) * ctx.status;
+        st.jumps = evo.jumps;
+        st.jumpRange = px(evo.jumpRange ?? 0);
+        st.jumpDamage = st.damage * (evo.jumpFraction ?? 0);
+      }
       break;
     case "totem":
       st.duration = (def.duration ?? 0) + F.durationFlat;
@@ -236,9 +312,51 @@ export function spellStats(
       st.knockback = px(def.knockback ?? 0) * stackMultiplier(L.knockbackPct);
       if (F.rootFlat > 0) st.stun = F.rootFlat;
       st.doubleHit = stackChance(L.doubleHitChance);
+      if (evo) {
+        // Earthen Ward: o ídolo, e um piso de recarga para não ficar de pé o tempo todo (D-511)
+        st.lureRadius = px(evo.lureRadius ?? 0);
+        st.wardHits = evo.wardHits;
+        st.cooldown = Math.max(st.cooldown, evo.minCooldown ?? 0);
+      }
       break;
   }
+  // as evoluções das spells de projétil, corrente e campo trocam a forma (muralha, linha, tempestade, aura)
+  if (evo && ["projectile", "chain", "field"].includes(def.kind)) {
+    if (evo.width !== undefined) st.width = px(evo.width);
+    if (evo.length !== undefined) st.length = px(evo.length);
+    if (evo.kind === "storm") {
+      st.duration = evo.duration;
+      st.tick = evo.tick;
+      st.tickDamage = st.damage * (evo.tickDamageFraction ?? 0);
+    } else if (evo.kind === "aura") {
+      // Firestorm (D-396): o tique segue a recarga, então reduzir a recarga mantém o dano por segundo
+      st.tick = st.cooldown / (evo.ticks ?? 1);
+      st.duration = st.cooldown + (evo.durationPad ?? 0);
+      st.tickDamage = st.damage * (evo.tickDamageFraction ?? 0);
+    }
+    convertForEvolution(st, slot, evo);
+  }
   return st;
+}
+
+/**
+ * spell_stats.lua `convert` (D-437): a forma evoluída fica com o valor dos modificadores que não usa mais. A parte das
+ * relíquias (`relicConvert`) espera as relíquias de spell (`M12`).
+ */
+function convertForEvolution(st: SpellStats, slot: SpellSlotLike, evo: EvolutionDef): void {
+  let dmg = 0;
+  let len = 0;
+  let wid = 0;
+  for (const modId of slot.modifiers ?? []) {
+    const c = evo.convert?.[modId];
+    if (!c) continue;
+    dmg += c.damagePct ?? 0;
+    len += c.lengthPct ?? 0;
+    wid += c.widthPct ?? 0;
+  }
+  st.damage *= 1 + dmg;
+  if (st.length !== undefined) st.length *= 1 + len;
+  if (st.width !== undefined) st.width *= 1 + wid;
 }
 
 // ---------------------------------------------------------------- espaços (spell_system.lua)

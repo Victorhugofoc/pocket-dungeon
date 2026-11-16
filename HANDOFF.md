@@ -3,8 +3,8 @@
 Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada tarefa está no registro de progresso (`docs/roadmap.md`, seção 9) e no git. **Mantenha este arquivo curto:** ao fechar uma tarefa, troque o parágrafo "Agora" em vez de acrescentar.
 
 ## Agora (2026-11-16)
-- **Marco em andamento: M6, spells** (D2, D12: teclas 1 e 2). O M20 (partida como no Dungeon Reign) está completo. Feito no M6: `M6-00` a `M6-05`: `SpellCaster` em `src/game/spells.ts` com as 11 spells, Eco, Volátil e Brittle Chill. Campo, órbita, runas e ícones de estado têm relógio (arco que esvazia e pisca no último segundo).
-- **Próxima tarefa:** `M6-06` (obtenção e evolução, decisão D3: confirmar com o usuário antes). O tiro do herói estoura runa de longe (`shootRunes`).
+- **Marco em andamento: M6, spells** (D2, D12: teclas 1 e 2). O M20 (partida como no Dungeon Reign) está completo. Feito no M6: `M6-00` a `M6-06`: `SpellCaster` em `src/game/spells.ts` com as 11 spells, Eco, Volátil e Brittle Chill. Campo, órbita, runas e ícones de estado têm relógio (arco que esvazia e pisca no último segundo).
+- **Próxima tarefa:** `M6-09` (tela da oferta de evolução no intervalo) ou `M6-10` (as formas novas, parte 1). A `M6-06` foi reescrita com a D3: obter e subir spell é a loja (`M7`); ficaram a evolução, os números e as regras (`core/evolution.ts`). Sem a loja, o nível 5 só sai pelo console (`__game.run.spells[0].level = 5`). O tiro do herói estoura runa de longe (`shootRunes`).
 - **Pedido do usuário para depois (`M16-08`):** a troca de zona depois do chefe (ondas 5, 10, 15) dá uma travadinha; cobrir com uma transição e montar a zona por trás.
 - **Decidido em 2026-11-16 (D15):** spell na tecla sai sempre e gasta a recarga, mesmo sem inimigo no alcance. `M5-05` (ícones de estado sobre os inimigos, `src/game/status-icons.ts`) feita antes do `M6-03`, a pedido dele; cada spell nova do M6 precisa pôr o estado dela em `enemyStatuses`. Efeitos próprios das spells ficam na `M5-08`.
 - **Rever com o usuário (D14):** os atributos do herói contra os do original (poder de magia, "efeitos", recarga e área globais). Ele aceitou o S12 assim por enquanto; decidir antes do `M6-08`.

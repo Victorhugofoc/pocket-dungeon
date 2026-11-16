@@ -823,6 +823,7 @@ export class Game {
   addRelic(id: string): void {
     if (this.run.relics.includes(id) || !RELICS[id]) return;
     this.run.relics.push(id);
+    this.run.relicVersion += 1;
     this.ach.relicFound(id);
     this.recompute();
     this.events.toast(`Relic: ${RELICS[id].name}`, "#ffc83d");

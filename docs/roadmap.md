@@ -364,8 +364,17 @@ Porta das 11 spells do Dungeon Reign: `fireball`, `iceball`, `chain_lightning`, 
 - `M6-04`: `venom_nova`, `cyclone`, `quake_totem` (área e invocação fixa).
 - `M6-05`: `healing_field`, `blade_orbit`, `rune_traps` (campo, órbita, armadilha).
 
-**M6-06 · Obtenção e evolução** · M [decisão D3]
-- Proposta: a primeira spell vem do primeiro chefe; as demais como drop raro (tomo) e na loja (`M7`); subir de nível gasta tomo repetido ou ouro.
+**M6-06 · Evolução: dados, números e regras** · M [D3 respondida: spell nova, nível e modificador vêm da loja, `M7`]
+- Reescrita em 2026-11-16: com a D3, obter e subir spell é a loja (`M7`); aqui fica a evolução (S18). As 12 evoluções em `data/spells.ts` (`EVOLUTIONS`), os números da forma evoluída em `spellStats` e as regras em `core/evolution.ts` (receita, oferta de até 3, recusa, aplicar), conferidos contra o original.
+
+**M6-09 · Evolução: oferta no intervalo** · P
+- Passos: no intervalo, depois das melhorias de nível, a tela com até 3 evoluções (`pendingEvolutionOffer`), escolher ou recusar; marcar as relíquias que ajudam a evoluir (`wantedRelics`) na recompensa de relíquia. Só aparece em jogo quando o nível 5 der para alcançar (loja, `M7`).
+
+**M6-10 · Evolução: as formas novas, 1** · M
+- `firestorm` (aura que segue o herói), `firewave` (muralha), `blizzard` (tempestade), `lightning_strike` (raio em linha), `arcane_strike` (ataque básico carregado), `sanctuary` (campo dourado que queima). Efeitos próprios de cada uma.
+
+**M6-11 · Evolução: as formas novas, 2** · M
+- `blade_storm` (círculo que abre até 160), `plague_bloom` (veneno que espalha na morte), `maelstrom` (tornado que segue a mira e arremessa), `rune_circle` (linhas entre runas), `spectrum` (raio que divide em 3 cores), `earthen_ward` (ídolo que atrai e apanha).
 
 **M6-07 · Interface de spells** · P
 - Passos: barra com 2 espaços, tela de grimório (lista, nível, descrição, equipar).
@@ -782,5 +791,6 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`. **
 | M5-05 (relógio), modo de teste | feito, falta validar | 2026-11-16 | Feedback do usuário: não dava para ver quando o veneno ia acabar. O contorno de cada ícone de estado virou um relógio (`StatusTimers` em `status-icons.ts`): arco aceso que esvazia do topo no sentido horário até o estado acabar e enche de novo quando renova; no último segundo o ícone pulsa. Acúmulos de gelo (sem fim) ficam com o contorno cheio. Conferido por captura. **`TUNING.testBoost` removido** a pedido do usuário (dano e velocidade voltam ao normal); `TUNING.unlockAll` continua ligado |
 | M6-05 | feito, falta validar | 2026-11-16 | Em `SpellCaster`: **Healing Field** (anel que segue o herói e cura a cada tique; Blooming Sanctuary põe campos parados por perto, até 4), **Blade Orbit** (lâminas girando em volta do herói, um golpe por inimigo a cada `hitCooldown`; recarga menor que a duração gira mais rápido) e **Rune Traps** (runa nos pés a cada intervalo enquanto o herói anda, e na tecla mesmo parado; arma em 0,3 s; o primeiro inimigo que pisa estoura: dano no raio e prende quem não é chefe, com o ícone de atordoado). As 11 spells agora fazem algo. Os três têm relógio no chão (arco que esvazia, como o dos ícones) e piscam no último segundo. Paridade: S26 e S27 iguais; S28 adaptado (tecla parado), falta o usuário aceitar; falta o tiro estourar runa de longe (D-575). Conferido pelo console e por captura. Evoluções no `M6-06` |
 | M6-05 (runas) | feito, falta validar | 2026-11-16 | Pedido do usuário: o tiro do herói estoura a runa de longe (`SpellCaster.shootRunes`, chamado no tiro do ataque básico e no golpe corpo a corpo, como o D-575 de lá). S28 aceita como está (runa também na tecla, parado). Conferido pelo console |
+| M6-06 | feito | 2026-11-16 | Reescrita com a D3 (obter e subir spell é a loja, `M7`): ficou a evolução. As 12 evoluções em `EVOLUTIONS` (texto em inglês do `en.lua`), os números da forma evoluída em `spellStats` (dano, recarga, raio, queimadura, cura, lâminas, espalhar, arremesso, linhas, raios, ídolo, muralha, linha, tempestade, aura) e a conversão dos modificadores que a forma nova não usa (D-437). Regras em `core/evolution.ts`: nível 5 mais UMA relíquia da receita, não gasta a relíquia, até 3 opções sorteadas no fluxo `evolution`, recusa até as relíquias mudarem (`run.relicVersion`, que sobe no `Game.addRelic`). Paridade: as 12 evoluções campo a campo e `spellStats` evoluída contra o `spell_stats.lua` em 24 cenários. O `dr-dump.lua` aceita `@arquivo` (a linha de comando do Windows estourou). Falta: a tela da oferta (`M6-09`), as formas novas no jogo (`M6-10`, `M6-11`) e a conversão das relíquias (`relicConvert`, espera as relíquias de spell do `M12`) |
 
 O M1 está completo, faltando só a validação da `M1-05`. No M2, os nove heróis estão refeitos: oito aprovados e Vesper (com as abelhas) esperando validação. Próxima sessão, sugestão: `M2-10`. `M0-03` (prévia com seletor, lineup e contagem) continua pendente.

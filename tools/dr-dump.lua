@@ -54,11 +54,17 @@ local function enc(v, seen)
 end
 
 -- cada argumento é um módulo (`src.data.waves`) ou, começando com `=`, uma expressão Lua cujo valor entra no JSON
--- com o próprio texto como chave (para calcular as fórmulas de lá, onda a onda)
+-- com o próprio texto como chave (para calcular as fórmulas de lá, onda a onda); `@arquivo` lê o argumento do arquivo
 local compile = loadstring or load
 local result = {}
 for i = 2, #arg do
   local a = arg[i]
+  -- `@caminho`: o argumento está num arquivo (expressões longas passam do limite da linha de comando do Windows)
+  if a:sub(1, 1) == "@" then
+    local f = assert(io.open(a:sub(2), "rb"))
+    a = f:read("*a")
+    f:close()
+  end
   if a:sub(1, 1) == "=" then
     result[a] = assert(compile("return " .. a:sub(2)))()
   else

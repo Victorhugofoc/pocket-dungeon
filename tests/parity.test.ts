@@ -3,12 +3,13 @@
 // Se um número mudar de um lado só, este teste quebra. Tabela de regras: docs/paridade.md.
 // Pula sozinho se o repo do original ou o luajit não estiverem na máquina (DUNGEON_IDLE e LUAJIT mudam os caminhos).
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { ACHIEVEMENT_RULES, ACHIEVEMENTS, COSMETIC_NAMES, UNLOCK_REWARDS } from "../src/data/achievements";
-import { MAX_SPELLS, SPELL_CAST, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TUNING, SPELLS } from "../src/data/spells";
+import { EVOLUTION_ORDER, EVOLUTIONS, MAX_SPELLS, SPELL_CAST, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TUNING, SPELLS } from "../src/data/spells";
 import { spellStats } from "../src/core/spells";
 import { DR_PX_PER_M } from "../src/data/techniques";
 import {
@@ -190,9 +191,18 @@ type Lua = any;
 
 function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
-  const r = spawnSync(LUAJIT, [resolve(import.meta.dirname, "../tools/dr-dump.lua"), ROOT, ...MODULES, WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE], {
+  // expressões longas vão por arquivo (`@caminho`): a linha de comando do Windows tem limite
+  const dir = mkdtempSync(join(tmpdir(), "dr-dump-"));
+  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE].map((code, i) => {
+    if (code.length < 2000) return code;
+    const f = join(dir, `arg${i}.lua`);
+    writeFileSync(f, code);
+    return "@" + f;
+  });
+  const r = spawnSync(LUAJIT, [resolve(import.meta.dirname, "../tools/dr-dump.lua"), ROOT, ...MODULES, ...args], {
     encoding: "utf8", maxBuffer: 64 << 20,
   });
+  rmSync(dir, { recursive: true, force: true });
   if (r.error || r.status !== 0) { if (process.env.PARITY_DEBUG) console.error(r.error ?? r.stderr); return null; }
   return JSON.parse(r.stdout);
 }
@@ -234,32 +244,46 @@ const UPGRADE_LIFE = `=(function()
 end)()`;
 
 /** Cenários de spell (nível, modificadores, poder de magia), calculados lá por spell_stats.lua `compute` e cá por `spellStats`. */
-const SPELL_SCEN = SPELL_ORDER.flatMap((id) => [1, 2, 3, 4, 5].flatMap((level) => [
-  { id, level, mods: [] as string[], sp: 8 },
-  { id, level, mods: SPELLS[id].modifiers.map((m) => m.id), sp: 8 },
-  { id, level, mods: SPELLS[id].modifiers.slice(0, 2).map((m) => m.id), sp: 16 },
-]));
+const SPELL_SCEN: { id: string; level: number; mods: string[]; sp: number; evo?: string }[] = [
+  ...SPELL_ORDER.flatMap((id) => [1, 2, 3, 4, 5].flatMap((level) => [
+    { id, level, mods: [] as string[], sp: 8 },
+    { id, level, mods: SPELLS[id].modifiers.map((m) => m.id), sp: 8 },
+    { id, level, mods: SPELLS[id].modifiers.slice(0, 2).map((m) => m.id), sp: 16 },
+  ])),
+  // M6-06: cada evolução no nível 5, sem e com todos os modificadores
+  ...EVOLUTION_ORDER.flatMap((evo) => {
+    const id = EVOLUTIONS[evo].spell;
+    return [
+      { id, level: 5, mods: [] as string[], sp: 8, evo },
+      { id, level: 5, mods: SPELLS[id].modifiers.map((m) => m.id), sp: 12, evo },
+    ];
+  }),
+];
 /** Campos de spell_stats.lua comparados, com a conversão de unidade daqui (px → m, vida de lá → multiplicador ou fração). */
 const SPELL_FIELDS: Record<string, "px" | "dmg" | "hp" | 1> = {
   damage: "dmg", cooldown: 1, cooldownMult: 1, range: "px", areaMult: 1, radius: "px", speed: "px", levelScale: 1,
   burnDps: "dmg", burnDuration: 1, volatile: 1, slow: 1, slowDuration: 1, brittle: 1, targets: 1, chainRange: "px",
   doubleHit: 1, projectiles: 1, echo: 1, heal: "hp", duration: 1, tick: 1, surge: 1, extraFields: 1, blades: 1,
   stacks: 1, pull: "px", bossPull: 1, maxRunes: 1, root: 1, trigger: "px", arm: 1, width: "px", knockback: "px", stun: 1,
+  length: "px", tickDamage: "dmg", maxRadius: "px", followSpeed: "px", flingDistance: "px", flingRadius: "px",
+  flingFraction: 1, linkRange: "px", lineWidth: "px", lineTick: 1, lineDamage: "dmg", splitAngle: 1, splitLength: "px",
+  rayDamage: "dmg", jumps: 1, jumpRange: "px", jumpDamage: "dmg", lureRadius: "px", wardHits: 1,
 };
 const SPELL_LIFE = `=(function()
   local SS = require("src.spells.spell_stats")
   local fields = {${Object.keys(SPELL_FIELDS).map(luaStr).join(",")}}
   local out = {}
-  for i, sc in ipairs({${SPELL_SCEN.map((c) => `{ id = ${luaStr(c.id)}, level = ${c.level}, sp = ${c.sp}, mods = {${c.mods.map(luaStr).join(",")}} }`).join(",")}}) do
+  for i, sc in ipairs({${SPELL_SCEN.map((c) => `{ id = ${luaStr(c.id)}, level = ${c.level}, sp = ${c.sp}, evo = ${c.evo ? luaStr(c.evo) : "nil"}, mods = {${c.mods.map(luaStr).join(",")}} }`).join(",")}}) do
     local d = { spellPower = sc.sp, schoolMult = setmetatable({}, { __index = function() return 1 end }), damageMult = 1,
       spellDamageMult = 1, cooldownValues = {}, areaValues = {}, rangeMult = 1, burnMult = 1, volatileValues = {},
       slowPoints = 0, slowDurationMult = 1, lightningTargets = 0, chainRangeMult = 1, echoValues = {}, healFieldHeal = 0,
       healFieldDuration = 0, poisonStacks = 0, fanShots = 0, staticCharge = 0, riftDuration = 0, permafrost = 0, autoDamage = 8,
       critChance = 0, critMult = 1 }
     local run = { relics = {}, stats = { compute = function() return d end } }
-    local st = SS.compute(run, { id = sc.id, level = sc.level, modifiers = sc.mods })
+    local st = SS.compute(run, { id = sc.id, level = sc.level, modifiers = sc.mods, evolution = sc.evo })
     local o = {}
     for _, k in ipairs(fields) do if type(st[k]) == "number" then o[k] = st[k] end end
+    if st.spread then o.spreadRadius, o.spreadStacks = st.spread.radius, st.spread.stacks end
     out[i] = o
   end
   return out
@@ -403,14 +427,29 @@ describe.skipIf(!dr)("paridade com o Dungeon Reign", () => {
     });
   }
 
+  it("as 12 evoluções: mesma ordem de id, receita, tipo, texto, tags e números (M6-06)", () => {
+    const defs = S.evolutionDefs as Record<string, Lua>;
+    expect([...EVOLUTION_ORDER].sort()).toEqual(Object.keys(defs).sort());
+    for (const id of EVOLUTION_ORDER) {
+      const ours = EVOLUTIONS[id] as unknown as Record<string, unknown>;
+      const theirs = defs[id];
+      for (const [k, v] of Object.entries(theirs)) {
+        if (k === "icon") continue;
+        expect(ours[k], `${id}.${k}`).toEqual(v);
+      }
+      for (const k of Object.keys(ours)) expect(theirs[k], `${id}.${k} (só aqui)`).toBeDefined();
+      for (const e of SPELLS[EVOLUTIONS[id].spell].evolutions) expect(defs[e]).toBeDefined();
+    }
+  });
+
   it(`spellStats igual a spell_stats.lua compute em ${SPELL_SCEN.length} cenários (nível, modificadores, poder de magia)`, () => {
     const conv = { px: DR_PX_PER_M, dmg: DR_BASE_DAMAGE, hp: DR_BASE_HP, 1: 1 } as const;
     SPELL_SCEN.forEach((c, i) => {
-      const ours = spellStats({ id: c.id, level: c.level, modifiers: c.mods },
+      const ours = spellStats({ id: c.id, level: c.level, modifiers: c.mods, evolution: c.evo },
         { cooldownMult: 1, area: 1, range: 1, status: 1, spellPower: c.sp }) as unknown as Record<string, number | undefined>;
       const theirs = SPELL_CALC[i];
-      const tag = `${c.id} nv${c.level} [${c.mods.join(",")}] sp${c.sp}`;
-      for (const [k, unit] of Object.entries(SPELL_FIELDS)) {
+      const tag = `${c.id} nv${c.level} [${c.mods.join(",")}] sp${c.sp}${c.evo ? " " + c.evo : ""}`;
+      for (const [k, unit] of Object.entries({ ...SPELL_FIELDS, spreadRadius: "px", spreadStacks: 1 } as const)) {
         const t = theirs[k];
         const o = ours[k];
         // sem dano lá (Healing Field) é dano 0 aqui
