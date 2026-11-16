@@ -77,6 +77,8 @@ export class RunRng {
 export interface SpellSlot {
   id: string;
   level: number;
+  /** modificadores comprados na loja (spell_system.lua `addModifier`) */
+  modifiers: string[];
   evolution: string | null;
 }
 
@@ -186,7 +188,7 @@ export function newRun(opts: NewRunOptions): RunState {
 }
 
 export function newSpellSlot(id: string): SpellSlot {
-  return { id, level: 1, evolution: null };
+  return { id, level: 1, modifiers: [], evolution: null };
 }
 
 /** Seed do mapa de uma zona: só depende da seed da partida, da zona e da volta (0; 1 em diante no modo sem fim), nunca dos fluxos. */
@@ -225,6 +227,8 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.curseWavesLeft ??= 0;
   run.curseContinues ??= false;
   run.mapHistory ??= [];
+  // checkpoints de antes do M6-01
+  for (const s of [...run.spells, run.technique]) s.modifiers ??= [];
   // checkpoints de antes do M20-06 guardavam o progresso do jogo antigo (mochila, equipamento, mortes)
   delete (run as { legacy?: unknown }).legacy;
   run.killedBy = null;
