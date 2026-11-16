@@ -369,6 +369,9 @@ export const SPELL_CAST = {
   fieldExtraCap: 4,
   /** Rune Traps: o herói conta como andando acima desta velocidade (m/s), e a runa deixada anda sozinha enquanto ele anda */
   runeWalkSpeed: 0.5,
+  /** Rune Traps: o ataque básico estoura runa armada de longe, menos as que estão a até gatilho + isto do herói (16 px;
+   * techniques.lua `RUNE_SHOT_CLEAR`: o tiro sai dos pés dele) */
+  runeShotClear: 16 / DR_PX_PER_M,
   /** visual: altura e tamanho da bola */
   height: 1.2,
   ballSize: 0.38,

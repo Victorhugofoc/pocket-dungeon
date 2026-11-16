@@ -4,7 +4,7 @@ Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada
 
 ## Agora (2026-11-16)
 - **Marco em andamento: M6, spells** (D2, D12: teclas 1 e 2). O M20 (partida como no Dungeon Reign) está completo. Feito no M6: `M6-00` a `M6-05`: `SpellCaster` em `src/game/spells.ts` com as 11 spells, Eco, Volátil e Brittle Chill. Campo, órbita, runas e ícones de estado têm relógio (arco que esvazia e pisca no último segundo).
-- **Próxima tarefa:** `M6-06` (obtenção e evolução, decisão D3: confirmar com o usuário antes). Pendência de paridade da `M6-05`: o usuário aceitar a S28 (runa na tecla, parado) e o tiro do herói estourar runa de longe (`Tech.shootRunes`, D-575), que ficou de fora.
+- **Próxima tarefa:** `M6-06` (obtenção e evolução, decisão D3: confirmar com o usuário antes). O tiro do herói estoura runa de longe (`shootRunes`).
 - **Pedido do usuário para depois (`M16-08`):** a troca de zona depois do chefe (ondas 5, 10, 15) dá uma travadinha; cobrir com uma transição e montar a zona por trás.
 - **Decidido em 2026-11-16 (D15):** spell na tecla sai sempre e gasta a recarga, mesmo sem inimigo no alcance. `M5-05` (ícones de estado sobre os inimigos, `src/game/status-icons.ts`) feita antes do `M6-03`, a pedido dele; cada spell nova do M6 precisa pôr o estado dela em `enemyStatuses`. Efeitos próprios das spells ficam na `M5-08`.
 - **Rever com o usuário (D14):** os atributos do herói contra os do original (poder de magia, "efeitos", recarga e área globais). Ele aceitou o S12 assim por enquanto; decidir antes do `M6-08`.

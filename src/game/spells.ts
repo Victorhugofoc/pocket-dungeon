@@ -1028,6 +1028,28 @@ export class SpellCaster {
     }
   }
 
+  /** há runa no chão (o ataque básico só procura runa quando há) */
+  get hasRunes(): boolean {
+    return this.runes.length > 0;
+  }
+
+  /**
+   * techniques.lua `shootRunes` (D-575): o ataque básico que passa por uma runa armada estoura a runa de longe. `hits`
+   * diz se o golpe ou o tiro cobre a runa (recebe o centro e o raio do gatilho). As runas nos pés do herói ficam.
+   */
+  shootRunes(hits: (x: number, z: number, trigger: number) => boolean): void {
+    const p = this.game.player;
+    for (let k = this.runes.length - 1; k >= 0; k--) {
+      const r = this.runes[k];
+      if (r.fade !== undefined || r.duration - r.time < (r.st.arm ?? 0)) continue;
+      const trigger = r.st.trigger ?? 1;
+      const clear = trigger + SPELL_CAST.runeShotClear;
+      if ((r.x - p.x) ** 2 + (r.z - p.z) ** 2 <= clear * clear || !hits(r.x, r.z, trigger)) continue;
+      this.detonate(r);
+      this.freeRune(k);
+    }
+  }
+
   /** techniques.lua `detonate`: dano no raio e prende no lugar quem não é chefe; Twin Glyph: chance de bater de novo. */
   private detonate(r: Rune): void {
     const g = this.game;
