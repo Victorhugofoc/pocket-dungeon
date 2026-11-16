@@ -3,6 +3,8 @@ import { canHasten, hastenBonus } from "../core/wave";
 import { DIFFICULTIES, DIFFICULTY_ORDER, DIFFICULTY_TEXT, TOTAL_WAVES, type DifficultyId } from "../data/run";
 import { clearRun, discardLegacySave, loadRecords, loadRun, safeStorage, writeRecords } from "../core/save";
 import { RunRng, addRecord, continueRun, decodeSeed, newRun, summarize, type NewRunOptions, type RunState } from "../core/run";
+import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unlockCondition } from "../core/achievements";
+import { ACHIEVEMENTS } from "../data/achievements";
 import { formatStat, STAT_KEYS, type StatBlock } from "../core/stats";
 import { SPELL_MAX_LEVEL, SPELL_TEXT, type SpellId } from "../data/spells";
 import { effectsFor, rerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
@@ -195,6 +197,17 @@ export class Ui {
     }
     const save = loadRun(this.storage);
     const rec = loadRecords(this.storage);
+    const ach = this.game.ach.state;
+    const open = (id: string) => isOpen(ach, "hero", id, TUNING.unlockAll);
+    if (!open(this.selectedHero)) this.selectedHero = HERO_ORDER.find(open) ?? HERO_ORDER[0];
+    /** unlocks.lua `condition`: o que falta para liberar ("???" se a conquista é secreta) */
+    const lockText = (id: string) => {
+      const a = unlockCondition("hero", id);
+      if (!a) return "";
+      if (isSecret(ach, "hero", id)) return "Trancado · ???";
+      const p = progress(ach, a, rec.kills);
+      return `Trancado · ${a.text}${p ? ` (${Math.min(p.current, p.goal).toLocaleString("pt-BR")} / ${p.goal.toLocaleString("pt-BR")})` : ""}`;
+    };
     const render = () => {
       const h = HEROES[this.selectedHero];
       const best = DIFFICULTY_ORDER.flatMap((d) => {
@@ -206,12 +219,14 @@ export class Ui {
         <p class="tag">RPG de ação · protótipo 0.3 · mapas procedurais, um herói, ondas e chefes</p>
         ${save ? `<div class="continue"><button class="primary" data-act="continue" style="padding:12px 30px;font-size:16px">
           Continuar — ${HEROES[save.run.heroId]?.name ?? "?"} · ${DIFFICULTIES[save.run.difficultyId].name} · onda ${save.wave} · nível ${save.run.level} · seed ${save.run.seedCode}</button></div>` : ""}
-        ${rec.runs ? `<p class="tag" style="margin:-8px 0 14px">${rec.runs} partidas · ${rec.wins} vitórias · maior onda ${rec.highestWave}${rec.bestEndless ? ` · sem fim até a onda ${rec.bestEndless}` : ""} · ${rec.kills} abates</p>` : ""}
+        ${rec.runs ? `<p class="tag" style="margin:-8px 0 14px">${rec.runs} partidas · ${rec.wins} vitórias · maior onda ${rec.highestWave}${rec.bestEndless ? ` · sem fim até a onda ${rec.bestEndless}` : ""} · ${rec.kills} abates · ${achievementCount(ach)} de ${ACHIEVEMENTS.length} conquistas</p>` : ""}
         <div class="section">Passo 1 de 3 · ${save ? "escolha o herói de uma partida nova (encerra a atual)" : "escolha seu herói"}</div>
         <div class="heroes">${HERO_ORDER.map((id) => {
           const d = HEROES[id];
-          return `<div class="hero-card ${id === this.selectedHero ? "sel" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}">
-            <div class="swatch"></div><b>${d.name}</b><i>${d.title}</i><span>${d.identity}</span></div>`;
+          const locked = !open(id);
+          return `<div class="hero-card ${id === this.selectedHero ? "sel" : ""} ${locked ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}">
+            <div class="swatch"></div><b>${d.name}${isNew(ach, "hero", id) ? ` <em class="new">NOVO</em>` : ""}</b><i>${d.title}</i>
+            <span>${locked ? lockText(id) : d.identity}</span></div>`;
         }).join("")}</div>
         <div class="hero-detail" style="--hc:${hex(h.color)}">
           <h3 style="color:${hex(h.color)}">${h.name} — ${h.title}</h3>
@@ -226,7 +241,10 @@ export class Ui {
       const t = ev.target as HTMLElement;
       const card = t.closest<HTMLElement>("[data-hero]");
       if (card) {
-        this.selectedHero = card.dataset.hero!;
+        const id = card.dataset.hero!;
+        if (!open(id)) return;
+        this.selectedHero = id;
+        if (markFreshSeen(ach, "hero", id)) this.game.saveAchievements();
         this.confirmNew = "";
         render();
         return;
@@ -721,6 +739,8 @@ export class Ui {
     const rec = loadRecords(this.storage);
     const isBest = addRecord(rec, summarize(run), new Date().toISOString().slice(0, 10));
     writeRecords(this.storage, rec);
+    g.ach.recordKills = rec.kills;
+    g.saveAchievements();
     const best = rec.best[`${run.heroId}/${run.difficultyId}`];
     const setup: RunSetup = { heroId: run.heroId, difficultyId: run.difficultyId, startingSpell: run.startingSpell };
     const s = run.statistics;

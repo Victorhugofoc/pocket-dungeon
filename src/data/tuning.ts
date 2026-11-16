@@ -6,6 +6,8 @@ export const TUNING = {
   frame: { gpuHigh: 12.5, gpuLow: 8.5, minScale: 0.6, step: 0.08, every: 0.75, maxRatio: 1.5 },
   /** SÓ PARA TESTE (2026-11-14, pedido do usuário): multiplica o dano e a velocidade de todos os heróis. Voltar para 1 ao balancear. */
   testBoost: { damage: 2, moveSpeed: 4 },
+  /** SÓ PARA TESTE (2026-11-16): tudo desbloqueado (Unlocks.ALL do original), para seguir testando os 9 heróis. Desligar junto com o testBoost. */
+  unlockAll: true,
   hero: {
     baseHp: 100,
     baseDamage: 10,

@@ -3,7 +3,9 @@ import * as THREE from "three";
 import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
 import { addXp, applyUpgrade, draft, draftTiers, rerollCost, rerollsLeft, upgradeStats, type UpgradeTier } from "../core/levelup";
 import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
-import { loadRun, writeRun, safeStorage } from "../core/save";
+import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, safeStorage } from "../core/save";
+import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
+import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
 import { chooseCard, expireWaveScope, generateMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
@@ -16,7 +18,7 @@ import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { FROST, SHADOW, SHIELD_THROW, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, ENEMIES } from "../data/enemies";
-import { HEROES, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
+import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { RELICS, RELIC_IDS } from "../data/relics";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -209,6 +211,11 @@ export class Game {
   zoom = 1;
   private proj = new THREE.Vector3();
   private storage = safeStorage();
+  /** conquistas e desbloqueios entre partidas (core/achievements.ts) */
+  ach = new AchievementTracker(loadAchievements(this.storage),
+    { heroes: HERO_ORDER, bosses: Object.keys(BOSSES), enemies: Object.keys(ENEMIES), relics: RELIC_IDS }, loadRecords(this.storage).kills);
+  /** de onde veio o golpe em curso (o "ataque básico" de quick_trigger) */
+  private hitSource: KillSource = "other";
   fps = 60;
 
   constructor(private canvas: HTMLCanvasElement, textLayer: HTMLElement) {
@@ -276,6 +283,8 @@ export class Game {
     this.recompute();
     this.player.hp = Math.min(this.stats.maxHp, run.hp ?? this.stats.maxHp);
     this.started = true;
+    this.ach.runStart(run.heroId);
+    this.saveAchievements();
     this.prepareWave(Math.max(1, run.wave), true);
   }
 
@@ -345,6 +354,28 @@ export class Game {
     if (!this.run) return;
     this.run.hp = this.playerAlive ? this.player.hp : null;
     writeRun(this.storage, checkpoint(this.run, this.rng, Math.max(1, this.run.wave)));
+  }
+
+  saveAchievements(): void {
+    writeAchievements(this.storage, this.ach.state);
+  }
+
+  /** Relíquias que podem entrar no sorteio: as abertas (unlocks.lua `filter`) e que o herói ainda não tem. */
+  private relicPool(): string[] {
+    return filterOpen(this.ach.state, "relic", RELIC_IDS, TUNING.unlockAll).filter((id) => !this.run.relics.includes(id));
+  }
+
+  /** Avisa as conquistas liberadas e grava. */
+  private flushAchievements(): void {
+    const news = this.ach.take();
+    if (!news.length) return;
+    for (const id of news) {
+      const a = ACHIEVEMENT_BY_ID[id];
+      const reward = (UNLOCK_REWARDS[id] ?? []).filter(([k]) => k === "hero").map(([, h]) => HEROES[h]?.name).filter(Boolean);
+      this.events.toast(`Conquista: ${a.name}${reward.length ? ` · libera ${reward.join(", ")}` : ""}`, "#ffd34d");
+    }
+    this.audio.play("rare");
+    this.saveAchievements();
   }
 
   /** A zona de uma onda: 5 ondas por zona, na ordem do reino; o modo sem fim recomeça o ciclo com mapas novos. */
@@ -536,7 +567,9 @@ export class Game {
               this.fx.text(e.x, 2.4, e.z, "Pingente", "frost");
             }
           }
+          this.hitSource = pr.source === "auto" ? "auto" : "other";
           this.hitEnemy(e, pr.dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined });
+          this.hitSource = "other";
           if (pr.push && !e.isBoss && !e.dead) {
             const sp = Math.hypot(pr.vx, pr.vz) || 1;
             e.kx += (pr.vx / sp) * pr.push * TUNING.enemy.knockback;
@@ -693,12 +726,14 @@ export class Game {
         this.fx.addShake(0.12);
       }
     }
-    if (e.hp <= 0) this.killEnemy(e);
+    if (e.hp <= 0) this.killEnemy(e, opts.dot ? "dot" : this.hitSource);
   }
 
-  private killEnemy(e: Enemy): void {
+  private killEnemy(e: Enemy, source: KillSource = "other"): void {
     e.dead = true;
     e.hp = 0;
+    this.ach.enemyKilled({ key: e, id: e.boss?.id ?? e.def!.id, boss: e.isBoss, champion: e.champion, source,
+      elapsed: this.run.statistics.elapsed, noReward: e.summoned });
     const color = e.boss?.color ?? e.def!.color;
     this.fx.burst(e.x, e.rig.height * 0.5, e.z, color, e.isBoss ? 80 : 14, e.isBoss ? 12 : 6, e.isBoss ? 0.3 : 0.18, e.isBoss ? 1.2 : 0.6);
     this.audio.play(e.isBoss ? "boss" : "kill");
@@ -774,6 +809,7 @@ export class Game {
   addRelic(id: string): void {
     if (this.run.relics.includes(id) || !RELICS[id]) return;
     this.run.relics.push(id);
+    this.ach.relicFound(id);
     this.recompute();
     this.events.toast(`Relíquia: ${RELICS[id].name}`, "#ffc83d");
     this.audio.play("rare");
@@ -792,6 +828,7 @@ export class Game {
     if (this.inCombat && !full) amount *= RUN_TUNING.combatHealMult;
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
     this.run.statistics.healed += p.hp - before;
+    this.ach.healed(this.run.statistics.healed);
     if (show && p.hp - before >= 1) {
       this.fx.text(p.x, 2.6, p.z, "+" + Math.round(p.hp - before), "heal");
       this.fx.burst(p.x, 1.2, p.z, 0x5fd35f, 8, 3, 0.12, 0.5, 2);
@@ -870,6 +907,7 @@ export class Game {
     if (Math.random() < this.stats.dodge) {
       this.fx.text(p.x, 2.6, p.z, "Esquiva", "dodge");
       p.iframes = 0.15;
+      this.ach.dodge();
       return;
     }
     if (p.aegis?.block) {
@@ -887,6 +925,7 @@ export class Game {
     amount = Math.max(1, Math.round(amount));
     this.run.statistics.damageTaken += Math.min(amount, p.hp);
     p.hp -= amount;
+    this.ach.playerHit(amount, Math.max(0, p.hp) / this.stats.maxHp);
     p.flash = 1;
     if (p.rig) kickRig(p.rig, -Math.sin(p.facing), -Math.cos(p.facing), 0.7);
     p.hurtT = 1;
@@ -938,7 +977,7 @@ export class Game {
     s.statistics.goldEarned += gold;
     // a emboscada dá a relíquia de risco (falta, M12), não a escolha de chefe
     if (e.ambush) return;
-    const pool = RELIC_IDS.filter((id) => !s.relics.includes(id));
+    const pool = this.relicPool();
     this.rng.get("relics").shuffle(pool);
     const offer = pool.slice(0, BOSS.relicChoices);
     // a escolha de relíquia só depois que o corpo do chefe se desfaz (a escolha pausa o jogo)
@@ -1013,6 +1052,7 @@ export class Game {
   private beginWave(): void {
     const n = this.run.wave;
     this.wave = startWave(n, this.rng.get("champions"), (id) => id in ENEMIES, this.mods);
+    this.ach.waveStart(n);
     this.phase = "intro";
     this.phaseT = 0;
     this.showRing(true);
@@ -1102,6 +1142,7 @@ export class Game {
         const ambush = this.wave?.ambush ?? null;
         const final = !ambush && this.run.wave === BOSS.final.wave;
         const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush });
+        this.ach.bossSpawned(e, this.run.statistics.elapsed);
         e.hunter = true;
         this.boss = e;
         this.enemies.push(e);
@@ -1147,7 +1188,12 @@ export class Game {
     run.gold += gold;
     run.statistics.goldEarned += gold;
     this.gainXp(xp + r.xp);
-    if (w.isBossWave && w.bossesDefeated && run.wave === TOTAL_WAVES) run.victory = true;
+    if (w.isBossWave && w.bossesDefeated && run.wave === TOTAL_WAVES) {
+      run.victory = true;
+      this.ach.victory(run);
+    }
+    this.ach.waveComplete({ wave: run.wave, bossWave: w.isBossWave, gameOver: !this.playerAlive, gold: run.gold });
+    this.saveAchievements();
     // §6: a sala vale só para esta onda; a maldição segue para a próxima, que fica sem mapa
     if (expireWaveScope(run)) this.mapResolved = true;
     this.phase = "cleared";
@@ -1171,7 +1217,7 @@ export class Game {
       this.mapResolved = true;
       return false;
     }
-    const shrine = RELIC_IDS.some((id) => !run.relics.includes(id));
+    const shrine = this.relicPool().length > 0;
     this.mapCards = generateMap(this.rng.get("map"), next, { disabled: Game.MAP_DISABLED, shrine });
     this.events.mapOpen();
     return true;
@@ -1185,7 +1231,7 @@ export class Game {
     const step = chooseCard(this.run, card);
     this.audio.play("pickup");
     if (step === "relic") {
-      const pool = RELIC_IDS.filter((id) => !this.run.relics.includes(id));
+      const pool = this.relicPool();
       this.rng.get("relics").shuffle(pool);
       const offer = pool.slice(0, BOSS.relicChoices);
       this.shrineOpen = true;
@@ -1312,7 +1358,9 @@ export class Game {
         while (da > Math.PI) da -= Math.PI * 2;
         while (da < -Math.PI) da += Math.PI * 2;
         if (Math.abs(da) > arc && d > e.radius + 0.8) continue;
+        this.hitSource = "auto";
         this.hitEnemy(e, a.damage, a.status);
+        this.hitSource = "other";
         hits++;
       }
       if (hits) this.fx.addShake(0.08);
@@ -1547,6 +1595,7 @@ export class Game {
       const before = p.hp;
       p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? RUN_TUNING.combatHealMult : 1));
       this.run.statistics.healed += p.hp - before;
+      this.ach.healed(this.run.statistics.healed);
     }
     this.updateAim();
     p.facing = Math.atan2(this.aim.x - p.x, this.aim.z - p.z);
@@ -2021,6 +2070,7 @@ export class Game {
       this.run.statistics.elapsed += raw;
       this.updatePlayer(dt);
       this.updateWave(dt, raw);
+      this.flushAchievements();
       this.updateEnemies(dt);
       this.updateProjectiles(dt);
       this.updateAllies(dt);

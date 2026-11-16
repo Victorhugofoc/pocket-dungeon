@@ -98,6 +98,10 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .hero-card b { font-size: 17px; color: var(--hc); }
 .hero-card i { font-style: normal; color: var(--text); font-size: 12px; }
 .hero-card span { color: var(--muted); font-size: 12px; }
+.hero-card.locked { cursor: not-allowed; filter: grayscale(0.85); opacity: 0.55; }
+.hero-card.locked:hover { border-color: var(--line); background: var(--panel-2); }
+.hero-card.locked span { color: var(--text); }
+.hero-card .new { font-style: normal; font-size: 10px; color: #1a1408; background: var(--gold); border-radius: 4px; padding: 1px 5px; vertical-align: middle; }
 .hero-detail { margin-top: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-height: 96px; }
 .hero-detail h3 { font-size: 18px; margin-bottom: 6px; }
 .hero-detail p { margin: 3px 0; color: #cfd3e2; }
