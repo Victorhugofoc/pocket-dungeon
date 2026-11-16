@@ -343,9 +343,6 @@ export class Game {
     for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
     sources.push(upgradeStats(this.run));
     this.stats = computeStats(sources);
-    // reforço de teste (TUNING.testBoost): fora do core para não mexer nas contas testadas
-    this.stats.damage *= TUNING.testBoost.damage;
-    this.stats.moveSpeed *= TUNING.testBoost.moveSpeed;
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
       ? techniqueStats(tid, 1, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage })

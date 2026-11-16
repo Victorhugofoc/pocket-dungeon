@@ -8,9 +8,10 @@ Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada
 - **Pedido do usuário para depois (`M16-08`):** a troca de zona depois do chefe (ondas 5, 10, 15) dá uma travadinha; cobrir com uma transição e montar a zona por trás.
 - **Decidido em 2026-11-16 (D15):** spell na tecla sai sempre e gasta a recarga, mesmo sem inimigo no alcance. `M5-05` (ícones de estado sobre os inimigos, `src/game/status-icons.ts`) feita antes do `M6-03`, a pedido dele; cada spell nova do M6 precisa pôr o estado dela em `enemyStatuses`. Efeitos próprios das spells ficam na `M5-08`.
 - **Rever com o usuário (D14):** os atributos do herói contra os do original (poder de magia, "efeitos", recarga e área globais). Ele aceitou o S12 assim por enquanto; decidir antes do `M6-08`.
-- **Falta o usuário jogar:** `M5-05` (ícones de estado), `M6-02` a `M6-04` (8 spells nas teclas 1 e 2), `M20-02` a `M20-08`, `M19-02` a `M19-05` (técnicas dos heróis), `M1-05` (presença de chefe), Ninhada da Vesper. Tudo foi conferido só pelo console.
+- **Falta o usuário jogar:** `M5-05` (ícones de estado, agora com relógio), `M6-02` a `M6-04` (8 spells nas teclas 1 e 2), `M20-02` a `M20-08`, `M19-02` a `M19-05` (técnicas dos heróis), `M1-05` (presença de chefe), Ninhada da Vesper. Tudo foi conferido só pelo console.
 - **Régua de paridade:** `docs/paridade.md` mais `tests/parity.test.ts` (lê os `.lua` do original pelo LuaJIT, `tools/dr-dump.lua`). Toda tarefa do M20 e do M6 confere as linhas dela ali.
-- **Modo de teste ligado:** `TUNING.testBoost` dá dano ×2 e velocidade ×4 aos heróis, a pedido do usuário; voltar para 1 ao balancear. `TUNING.unlockAll` deixa os 9 heróis abertos (desligar junto). A vida dos chefes ainda leva o corte antigo de 0,55 (`TUNING.boss.hpMult`) até haver spells.
+- **Modo de teste:** o `testBoost` (dano ×2, velocidade ×4) saiu em 2026-11-16, a pedido do usuário. `TUNING.unlockAll` continua deixando os 9 heróis abertos (desligar ao balancear).
+- **Ícones de estado têm relógio** (2026-11-16, pedido do usuário: quer feedback visual de tudo): o contorno esvazia até o estado acabar e o ícone pulsa no último segundo. Estado novo com duração precisa pôr `until` no `StatusBadge`. A vida dos chefes ainda leva o corte antigo de 0,55 (`TUNING.boss.hpMult`) até haver spells.
 
 ## Atalhos de teste (console do jogo)
 - `__game.prepareWave(n)` pula para a onda n · `__game.gainXp(200)` e terminar a onda abre as melhorias.
