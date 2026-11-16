@@ -8,7 +8,7 @@ Leia `HANDOFF.md` antes de qualquer coisa: ele tem o estado atual e o próximo p
 - RPG de ação para PC (teclado e mouse), no navegador: um herói, mapas abertos procedurais, loot, relíquias e chefes por zona até o chefe final. Referência de formato: Minecraft Dungeons.
 - three.js + TypeScript + Vite. **Toda a arte é gerada por código** (decisão do usuário): personagens, cenário, shaders, efeitos e sons. Nada de sprites nem modelos importados. Os sprites do Dungeon Reign servem só de referência de design (`dungeon-idle/assets`).
 - O conteúdo (9 heróis, inimigos, chefes, relíquias) vem do Dungeon Reign, repo `Victorhugofoc/dungeon-idle` (LÖVE/Lua), em `src/data/*.lua`.
-- Design: `docs/design.md`. O usuário escreve em português; documentos em português. Nomes, ids e código em inglês, iguais aos do Dungeon Reign. Textos do jogo em português até a decisão D1 do roadmap.
+- Design: `docs/design.md`. O usuário escreve em português; documentos em português. Nomes, ids e código em inglês, iguais aos do Dungeon Reign. **Todo texto do jogo é em inglês** (decisão D1, 2026-11-16): interface, mecânicas, textos flutuantes, descrições; usar a palavra do Dungeon Reign (`src/data/lang/en.lua`) quando existir. Português só entra depois, como tradução (`M14-01`). Texto novo em português no jogo é erro.
 - O sprite do Dungeon Reign é a fonte do design de cada personagem (cópias em `docs/ref/`). Método de modelagem: seção 4 do roadmap.
 
 ## Comandos

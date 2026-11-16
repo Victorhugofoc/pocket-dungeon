@@ -381,7 +381,7 @@ export class Ui {
       <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
       <div id="banner" data-r="banner"></div>
       <canvas id="minimap" width="176" height="176"></canvas>
-      <div class="hud-help">H apressar a onda · I status · Esc pausa<br>F3 desempenho</div>
+      <div class="hud-help">1 e 2 spells · H apressar a onda · I status · Esc pausa<br>F3 desempenho</div>
       <div id="bossbar" class="hidden" data-r="boss"><h3 data-r="bossName"></h3><div class="bar"><i data-r="bossFill"></i><span data-r="bossText"></span></div></div>
       <div id="hint" class="hidden" data-r="hint"></div>
       <div id="perf" class="hidden" data-r="perf"></div>
@@ -392,6 +392,8 @@ export class Ui {
           <div class="skill"><kbd>ESQ</kbd>⚔️</div>
           <div class="skill-wrap"><div class="skill big" data-r="techBox"><kbd>DIR</kbd>✨<div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div></div>
             <small class="skill-name" data-r="techName"></small></div>
+          ${[0, 1].map((i) => `<div class="skill-wrap"><div class="skill spell" data-r="spBox${i}"><kbd>${i + 1}</kbd><span data-r="spIcon${i}"></span><div class="cd" data-r="spCd${i}"></div><div class="cdn" data-r="spN${i}"></div></div>
+            <small class="skill-name" data-r="spName${i}"></small></div>`).join("")}
           <div class="skill"><kbd>ESPAÇO</kbd>💨<div class="cd" data-r="dashCd"></div></div>
           <div class="skill"><kbd>F</kbd>🧪<div class="cd" data-r="potCd"></div><div class="cdn" data-r="potN"></div></div>
         </div>
@@ -401,6 +403,30 @@ export class Ui {
     this.hud.querySelectorAll<HTMLElement>("[data-r]").forEach((e) => (this.r[e.dataset.r!] = e));
     this.toasts = this.hud.querySelector("#toasts")!;
     this.mapCtx = this.hud.querySelector<HTMLCanvasElement>("#minimap")!.getContext("2d")!;
+  }
+
+  /** Espaços de spell nas teclas 1 e 2: ícone, nível, recarga e o aviso de spell que não saiu. */
+  private updateSpellHud(): void {
+    const g = this.game;
+    const r = this.r;
+    for (let i = 0; i < 2; i++) {
+      const slot = g.run.spells[i];
+      const st = g.spells.stats[i];
+      const box = r[`spBox${i}`];
+      box.classList.toggle("empty", !slot);
+      const name = slot ? `${spellName(slot.id)} ${slot.level}` : "";
+      if (r[`spName${i}`].textContent !== name) {
+        r[`spName${i}`].textContent = name;
+        r[`spIcon${i}`].textContent = slot ? (SPELL_ICON[slot.id] ?? "✦") : "";
+        box.title = slot && isSpellKey(slot.id) ? `${spellName(slot.id)} — ${SPELL_TEXT[slot.id]}` : "Espaço de spell vazio";
+      }
+      const cd = g.spells.cooldown[i] ?? 0;
+      const max = st?.cooldown ?? 1;
+      r[`spCd${i}`].style.height = `${Math.min(1, cd / max) * 100}%`;
+      r[`spN${i}`].textContent = cd > 0 ? cd.toFixed(cd < 3 ? 1 : 0) : "";
+      box.classList.toggle("ready", !!slot && cd <= 0);
+      box.classList.toggle("no-target", (g.spells.noTarget[i] ?? 0) > 0);
+    }
   }
 
   private onZoneChanged(): void {
@@ -430,6 +456,7 @@ export class Ui {
       r.techName.textContent = tn;
       r.techBox.title = `${tn} — ${g.hero.technique.text}`;
     }
+    this.updateSpellHud();
     r.dashCd.style.height = `${(Math.max(0, p.dashCd) / TUNING.hero.dashCooldown) * 100}%`;
     const pc = Math.max(0, p.potionCd);
     r.potCd.style.height = `${(pc / TUNING.hero.potionCooldown) * 100}%`;
@@ -783,6 +810,16 @@ export class Ui {
 }
 
 /** Nome da spell (spells.lua `name`); técnica sem definição aqui cai no id com espaços ("storm_step" → "Storm Step"). */
+/** Ícone provisório de cada spell no HUD (até haver ícones desenhados por código). */
+const SPELL_ICON: Record<string, string> = {
+  fireball: "🔥", iceball: "❄️", chain_lightning: "⚡", arcane_bolt: "🔮", healing_field: "✚", blade_orbit: "🗡️",
+  venom_nova: "☠️", cyclone: "🌪️", rune_traps: "ᚱ", prism_beam: "🔆", quake_totem: "🗿",
+};
+
+function isSpellKey(id: string): id is SpellId {
+  return id in SPELLS;
+}
+
 function spellName(id: string): string {
   if (id in SPELLS) return SPELLS[id as SpellId].name;
   return id.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");

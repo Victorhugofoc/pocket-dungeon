@@ -328,6 +328,12 @@ Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de 
 
 **M5-05 · Estados visíveis** · P
 - Passos: queimando (brasas), congelado (casca azul e lentidão visível), envenenado (bolhas verdes), marcado; ícone pequeno sobre a barra de vida.
+- Pedido do usuário em 2026-11-16: **todo estado que muda o jogo tem indicador sobre o inimigo**, desenhado por código. Inclui os das spells: queimando pelo Fireball (pode explodir: Volátil), lento pela Iceball (leva dano extra com Brittle Chill), e os que vierem no `M6-03` a `M6-05` (veneno acumulado, preso pela runa, atordoado). Hoje só há a tinta no corpo do inimigo.
+- Pronto quando: numa luta cheia, o jogador diz o estado de cada inimigo sem ler número.
+
+**M5-08 · Efeitos das 11 spells** · G (3 ou 4 por sessão) [validar]
+- Pedido do usuário em 2026-11-16. Hoje as spells usam bola colorida, faíscas e anel (`src/game/spells.ts`). Passos: lançamento, voo e impacto de cada spell com as primitivas do `M5-02` e o som do `M15-02` (Fireball: bola de fogo com chama e rastro de fumaça, explosão com brasas no chão; Iceball: cristal girando, impacto com espinhos de gelo, como os `fire_burst` e `ice_spikes` do original). Captura e crítico cego antes de mostrar.
+- Pronto quando: cada spell é reconhecível só pelo efeito, sem o ícone do HUD.
 
 **M5-06 · Projéteis com identidade** · P
 - Passos: flecha, bala, orbe arcano, bomba em arco com sombra; rastro por tipo. Hoje são esferas coloridas.
@@ -529,6 +535,10 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 
 ### M14 — Interface
 
+**M14-00 · Pente-fino: tudo em inglês** · M [pedido do usuário, 2026-11-16; vem antes do `M6-04`]
+- Passos: listar todo texto que o jogador lê e está em português (`src/ui/ui.ts`, `src/data/*` como `SPELL_TEXT`, marcos e modificadores, cartas, salas, relíquias, conquistas, heróis e técnicas; textos flutuantes em `src/game/*`, como Estilhaçou, Quebradiço e Pingente da Frostine) e trocar pelo texto de `dungeon-idle/src/data/lang/en.lua` (ou pelo original em inglês do `.lua` de dados); o que não existir lá, escrever em inglês no mesmo tom. Ajustar testes de paridade que comparem texto.
+- Pronto quando: `grep` por acentos e palavras comuns em português em `src/` só acha comentários; o jogo inteiro aparece em inglês.
+
 **M14-01 · Localização** · M [decisão D1]
 - Passos: tirar todos os textos de `ui.ts` e `data/*` para `src/data/lang/en.ts` e `pt.ts`; função `t(key)`; idioma nas opções.
 
@@ -677,7 +687,7 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 
 | ID | Decisão | Proposta | Trava |
 |---|---|---|---|
-| D1 | Textos do jogo em inglês com português como tradução, ou só código em inglês? | Inglês como base e português como tradução, com troca nas opções | M14-01 |
+| D1 | Textos do jogo em inglês com português como tradução, ou só código em inglês? | **Decidido em 2026-11-16: tudo em inglês.** Todo texto do jogo é em inglês, com a palavra do Dungeon Reign (`en.lua`) quando existir; português só como tradução depois. Vale para todo código novo a partir de agora | M14-00, M14-01 |
 | D2 | Spells: quantos espaços e quem usa o quê? | **Decidido em 2026-11-15: igual ao Dungeon Reign.** 2 espaços mais a técnica; cada herói escolhe 1 spell inicial entre as 4 dele (`startingSpells`, Healing Field nunca é inicial); a segunda spell, os níveis (até 5), os modificadores e o nível da técnica vêm da loja (Magic Shop), que vende qualquer spell. Estrutura conferida pela tabela de paridade (`M6-00`) | M6 |
 | D3 | Como se ganha spell? | **Decidido em 2026-11-15 (D2 e D13): como no original.** A inicial é escolhida no começo da partida entre as 4 do herói; as outras, os níveis e os modificadores vêm da loja | M6-06 |
 | D4 | Entra ouro, mercador e ferreiro? | **Decidido em 2026-11-15 (D13):** ouro e Magic Shop do original; sem ferreiro (não há itens) | M7 |
@@ -690,6 +700,7 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 | D12 | Spells como no Dungeon Reign: lançadas sozinhas (como lá) ou em teclas? | **Decidido em 2026-11-14: em teclas.** As mesmas spells do Dungeon Reign, sem lançamento automático: teclas 1 e 2 para as 2 spells; técnica e esquiva ficam onde estão. M6 vem logo depois do M19 | M6 |
 | D13 | Save contínuo ou partidas? | **Decidido em 2026-11-15: partidas como no Dungeon Reign.** Seed por partida, continuar no meio, morte encerra; sem equipamento; cada zona = 5 ondas, chefe nas ondas 5, 10, 15 e 20 | M20 |
 | D11 | Bosque Sombrio: deixar sombrio (fim de tarde, verdes fechados, luz fria, fogueira e cogumelos como contraste quente) ou manter ensolarado? | **Decidido em 2026-11-14: sombrio** | M18-07 |
+| D15 | Spell na tecla sai sem inimigo no alcance? | **Decidido em 2026-11-16: sai sempre e gasta a recarga**, acerte ou não (no original não saía sem alvo). Paridade S13 adaptada | M6 |
 | D14 | Atributos do herói contra os do Dungeon Reign: entra o poder de magia? "Efeitos" continua um atributo só (queimadura, veneno, lentidão)? Recarga e área globais entram no mesmo pool das spells, como lá? | **Pedido do usuário em 2026-11-16, ao aceitar o S12:** rever depois. Proposta: decidir antes do `M6-08` (modificadores), com os números das spells já jogáveis | M6-08, `core/stats.ts` |
 
 ---
@@ -755,5 +766,10 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`. **
 | Desempenho e modo de teste | feito | 2026-11-14 | Pedido do usuário (45 a 50 fps no jogo). Medido com consulta de tempo da GPU (`__zone.bench(frames, w, h, ratio)` na prévia de zona) numa Radeon RX 9060 XT, Bosque, 2560×1440: com densidade 1,5 o quadro custava 11,2 ms de GPU, dos quais cerca de 5,3 ms eram MSAA 4x (a 1x, 5,4 ms); bloom 2,3 ms; sombras e grama quase nada. **MSAA conforme a densidade** (`Pipeline.setSize`): 4x a 1x, 2x acima (a própria densidade já suaviza): 11,2 → 8,6 ms. **Resolução adaptativa** (`adaptResolution` em `game.ts`, números em `TUNING.frame`): o `Pipeline` mede o tempo de GPU sem bloquear (`gpuMs`); acima de 12,5 ms a escala da resolução interna desce um degrau, abaixo de 8,5 ms sobe meio degrau, entre 60% e 100%. F3 mostra GPU em ms e a escala. Conferido simulando GPU pesada (desce a 60% em 4 s) e leve (volta a 100%). Não conferido na tela do usuário. **Modo de teste** (`TUNING.testBoost`, aplicado em `Game.recompute`, fora do core): dano ×2 e velocidade ×4 em todos os heróis; voltar para 1 ao balancear |
 | M16-01 | pendente | | Depende do usuário |
 | M6-01 | feito | 2026-11-16 | `SPELLS` em `data/spells.ts`: as 11 spells de `spells.lua` com números, marcos, modificadores e ids das evoluções, mais `SPELL_TUNING` (escala de nível, piso de recarga, teto de lentidão, queimadura, peso do poder de magia). `core/spells.ts`: `spellStats` (porta de `SpellStats.compute` sem evolução), `collectSpellEffects`, `stackChance`, `spMult` e os espaços `addSpell`, `levelUpSpell`, `addModifier` com os motivos de recusa de lá; o espaço da partida ganhou `modifiers` (checkpoint antigo migra). 9 testes em `tests/spells.test.ts` e 13 de paridade: as 11 spells campo a campo e `spellStats` igual ao `compute` do Lua em 165 cenários. A interface mostra o nome da spell pelos dados. S12 "adaptado", aceito em 2026-11-16; a revisão dos atributos ficou na D14 |
+| M6-02 | feito, falta validar | 2026-11-16 | `SpellCaster` (`src/game/spells.ts`): teclas 1 e 2, a spell sai sempre e gasta a recarga (D15), mira no mouse; Fireball e Iceball como em `behaviors.lua` (explodem no primeiro inimigo, no fim do alcance ou na parede; Burn e Slow sem acumular, chefe com Slow a 20%), Volátil e Brittle Chill. HUD com os dois espaços. Save sem mudança (os espaços já iam no checkpoint; a recarga não). As outras 9 spells piscam sem efeito até o `M6-03`; não foi jogado com mouse |
+| M5-05, M5-08 | ampliadas | 2026-11-16 | Pedido do usuário: indicador sobre o inimigo para cada estado (queimando, lento e os das próximas spells) e efeitos próprios das 11 spells (`M5-08`, nova) |
+| M5-05 | feito, falta validar | 2026-11-16 | Feita antes do `M6-03`, a pedido do usuário. `src/game/status-icons.ts`: fileira de ícones desenhados em canvas sobre a cabeça de cada inimigo (queimando; Volátil, quando a queimadura é do Fireball e há chance; envenenado com acúmulos; lento; Brittle Chill, quando há o modificador; atordoado; gelo da Frostine com acúmulos; Quebradiço) e partículas no corpo (brasas, bolhas, cristais). A tinta do corpo continua. Conferido por captura com os 8 estados; o crítico cego não foi rodado. Falta "marcado" (não há estado assim ainda) |
+| M6-03 | feito, falta validar | 2026-11-16 | Em `SpellCaster`: **Chain Lightning** (dardo de 75 m/s na mira; o primeiro inimigo que toca começa a cadeia, que salta ao mais perto não atingido até `targets`; Static Field acerta o primeiro 2x; errando, apaga e a recarga já foi), **Arcane Bolt** (projétil com área; Eco), **Prism Beam** (raio de 18 m saindo do herói, gira com a mira por 1,8 s e fere a linha a cada 0,15 s; relançar troca). Eco (S16) pronto. Conferido por script e captura; visuais provisórios até o `M5-08`. Sem estado novo, então sem ícone novo |
+| D1, M14-00 | decidida, criada | 2026-11-16 | Pedido do usuário: todo texto do jogo em inglês, valendo já para o código novo (o Eco e o Volátil do M6 viraram Echo e Volatile). O pente-fino do que já existe é a `M14-00`, antes do `M6-04` |
 
 O M1 está completo, faltando só a validação da `M1-05`. No M2, os nove heróis estão refeitos: oito aprovados e Vesper (com as abelhas) esperando validação. Próxima sessão, sugestão: `M2-10`. `M0-03` (prévia com seletor, lineup e contagem) continua pendente.
