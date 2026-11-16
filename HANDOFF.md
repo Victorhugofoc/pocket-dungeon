@@ -5,7 +5,7 @@ Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada
 ## Agora (2026-11-16)
 - **Marco em andamento: M6, spells** (D2, D12: teclas 1 e 2). O M20 (partida como no Dungeon Reign) está completo. Feito no M6: `M6-00` (paridade) e `M6-01` (as 11 spells em `data/spells.ts` e `spellStats` em `core/spells.ts`, igual ao `compute` do original em 165 cenários). As spells ainda não disparam no jogo.
 - **Próxima tarefa:** `M6-02` (conjuração: teclas 1 e 2, recarga, mira no cursor; `fireball` e `iceball` completas, com o Volátil, S17). A spell inicial já é escolhida no início da partida e fica em `run.spells`.
-- **Para o usuário aceitar:** S12 em `docs/paridade.md` (dano como multiplicador do herói, metros, bônus globais de recarga e área multiplicando o pool da spell, sem atributo de poder de magia por enquanto).
+- **Rever com o usuário (D14):** os atributos do herói contra os do original (poder de magia, "efeitos", recarga e área globais). Ele aceitou o S12 assim por enquanto; decidir antes do `M6-08`.
 - **Falta o usuário jogar:** `M20-02` a `M20-08`, `M19-02` a `M19-05` (técnicas dos heróis), `M1-05` (presença de chefe), Ninhada da Vesper. Tudo foi conferido só pelo console.
 - **Régua de paridade:** `docs/paridade.md` mais `tests/parity.test.ts` (lê os `.lua` do original pelo LuaJIT, `tools/dr-dump.lua`). Toda tarefa do M20 e do M6 confere as linhas dela ali.
 - **Modo de teste ligado:** `TUNING.testBoost` dá dano ×2 e velocidade ×4 aos heróis, a pedido do usuário; voltar para 1 ao balancear. `TUNING.unlockAll` deixa os 9 heróis abertos (desligar junto). A vida dos chefes ainda leva o corte antigo de 0,55 (`TUNING.boss.hpMult`) até haver spells.
