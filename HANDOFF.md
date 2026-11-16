@@ -3,10 +3,10 @@
 Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada tarefa está no registro de progresso (`docs/roadmap.md`, seção 9) e no git. **Mantenha este arquivo curto:** ao fechar uma tarefa, troque o parágrafo "Agora" em vez de acrescentar.
 
 ## Agora (2026-11-16)
-- **Marco em andamento: M6, spells** (D2, D12: teclas 1 e 2). O M20 (partida como no Dungeon Reign) está completo. Feito no M6: `M6-00` (paridade) e `M6-01` (as 11 spells em `data/spells.ts` e `spellStats` em `core/spells.ts`, igual ao `compute` do original em 165 cenários). As spells ainda não disparam no jogo.
-- **Próxima tarefa:** `M6-02` (conjuração: teclas 1 e 2, recarga, mira no cursor; `fireball` e `iceball` completas, com o Volátil, S17). A spell inicial já é escolhida no início da partida e fica em `run.spells`.
+- **Marco em andamento: M6, spells** (D2, D12: teclas 1 e 2). O M20 (partida como no Dungeon Reign) está completo. Feito no M6: `M6-00` (paridade), `M6-01` (dados e `spellStats`) e `M6-02` (conjuração: `SpellCaster` em `src/game/spells.ts`, teclas 1 e 2, Fireball e Iceball completas com Volátil e Brittle Chill, HUD com os dois espaços). As outras 9 spells ainda não fazem nada (o espaço pisca).
+- **Próxima tarefa:** `M6-03` (`chain_lightning`, `arcane_bolt`, `prism_beam`), em `SpellCaster.cast`.
 - **Rever com o usuário (D14):** os atributos do herói contra os do original (poder de magia, "efeitos", recarga e área globais). Ele aceitou o S12 assim por enquanto; decidir antes do `M6-08`.
-- **Falta o usuário jogar:** `M20-02` a `M20-08`, `M19-02` a `M19-05` (técnicas dos heróis), `M1-05` (presença de chefe), Ninhada da Vesper. Tudo foi conferido só pelo console.
+- **Falta o usuário jogar:** `M6-02` (Fireball e Iceball nas teclas 1 e 2), `M20-02` a `M20-08`, `M19-02` a `M19-05` (técnicas dos heróis), `M1-05` (presença de chefe), Ninhada da Vesper. Tudo foi conferido só pelo console.
 - **Régua de paridade:** `docs/paridade.md` mais `tests/parity.test.ts` (lê os `.lua` do original pelo LuaJIT, `tools/dr-dump.lua`). Toda tarefa do M20 e do M6 confere as linhas dela ali.
 - **Modo de teste ligado:** `TUNING.testBoost` dá dano ×2 e velocidade ×4 aos heróis, a pedido do usuário; voltar para 1 ao balancear. `TUNING.unlockAll` deixa os 9 heróis abertos (desligar junto). A vida dos chefes ainda leva o corte antigo de 0,55 (`TUNING.boss.hpMult`) até haver spells.
 
@@ -14,6 +14,7 @@ Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada
 - `__game.prepareWave(n)` pula para a onda n · `__game.gainXp(200)` e terminar a onda abre as melhorias.
 - `__game.run.room = "boss_ambush"; __game.prepareWave(7)` testa uma sala; `__game.hazards.snapshot()` mostra raios e poças.
 - Conquistas: `__game.ach.state` (liberadas, contadores, medalhas); `TUNING.unlockAll = false` em `data/tuning.ts` mostra os trancados.
+- Spells: `__game.spells.stats` (números de cada espaço), `__game.spells.cooldown`, `__game.spells.snapshot()` (projéteis em voo); `__game.run.spells.push({id:'iceball',level:1,modifiers:[],evolution:null}); __game.recompute()` enche o 2º espaço.
 - Morte: `__game.player.iframes = 0; __game.hurtPlayer(99999, "Goblin")`.
 - No painel de navegador do Claude o jogo só avança com o painel visível; oculto, chamar `__game.frame(ts)` em laço.
 - Conferir pelo console (`get_page_text`, `javascript_tool`) e tirar captura só quando a mudança for visual.
@@ -35,7 +36,7 @@ Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada
 | `src/game/game.ts` | Loop, herói, combate, ondas (`prepareWave`, `updateWave`), técnicas |
 | `src/game/enemy.ts` | IA dos inimigos e padrões dos chefes |
 | `src/game/chars/` | Personagens: `kit.ts` (primitivas e escultura), `cast-*.ts` (receitas), `build.ts`, `animate.ts` |
-| `src/game/` (resto) | `world.ts`, `flora.ts`, `scatter.ts`, `air.ts`, `fx.ts`, `icewall.ts`, `rift.ts`, `render.ts`, `shared.ts` |
+| `src/game/` (resto) | `spells.ts` (conjuração das spells), `world.ts`, `flora.ts`, `scatter.ts`, `air.ts`, `fx.ts`, `icewall.ts`, `rift.ts`, `render.ts`, `shared.ts` |
 | `src/ui/ui.ts` | Interface em DOM: título e início, HUD, status (I), melhorias, mapa, relíquias, pausa, resultado |
 
 ## Como rodar e conferir

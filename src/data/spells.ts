@@ -3,6 +3,7 @@
 //
 // Como nas técnicas, os números ficam como lá (pixels, segundos, vida de lá); src/core/spells.ts converte para metros
 // e para o multiplicador sobre o dano do herói (DR_PX_PER_M, DR_BASE_DAMAGE, DR_BASE_HP em data/techniques.ts).
+import { DR_PX_PER_M } from "./techniques";
 
 /** Espaços de spell além da técnica (constants.lua `C.MAX_SPELLS`). */
 export const MAX_SPELLS = 2;
@@ -337,3 +338,19 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
 export function modifierDef(spellId: SpellId, modId: string): SpellModifier | undefined {
   return SPELLS[spellId].modifiers.find((m) => m.id === modId);
 }
+
+/** Números do lançamento no jogo (behaviors.lua, status.lua, tuning.lua), já em metros. */
+export const SPELL_CAST = {
+  /** rad entre projéteis múltiplos (tuning.lua `SPELL_PROJECTILE_SPREAD`) */
+  projectileSpread: 0.14,
+  /** raio de colisão do projétil (behaviors.lua: 8 px) */
+  hitRadius: 8 / DR_PX_PER_M,
+  /** Volátil: raio fixo (42 px) e fração do dano do Fireball (behaviors.lua `VOLATILE_RADIUS`, `VOLATILE_FRACTION`) */
+  volatileRadius: 42 / DR_PX_PER_M,
+  volatileFraction: 0.35,
+  /** chefes levam o Slow a 20% da força (status.lua `BOSS_SLOW_EFFECT`) */
+  bossSlowEffect: 0.2,
+  /** visual: altura e tamanho da bola */
+  height: 1.2,
+  ballSize: 0.38,
+} as const;

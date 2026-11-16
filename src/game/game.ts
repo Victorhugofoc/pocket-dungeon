@@ -28,6 +28,7 @@ import { Fx } from "./fx";
 import { IceWalls, type IceWall } from "./icewall";
 import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
+import { SpellCaster } from "./spells";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -180,6 +181,8 @@ export class Game {
   private icicle = new IcicleCounter();
   /** números da técnica do herói no nível atual (src/core/techniques.ts); null se ainda for a técnica antiga */
   tech: TechStats | null = null;
+  /** spells nas teclas 1 e 2 (M6-02) */
+  spells = new SpellCaster(this);
   private projPool: THREE.Mesh[] = [];
   private projMats = new Map<number, THREE.MeshBasicMaterial>();
 
@@ -281,6 +284,7 @@ export class Game {
     this.marker.renderOrder = 10;
     this.scene.add(this.marker);
     this.recompute();
+    this.spells.reset();
     this.player.hp = Math.min(this.stats.maxHp, run.hp ?? this.stats.maxHp);
     this.started = true;
     this.ach.runStart(run.heroId);
@@ -343,6 +347,7 @@ export class Game {
     this.tech = TECHNIQUES[tid]
       ? techniqueStats(tid, 1, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage })
       : null;
+    this.spells.refresh();
     this.player.hp = Math.min(this.player.hp, this.stats.maxHp);
   }
 
@@ -466,6 +471,7 @@ export class Game {
     this.enemies.length = 0;
     for (const pr of this.projectiles) this.freeProjectile(pr);
     this.projectiles.length = 0;
+    this.spells.clear();
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
     for (const b of this.bees) disposeRig(b.rig);
@@ -655,6 +661,8 @@ export class Game {
       }
     }
     if (crit) amount *= s.critDamage;
+    // Brittle Chill (Iceball): inimigo com Slow recebe dano extra (damage.lua §37)
+    if (now < e.slowUntil) amount *= 1 + this.spells.brittle;
     this.damageEnemy(e, amount, { crit });
     if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount);
     if (back && e.dead) this.heal(s.maxHp * SHADOW.backstabKillHeal, true); // Umbra: matar pelas costas cura
@@ -686,7 +694,7 @@ export class Game {
     } else {
       const max = st.maxStacks ?? 1;
       const dot = { kind: st.kind, dps: hitDamage * st.power * potency, until: now + st.duration };
-      const same = e.dots.filter((d) => d.kind === st.kind);
+      const same = e.dots.filter((d) => d.kind === st.kind && !d.spell);
       if (same.length >= max) {
         same.sort((a, b) => a.until - b.until);
         Object.assign(same[0], dot);
@@ -732,6 +740,7 @@ export class Game {
   private killEnemy(e: Enemy, source: KillSource = "other"): void {
     e.dead = true;
     e.hp = 0;
+    this.spells.onKill(e);
     this.ach.enemyKilled({ key: e, id: e.boss?.id ?? e.def!.id, boss: e.isBoss, champion: e.champion, source,
       elapsed: this.run.statistics.elapsed, noReward: e.summoned });
     const color = e.boss?.color ?? e.def!.color;
@@ -1291,7 +1300,21 @@ export class Game {
     this.raycaster.ray.intersectPlane(this.groundPlane, this.aim);
   }
 
-  private aimPoint(maxRange: number): { x: number; z: number } {
+  /** Golpe de spell: mesmo caminho do dano do herói (crítico, Frostine), contado como "other" nas conquistas. */
+  spellHit(e: Enemy, mult: number): void {
+    this.hitSource = "other";
+    this.hitEnemy(e, mult);
+  }
+
+  /** world:enemyWithin de lá: há inimigo vivo a até `r` metros? */
+  enemyWithin(x: number, z: number, r: number): boolean {
+    for (const e of this.enemies) {
+      if (!e.dead && (e.x - x) ** 2 + (e.z - z) ** 2 <= (r + e.radius) ** 2) return true;
+    }
+    return false;
+  }
+
+  aimPoint(maxRange: number): { x: number; z: number } {
     const p = this.player;
     const dx = this.aim.x - p.x;
     const dz = this.aim.z - p.z;
@@ -2073,6 +2096,8 @@ export class Game {
       this.flushAchievements();
       this.updateEnemies(dt);
       this.updateProjectiles(dt);
+      const inp = this.input;
+      this.spells.update(dt, [inp.wasPressed("Digit1") || inp.wasPressed("Numpad1"), inp.wasPressed("Digit2") || inp.wasPressed("Numpad2")]);
       this.updateAllies(dt);
       this.updateDrops(dt);
       this.fx.update(dt, this.camera, window.innerWidth, window.innerHeight);

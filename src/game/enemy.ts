@@ -15,6 +15,9 @@ export interface Dot {
   kind: StatusKind;
   dps: number;
   until: number;
+  /** spell que aplicou (Fireball: o Volátil olha isto) e o espaço dela */
+  spell?: string;
+  slot?: number;
 }
 
 export class Enemy {
