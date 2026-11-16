@@ -111,12 +111,14 @@ describe("partida", () => {
     expect(continueRun(cp).rng.get("spawns").next()).toBe(new RunRng(5).get("spawns").next());
   });
 
-  it("checkpoint de antes do M20-04 perde mochila e equipamento ao continuar", () => {
+  it("checkpoint de antes do M20-06 perde o progresso do jogo antigo ao continuar", () => {
     const cp = checkpoint(start(9), new RunRng(9), 3);
-    (cp.run.legacy as unknown as Record<string, unknown>).bag = [{ id: "x" }];
-    (cp.run.legacy as unknown as Record<string, unknown>).equipped = { weapon: { id: "y" } };
-    cp.run.legacy.deaths = 2;
-    expect(continueRun(cp).run.legacy).toEqual({ deaths: 2 });
+    (cp.run as unknown as Record<string, unknown>).legacy = { deaths: 2, bag: [{ id: "x" }] };
+    delete (cp.run as Partial<RunState>).killedBy;
+    expect(isCheckpoint(cp)).toBe(true);
+    const r = continueRun(cp).run;
+    expect("legacy" in r).toBe(false);
+    expect(r.killedBy).toBeNull();
   });
 
   it("seeds diferentes dão mapas diferentes", () => {

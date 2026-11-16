@@ -2,6 +2,8 @@
 
 Leia `HANDOFF.md` antes de qualquer coisa: ele tem o estado atual e o próximo passo. O plano de trabalho, tarefa por tarefa, está em `docs/roadmap.md`; siga a rotina da seção 0.1 dele e atualize o registro de progresso (seção 9) a cada sessão.
 
+**Economia de tokens:** não ler `docs/roadmap.md` nem `docs/paridade.md` inteiros; usar `grep` pelo id da tarefa e ler só o trecho. Conferir lógica e interface pelo console do navegador; captura de tela só para mudança visual.
+
 ## Projeto
 - RPG de ação para PC (teclado e mouse), no navegador: um herói, mapas abertos procedurais, loot, relíquias e chefes por zona até o chefe final. Referência de formato: Minecraft Dungeons.
 - three.js + TypeScript + Vite. **Toda a arte é gerada por código** (decisão do usuário): personagens, cenário, shaders, efeitos e sons. Nada de sprites nem modelos importados. Os sprites do Dungeon Reign servem só de referência de design (`dungeon-idle/assets`).
