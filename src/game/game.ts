@@ -650,6 +650,7 @@ export class Game {
   damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string } = {}): void {
     if (e.dead) return;
     amount = Math.max(1, Math.round(amount));
+    this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
     e.hp -= amount;
     if (!e.aggro) e.setAggro(this);
     const top = e.rig.height + 0.3;
@@ -776,6 +777,7 @@ export class Game {
     const before = p.hp;
     if (this.inCombat && !full) amount *= RUN_TUNING.combatHealMult;
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
+    this.run.statistics.healed += p.hp - before;
     if (show && p.hp - before >= 1) {
       this.fx.text(p.x, 2.6, p.z, "+" + Math.round(p.hp - before), "heal");
       this.fx.burst(p.x, 1.2, p.z, 0x5fd35f, 8, 3, 0.12, 0.5, 2);
@@ -869,6 +871,7 @@ export class Game {
     amount *= this.stats.damageTaken;
     if (this.hero.maxHitFraction) amount = Math.min(amount, this.stats.maxHp * this.hero.maxHitFraction);
     amount = Math.max(1, Math.round(amount));
+    this.run.statistics.damageTaken += Math.min(amount, p.hp);
     p.hp -= amount;
     p.flash = 1;
     if (p.rig) kickRig(p.rig, -Math.sin(p.facing), -Math.cos(p.facing), 0.7);
@@ -883,7 +886,7 @@ export class Game {
       this.playerAlive = false;
       p.leap = p.rush = null;
       this.endAegis(false);
-      this.run.legacy.deaths++;
+      this.run.killedBy = source;
       this.events.died();
     }
   }
@@ -895,25 +898,6 @@ export class Game {
     this.fx.addShake(0.15);
     const p = this.player;
     if (Math.hypot(p.x - x, p.z - z) < r + 0.3) this.hurtPlayer(dmg, source);
-  }
-
-  /**
-   * Depois de cair: volta ao checkpoint da onda (o começo dela, com o que se tinha ali). Até o M20-06 a morte não
-   * encerra a partida; só conta.
-   */
-  respawn(): void {
-    const deaths = this.run.legacy.deaths;
-    const cp = loadRun(this.storage);
-    this.playerAlive = true;
-    if (cp && cp.run.seed === this.run.seed) {
-      const c = continueRun(cp);
-      c.run.legacy.deaths = deaths;
-      this.start(c.run, c.rng);
-    } else {
-      this.player.hp = this.stats.maxHp;
-      this.prepareWave(Math.max(1, this.run.wave), true);
-    }
-    this.player.iframes = 1.5;
   }
 
   // ---------------------------------------------------------------- chefe
@@ -1543,7 +1527,11 @@ export class Game {
       animateRig(rig, { t: this.time, move: 0, attack: -1, windup: 0, dead: 1 });
       return;
     }
-    if (s.regen > 0) p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? RUN_TUNING.combatHealMult : 1));
+    if (s.regen > 0 && p.hp < s.maxHp) {
+      const before = p.hp;
+      p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? RUN_TUNING.combatHealMult : 1));
+      this.run.statistics.healed += p.hp - before;
+    }
     this.updateAim();
     p.facing = Math.atan2(this.aim.x - p.x, this.aim.z - p.z);
     let lift = 0;

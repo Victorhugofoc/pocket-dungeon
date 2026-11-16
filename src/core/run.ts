@@ -92,14 +92,6 @@ export interface RunStatistics {
   healed: number;
 }
 
-/**
- * Progresso do jogo antigo que ainda vive dentro da partida até o M20 terminar:
- * a contagem de mortes, até o M20-06 (morrer encerra a partida).
- */
-export interface LegacyProgress {
-  deaths: number;
-}
-
 export interface RunState {
   seed: number;
   seedCode: string;
@@ -141,7 +133,8 @@ export interface RunState {
   /** quantas vezes a partida foi continuada */
   resumes: number;
   statistics: RunStatistics;
-  legacy: LegacyProgress;
+  /** quem deu o golpe final (results.lua `killedBy`); null enquanto vivo */
+  killedBy: string | null;
 }
 
 export interface NewRunOptions {
@@ -188,7 +181,7 @@ export function newRun(opts: NewRunOptions): RunState {
     victory: false,
     resumes: 0,
     statistics: { kills: 0, damage: 0, damageTaken: 0, elapsed: 0, goldEarned: 0, goldSpent: 0, xpEarned: 0, healed: 0 },
-    legacy: { deaths: 0 },
+    killedBy: null,
   };
 }
 
@@ -232,8 +225,9 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.curseWavesLeft ??= 0;
   run.curseContinues ??= false;
   run.mapHistory ??= [];
-  // checkpoints de antes do M20-04 guardavam mochila e equipamento
-  run.legacy = { deaths: run.legacy.deaths ?? 0 };
+  // checkpoints de antes do M20-06 guardavam o progresso do jogo antigo (mochila, equipamento, mortes)
+  delete (run as { legacy?: unknown }).legacy;
+  run.killedBy = null;
   run.wave = cp.wave;
   return { run, rng, wave: cp.wave };
 }
@@ -244,7 +238,7 @@ export function isCheckpoint(x: unknown): x is Checkpoint {
   if (!cp || cp.v !== RUN_VERSION || typeof cp.wave !== "number" || !cp.run || !cp.rng) return false;
   const r = cp.run;
   if (typeof r.seed !== "number" || !HEROES[r.heroId] || !DIFFICULTIES[r.difficultyId]) return false;
-  if (typeof r.level !== "number" || !Array.isArray(r.relics) || !Array.isArray(r.spells) || !r.statistics || !r.legacy) return false;
+  if (typeof r.level !== "number" || !Array.isArray(r.relics) || !Array.isArray(r.spells) || !r.statistics) return false;
   return RUN_STREAMS.every((id) => typeof cp.rng[id] === "number");
 }
 
@@ -262,6 +256,7 @@ export interface RunSummary {
   victory: boolean;
   endless: boolean;
   seedCode: string;
+  killedBy: string | null;
 }
 
 export interface RecordEntry extends RunSummary {
@@ -297,6 +292,7 @@ export function summarize(run: RunState): RunSummary {
     heroId: run.heroId, difficultyId: run.difficultyId, wave: run.wave, kills: run.statistics.kills,
     damage: run.statistics.damage, level: run.level, relics: run.relics.length,
     elapsed: Math.floor(run.statistics.elapsed), victory: run.victory, endless: run.endless, seedCode: run.seedCode,
+    killedBy: run.killedBy,
   };
 }
 
