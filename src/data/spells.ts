@@ -41,6 +41,10 @@ export const SPELL_TEXT: Readonly<Record<SpellId, string>> = {
 
 /** Números gerais das spells (spells.lua, tuning.lua e constants.lua). */
 export const SPELL_TUNING = {
+  /** Sanctuary: dano por pulso a quem está no anel = (isto + poder de magia × escala), como as spells (behaviors.lua
+   * `Evo.SANCTUARY_DAMAGE`, `Evo.SANCTUARY_SCALE`; D-318, D-354) */
+  sanctuaryDamage: 5,
+  sanctuaryScale: 0.30,
   /** escala do dano por nível (spells.lua `S.LEVEL_STEP`): nível 5 = ×3,25 */
   levelStep: 0.5625,
   /** piso da recarga (constants.lua `COOLDOWN_FLOOR`) */
@@ -372,6 +376,10 @@ export const SPELL_CAST = {
   /** Rune Traps: o ataque básico estoura runa armada de longe, menos as que estão a até gatilho + isto do herói (16 px;
    * techniques.lua `RUNE_SHOT_CLEAR`: o tiro sai dos pés dele) */
   runeShotClear: 16 / DR_PX_PER_M,
+  /** Firewave: a muralha leva isto para varrer o comprimento (tuning.lua `SPELL_WALL_SWEEP_TIME`) e fica mais isto
+   * queimando depois, sem ferir (behaviors.lua `FIREWAVE_LINGER`) */
+  wallSweepTime: 0.30,
+  firewaveLinger: 0.8,
   /** visual: altura e tamanho da bola */
   height: 1.2,
   ballSize: 0.38,

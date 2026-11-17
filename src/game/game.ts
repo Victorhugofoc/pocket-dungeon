@@ -29,7 +29,7 @@ import { Fx } from "./fx";
 import { IceWalls, type IceWall } from "./icewall";
 import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
-import { SpellCaster } from "./spells";
+import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
@@ -545,11 +545,13 @@ export class Game {
     const ice = this.hero.frost === true;
     // Pingente (Frostine): o tiro depois de 3 acertos seguidos no mesmo alvo sai maior e x3
     const icicle = ice && this.icicle.take();
+    // Arcane Strike pronto: o tiro sai carregado, roxo e maior (D-215)
+    const charged = this.spells.arcaneReady;
     this.addProjectile({
       x: p.x + Math.sin(angle) * 0.7, z: p.z + Math.cos(angle) * 0.7, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed,
-      r: 0.24 * (auto.size ?? 1) * (icicle ? 1.9 : 1), dmg: mult * (icicle ? FROST.icicleMult : 1), life: range / speed, friendly: true,
+      r: 0.24 * (auto.size ?? 1) * (icicle ? 1.9 : 1) * (charged ? ARCANE_CHARGED.size : 1), dmg: mult * (icicle ? FROST.icicleMult : 1), life: range / speed, friendly: true,
       pierce: auto.pierce ?? 0, ricochet: auto.ricochet ?? 0, ricochetDamage: auto.ricochetDamage ?? 1,
-      status: auto.status, color: icicle ? 0xf2fbff : auto.color, source: "auto", ice, icicle,
+      status: auto.status, color: icicle ? 0xf2fbff : charged ? ARCANE_CHARGED.color : auto.color, source: "auto", ice, icicle,
     });
   }
 
@@ -586,6 +588,7 @@ export class Game {
           this.hitSource = pr.source === "auto" ? "auto" : "other";
           this.hitEnemy(e, pr.dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined });
           this.hitSource = "other";
+          if (pr.source === "auto") this.spells.onAutoHit(e);
           if (pr.push && !e.isBoss && !e.dead) {
             const sp = Math.hypot(pr.vx, pr.vz) || 1;
             e.kx += (pr.vx / sp) * pr.push * TUNING.enemy.knockback;
@@ -1406,7 +1409,7 @@ export class Game {
     } else {
       const range = a.range * (1 + (this.stats.range - 1) * 0.5) * (1 + (this.stats.area - 1) * 0.5);
       const arc = (((a.arcDeg ?? 100) * Math.PI) / 180) / 2;
-      this.fx.slash(p.x, p.z, p.facing, range, a.arcDeg ?? 100, a.color);
+      this.fx.slash(p.x, p.z, p.facing, range, a.arcDeg ?? 100, this.spells.arcaneReady ? ARCANE_CHARGED.color : a.color);
       this.audio.play("swing");
       let hits = 0;
       for (const e of this.enemies) {
@@ -1420,6 +1423,7 @@ export class Game {
         this.hitSource = "auto";
         this.hitEnemy(e, a.damage, a.status);
         this.hitSource = "other";
+        this.spells.onAutoHit(e);
         hits++;
       }
       if (hits) this.fx.addShake(0.08);

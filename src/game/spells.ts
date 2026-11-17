@@ -18,6 +18,12 @@ export const SPELL_COLOR: Record<string, number> = {
   rune_traps: 0xa58cff,
 };
 
+/** Cores das formas evoluídas (M6-10). */
+const EVO_COLOR = { firestorm: 0xff6a1a, firewave: 0xff7a1a, blizzard: 0xbfe6ff, lightning_strike: 0xffe14a,
+  arcane_strike: 0xc28cff, sanctuary: 0xffd45a } as const;
+/** tiro do ataque básico com o Arcane Strike pronto (D-215: roxo e maior) */
+export const ARCANE_CHARGED = { color: EVO_COLOR.arcane_strike, size: 1.35 };
+
 interface SpellProjectile {
   slot: number;
   id: string;
@@ -114,6 +120,50 @@ interface Rune {
   clock: THREE.Mesh;
   /** sumindo (trocada pela mais nova ou vencida): segundos que faltam para sumir */
   fade?: number;
+}
+
+/** Firestorm (behaviors.lua `world.fireAuras`): aura de fogo que segue o herói e fere a cada tique. */
+interface Aura {
+  slot: number;
+  st: SpellStats;
+  time: number;
+  duration: number;
+  tickLeft: number;
+  /** cada lançamento queima uma vez por inimigo (a queimadura não se empilha a cada tique) */
+  burned: Set<Enemy>;
+  pulse: number;
+  ring: GroundRing;
+}
+
+/** Firewave (behaviors.lua `world.walls`): muralha de fogo que varre para a frente e fica queimando um pouco. */
+interface Wall {
+  slot: number;
+  st: SpellStats;
+  x: number; z: number; dx: number; dz: number;
+  t: number;
+  done: number;
+  hit: Set<Enemy>;
+  mesh: THREE.Mesh;
+}
+
+/** Blizzard (behaviors.lua `world.storms`): tempestade parada na mira; fere e deixa lento a cada tique. */
+interface Storm {
+  slot: number;
+  st: SpellStats;
+  x: number; z: number;
+  time: number;
+  duration: number;
+  tickLeft: number;
+  pulse: number;
+  ring: GroundRing;
+}
+
+/** Anel no chão com relógio (aura, tempestade). */
+interface GroundRing {
+  group: THREE.Group;
+  disc: THREE.MeshBasicMaterial;
+  edge: THREE.MeshBasicMaterial;
+  clock: THREE.Mesh;
 }
 
 /** Eco à espera (spell_system.lua `pendingCasts`). */
@@ -216,6 +266,37 @@ function runeTexture(): THREE.CanvasTexture {
   runeTex = new THREE.CanvasTexture(cv);
   return runeTex;
 }
+/** Firewave: brasa no chão, com as bordas suaves e a frente (v = 1) mais acesa; o ruído quebra a faixa em línguas */
+let wallTex: THREE.CanvasTexture | null = null;
+function firewaveTexture(): THREE.CanvasTexture {
+  if (wallTex) return wallTex;
+  const W = 64;
+  const H = 128;
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext("2d")!;
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++) {
+    const v = 1 - y / (H - 1); // a linha de cima do canvas é v = 1
+    for (let x = 0; x < W; x++) {
+      const u = x / (W - 1);
+      const side = Math.min(1, Math.sin(Math.PI * u) * 1.6);
+      const n = 0.75 + 0.25 * Math.sin(x * 0.9 + y * 0.35) * Math.sin(x * 0.37 - y * 0.6);
+      const a = side * n * (0.35 + 0.65 * v ** 1.5);
+      const k = (y * W + x) * 4;
+      img.data[k] = 255;
+      img.data[k + 1] = Math.round(90 + 140 * v * side);
+      img.data[k + 2] = Math.round(30 + 60 * v * v * side);
+      img.data[k + 3] = Math.round(255 * Math.max(0, Math.min(1, a)));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  wallTex = new THREE.CanvasTexture(c);
+  wallTex.colorSpace = THREE.SRGBColorSpace;
+  return wallTex;
+}
+
 const RUNE_GEO = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
 
 /** Totem de pedra: laje, coluna, cabeça e duas faixas de runas (a cor da escola da terra). */
@@ -239,6 +320,9 @@ export class SpellCaster {
   private fields: Field[] = [];
   private orbits: Orbit[] = [];
   private runes: Rune[] = [];
+  private auras: Aura[] = [];
+  private walls: Wall[] = [];
+  private storms: Storm[] = [];
   private pending: PendingCast[] = [];
   private mats = new Map<number, THREE.MeshBasicMaterial>();
 
@@ -297,23 +381,41 @@ export class SpellCaster {
     this.updateFields(dt);
     this.updateOrbits(dt);
     this.updateRunes(dt);
+    this.updateAuras(dt);
+    this.updateWalls(dt);
+    this.updateStorms(dt);
   }
 
   /** spell_system.lua `tryCast`: a recarga é gasta quando a spell sai; spell sem efeito ainda (M6-05) não gasta. */
   tryCast(i: number): boolean {
     const st = this.stats[i];
     if (!st || this.cooldown[i] > 0 || !this.game.playerAlive) return false;
+    // Arcane Strike não se lança: a recarga carrega o próximo ataque básico (`onAutoHit`)
+    if (st.evolution === "arcane_strike") return false;
     if (!this.cast(i, st)) {
       this.noTarget[i] = 0.35;
       return false;
     }
     this.cooldown[i] = st.cooldown;
     // Eco (S16): chance de relançar igual e de graça 0,2 s depois
-    if (st.echo && Math.random() < st.echo) this.pending.push({ slot: i, t: SPELL_CAST.echoDelay });
+    if (st.echo && !st.evolution && Math.random() < st.echo) this.pending.push({ slot: i, t: SPELL_CAST.echoDelay });
     return true;
   }
 
   private cast(i: number, st: SpellStats): boolean {
+    // as evoluções que trocam a forma (behaviors.lua `Evo`); as outras seguem o tipo da spell
+    switch (st.evolution) {
+      case "firestorm":
+        return this.castFirestorm(i, st);
+      case "firewave":
+        return this.castFirewave(i, st);
+      case "blizzard":
+        return this.castBlizzard(i, st);
+      case "lightning_strike":
+        return this.castStrike(st);
+      case "arcane_strike":
+        return false;
+    }
     switch (st.kind) {
       case "projectile":
         return this.castProjectile(i, st);
@@ -798,6 +900,13 @@ export class SpellCaster {
     const p = g.player;
     for (let k = this.fields.length - 1; k >= 0; k--) if (this.fields[k].follow && this.fields[k].slot === i) this.freeField(k);
     this.fields.push(this.makeField(i, st, p.x, p.z, true));
+    // Sanctuary (behaviors.lua `Evo.sanctuary`): só o anel que segue o herói, dourado e maior
+    if (st.evolution === "sanctuary") {
+      g.fx.shockwave(p.x, p.z, st.radius, EVO_COLOR.sanctuary, 0.5);
+      g.fx.flashLight(p.x, 1.5, p.z, EVO_COLOR.sanctuary, 2, 0.35);
+      g.audio.play("tech");
+      return true;
+    }
     const extra = Math.min(st.extraFields ?? 0, SPELL_CAST.fieldExtraCap - this.fields.filter((f) => !f.follow).length);
     for (let n = 0; n < extra; n++) {
       const a = Math.random() * Math.PI * 2;
@@ -811,7 +920,7 @@ export class SpellCaster {
 
   private makeField(slot: number, st: SpellStats, x: number, z: number, follow: boolean): Field {
     const g = this.game;
-    const color = SPELL_COLOR.healing_field;
+    const color = st.evolution === "sanctuary" ? EVO_COLOR.sanctuary : SPELL_COLOR.healing_field;
     const group = new THREE.Group();
     const disc = groundMat(color, 0.1);
     const edge = groundMat(color, 0.55);
@@ -854,12 +963,14 @@ export class SpellCaster {
       f.tickLeft -= dt;
       while (f.tickLeft <= 0 && f.time > -1e-9) {
         f.tickLeft += f.st.tick ?? 1;
+        if (f.st.fieldDamage) this.sanctuaryBurn(f);
         if (!g.playerAlive || (p.x - f.x) ** 2 + (p.z - f.z) ** 2 > f.st.radius ** 2) continue;
         let amount = f.st.heal ?? 0;
         if (f.st.surge && Math.random() < f.st.surge) amount += 1 / DR_BASE_HP;
         g.heal(g.stats.maxHp * amount, true);
         f.pulse = 1;
-        g.fx.burst(p.x, 0.4, p.z, SPELL_COLOR.healing_field, 6, 2.5, 0.12, 0.6, -2);
+        g.fx.burst(p.x, 0.4, p.z, f.st.evolution === "sanctuary" ? EVO_COLOR.sanctuary : SPELL_COLOR.healing_field,
+          6, 2.5, 0.12, 0.6, -2);
       }
       if (f.time <= 0) {
         this.freeField(k);
@@ -874,6 +985,23 @@ export class SpellCaster {
       f.edge.opacity = (0.45 + 0.4 * f.pulse) * born * ending;
       f.clock.geometry = clockGeo(f.time / f.duration);
       f.spin.rotation.y = g.time * 0.6;
+    }
+  }
+
+  /** Sanctuary (D-318, D-414): o anel dourado fere quem está dentro, e um pilar de luz cai em cada um, um pouco depois. */
+  private sanctuaryBurn(f: Field): void {
+    const g = this.game;
+    let n = 0;
+    for (const e of this.inArea(f.x, f.z, f.st.radius)) {
+      if (e.dead) continue;
+      g.spellHit(e, f.st.fieldDamage ?? 0, true);
+      const x = e.x;
+      const z = e.z;
+      const delay = (n++ % 5) * 40;
+      setTimeout(() => {
+        for (let h = 0; h < 5; h++) g.fx.glow(x, 0.3 + h * 0.6, z, h < 2 ? EVO_COLOR.sanctuary : 0xfff2c0, 0.9 - h * 0.1, 0.35, 0, 2, 0);
+        g.fx.burst(x, 0.3, z, EVO_COLOR.sanctuary, 6, 2.5, 0.1, 0.4, -4);
+      }, delay);
     }
   }
 
@@ -1077,6 +1205,276 @@ export class SpellCaster {
     this.runes.splice(k, 1);
   }
 
+  // ---------------------------------------------------------------- evoluções (M6-10)
+  /** behaviors.lua `B.areaHit`: quem está no raio, contando o tamanho do inimigo; a lista é tirada antes de ferir. */
+  private inArea(x: number, z: number, r: number): Enemy[] {
+    return this.game.enemies.filter((e) => !e.dead && (e.x - x) ** 2 + (e.z - z) ** 2 <= (r + e.radius) ** 2);
+  }
+
+  /** behaviors.lua `B.segmentHit`: quem cruza o trecho [from, to] da reta, com meia largura `hw`. */
+  private inSegment(x0: number, z0: number, dx: number, dz: number, from: number, to: number, hw: number, already?: Set<Enemy>): Enemy[] {
+    const out: Enemy[] = [];
+    for (const e of this.game.enemies) {
+      if (e.dead || already?.has(e)) continue;
+      const ex = e.x - x0;
+      const ez = e.z - z0;
+      const t = ex * dx + ez * dz;
+      if (t < from - e.radius || t > to + e.radius) continue;
+      if (Math.hypot(ex - dx * t, ez - dz * t) > hw + e.radius) continue;
+      out.push(e);
+    }
+    for (const e of out) already?.add(e);
+    return out;
+  }
+
+  private groundRing(color: number, radius: number, x: number, z: number): GroundRing {
+    const group = new THREE.Group();
+    const disc = groundMat(color, 0.1);
+    const edge = groundMat(color, 0.6);
+    const d = new THREE.Mesh(DISC_GEO, disc);
+    d.position.y = 0.03;
+    const e = new THREE.Mesh(EDGE_GEO, edge);
+    e.position.y = 0.04;
+    const clock = new THREE.Mesh(clockGeo(1), groundMat(0xffffff, 0.8));
+    clock.position.y = 0.05;
+    clock.scale.setScalar(0.9);
+    group.add(d, e, clock);
+    group.scale.setScalar(radius);
+    group.position.set(x, 0, z);
+    this.game.scene.add(group);
+    return { group, disc, edge, clock };
+  }
+
+  /** Relógio, pulso e piscar do último segundo de um anel no chão. */
+  private drawRing(r: GroundRing, x: number, z: number, radius: number, time: number, duration: number, pulse: number): void {
+    const g = this.game;
+    const born = Math.min(1, (duration - time) / 0.25);
+    const ending = time < 1 ? 0.55 + 0.45 * Math.abs(Math.cos(g.time * 9)) : 1;
+    r.group.position.set(x, 0, z);
+    r.group.scale.setScalar(radius * (0.6 + 0.4 * born) * (1 + 0.05 * pulse));
+    r.disc.opacity = (0.1 + 0.16 * pulse) * born * ending;
+    r.edge.opacity = (0.5 + 0.4 * pulse) * born * ending;
+    r.clock.geometry = clockGeo(Math.max(0, time / duration));
+  }
+
+  /**
+   * behaviors.lua `Evo.firestorm` (D-396): aura de fogo que segue o herói; relançar renova a que está acesa. O primeiro
+   * tique sai com o lançamento; cada lançamento queima uma vez por inimigo. Lá só saía com inimigo perto; aqui sai sempre (D15).
+   */
+  private castFirestorm(i: number, st: SpellStats): boolean {
+    const g = this.game;
+    const p = g.player;
+    const dur = st.duration ?? 1;
+    const cur = this.auras.find((a) => a.slot === i);
+    if (cur) Object.assign(cur, { st, time: dur, duration: dur, burned: new Set<Enemy>(), pulse: 1 });
+    else this.auras.push({ slot: i, st, time: dur, duration: dur, tickLeft: 0, burned: new Set(), pulse: 1,
+      ring: this.groundRing(EVO_COLOR.firestorm, st.radius, p.x, p.z) });
+    g.fx.shockwave(p.x, p.z, st.radius, EVO_COLOR.firestorm, 0.4);
+    g.fx.flashLight(p.x, 1.4, p.z, EVO_COLOR.firestorm, 2.4, 0.3);
+    g.audio.play("tech");
+    return true;
+  }
+
+  private updateAuras(dt: number): void {
+    const g = this.game;
+    const p = g.player;
+    for (let k = this.auras.length - 1; k >= 0; k--) {
+      const a = this.auras[k];
+      a.time -= dt;
+      a.tickLeft -= dt;
+      while (a.tickLeft <= 0 && a.time > 0) {
+        a.tickLeft += a.st.tick ?? 1;
+        a.pulse = 1;
+        for (const e of this.inArea(p.x, p.z, a.st.radius)) {
+          if (!a.burned.has(e)) {
+            a.burned.add(e);
+            this.applyBurn(e, a.st, a.slot);
+          }
+          g.spellHit(e, a.st.tickDamage ?? 0);
+          if (!e.dead) g.fx.burst(e.x, 0.6, e.z, EVO_COLOR.firestorm, 5, 3, 0.1, 0.35, -3);
+        }
+      }
+      if (a.time <= 0 || !g.playerAlive) {
+        freeGroup(a.ring.group);
+        this.auras.splice(k, 1);
+        continue;
+      }
+      a.pulse = Math.max(0, a.pulse - dt * 3);
+      this.drawRing(a.ring, p.x, p.z, a.st.radius, a.time, a.duration, a.pulse);
+      // brasas subindo dentro da aura
+      for (let f = 0; f < 3; f++) {
+        const ang = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * a.st.radius;
+        g.fx.spark(p.x + Math.cos(ang) * r, 0.15, p.z + Math.sin(ang) * r, Math.random() < 0.5 ? 0xffb347 : EVO_COLOR.firestorm, 0.12, 0.7, 1.6);
+      }
+      // anel de chamas na borda (D-408), mais forte no pulso
+      const n = 3 + Math.round(a.pulse * 6);
+      for (let f = 0; f < n; f++) {
+        const ang = Math.random() * Math.PI * 2;
+        const r = a.st.radius * (0.8 + Math.random() * 0.2);
+        g.fx.glow(p.x + Math.cos(ang) * r, 0.25, p.z + Math.sin(ang) * r, Math.random() < 0.3 ? 0xffd27a : EVO_COLOR.firestorm,
+          0.7 + Math.random() * 0.5, 0.45, 0, 2.2 + Math.random() * 1.5, 0);
+      }
+    }
+  }
+
+  /** behaviors.lua `Evo.firewave`: muralha de fogo na direção do mouse, varre o comprimento em 0,3 s. */
+  private castFirewave(i: number, st: SpellStats): boolean {
+    const g = this.game;
+    const p = g.player;
+    const { dx, dz } = this.aimDir();
+    const mat = new THREE.MeshBasicMaterial({ map: firewaveTexture(), transparent: true, opacity: 0.9, depthWrite: false,
+      blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(BEAM_GEO, mat);
+    mesh.position.set(p.x, 0.06, p.z);
+    mesh.rotation.y = Math.atan2(dx, dz);
+    mesh.scale.set(st.width ?? 1, 1, 0.001);
+    mesh.renderOrder = 3;
+    g.scene.add(mesh);
+    this.walls.push({ slot: i, st, x: p.x, z: p.z, dx, dz, t: 0, done: 0, hit: new Set(), mesh });
+    p.facing = Math.atan2(dx, dz);
+    g.audio.play("tech");
+    g.fx.flashLight(p.x + dx, 1.2, p.z + dz, EVO_COLOR.firewave, 2.2, 0.3);
+    return true;
+  }
+
+  private updateWalls(dt: number): void {
+    const g = this.game;
+    const sweep = SPELL_CAST.wallSweepTime;
+    const life = sweep + SPELL_CAST.firewaveLinger;
+    for (let k = this.walls.length - 1; k >= 0; k--) {
+      const w = this.walls[k];
+      w.t += dt;
+      const len = w.st.length ?? 0;
+      const hw = (w.st.width ?? 0) / 2;
+      const reach = Math.min(len, (w.t / sweep) * len);
+      if (reach > w.done) {
+        for (const e of this.inSegment(w.x, w.z, w.dx, w.dz, 0, reach, hw, w.hit)) {
+          this.applyBurn(e, w.st, w.slot);
+          g.spellHit(e, w.st.damage);
+        }
+        // a frente da muralha: colunas de fogo ao longo da largura
+        for (let c = 0; c < 6; c++) {
+          const s = (Math.random() - 0.5) * 2 * hw;
+          g.fx.glow(w.x + w.dx * reach - w.dz * s, 0.4, w.z + w.dz * reach + w.dx * s,
+            Math.random() < 0.35 ? 0xffd27a : EVO_COLOR.firewave, 1 + Math.random() * 0.6, 0.5, 0, 3 + Math.random() * 2, 0);
+        }
+        w.done = reach;
+      } else if (Math.random() < 0.7) {
+        // depois da varredura, as últimas chamas se apagam ao longo da faixa
+        const s = (Math.random() - 0.5) * 2 * hw;
+        const t = Math.random() * len;
+        g.fx.glow(w.x + w.dx * t - w.dz * s, 0.3, w.z + w.dz * t + w.dx * s, EVO_COLOR.firewave, 0.6, 0.4, 0, 1.6, 0);
+      }
+      const m = w.mesh.material as THREE.MeshBasicMaterial;
+      w.mesh.scale.z = Math.max(0.001, reach);
+      m.opacity = 0.9 * (w.t < sweep ? 1 : Math.max(0, 1 - (w.t - sweep) / SPELL_CAST.firewaveLinger));
+      if (w.t >= life) {
+        w.mesh.removeFromParent();
+        m.dispose();
+        this.walls.splice(k, 1);
+      }
+    }
+  }
+
+  /** behaviors.lua `Evo.blizzard`: tempestade parada na mira (até o alcance); fere e deixa lento a cada tique. */
+  private castBlizzard(i: number, st: SpellStats): boolean {
+    const g = this.game;
+    const at = g.aimPoint(st.range);
+    const dur = st.duration ?? 1;
+    this.storms.push({ slot: i, st, x: at.x, z: at.z, time: dur, duration: dur, tickLeft: 0, pulse: 1,
+      ring: this.groundRing(EVO_COLOR.blizzard, st.radius, at.x, at.z) });
+    g.fx.shockwave(at.x, at.z, st.radius, EVO_COLOR.blizzard, 0.45);
+    g.audio.play("tech");
+    return true;
+  }
+
+  private updateStorms(dt: number): void {
+    const g = this.game;
+    for (let k = this.storms.length - 1; k >= 0; k--) {
+      const s = this.storms[k];
+      s.time -= dt;
+      s.tickLeft -= dt;
+      while (s.tickLeft <= 0 && s.time > 0) {
+        s.tickLeft += s.st.tick ?? 1;
+        s.pulse = 1;
+        for (const e of this.inArea(s.x, s.z, s.st.radius)) {
+          g.spellHit(e, s.st.tickDamage ?? 0, true);
+          if (!e.dead) {
+            this.applySlow(e, s.st.slow ?? 0, s.st.slowDuration ?? 0);
+            g.fx.burst(e.x, 0.8, e.z, 0xeaf8ff, 5, 3, 0.1, 0.35, 4);
+          }
+        }
+      }
+      if (s.time <= 0) {
+        freeGroup(s.ring.group);
+        this.storms.splice(k, 1);
+        continue;
+      }
+      s.pulse = Math.max(0, s.pulse - dt * 3);
+      this.drawRing(s.ring, s.x, s.z, s.st.radius, s.time, s.duration, s.pulse);
+      // neve caindo em diagonal dentro do círculo, e rajadas no chão
+      for (let f = 0; f < 4; f++) {
+        const ang = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * s.st.radius;
+        g.fx.glow(s.x + Math.cos(ang) * r - 1, 3.5 + Math.random(), s.z + Math.sin(ang) * r,
+          Math.random() < 0.5 ? 0xffffff : EVO_COLOR.blizzard, 0.35, 0.7, 1.4, -5, 0);
+      }
+      if (Math.random() < 0.4) {
+        const ang = Math.random() * Math.PI * 2;
+        const r = Math.random() * s.st.radius;
+        g.fx.spark(s.x + Math.cos(ang) * r, 0.2, s.z + Math.sin(ang) * r, 0xe6f6ff, 0.14, 0.5, 0.4);
+      }
+    }
+  }
+
+  /** behaviors.lua `Evo.lightning_strike`: raio reto na mira; Static Field pode ferir cada alvo duas vezes (D-437). */
+  private castStrike(st: SpellStats): boolean {
+    const g = this.game;
+    const p = g.player;
+    const { dx, dz } = this.aimDir();
+    const len = st.length ?? 0;
+    const hits = this.inSegment(p.x, p.z, dx, dz, 0, len, (st.width ?? 0) / 2);
+    for (const e of hits) {
+      g.spellHit(e, st.damage);
+      if (st.doubleHit && !e.dead && Math.random() < st.doubleHit) g.spellHit(e, st.damage);
+    }
+    p.facing = Math.atan2(dx, dz);
+    const x1 = p.x + dx * len;
+    const z1 = p.z + dz * len;
+    this.arc(p.x + dx * 0.6, p.z + dz * 0.6, x1, z1, 2);
+    this.arc(p.x + dx * 0.6, p.z + dz * 0.6, x1, z1, 0);
+    g.fx.streak(p.x, p.z, x1, z1, st.width ?? 0.5, 0xfff6c0, 0.18);
+    for (const e of hits) g.fx.burst(e.x, 0.3, e.z, EVO_COLOR.lightning_strike, 10, 5, 0.1, 0.35, 6);
+    g.fx.flashLight((p.x + x1) / 2, 2, (p.z + z1) / 2, 0xfff0a0, 3, 0.25);
+    g.fx.addShake(0.16);
+    g.audio.play("tech");
+    return true;
+  }
+
+  /** algum Arcane Strike pronto: o próximo ataque básico sai carregado (auto_attack.lua, D-215) */
+  get arcaneReady(): boolean {
+    return this.stats.some((st, i) => st?.evolution === "arcane_strike" && this.cooldown[i] <= 0);
+  }
+
+  /** behaviors.lua `Evo.arcane_strike.onAutoHit`: com a recarga pronta, o golpe do ataque básico explode e gasta a recarga. */
+  onAutoHit(target: Enemy): void {
+    const g = this.game;
+    this.stats.forEach((st, i) => {
+      if (st?.evolution !== "arcane_strike" || this.cooldown[i] > 0) return;
+      const x = target.x;
+      const z = target.z;
+      this.cooldown[i] = st.cooldown;
+      for (const e of this.inArea(x, z, st.radius)) g.spellHit(e, st.damage);
+      g.fx.shockwave(x, z, st.radius, EVO_COLOR.arcane_strike, 0.4);
+      g.fx.streak(x - st.radius * 0.7, z, x + st.radius * 0.7, z, 0.18, 0xe6d2ff, 0.3);
+      g.fx.streak(x, z - st.radius * 0.7, x, z + st.radius * 0.7, 0.18, 0xe6d2ff, 0.3);
+      g.fx.burst(x, 0.9, z, EVO_COLOR.arcane_strike, 26, 7, 0.14, 0.5, 2);
+      g.fx.flashLight(x, 1.3, z, EVO_COLOR.arcane_strike, 2.4, 0.25);
+      g.fx.addShake(0.1);
+    });
+  }
+
   private mat(color: number): THREE.MeshBasicMaterial {
     let m = this.mats.get(color);
     if (!m) this.mats.set(color, (m = new THREE.MeshBasicMaterial({ color, toneMapped: false })));
@@ -1201,6 +1599,15 @@ export class SpellCaster {
     while (this.fields.length) this.freeField(this.fields.length - 1);
     while (this.orbits.length) this.freeOrbit(this.orbits.length - 1);
     while (this.runes.length) this.freeRune(this.runes.length - 1);
+    for (const a of this.auras) freeGroup(a.ring.group);
+    this.auras.length = 0;
+    for (const s of this.storms) freeGroup(s.ring.group);
+    this.storms.length = 0;
+    for (const w of this.walls) {
+      w.mesh.removeFromParent();
+      (w.mesh.material as THREE.Material).dispose();
+    }
+    this.walls.length = 0;
     this.pending.length = 0;
   }
 
@@ -1215,9 +1622,11 @@ export class SpellCaster {
     return [
       ...this.shots.map((s) => ({ id: s.id, x: +s.x.toFixed(2), z: +s.z.toFixed(2), remaining: +s.remaining.toFixed(2) })),
       ...this.beams.map((b) => ({ id: b.st.id, x: +b.dx.toFixed(2), z: +b.dz.toFixed(2), remaining: +b.time.toFixed(2) })),
-      ...[...this.vortices, ...this.totems, ...this.fields, ...this.runes].map((o) => ({ id: o.st.id, x: +o.x.toFixed(2),
+      ...[...this.vortices, ...this.totems, ...this.fields, ...this.runes, ...this.storms].map((o) => ({ id: o.st.id, x: +o.x.toFixed(2),
         z: +o.z.toFixed(2), remaining: +o.time.toFixed(2) })),
       ...this.orbits.map((o) => ({ id: o.st.id, x: 0, z: 0, remaining: +o.time.toFixed(2) })),
+      ...this.auras.map((a) => ({ id: a.st.evolution ?? a.st.id, x: 0, z: 0, remaining: +a.time.toFixed(2) })),
+      ...this.walls.map((w) => ({ id: w.st.evolution ?? w.st.id, x: +w.x.toFixed(2), z: +w.z.toFixed(2), remaining: +w.done.toFixed(2) })),
     ];
   }
 }

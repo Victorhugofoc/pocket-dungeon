@@ -4,7 +4,8 @@ import {
 } from "../src/core/evolution";
 import { Rng } from "../src/core/rng";
 import { newRun, newSpellSlot, type RunState } from "../src/core/run";
-import { spellStats } from "../src/core/spells";
+import { spellStats, spMult } from "../src/core/spells";
+import { DR_BASE_DAMAGE, DR_SPELL_POWER } from "../src/data/techniques";
 
 const start = (): RunState => newRun({ heroId: "ignis", difficultyId: "normal", startingSpell: "fireball", randomSeed: 7 });
 const ctx = { cooldownMult: 1, area: 1, range: 1, status: 1 };
@@ -72,5 +73,11 @@ describe("evolução das spells (M6-06, S18)", () => {
     expect(evo.damage).toBeCloseTo(base.damage * 1.15);
     // evolução de outra spell é ignorada
     expect(spellStats({ id: "blade_orbit", level: 5, evolution: "firestorm" }, ctx)).toEqual(base);
+  });
+
+  it("Sanctuary fere quem está dentro: (5 + poder de magia × 0,30) por pulso, D-318", () => {
+    const st = spellStats({ id: "healing_field", level: 5, evolution: "sanctuary" }, ctx);
+    expect(st.fieldDamage).toBeCloseTo(((5 + DR_SPELL_POWER * 0.3) * spMult()) / DR_BASE_DAMAGE);
+    expect(spellStats({ id: "healing_field", level: 5 }, ctx).fieldDamage).toBeUndefined();
   });
 });

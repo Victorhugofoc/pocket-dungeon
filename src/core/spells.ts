@@ -90,6 +90,8 @@ export interface SpellStats {
   length?: number;
   /** Blizzard e Firestorm: dano de cada tique, sobre o dano do herói */
   tickDamage?: number;
+  /** Sanctuary: dano de cada pulso a quem está no anel (lá sai de behaviors.lua, não de spell_stats.lua) */
+  fieldDamage?: number;
   /** Blade Storm: o raio abre até aqui durante o giro (metros) */
   maxRadius?: number;
   /** Plague Bloom: quem morre envenenado passa `spreadStacks` acúmulos a quem está a até `spreadRadius` m */
@@ -333,6 +335,9 @@ export function spellStats(
       st.tick = st.cooldown / (evo.ticks ?? 1);
       st.duration = st.cooldown + (evo.durationPad ?? 0);
       st.tickDamage = st.damage * (evo.tickDamageFraction ?? 0);
+    } else if (evo.id === "sanctuary") {
+      // Sanctuary (D-318, D-354): o anel dourado fere quem está dentro a cada pulso, proporcional ao poder de magia
+      st.fieldDamage = ((SPELL_TUNING.sanctuaryDamage + DR_SPELL_POWER * SPELL_TUNING.sanctuaryScale) * sp) / DR_BASE_DAMAGE;
     }
     convertForEvolution(st, slot, evo);
   }
