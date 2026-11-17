@@ -521,13 +521,13 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 - Passos: relíquias como lista de modificadores e ganchos de evento em `core` (hoje são bônus diretos); migrar as 20 atuais sem mudar o comportamento; testes.
 
 **M12-02 a M12-05 · Portar relíquias em lotes** · M cada
-- Cerca de 18 por lote, das 94 de `relics.lua`, priorizando as que usam ganchos já existentes. Descartar as que só fazem sentido no formato de ondas do Dungeon Reign.
+- Cerca de 18 por lote, das 94 de `relics.lua`, priorizando as que usam ganchos já existentes. Todas vêm (D7); o jogo agora é em ondas como lá, então nenhuma fica de fora.
 
 **M12-06 · Sinergias** · M
 - Porta das 23 sinergias (`synergies.lua`): bônus ao juntar relíquias ou spells do mesmo tema. Indicador no inventário.
 
 **M12-07 · Limite e escolha** · P [decisão D7]
-- Hoje as relíquias são ilimitadas. Proposta: 12 ativas, o resto no baú da fogueira, para a escolha importar.
+- D7 decidida (2026-11-16): sem limite, como no original. Esta tarefa vira só conferir que nada daqui limita as relíquias.
 
 ### M13 — Endgame [decisão D8]
 
@@ -612,16 +612,18 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 
 ### M17 — Balanceamento
 
-**M17-01 · Simulador** · M
-- Arquivos: `tools/balance-sim.ts` usando só `src/core` e `src/data` (ideia do `tools/balance_sim.lua`).
-- Passos: simular herói de nível N com equipamento médio contra cada zona; saída: tempo para matar, dano recebido por minuto, horas até o nível 60.
-- Pronto quando: um comando gera a tabela para os 9 heróis.
+**M17-01 · Bot que joga partidas** · G (dividir antes de começar) [pedido do usuário, 2026-11-16]
+- Reescrita em 2026-11-16 (o texto antigo era do jogo com equipamento e nível 60). Porta do `tools/balance_sim.lua` e do `tools/sim_bot.lua` do original: um bot "competente", não ótimo, que joga partidas inteiras e diz quantas chegam à onda 20.
+- Bot: desvia de avisos, poças e projéteis; mantém distância de uns 75% do alcance; foca o chefe; usa técnica, esquiva e as spells; escolhe melhorias e relíquias que combinam com o herói; prefere salas seguras no mapa; compra nível de spell na loja (quando houver `M7`).
+- Como rodar: o combate daqui está em `src/game` (three.js), então o bot joga o jogo de verdade, numa página sem desenhar (laço de `Game.frame` sem render), no Node ou no Chromium sem tela, em tempo acelerado. Comando: `npm run sim -- <partidas> <dificuldade> [herói] [seed]`.
+- Saída (como o `BALANCE_REPORT.md` de lá): por herói e dificuldade, % de vitória, onda média de morte, quem deu o golpe final, dano causado e recebido por fonte, melhorias e relíquias escolhidas.
+- Pronto quando: um comando roda N partidas dos 9 heróis e grava a tabela em `docs/balance.md`.
 
 **M17-02 · Curva da primeira passada** · M [validar]
 - Passos: ajustar `tuning.ts` e `enemies.ts` para de 20 a 30 minutos por zona e chefe vencível em 2 ou 3 tentativas; usuário joga uma zona e reporta.
 
 **M17-03 · Paridade entre heróis** · P
-- Passos: com o simulador, nenhum herói mais de 20% acima ou abaixo da média em tempo para matar.
+- Passos: com o bot (`M17-01`), nenhum herói mais de 20% acima ou abaixo da média em % de vitória e onda média.
 
 **M17-04 · Revisão a cada marco de jogo** · P
 - Rodar o simulador depois de M6, M7, M8, M12 e M13 e registrar os desvios.
@@ -707,16 +709,16 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 | D3 | Como se ganha spell? | **Decidido em 2026-11-15 (D2 e D13): como no original.** A inicial é escolhida no começo da partida entre as 4 do herói; as outras, os níveis e os modificadores vêm da loja | M6-06 |
 | D4 | Entra ouro, mercador e ferreiro? | **Decidido em 2026-11-15 (D13):** ouro e Magic Shop do original; sem ferreiro (não há itens) | M7 |
 | D5 | Mais espaços de equipamento? | **Caiu em 2026-11-15 (D13):** não há equipamento | — |
-| D6 | Quantas zonas no total e em que ordem? | 6 biomas, 2 ou 3 chefes por bioma, o jogador escolhe a ordem dentro do bioma | M11-05+ |
-| D7 | Relíquias com limite? | 12 ativas, resto no baú | M12-07 |
-| D8 | Endgame: dificuldades e Depths como no Dungeon Reign? | Sim | M13 |
-| D9 | Onde publicar? | GitHub Pages | M16-06 |
-| D10 | Nome definitivo do jogo | Em aberto | Nenhuma |
+| D6 | Quantas zonas no total e em que ordem? Qual chefe aparece em cada onda de chefe? | **Respondido em 2026-11-16: chefes sorteados**, que é como o original faz (`bosses/boss_bag.lua`: saco com os 13 chefes, embaralhado pela seed, sem repetir até esvaziar; a onda 20 é o "Crowned King", com todos os ataques e um emprestado de outro chefe; a emboscada também tira do saco). Até o `M10`, o saco tem só os 4 chefes modelados. **Falta confirmar:** o bioma continua na ordem fixa (Bosque, Cripta, Vulcão, Vazio) e o chefe não precisa combinar com ele | M11-05+, tarefa nova do saco de chefes |
+| D7 | Relíquias com limite? | **Decidido em 2026-11-16: como no original.** Todas as 94 relíquias do `relics.lua` vêm para cá, sem limite (o original não tem). O "baú" era uma ideia minha e caiu. Regra geral do usuário: o jogo inteiro vem do Dungeon Reign, só a engine muda | M12 |
+| D8 | Endgame: dificuldades e Depths como no Dungeon Reign? | **Decidido em 2026-11-16: sim** | M13 |
+| D9 | Onde publicar? | **Decidido em 2026-11-16: GitHub Pages.** O `npm run build` já gera o jogo jogável em `dist/` (HTML, JS e assets estáticos), que é o que o Pages serve; o usuário pesquisa como subir | M16-06 |
+| D10 | Nome definitivo do jogo | Em aberto (o usuário ainda não sabe, 2026-11-16) | Nenhuma |
 | D12 | Spells como no Dungeon Reign: lançadas sozinhas (como lá) ou em teclas? | **Decidido em 2026-11-14: em teclas.** As mesmas spells do Dungeon Reign, sem lançamento automático: teclas 1 e 2 para as 2 spells; técnica e esquiva ficam onde estão. M6 vem logo depois do M19 | M6 |
 | D13 | Save contínuo ou partidas? | **Decidido em 2026-11-15: partidas como no Dungeon Reign.** Seed por partida, continuar no meio, morte encerra; sem equipamento; cada zona = 5 ondas, chefe nas ondas 5, 10, 15 e 20 | M20 |
 | D11 | Bosque Sombrio: deixar sombrio (fim de tarde, verdes fechados, luz fria, fogueira e cogumelos como contraste quente) ou manter ensolarado? | **Decidido em 2026-11-14: sombrio** | M18-07 |
 | D15 | Spell na tecla sai sem inimigo no alcance? | **Decidido em 2026-11-16: sai sempre e gasta a recarga**, acerte ou não (no original não saía sem alvo). Paridade S13 adaptada | M6 |
-| D14 | Atributos do herói contra os do Dungeon Reign: entra o poder de magia? "Efeitos" continua um atributo só (queimadura, veneno, lentidão)? Recarga e área globais entram no mesmo pool das spells, como lá? | **Pedido do usuário em 2026-11-16, ao aceitar o S12:** rever depois. Proposta: decidir antes do `M6-08` (modificadores), com os números das spells já jogáveis | M6-08, `core/stats.ts` |
+| D14 | Atributos do herói contra os do Dungeon Reign: entra o poder de magia? "Efeitos" continua um atributo só (queimadura, veneno, lentidão)? Recarga e área globais entram no mesmo pool das spells, como lá? | **Decidido em 2026-11-16:** poder de magia **entra**; recarga global **entra**, no mesmo pool das spells; "efeitos" **se separa**. Proposta para a separação, como no original: dano por escola (`firePct`, `icePct`, `lightningPct`, `arcanePct`), queimadura (`burnPct`), lentidão (`slowPct`, `slowDurationPct`) e veneno (`poisonMult`). Falta o usuário confirmar a lista | M6-08, `core/stats.ts` |
 
 ---
 
