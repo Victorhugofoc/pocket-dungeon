@@ -17,7 +17,7 @@ import { hasMapBefore, isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
-import { FROST, SHADOW, SHIELD_THROW, TECHNIQUES, VENOM } from "../data/techniques";
+import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, ENEMIES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
@@ -97,6 +97,8 @@ interface Projectile {
   ice?: boolean; icicle?: boolean;
   /** empurrão extra no acerto, em fração de TUNING.enemy.knockback (Fan the Hammer) */
   push?: number;
+  /** Trick Shot: ricochetes que restam no fim do alcance ou num obstáculo, ganho de dano em cada um e o alcance (s) */
+  bounces?: number; bounceGain?: number; span?: number;
 }
 
 /** orbe de cura da onda caído no chão */
@@ -111,9 +113,17 @@ interface Drop {
 interface Bee {
   x: number; z: number; life: number; hitCd: number; rig: Rig; phase: number; sting: number;
   big: boolean; dmg: number; every: number; speed: number; poison: StatusSpec;
+  /** Broodmother: ao acabar, deixa uma poça de veneno por tantos segundos */
+  pool?: number;
 }
+/** Broodmother: poça de veneno onde a vespa grande sumiu (techniques.lua `updatePool`) */
+interface VenomPool { x: number; z: number; r: number; until: number; tick: number; dmg: number; poison: StatusSpec; mesh: THREE.Mesh }
 /** rastro que fere em pulsos ao longo de um segmento (Storm Step) */
-interface Trail { x0: number; z0: number; x1: number; z1: number; hw: number; until: number; tick: number; every: number; dmg: number; color: number; mesh: THREE.Mesh }
+interface Trail { x0: number; z0: number; x1: number; z1: number; hw: number; until: number; tick: number; every: number; dmg: number; color: number; mesh: THREE.Mesh;
+  /** Phoenix Rush: rastro de fogo (queima em vez de raio) */
+  burn?: StatusSpec }
+/** Eclipse: a sombra repete o golpe do Shadow Step depois de um tempo */
+interface Echo { x: number; z: number; target: Enemy; at: number; dmg: number }
 
 export interface PlayerState {
   x: number; z: number; facing: number; hp: number;
@@ -125,14 +135,14 @@ export interface PlayerState {
   /** Umbra: golpes contam como pelas costas até este instante */
   shadowUntil: number;
   /** Seraph: escudo de luz ativo */
-  aegis: { until: number; block: boolean; damage: number; radius: number; heal: number; mesh: THREE.Mesh } | null;
+  aegis: { until: number; block: boolean; damage: number; radius: number; heal: number; mesh: THREE.Mesh; sanctum: number } | null;
   /** Seraph: arremessos do escudo (cura a cada SHIELD_THROW.healEvery) */
   throws: number;
   /** Vesper: tempo até a próxima abelha da Ninhada */
   nestT: number;
   flash: number; hurtT: number;
   leap: { t: number; dur: number; x0: number; z0: number; x1: number; z1: number } | null;
-  rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number } | null;
+  rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number; x0: number; z0: number } | null;
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -190,6 +200,8 @@ export class Game {
   /** raios e poças de cura da sala (M20-08) */
   hazards!: RoomHazards;
   private trails: Trail[] = [];
+  private echoes: Echo[] = [];
+  private pools: VenomPool[] = [];
   private icicle = new IcicleCounter();
   /** números da técnica do herói no nível atual (src/core/techniques.ts); null se ainda for a técnica antiga */
   tech: TechStats | null = null;
@@ -366,7 +378,7 @@ export class Game {
     this.stats = computeStats(sources);
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
-      ? techniqueStats(tid, 1, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage })
+      ? techniqueStats(tid, this.run.technique.level, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage })
       : null;
     this.spells.refresh();
     this.player.hp = Math.min(this.player.hp, this.stats.maxHp);
@@ -506,6 +518,9 @@ export class Game {
     this.hazards.clear();
     for (const t of this.trails) this.disposeTrail(t);
     this.trails.length = 0;
+    this.echoes.length = 0;
+    for (const v of this.pools) this.disposePool(v);
+    this.pools.length = 0;
     this.fx.clear();
     this.world?.dispose();
     this.world = null;
@@ -597,6 +612,33 @@ export class Game {
     });
   }
 
+  /**
+   * Trick Shot (auto_attack.lua): lá a bala bate na borda da arena e volta, +20% de dano, com a lista de acertos limpa.
+   * Adaptado ao mapa aberto: ricocheteia no fim do alcance ou num obstáculo, rumo ao inimigo mais perto dentro do
+   * alcance, ou de volta pelo mesmo caminho se não houver nenhum.
+   */
+  private trickShot(pr: Projectile): boolean {
+    const sp = Math.hypot(pr.vx, pr.vz) || 1;
+    const reach = sp * (pr.span ?? 1);
+    const next = this.nearestEnemy(pr.x, pr.z, reach);
+    if (next) {
+      const a = Math.atan2(next.x - pr.x, next.z - pr.z);
+      pr.vx = Math.sin(a) * sp;
+      pr.vz = Math.cos(a) * sp;
+    } else {
+      pr.vx = -pr.vx;
+      pr.vz = -pr.vz;
+    }
+    pr.x += (pr.vx / sp) * 0.3;
+    pr.z += (pr.vz / sp) * 0.3;
+    pr.bounces = (pr.bounces ?? 1) - 1;
+    pr.dmg *= 1 + (pr.bounceGain ?? 0.2);
+    pr.hit.clear();
+    pr.life = pr.span ?? 1;
+    this.fx.burst(pr.x, 1.15, pr.z, 0xffe9b0, 10, 5, 0.1, 0.25, 2);
+    return true;
+  }
+
   private updateProjectiles(dt: number): void {
     const p = this.player;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
@@ -609,6 +651,7 @@ export class Game {
         pr.z += pr.vz * dt;
       }
       let dead = pr.life <= 0 || this.grid.hits(pr.x, pr.z, pr.r * 0.5);
+      if (dead && pr.friendly && pr.bounces && pr.bounces > 0) dead = !this.trickShot(pr);
       // Rune Traps (D-575): o tiro do ataque básico estoura a runa armada que cruza
       if (!dead && pr.friendly && pr.source === "auto" && this.spells.hasRunes) {
         this.spells.shootRunes((x, z, trig) => (x - pr.x) ** 2 + (z - pr.z) ** 2 <= (pr.r + trig) ** 2);
@@ -1652,7 +1695,13 @@ export class Game {
         const fanAuto = { ...a, speed: (a.speed ?? 24) * 1.15 };
         for (let k = 1; k <= n; k++) {
           this.firePlayer(p.facing + (k - (n + 1) / 2) * spread, fanAuto, T.damage, rangeMult);
-          this.projectiles[this.projectiles.length - 1].push = 0.85;
+          const pr = this.projectiles[this.projectiles.length - 1];
+          pr.push = 0.85;
+          if (T.bounces) {
+            pr.bounces = T.bounces;
+            pr.bounceGain = T.bounceDamage ?? 0.2;
+            pr.span = pr.life;
+          }
         }
         p.attackAnim = 0;
         if (p.rig) nextShot(p.rig);
@@ -1672,7 +1721,7 @@ export class Game {
           return;
         }
         const dur = T.dashTime ?? 0.22;
-        p.rush = { t: 0, dur, dx: (dest.x - p.x) / d, dz: (dest.z - p.z) / d, hit: new Set(), speed: d / dur };
+        p.rush = { t: 0, dur, dx: (dest.x - p.x) / d, dz: (dest.z - p.z) / d, hit: new Set(), speed: d / dur, x0: p.x, z0: p.z };
         p.iframes = Math.max(p.iframes, T.invuln ?? 0.22);
         break;
       }
@@ -1723,6 +1772,11 @@ export class Game {
         this.fx.streak(x0, z0, p.x, p.z, 0.35, 0x6a4a9a, 0.35);
         this.hitEnemy(target, T.damage, undefined, { crit: true });
         this.fx.slash(p.x, p.z, p.facing, 2.6, 80, color);
+        // Eclipse: uma sombra fica e repete o golpe 1 s depois, com 60% do dano
+        if (T.echoDelay) {
+          this.echoes.push({ x: p.x, z: p.z, target, at: this.time + T.echoDelay, dmg: T.damage * (T.echoFraction ?? 0.6) });
+          this.fx.burst(p.x, 1, p.z, 0x2a1a3d, 20, 1.5, 0.3, T.echoDelay, 0);
+        }
         this.fx.addShake(0.25);
         this.hitstop = Math.max(this.hitstop, 0.05);
         break;
@@ -1735,7 +1789,8 @@ export class Game {
         const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), mat);
         mesh.scale.setScalar(1.25);
         this.scene.add(mesh);
-        p.aegis = { until: this.time + (T.duration ?? 3), block: true, damage: T.damage, radius: T.radius ?? 7.5, heal: T.healFraction ?? 0.1, mesh };
+        p.aegis = { until: this.time + (T.duration ?? 3), block: true, damage: T.damage, radius: T.radius ?? 7.5, heal: T.healFraction ?? 0.1, mesh,
+          sanctum: T.sanctumTime ?? 0 };
         this.fx.burst(p.x, 1.2, p.z, 0xffe9a8, 30, 6, 0.14, 0.5, 2);
         this.fx.flashLight(p.x, 1.5, p.z, 0xffe9a8, 1.6, 0.3);
         break;
@@ -1778,6 +1833,8 @@ export class Game {
     this.fx.burst(p.x, 1, p.z, 0xffe9a8, 40, 9, 0.16, 0.7, 3);
     this.fx.flashLight(p.x, 1.5, p.z, 0xffe9a8, 2.4, 0.35);
     this.fx.addShake(0.3);
+    // Sanctum: círculo de cura parado no chão (o Healing Field de lá: tique de 0,75 s, cura 2 = 2% da vida)
+    if (a.sanctum > 0) this.spells.sanctumField(p.x, p.z, a.radius, a.sanctum);
   }
 
   /** Vespa grande (Brood) ou abelha pequena (Ninhada), como as aranhas de Tech.spawnSpider. */
@@ -1795,6 +1852,7 @@ export class Game {
       x: p.x + Math.cos(a) * 1.5, z: p.z + Math.sin(a) * 1.5, life, hitCd: 0, rig, phase, sting: -1,
       big, dmg, every: big ? 0.7 : 0.9, speed: big ? 175 / 12 : 150 / 12,
       poison: { kind: "poison", power: poisonDps / dmg, duration: T?.poisonDuration ?? 3, maxStacks: (T?.poisonStacks ?? 3) + 1 },
+      pool: big ? T?.poolTime : undefined,
     });
   }
 
@@ -1861,7 +1919,11 @@ export class Game {
       p.moveAmt = 1;
       if (r.t >= r.dur) {
         p.rush = null;
-        if (T) this.infernoRing(T);
+        if (T) {
+          this.infernoRing(T);
+          // Phoenix Rush: o caminho fica em chamas (a cada 0,5 s, 25% do dano e queimadura)
+          if (T.fireTrail) this.addTrail(r.x0, r.z0, p.x, p.z, (T.width ?? 2.5) / 2, T.fireTrail, TECH_EVO.fireTrailEvery, T.damage * TECH_EVO.fireTrailFraction, 0xff7a2a, this.chargeBurn(T));
+        }
       }
     } else {
       if (p.dashT > 0) {
@@ -1973,6 +2035,7 @@ export class Game {
       b.life -= dt;
       b.hitCd -= dt;
       if (b.life <= 0) {
+        if (b.pool) this.addPool(b);
         disposeRig(b.rig);
         this.bees.splice(i, 1);
         continue;
@@ -2086,7 +2149,7 @@ export class Game {
     });
   }
 
-  private addTrail(x0: number, z0: number, x1: number, z1: number, hw: number, dur: number, every: number, dmg: number, color: number): void {
+  private addTrail(x0: number, z0: number, x1: number, z1: number, hw: number, dur: number, every: number, dmg: number, color: number, burn?: StatusSpec): void {
     const len = Math.hypot(x1 - x0, z1 - z0);
     const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.15, depthWrite: false, toneMapped: false });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
@@ -2095,7 +2158,7 @@ export class Game {
     mesh.position.set((x0 + x1) / 2, 0.07, (z0 + z1) / 2);
     mesh.scale.set(hw * 0.7, len, 1);
     this.scene.add(mesh);
-    this.trails.push({ x0, z0, x1, z1, hw, until: this.time + dur, tick: every, every, dmg, color, mesh });
+    this.trails.push({ x0, z0, x1, z1, hw, until: this.time + dur, tick: every, every, dmg, color, mesh, burn });
   }
 
   /** Raio em zigue-zague ao longo do rastro (traços finos com desvio lateral aleatório). */
@@ -2117,6 +2180,67 @@ export class Game {
     }
   }
 
+  /** Broodmother (techniques.lua): poça de 50 px de raio por 3 s; a cada 0,5 s envenena quem está dentro. */
+  private addPool(b: Bee): void {
+    const r = TECH_EVO.poolRadius;
+    const m = new THREE.MeshBasicMaterial({ color: 0x5fc23a, transparent: true, opacity: 0.12, depthWrite: false, toneMapped: false });
+    const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 28), m);
+    mesh.rotation.x = -Math.PI / 2;
+    const rim = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 28), new THREE.MeshBasicMaterial({ color: 0x9cff5a, transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }));
+    rim.position.z = 0.002;
+    mesh.add(rim);
+    mesh.position.set(b.x, 0.06, b.z);
+    mesh.scale.setScalar(r);
+    this.scene.add(mesh);
+    this.pools.push({ x: b.x, z: b.z, r, until: this.time + (b.pool ?? 3), tick: 0, dmg: b.dmg, poison: b.poison, mesh });
+    this.fx.burst(b.x, 0.4, b.z, 0x7be04a, 14, 3, 0.12, 0.5, -2);
+  }
+
+  private disposePool(v: VenomPool): void {
+    v.mesh.removeFromParent();
+    v.mesh.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      o.geometry.dispose();
+      (o.material as THREE.Material).dispose();
+    });
+  }
+
+  /** Eclipse (sombra que repete o golpe) e Broodmother (poças). */
+  private updateEvolvedTech(dt: number): void {
+    for (let i = this.echoes.length - 1; i >= 0; i--) {
+      const s = this.echoes[i];
+      if (this.time < s.at) continue;
+      this.echoes.splice(i, 1);
+      const t = s.target;
+      if (t.dead) continue;
+      this.hitEnemy(t, s.dmg, undefined, { crit: true });
+      this.fx.streak(s.x, s.z, t.x, t.z, 0.3, 0x6a4a9a, 0.3);
+      this.fx.slash(t.x, t.z, Math.atan2(t.x - s.x, t.z - s.z), 2.4, 80, 0x8a5ad0);
+      this.fx.burst(t.x, 1, t.z, 0x2a1a3d, 18, 4, 0.2, 0.5, -1);
+    }
+    const base = this.stats.damage * this.stats.autoDamage;
+    for (let i = this.pools.length - 1; i >= 0; i--) {
+      const v = this.pools[i];
+      const left = v.until - this.time;
+      v.tick -= dt;
+      if (v.tick <= 0 && left > 0) {
+        v.tick = TECH_EVO.poolEvery;
+        for (const e of this.enemies) {
+          if (e.dead || (e.x - v.x) ** 2 + (e.z - v.z) ** 2 > (v.r + e.radius) ** 2) continue;
+          this.applyStatus(e, v.poison, base * v.dmg);
+        }
+      }
+      const fade = Math.min(1, left / 0.5);
+      (v.mesh.material as THREE.MeshBasicMaterial).opacity = fade * (0.12 + 0.04 * Math.sin(this.time * 6));
+      ((v.mesh.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = fade * 0.5;
+      if (Math.random() < dt * 6) this.fx.glow(v.x + (Math.random() - 0.5) * v.r, 0.15, v.z + (Math.random() - 0.5) * v.r, 0x9cff5a, 0.3, 0.6, 0, 1.2, 0);
+      if (left <= 0) {
+        this.disposePool(v);
+        this.pools.splice(i, 1);
+      }
+    }
+  }
+
   private disposeTrail(t: Trail): void {
     t.mesh.removeFromParent();
     t.mesh.geometry.dispose();
@@ -2129,6 +2253,24 @@ export class Game {
       const t = this.trails[i];
       t.tick -= dt;
       const left = t.until - this.time;
+      if (t.burn) {
+        // Phoenix Rush: brasa no chão e labaredas ao longo do caminho
+        (t.mesh.material as THREE.MeshBasicMaterial).opacity = Math.min(1, left / 0.4) * (0.22 + Math.random() * 0.08);
+        for (let k = 0; k < 3; k++) {
+          const q = Math.random();
+          this.fx.glow(t.x0 + (t.x1 - t.x0) * q + (Math.random() - 0.5) * t.hw, 0.3 + Math.random() * 0.5,
+            t.z0 + (t.z1 - t.z0) * q + (Math.random() - 0.5) * t.hw, Math.random() < 0.5 ? 0xff7a2a : 0xffc04d, 0.45, 0.5, 0, 2.2, 0);
+        }
+        if (t.tick <= 0 && left > 0) {
+          t.tick = t.every;
+          this.lineHit(t.x0, t.z0, t.x1, t.z1, t.hw, t.dmg, t.burn);
+        }
+        if (left <= 0) {
+          this.disposeTrail(t);
+          this.trails.splice(i, 1);
+        }
+        continue;
+      }
       (t.mesh.material as THREE.MeshBasicMaterial).opacity = Math.min(1, left / 0.4) * (0.04 + Math.random() * 0.06);
       if (Math.random() < dt * 9) this.boltAlong(t, 0.08, 0.1);
       // faíscas correndo pelo rastro
@@ -2229,6 +2371,7 @@ export class Game {
     }
     this.updateIceWalls(dt, active);
     this.updateZonesOfTech(dt);
+    this.updateEvolvedTech(dt);
     this.hazards.update(dt, this.time);
   }
 

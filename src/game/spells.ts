@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import { isSpellId, spellContext, spellStats, type SpellStats } from "../core/spells";
 import { MAX_SPELLS, SPELL_CAST } from "../data/spells";
-import { DR_BASE_HP, FROST } from "../data/techniques";
+import { DR_BASE_HP, FROST, TECH_EVO } from "../data/techniques";
 import { KNOCK_DECAY, type Dot, type Enemy } from "./enemy";
 import type { Game } from "./game";
 
@@ -1137,7 +1137,7 @@ export class SpellCaster {
       g.audio.play("tech");
       return true;
     }
-    const extra = Math.min(st.extraFields ?? 0, SPELL_CAST.fieldExtraCap - this.fields.filter((f) => !f.follow).length);
+    const extra = Math.min(st.extraFields ?? 0, SPELL_CAST.fieldExtraCap - this.fields.filter((f) => !f.follow && f.slot >= 0).length);
     for (let n = 0; n < extra; n++) {
       const a = Math.random() * Math.PI * 2;
       const d = SPELL_CAST.fieldExtraDistance;
@@ -1146,6 +1146,19 @@ export class SpellCaster {
     g.fx.shockwave(p.x, p.z, st.radius, SPELL_COLOR.healing_field, 0.45);
     g.audio.play("tech");
     return true;
+  }
+
+  /**
+   * Sanctum (evolução do Aegis, techniques.lua `aegisBurst`): um Healing Field parado onde o escudo explodiu, com o
+   * raio da explosão. Fica fora dos espaços de spell (`slot` -1), então relançar a spell não o apaga.
+   */
+  sanctumField(x: number, z: number, radius: number, duration: number): void {
+    const st = {
+      id: "healing_field", kind: "field", level: 1, milestones: [], levelScale: 1, damage: 0, cooldown: 0, cooldownMult: 1,
+      range: 0, areaMult: 1, radius, duration, tick: TECH_EVO.sanctumTick, heal: TECH_EVO.sanctumHeal, surge: 0,
+    } as unknown as SpellStats;
+    this.fields.push(this.makeField(-1, st, x, z, false));
+    this.game.fx.shockwave(x, z, radius, SPELL_COLOR.healing_field, 0.45);
   }
 
   private makeField(slot: number, st: SpellStats, x: number, z: number, follow: boolean): Field {

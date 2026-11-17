@@ -11,6 +11,7 @@ import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { ACHIEVEMENT_RULES, ACHIEVEMENTS, COSMETIC_NAMES, UNLOCK_REWARDS } from "../src/data/achievements";
 import { EVOLUTION_ORDER, EVOLUTIONS, MAX_SPELLS, SPELL_CAST, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TUNING, SPELLS } from "../src/data/spells";
 import { spellStats } from "../src/core/spells";
+import { techniqueStats } from "../src/core/techniques";
 import { DR_PX_PER_M } from "../src/data/techniques";
 import {
   BOSS, DEPTHS_FROM, DEPTHS_STEP, DIFFICULTIES, DIFFICULTY_ORDER, ENDLESS, ENEMY_WEIGHT, LEVEL_UP_CHOICES,
@@ -196,6 +197,31 @@ const ROOM_LIFE = `=(function()
   return out
 end)()`;
 
+/** M19-07: o que a evolução muda em cada técnica, nos níveis 4 e 5 (spell_stats.lua `extra`). */
+const TECH_EVO_FIELDS = ["evolved", "bounces", "maxHpFraction", "trail", "shock", "stun", "fireTrail", "eclipse", "sanctum", "spiders", "pools", "shatter"];
+const TECH_LIFE = `=(function()
+  local SS = require("src.spells.spell_stats")
+  local out = {}
+  for _, id in ipairs({${TECHNIQUE_ORDER.map((x) => JSON.stringify(x)).join(",")}}) do
+    for _, lv in ipairs({4, 5}) do
+      local d = { spellPower = 8, schoolMult = setmetatable({}, { __index = function() return 1 end }), damageMult = 1,
+        spellDamageMult = 1, cooldownValues = {}, areaValues = {}, rangeMult = 1, burnMult = 1, volatileValues = {},
+        slowPoints = 0, slowDurationMult = 1, lightningTargets = 0, chainRangeMult = 1, echoValues = {}, healFieldHeal = 0,
+        healFieldDuration = 0, poisonStacks = 0, fanShots = 0, staticCharge = 0, riftDuration = 0, permafrost = 0, autoDamage = 8,
+        critChance = 0, critMult = 1, range = 160 }
+      local run = { relics = {}, stats = { compute = function() return d end } }
+      local st = SS.compute(run, { id = id, level = lv, modifiers = {} })
+      local o = {}
+      for _, k in ipairs({${TECH_EVO_FIELDS.map((x) => JSON.stringify(x)).join(",")}}) do
+        local v = st[k]
+        if v == true then o[k] = 1 elseif type(v) == "number" then o[k] = v end
+      end
+      out[id .. "@" .. lv] = o
+    end
+  end
+  return out
+end)()`;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Lua = any;
 
@@ -203,7 +229,7 @@ function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
   // expressões longas vão por arquivo (`@caminho`): a linha de comando do Windows tem limite
   const dir = mkdtempSync(join(tmpdir(), "dr-dump-"));
-  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE].map((code, i) => {
+  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE].map((code, i) => {
     if (code.length < 2000) return code;
     const f = join(dir, `arg${i}.lua`);
     writeFileSync(f, code);
@@ -394,6 +420,7 @@ const AF: Lua = dr?.["src.data.affixes"];
 const ACH: Lua = dr?.["src.data.achievements"];
 const UNL: Lua = dr?.["src.data.unlocks"];
 const SPELL_CALC: Lua[] = dr?.[SPELL_LIFE];
+const TECH_CALC: Lua = dr?.[TECH_LIFE];
 
 /** Campos numéricos de lá que não têm equivalente aqui, com o motivo (vira linha "adaptado" em docs/paridade.md). */
 const TECH_NOT_PORTED: Record<string, string[]> = {};
@@ -445,6 +472,29 @@ describe.skipIf(!dr)("paridade com o Dungeon Reign", () => {
       expect(TECHNIQUES[tid].evolution.name).toBe(theirs.evolution.name);
     });
   }
+
+  it("evolução das técnicas no nível 5, e nada dela no 4 (M19-07, S19)", () => {
+    const ctx = { cooldownMult: 1, area: 1, range: 1, autoDamage: 1 };
+    for (const tid of TECHNIQUE_ORDER) {
+      for (const lv of [4, 5]) {
+        const t = TECH_CALC[`${tid}@${lv}`];
+        const o = techniqueStats(tid, lv, ctx);
+        const tag = `${tid} nv${lv}`;
+        expect(o.evolved, `${tag}.evolved`).toBe(t.evolved === 1);
+        expect(o.shatter === true, `${tag}.shatter`).toBe(t.shatter === 1);
+        expect(o.echoDelay !== undefined, `${tag}.eclipse`).toBe(t.eclipse === 1);
+        expect(o.sanctumTime !== undefined, `${tag}.sanctum`).toBe(t.sanctum === 1);
+        expect(o.poolTime !== undefined, `${tag}.pools`).toBe(t.pools === 1);
+        expect(o.fireTrail, `${tag}.fireTrail`).toBe(t.fireTrail);
+        if (t.bounces !== undefined) expect(o.bounces ?? 0, `${tag}.bounces`).toBe(t.bounces);
+        if (t.maxHpFraction !== undefined) expect(o.maxHpFraction, `${tag}.maxHpFraction`).toBe(t.maxHpFraction);
+        if (t.trail !== undefined) expect(o.trail, `${tag}.trail`).toBe(t.trail);
+        expect((o.shockRadius ?? 0) * DR_PX_PER_M, `${tag}.shock`).toBeCloseTo(t.shock ?? 0, 9);
+        if (o.kind === "rift") expect(o.stun, `${tag}.stun`).toBe(t.stun);
+        if (t.spiders !== undefined) expect(o.spiders, `${tag}.spiders`).toBe(t.spiders);
+      }
+    }
+  });
 
   it("passiva de gelo da Frostine", () => {
     const f = CH.frostine.frost;

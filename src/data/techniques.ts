@@ -277,3 +277,13 @@ export const RICOCHET = {
   bounceDamage: 0.70,
   passiveText: ["Ricochet: every shot bounces once (70% damage)."],
 } as const;
+
+/** Números fixos das evoluções que não estão em `spells.lua` (techniques.lua). Distâncias em metros, curas em % da vida. */
+export const TECH_EVO = {
+  /** Phoenix Rush: o rastro fere a cada 0,5 s com 25% do dano da técnica, e queima */
+  fireTrailEvery: 0.5, fireTrailFraction: 0.25,
+  /** Broodmother: poça de 50 px, envenena a cada 0,5 s */
+  poolRadius: 50 / DR_PX_PER_M, poolEvery: 0.5,
+  /** Sanctum: Healing Field parado com tique de 0,75 s e cura 2 (= 2% da vida) */
+  sanctumTick: 0.75, sanctumHeal: 2 / DR_BASE_HP,
+} as const;

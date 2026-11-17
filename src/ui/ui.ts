@@ -17,6 +17,7 @@ import { SHOP_ITEMS } from "../data/shop";
 import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
 import { BOSSES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
+import { TECHNIQUES, TECH_MAX_LEVEL } from "../data/techniques";
 import { RELICS, RELIC_IDS } from "../data/relics";
 import { ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
 import type { MapCard, MapNodeId } from "../core/runmap";
@@ -480,10 +481,12 @@ export class Ui {
     r.techCd.style.height = `${(tc / p.techMax) * 100}%`;
     r.techN.textContent = tc > 0 ? tc.toFixed(tc < 3 ? 1 : 0) : "";
     r.techBox.classList.toggle("ready", tc <= 0);
-    const tn = g.hero.technique.name;
+    // nível 5: a técnica evoluída passa a mostrar o nome e o texto da evolução
+    const evo = g.tech?.evolved ? TECHNIQUES[g.hero.technique.id]?.evolution : undefined;
+    const tn = evo?.name ?? g.hero.technique.name;
     if (r.techName.textContent !== tn) {
       r.techName.textContent = tn;
-      r.techBox.title = `${tn} — ${g.hero.technique.text}`;
+      r.techBox.title = `${tn} — ${evo?.text ?? g.hero.technique.text}`;
     }
     this.updateSpellHud();
     r.dashCd.style.height = `${(Math.max(0, p.dashCd) / TUNING.hero.dashCooldown) * 100}%`;
@@ -622,6 +625,11 @@ export class Ui {
       return `<div class="g-spell${sel === id ? " on" : ""}${slot ? " owned" : ""}">
         <button class="g-name" data-g="pick" data-id="${id}" title="${SPELL_TEXT[id]}">${SPELL_ICON[id] ?? "✦"} ${SPELLS[id].name} <small>(${status})</small></button>${btns}</div>`;
     }).join("");
+    const tslot = run.technique;
+    const tdef = TECHNIQUES[g.hero.technique.id];
+    const tevo = tslot.level >= TECH_MAX_LEVEL && tdef ? ` · ${tdef.evolution.name}` : "";
+    const techRow = `<div class="g-spell owned"><span class="g-name" title="${tdef?.evolution.text ?? ""}">★ ${g.hero.technique.name}
+      <small>(technique · Lv ${tslot.level}${tevo})</small></span><button data-g="tlv">Lv +</button><button data-g="tlv5">Lv ${TECH_MAX_LEVEL}</button></div>`;
     let mods = "";
     if (sel) {
       const slot = run.spells[slotOf(sel)];
@@ -642,7 +650,7 @@ export class Ui {
         <h2>DEV GRIMOIRE</h2>
         <p class="sub" style="color:var(--bad)">Test tool, outside the canonical game. This run is marked [DEV] and does not count for records.</p>
         <div class="section">Spells (click a name to see modifiers)</div>
-        <div class="g-spells">${spellRows}</div>
+        <div class="g-spells">${techRow}${spellRows}</div>
         ${mods}
       </div>
       <div>
@@ -681,6 +689,11 @@ export class Ui {
         case "lv5":
           while (levelUpSpell(run.spells, slotOf(id)).ok);
           this.grimoireMsg = `${spellName(id)} Lv${SPELL_MAX_LEVEL}`;
+          break;
+        case "tlv":
+        case "tlv5":
+          run.technique.level = b.dataset.g === "tlv5" ? TECH_MAX_LEVEL : Math.min(TECH_MAX_LEVEL, run.technique.level + 1);
+          this.grimoireMsg = `${g.hero.technique.name} Lv${run.technique.level}`;
           break;
         case "mod": {
           const m = sel ? SPELLS[sel].modifiers.find((x) => x.id === id) : undefined;
@@ -724,7 +737,8 @@ export class Ui {
       return `<div class="mods${parts.length ? "" : " none"}">${parts.length ? parts.join(", ") : "no modifiers"}</div>`;
     };
     const spells = [
-      spellLine(h.technique.name, run.technique.level, "technique"),
+      spellLine(run.technique.level >= TECH_MAX_LEVEL ? TECHNIQUES[h.technique.id]?.evolution.name ?? h.technique.name : h.technique.name,
+        run.technique.level, run.technique.level >= TECH_MAX_LEVEL ? "technique · evolved" : "technique"),
       ...run.spells.map((sp, i) => spellLine(
         sp.evolution ? EVOLUTIONS[sp.evolution as keyof typeof EVOLUTIONS]?.name ?? spellName(sp.id) : spellName(sp.id),
         sp.level, sp.evolution ? "evolved" : "", modLine(sp.id, sp.modifiers), i)),
