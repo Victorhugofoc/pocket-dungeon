@@ -138,6 +138,15 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .card { background: var(--panel-2); border: 2px solid var(--line); border-radius: 12px; padding: 16px; cursor: pointer; text-align: left; }
 .card:hover:not(.locked) { border-color: var(--cc, var(--gold)); transform: translateY(-2px); }
 .card.locked { opacity: 0.45; cursor: default; }
+/* Magic Shop (M7-04) */
+.cards.shop { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.cards.shop .card { display: flex; flex-direction: column; }
+.card.off { opacity: 0.5; cursor: default; }
+.card.off:hover { transform: none; border-color: var(--line); }
+.card .price { margin-top: auto; padding-top: 10px; font-weight: 700; color: var(--gold); }
+.card .price.bad { color: var(--bad); }
+.card .price.done { color: var(--muted); }
+.sub .gold { color: var(--gold); }
 .card h3 { font-size: 17px; color: var(--cc, var(--text)); margin-bottom: 4px; }
 .card p { margin: 3px 0; color: #cfd3e2; font-size: 13px; }
 .card .meta { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
