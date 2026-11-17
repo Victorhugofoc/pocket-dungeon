@@ -273,6 +273,11 @@ Pedido do usuário em 2026-11-15: a estrutura de jogo é a do Dungeon Reign. Uma
 **M20-07 · Desbloqueios** · P
 - Heróis e relíquias liberados por conquista, como em `unlocks.lua` (Frostine, Kaelen, Aurelius e Ignis abertos desde o início). Junto com o `M13-04`.
 
+**M20-09 · Saco de chefes** · M [D6, 2026-11-16]
+- Porta de `bosses/boss_bag.lua`: os chefes num saco embaralhado pela seed (fluxo próprio no `RunRng`), sem repetir até esvaziar; o chefe das ondas 5, 10, 15 e 20 e o da emboscada saem do saco. O bioma segue em ordem fixa (Bosque, Cripta, Vulcão, Vazio) e não precisa combinar com o chefe. Onda 20: o "Crowned King" (`B.CROWN`), com todos os ataques desde a fase 1 e um emprestado de outro chefe (`WaveSystem.crownAttack`).
+- Até o `M10`, o saco tem só os chefes modelados (hoje 4). Teste em `core`: mesma seed, mesma ordem; sem repetição dentro do saco; checkpoint guarda o saco.
+- Pronto quando: `zones.ts` não amarra mais o chefe ao bioma, e duas seeds diferentes dão chefes em ordens diferentes.
+
 ### M3 — Inimigos atuais [validar em lote de 2 ou 3]
 
 Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de triângulos: são dezenas na tela.
@@ -709,7 +714,7 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 | D3 | Como se ganha spell? | **Decidido em 2026-11-15 (D2 e D13): como no original.** A inicial é escolhida no começo da partida entre as 4 do herói; as outras, os níveis e os modificadores vêm da loja | M6-06 |
 | D4 | Entra ouro, mercador e ferreiro? | **Decidido em 2026-11-15 (D13):** ouro e Magic Shop do original; sem ferreiro (não há itens) | M7 |
 | D5 | Mais espaços de equipamento? | **Caiu em 2026-11-15 (D13):** não há equipamento | — |
-| D6 | Quantas zonas no total e em que ordem? Qual chefe aparece em cada onda de chefe? | **Respondido em 2026-11-16: chefes sorteados**, que é como o original faz (`bosses/boss_bag.lua`: saco com os 13 chefes, embaralhado pela seed, sem repetir até esvaziar; a onda 20 é o "Crowned King", com todos os ataques e um emprestado de outro chefe; a emboscada também tira do saco). Até o `M10`, o saco tem só os 4 chefes modelados. **Falta confirmar:** o bioma continua na ordem fixa (Bosque, Cripta, Vulcão, Vazio) e o chefe não precisa combinar com ele | M11-05+, tarefa nova do saco de chefes |
+| D6 | Quantas zonas no total e em que ordem? Qual chefe aparece em cada onda de chefe? | **Respondido em 2026-11-16: chefes sorteados**, que é como o original faz (`bosses/boss_bag.lua`: saco com os 13 chefes, embaralhado pela seed, sem repetir até esvaziar; a onda 20 é o "Crowned King", com todos os ataques e um emprestado de outro chefe; a emboscada também tira do saco). Até o `M10`, o saco tem só os 4 chefes modelados. **Confirmado pelo usuário em 2026-11-16:** o bioma segue na ordem fixa (Bosque, Cripta, Vulcão, Vazio) e o chefe não precisa combinar com ele | M11-05+, M20-09 |
 | D7 | Relíquias com limite? | **Decidido em 2026-11-16: como no original.** Todas as 94 relíquias do `relics.lua` vêm para cá, sem limite (o original não tem). O "baú" era uma ideia minha e caiu. Regra geral do usuário: o jogo inteiro vem do Dungeon Reign, só a engine muda | M12 |
 | D8 | Endgame: dificuldades e Depths como no Dungeon Reign? | **Decidido em 2026-11-16: sim** | M13 |
 | D9 | Onde publicar? | **Decidido em 2026-11-16: GitHub Pages.** O `npm run build` já gera o jogo jogável em `dist/` (HTML, JS e assets estáticos), que é o que o Pages serve; o usuário pesquisa como subir | M16-06 |
