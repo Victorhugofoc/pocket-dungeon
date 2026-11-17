@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   RUN_STREAMS, RunRng, addRecord, checkpoint, continueRun, decodeSeed, emptyRecords, encodeSeed, isCheckpoint, newRun,
-  summarize, zoneSeed, type RunState, type StreamId,
+  recordsRun, summarize, zoneSeed, type RunState, type StreamId,
 } from "../src/core/run";
 import { generateZone } from "../src/core/worldgen";
 import {
@@ -119,6 +119,17 @@ describe("partida", () => {
     const r = continueRun(cp).run;
     expect("legacy" in r).toBe(false);
     expect(r.killedBy).toBeNull();
+  });
+
+  it("partida DEV (grimório) fica fora dos registros; checkpoint antigo continua limpa", () => {
+    const run = start(42);
+    expect(run.devUsed).toBe(false);
+    expect(recordsRun(run)).toBe(true);
+    run.devUsed = true;
+    expect(recordsRun(run)).toBe(false);
+    const cp = checkpoint(start(42), new RunRng(42), 1);
+    delete (cp.run as { devUsed?: boolean }).devUsed;
+    expect(continueRun(cp).run.devUsed).toBe(false);
   });
 
   it("seeds diferentes dão mapas diferentes", () => {
