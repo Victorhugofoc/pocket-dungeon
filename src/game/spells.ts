@@ -1,19 +1,21 @@
-// Conjuração das spells (M6-02 a M6-04): teclas 1 e 2 (D12), recarga, mira no cursor. Porta de dungeon-idle
-// src/spells/spell_system.lua (`tryCast`, `doCast`, `onKill`), src/spells/behaviors.lua (`Projectile`, `Chain`) e
-// src/spells/techniques.lua (`Tech.beam`, `Tech.nova`, `Tech.vortex`, `Tech.totem`). Os números saem de core/spells.ts
-// (`spellStats`); aqui só o tempo real: projéteis, raio em cadeia, raio contínuo, onda de veneno, tornado, totem,
-// impacto, queimadura, lentidão, veneno, empurrão, atordoamento, Eco e Volátil.
+// Conjuração das spells (M6-02 a M6-05): teclas 1 e 2 (D12), recarga, mira no cursor. Porta de dungeon-idle
+// src/spells/spell_system.lua (`tryCast`, `doCast`, `onKill`), src/spells/behaviors.lua (`Projectile`, `Chain`, `Field`) e
+// src/spells/techniques.lua (`Tech.beam`, `Tech.nova`, `Tech.vortex`, `Tech.totem`, `Tech.orbit`, `Tech.rune`). Os números
+// saem de core/spells.ts (`spellStats`); aqui só o tempo real: projéteis, raio em cadeia, raio contínuo, onda de veneno,
+// tornado, totem, campo de cura, lâminas em órbita, runas, impacto, queimadura, lentidão, veneno, empurrão, atordoamento,
+// Eco e Volátil.
 import * as THREE from "three";
 import { isSpellId, spellStats, type SpellStats } from "../core/spells";
 import { MAX_SPELLS, SPELL_CAST } from "../data/spells";
-import { FROST } from "../data/techniques";
+import { DR_BASE_HP, FROST } from "../data/techniques";
 import { KNOCK_DECAY, type Enemy } from "./enemy";
 import type { Game } from "./game";
 
 /** Cor de cada spell no jogo (projétil, impacto e raio). */
 export const SPELL_COLOR: Record<string, number> = {
   fireball: 0xff7a1a, iceball: 0x9fdcff, chain_lightning: 0xfff29a, arcane_bolt: 0xc28cff, prism_beam: 0xfff6d8,
-  venom_nova: 0x7be04a, cyclone: 0xcfe8ff, quake_totem: 0xffa040,
+  venom_nova: 0x7be04a, cyclone: 0xcfe8ff, quake_totem: 0xffa040, healing_field: 0x7dff9a, blade_orbit: 0xdfe8ff,
+  rune_traps: 0xa58cff,
 };
 
 interface SpellProjectile {
@@ -66,6 +68,54 @@ interface Totem {
   runes: THREE.MeshBasicMaterial;
 }
 
+/** Healing Field (behaviors.lua `Field`): anel que segue o herói, ou um dos campos extras parados do Blooming Sanctuary. */
+interface Field {
+  slot: number;
+  st: SpellStats;
+  x: number; z: number;
+  follow: boolean;
+  time: number;
+  duration: number;
+  tickLeft: number;
+  /** clarão do pulso de cura, de 1 a 0 */
+  pulse: number;
+  group: THREE.Group;
+  disc: THREE.MeshBasicMaterial;
+  edge: THREE.MeshBasicMaterial;
+  clock: THREE.Mesh;
+  spin: THREE.Object3D;
+}
+
+/** Blade Orbit (techniques.lua `world.orbits`): lâminas girando em volta do herói. */
+interface Orbit {
+  slot: number;
+  st: SpellStats;
+  time: number;
+  duration: number;
+  angle: number;
+  /** giro extra quando a recarga é menor que a duração (D-354) */
+  spin: number;
+  hitCooldown: number;
+  lastHit: WeakMap<Enemy, number>;
+  group: THREE.Group;
+  blades: THREE.Object3D[];
+  clock: THREE.Mesh;
+}
+
+/** Rune Traps (techniques.lua `world.runes`): runa no chão; arma depois de `arm` s e estoura no primeiro inimigo. */
+interface Rune {
+  slot: number;
+  st: SpellStats;
+  x: number; z: number;
+  time: number;
+  duration: number;
+  group: THREE.Group;
+  glyph: THREE.MeshBasicMaterial;
+  clock: THREE.Mesh;
+  /** sumindo (trocada pela mais nova ou vencida): segundos que faltam para sumir */
+  fade?: number;
+}
+
 /** Eco à espera (spell_system.lua `pendingCasts`). */
 interface PendingCast { slot: number; t: number }
 
@@ -99,6 +149,75 @@ const FUNNEL_GEO = funnelGeometry();
 /** altura e raio (em raios da spell) de cada funil, de fora para dentro, e a opacidade */
 const FUNNELS: readonly [number, number, number][] = [[0.5, 4.2, 0.16], [0.34, 3.4, 0.22], [0.2, 3.8, 0.2]];
 
+// ---------------------------------------------------------------- relógio no chão
+// Mesma ideia do contorno dos ícones de estado: um arco que sai do topo da tela e esvazia no sentido horário até a coisa
+// acabar. Raio 1 (escala pelo dono); uma geometria por passo, feitas sob demanda.
+const CLOCK_STEPS = 64;
+const clockGeos: THREE.BufferGeometry[] = [];
+function clockGeo(left: number): THREE.BufferGeometry {
+  const k = Math.max(0, Math.min(CLOCK_STEPS, Math.ceil(left * CLOCK_STEPS)));
+  let g = clockGeos[k];
+  if (!g) {
+    const len = (k / CLOCK_STEPS) * Math.PI * 2;
+    g = clockGeos[k] = new THREE.RingGeometry(0.93, 1, Math.max(1, k), 1, Math.PI / 2 - len, len).rotateX(-Math.PI / 2);
+  }
+  return g;
+}
+function groundMat(color: number, opacity: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, toneMapped: false,
+    blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+}
+const DISC_GEO = new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2);
+const EDGE_GEO = new THREE.RingGeometry(0.97, 1.03, 64).rotateX(-Math.PI / 2);
+const LEAF_GEO = new THREE.CircleGeometry(0.035, 6).scale(1, 2.2, 1).rotateX(-Math.PI / 2);
+/** lâmina: losango comprido e achatado, com a guarda; deitada no eixo x local */
+const BLADE_GEO = new THREE.OctahedronGeometry(1, 0).scale(0.55, 0.035, 0.09);
+const GUARD_GEO = new THREE.BoxGeometry(0.06, 0.06, 0.34);
+
+/** Glifo da runa desenhado por código num canvas: círculo duplo, estrela de 6 pontas e traços nas bordas. */
+let runeTex: THREE.CanvasTexture | null = null;
+function runeTexture(): THREE.CanvasTexture {
+  if (runeTex) return runeTex;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 128;
+  const c = cv.getContext("2d")!;
+  c.translate(64, 64);
+  c.strokeStyle = "#ffffff";
+  c.lineCap = "round";
+  c.lineWidth = 5;
+  c.beginPath();
+  c.arc(0, 0, 58, 0, Math.PI * 2);
+  c.stroke();
+  c.lineWidth = 3;
+  c.beginPath();
+  c.arc(0, 0, 47, 0, Math.PI * 2);
+  c.stroke();
+  for (const off of [0, Math.PI / 3]) {
+    c.beginPath();
+    for (let i = 0; i <= 3; i++) {
+      const a = off + (i / 3) * Math.PI * 2 - Math.PI / 2;
+      c.lineTo(Math.cos(a) * 44, Math.sin(a) * 44);
+    }
+    c.lineWidth = 4;
+    c.stroke();
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    c.beginPath();
+    c.moveTo(Math.cos(a) * 49, Math.sin(a) * 49);
+    c.lineTo(Math.cos(a) * 56, Math.sin(a) * 56);
+    c.lineWidth = 3;
+    c.stroke();
+  }
+  c.beginPath();
+  c.arc(0, 0, 9, 0, Math.PI * 2);
+  c.fillStyle = "#ffffff";
+  c.fill();
+  runeTex = new THREE.CanvasTexture(cv);
+  return runeTex;
+}
+const RUNE_GEO = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
+
 /** Totem de pedra: laje, coluna, cabeça e duas faixas de runas (a cor da escola da terra). */
 const TOTEM_BASE = new THREE.CylinderGeometry(0.62, 0.7, 0.26, 7).translate(0, 0.13, 0);
 const TOTEM_PILLAR = new THREE.CylinderGeometry(0.34, 0.44, 1.35, 6).translate(0, 0.9, 0);
@@ -117,6 +236,9 @@ export class SpellCaster {
   private beams: Beam[] = [];
   private vortices: Vortex[] = [];
   private totems: Totem[] = [];
+  private fields: Field[] = [];
+  private orbits: Orbit[] = [];
+  private runes: Rune[] = [];
   private pending: PendingCast[] = [];
   private mats = new Map<number, THREE.MeshBasicMaterial>();
 
@@ -150,10 +272,13 @@ export class SpellCaster {
   }
 
   update(dt: number, castKeys: boolean[]): void {
+    const g = this.game;
+    const walking = Math.hypot(g.playerVelX, g.playerVelZ) > SPELL_CAST.runeWalkSpeed;
     for (let i = 0; i < this.cooldown.length; i++) {
       this.cooldown[i] = Math.max(0, this.cooldown[i] - dt);
       this.noTarget[i] = Math.max(0, (this.noTarget[i] ?? 0) - dt);
-      if (castKeys[i]) this.tryCast(i);
+      // Rune Traps: como lá, deixa uma runa a cada intervalo enquanto o herói anda; a tecla deixa uma parado (D15)
+      if (castKeys[i] || (walking && this.stats[i]?.kind === "rune" && this.cooldown[i] <= 0)) this.tryCast(i);
     }
     // Eco: relança igual, de graça e sem novo Eco (spell_system.lua `update`)
     for (let k = this.pending.length - 1; k >= 0; k--) {
@@ -169,6 +294,9 @@ export class SpellCaster {
     this.updateBeams(dt);
     this.updateVortices(dt);
     this.updateTotems(dt);
+    this.updateFields(dt);
+    this.updateOrbits(dt);
+    this.updateRunes(dt);
   }
 
   /** spell_system.lua `tryCast`: a recarga é gasta quando a spell sai; spell sem efeito ainda (M6-05) não gasta. */
@@ -199,8 +327,12 @@ export class SpellCaster {
         return this.castVortex(i, st);
       case "totem":
         return this.castTotem(i, st);
-      default:
-        return false; // as outras spells entram no M6-05
+      case "field":
+        return this.castField(i, st);
+      case "orbit":
+        return this.castOrbit(i, st);
+      case "rune":
+        return this.layRune(i, st);
     }
   }
 
@@ -656,6 +788,295 @@ export class SpellCaster {
   }
 
 
+  // ---------------------------------------------------------------- Healing Field
+  /**
+   * behaviors.lua `Field.cast`: anel em volta do herói, que anda com ele; relançar troca o do mesmo espaço. Blooming
+   * Sanctuary: mais campos parados por perto (no máximo `fieldExtraCap` ao mesmo tempo).
+   */
+  private castField(i: number, st: SpellStats): boolean {
+    const g = this.game;
+    const p = g.player;
+    for (let k = this.fields.length - 1; k >= 0; k--) if (this.fields[k].follow && this.fields[k].slot === i) this.freeField(k);
+    this.fields.push(this.makeField(i, st, p.x, p.z, true));
+    const extra = Math.min(st.extraFields ?? 0, SPELL_CAST.fieldExtraCap - this.fields.filter((f) => !f.follow).length);
+    for (let n = 0; n < extra; n++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = SPELL_CAST.fieldExtraDistance;
+      this.fields.push(this.makeField(i, st, p.x + Math.cos(a) * d, p.z + Math.sin(a) * d, false));
+    }
+    g.fx.shockwave(p.x, p.z, st.radius, SPELL_COLOR.healing_field, 0.45);
+    g.audio.play("tech");
+    return true;
+  }
+
+  private makeField(slot: number, st: SpellStats, x: number, z: number, follow: boolean): Field {
+    const g = this.game;
+    const color = SPELL_COLOR.healing_field;
+    const group = new THREE.Group();
+    const disc = groundMat(color, 0.1);
+    const edge = groundMat(color, 0.55);
+    const d = new THREE.Mesh(DISC_GEO, disc);
+    d.position.y = 0.03;
+    const e = new THREE.Mesh(EDGE_GEO, edge);
+    e.position.y = 0.04;
+    const clock = new THREE.Mesh(clockGeo(1), groundMat(0xeaffef, 0.85));
+    clock.position.y = 0.05;
+    clock.scale.setScalar(0.9);
+    // folhas girando devagar dentro do anel
+    const spin = new THREE.Group();
+    const leaf = groundMat(color, 0.5);
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      const m = new THREE.Mesh(LEAF_GEO, leaf);
+      m.position.set(Math.cos(a) * 0.72, 0.045, Math.sin(a) * 0.72);
+      m.rotation.y = -a;
+      spin.add(m);
+    }
+    group.add(d, e, clock, spin);
+    group.scale.setScalar(st.radius);
+    group.position.set(x, 0, z);
+    g.scene.add(group);
+    const dur = st.duration ?? 1;
+    return { slot, st, x, z, follow, time: dur, duration: dur, tickLeft: st.tick ?? 1, pulse: 0, group, disc, edge, clock, spin };
+  }
+
+  /** behaviors.lua `Field.update`: a cada tique, cura o herói se ele está dentro (o que segue o herói sempre está). */
+  private updateFields(dt: number): void {
+    const g = this.game;
+    const p = g.player;
+    for (let k = this.fields.length - 1; k >= 0; k--) {
+      const f = this.fields[k];
+      if (f.follow) {
+        f.x = p.x;
+        f.z = p.z;
+      }
+      f.time -= dt;
+      f.tickLeft -= dt;
+      while (f.tickLeft <= 0 && f.time > -1e-9) {
+        f.tickLeft += f.st.tick ?? 1;
+        if (!g.playerAlive || (p.x - f.x) ** 2 + (p.z - f.z) ** 2 > f.st.radius ** 2) continue;
+        let amount = f.st.heal ?? 0;
+        if (f.st.surge && Math.random() < f.st.surge) amount += 1 / DR_BASE_HP;
+        g.heal(g.stats.maxHp * amount, true);
+        f.pulse = 1;
+        g.fx.burst(p.x, 0.4, p.z, SPELL_COLOR.healing_field, 6, 2.5, 0.12, 0.6, -2);
+      }
+      if (f.time <= 0) {
+        this.freeField(k);
+        continue;
+      }
+      f.pulse = Math.max(0, f.pulse - dt * 3);
+      const born = Math.min(1, (f.duration - f.time) / 0.3);
+      const ending = f.time < 1 ? 0.55 + 0.45 * Math.abs(Math.cos(g.time * 9)) : 1;
+      f.group.position.set(f.x, 0, f.z);
+      f.group.scale.setScalar(f.st.radius * (0.6 + 0.4 * born) * (1 + 0.04 * f.pulse));
+      f.disc.opacity = (0.08 + 0.14 * f.pulse) * born * ending;
+      f.edge.opacity = (0.45 + 0.4 * f.pulse) * born * ending;
+      f.clock.geometry = clockGeo(f.time / f.duration);
+      f.spin.rotation.y = g.time * 0.6;
+    }
+  }
+
+  private freeField(k: number): void {
+    const f = this.fields[k];
+    freeGroup(f.group);
+    this.fields.splice(k, 1);
+  }
+
+  // ---------------------------------------------------------------- Blade Orbit
+  /**
+   * techniques.lua `Tech.orbit.cast`: lâminas girando em volta do herói; relançar troca as do mesmo espaço. Com recarga
+   * menor que a duração, a sobra vira giro mais rápido (mais golpes por segundo), como lá (D-354).
+   */
+  private castOrbit(i: number, st: SpellStats): boolean {
+    const g = this.game;
+    for (let k = this.orbits.length - 1; k >= 0; k--) if (this.orbits[k].slot === i) this.freeOrbit(k);
+    const dur = st.duration ?? 1;
+    const spin = Math.max(1, dur / Math.max(0.1, st.cooldown || dur));
+    const group = new THREE.Group();
+    const steel = new THREE.MeshBasicMaterial({ color: 0xe8eef8, toneMapped: false });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a24a, roughness: 0.5, metalness: 0.6 });
+    const blades: THREE.Object3D[] = [];
+    for (let b = 0; b < (st.blades ?? 1); b++) {
+      const blade = new THREE.Group();
+      const edge = new THREE.Mesh(BLADE_GEO, steel);
+      edge.position.x = 0.3;
+      const guard = new THREE.Mesh(GUARD_GEO, gold);
+      guard.position.x = -0.24;
+      blade.add(edge, guard);
+      group.add(blade);
+      blades.push(blade);
+    }
+    const clock = new THREE.Mesh(clockGeo(1), groundMat(SPELL_COLOR.blade_orbit, 0.16));
+    clock.position.y = 0.04;
+    group.add(clock);
+    g.scene.add(group);
+    this.orbits.push({ slot: i, st, time: dur, duration: dur, angle: 0, spin, hitCooldown: (st.hitCooldown ?? 0.5) / spin,
+      lastHit: new WeakMap(), group, blades, clock });
+    g.audio.play("tech");
+    return true;
+  }
+
+  /** techniques.lua `updateOrbit`: cada lâmina fere quem toca, no máximo uma vez a cada `hitCooldown` por inimigo. */
+  private updateOrbits(dt: number): void {
+    const g = this.game;
+    const p = g.player;
+    for (let k = this.orbits.length - 1; k >= 0; k--) {
+      const o = this.orbits[k];
+      o.time -= dt;
+      if (o.time <= 0) {
+        g.fx.burst(p.x, 1, p.z, SPELL_COLOR.blade_orbit, 14, 5, 0.1, 0.35, 4);
+        this.freeOrbit(k);
+        continue;
+      }
+      o.angle += dt * SPELL_CAST.orbitSpin * o.spin;
+      const r = o.st.radius;
+      const n = o.blades.length;
+      const hit = SPELL_CAST.bladeHit;
+      // entram crescendo e somem encolhendo nos últimos 0,3 s
+      const grow = Math.min(1, (o.duration - o.time) / 0.2) * Math.min(1, o.time / 0.3);
+      o.group.position.set(p.x, 0, p.z);
+      for (let b = 0; b < n; b++) {
+        const a = o.angle + (b / n) * Math.PI * 2;
+        const bx = Math.cos(a) * r;
+        const bz = Math.sin(a) * r;
+        const blade = o.blades[b];
+        blade.position.set(bx, 1 + 0.1 * Math.sin(g.time * 4 + b), bz);
+        // a ponta vai na frente do giro
+        blade.rotation.set(0, -a - Math.PI / 2, 0.25);
+        blade.scale.setScalar(2.2 * grow);
+        for (const e of g.enemies) {
+          if (e.dead) continue;
+          if ((e.x - p.x - bx) ** 2 + (e.z - p.z - bz) ** 2 > (hit + e.radius) ** 2) continue;
+          const last = o.lastHit.get(e);
+          if (last !== undefined && g.time - last < o.hitCooldown) continue;
+          o.lastHit.set(e, g.time);
+          g.spellHit(e, o.st.damage);
+          g.fx.burst(p.x + bx, 1, p.z + bz, 0xffffff, 5, 4, 0.08, 0.2, 6);
+        }
+      }
+      o.clock.scale.setScalar(r);
+      o.clock.geometry = clockGeo(o.time / o.duration);
+    }
+  }
+
+  private freeOrbit(k: number): void {
+    freeGroup(this.orbits[k].group);
+    this.orbits.splice(k, 1);
+  }
+
+  // ---------------------------------------------------------------- Rune Traps
+  /**
+   * techniques.lua `Tech.rune.cast`: runa nos pés do herói; passando de `maxRunes`, a mais velha do espaço some. Lá só
+   * saía andando (a spell era automática); aqui a tecla também deixa uma parado (D15).
+   */
+  private layRune(i: number, st: SpellStats): boolean {
+    const g = this.game;
+    const p = g.player;
+    const mine = this.runes.filter((r) => r.slot === i && r.fade === undefined);
+    if (mine.length >= (st.maxRunes ?? 1)) mine[0].fade = 0.35;
+    const group = new THREE.Group();
+    const glyph = new THREE.MeshBasicMaterial({ map: runeTexture(), color: SPELL_COLOR.rune_traps, transparent: true,
+      opacity: 0.3, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending });
+    const plate = new THREE.Mesh(RUNE_GEO, glyph);
+    plate.position.y = 0.04;
+    const clock = new THREE.Mesh(clockGeo(1), groundMat(SPELL_COLOR.rune_traps, 0.7));
+    clock.position.y = 0.05;
+    clock.scale.setScalar(1.12);
+    group.add(plate, clock);
+    // o desenho tem o tamanho do gatilho mais a margem do inimigo; a explosão (o raio) aparece no estouro
+    group.scale.setScalar((st.trigger ?? 1) + 0.45);
+    group.rotation.y = Math.random() * Math.PI * 2;
+    group.position.set(p.x, 0, p.z);
+    g.scene.add(group);
+    const dur = st.duration ?? 1;
+    this.runes.push({ slot: i, st, x: p.x, z: p.z, time: dur, duration: dur, group, glyph, clock });
+    return true;
+  }
+
+  /** techniques.lua `updateRune`: armada depois de `arm` s, estoura no primeiro inimigo que pisa no gatilho. */
+  private updateRunes(dt: number): void {
+    const g = this.game;
+    for (let k = this.runes.length - 1; k >= 0; k--) {
+      const r = this.runes[k];
+      if (r.fade !== undefined) {
+        r.fade -= dt;
+        r.glyph.opacity = Math.max(0, r.fade / 0.35) * 0.6;
+        r.group.position.y = -0.3 * (1 - r.fade / 0.35);
+        if (r.fade <= 0) this.freeRune(k);
+        continue;
+      }
+      r.time -= dt;
+      if (r.time <= 0) {
+        r.fade = 0.35;
+        continue;
+      }
+      const age = r.duration - r.time;
+      const armed = age >= (r.st.arm ?? 0);
+      if (armed) {
+        const hit = g.enemies.find((e) => !e.dead && (e.x - r.x) ** 2 + (e.z - r.z) ** 2 <= ((r.st.trigger ?? 1) + e.radius) ** 2);
+        if (hit) {
+          this.detonate(r);
+          this.freeRune(k);
+          continue;
+        }
+      }
+      // armada: acende e respira; no último segundo pisca
+      const ending = r.time < 1 ? 0.45 + 0.55 * Math.abs(Math.cos(g.time * 9)) : 1;
+      r.glyph.opacity = (armed ? 0.7 + 0.15 * Math.sin(g.time * 3 + r.x) : 0.3) * ending;
+      r.clock.geometry = clockGeo(r.time / r.duration);
+    }
+  }
+
+  /** há runa no chão (o ataque básico só procura runa quando há) */
+  get hasRunes(): boolean {
+    return this.runes.length > 0;
+  }
+
+  /**
+   * techniques.lua `shootRunes` (D-575): o ataque básico que passa por uma runa armada estoura a runa de longe. `hits`
+   * diz se o golpe ou o tiro cobre a runa (recebe o centro e o raio do gatilho). As runas nos pés do herói ficam.
+   */
+  shootRunes(hits: (x: number, z: number, trigger: number) => boolean): void {
+    const p = this.game.player;
+    for (let k = this.runes.length - 1; k >= 0; k--) {
+      const r = this.runes[k];
+      if (r.fade !== undefined || r.duration - r.time < (r.st.arm ?? 0)) continue;
+      const trigger = r.st.trigger ?? 1;
+      const clear = trigger + SPELL_CAST.runeShotClear;
+      if ((r.x - p.x) ** 2 + (r.z - p.z) ** 2 <= clear * clear || !hits(r.x, r.z, trigger)) continue;
+      this.detonate(r);
+      this.freeRune(k);
+    }
+  }
+
+  /** techniques.lua `detonate`: dano no raio e prende no lugar quem não é chefe; Twin Glyph: chance de bater de novo. */
+  private detonate(r: Rune): void {
+    const g = this.game;
+    const st = r.st;
+    const blast = () => {
+      for (const e of g.enemies) {
+        if (e.dead || (e.x - r.x) ** 2 + (e.z - r.z) ** 2 > (st.radius + e.radius) ** 2) continue;
+        g.spellHit(e, st.damage, true);
+        if (!e.dead && !e.isBoss && st.root) g.applyStatus(e, { kind: "stun", power: 1, duration: st.root }, 0);
+      }
+    };
+    blast();
+    const twice = !!st.doubleHit && Math.random() < st.doubleHit;
+    if (twice) blast();
+    const c = SPELL_COLOR.rune_traps;
+    g.fx.shockwave(r.x, r.z, st.radius, c, 0.4);
+    if (twice) g.fx.shockwave(r.x, r.z, st.radius * 0.7, 0xffffff, 0.5);
+    g.fx.burst(r.x, 0.3, r.z, c, 24, 6, 0.14, 0.45, 4);
+    g.fx.flashLight(r.x, 0.8, r.z, c, 2, 0.25);
+    g.audio.play("hit");
+  }
+
+  private freeRune(k: number): void {
+    freeGroup(this.runes[k].group);
+    this.runes.splice(k, 1);
+  }
+
   private mat(color: number): THREE.MeshBasicMaterial {
     let m = this.mats.get(color);
     if (!m) this.mats.set(color, (m = new THREE.MeshBasicMaterial({ color, toneMapped: false })));
@@ -777,6 +1198,9 @@ export class SpellCaster {
     while (this.beams.length) this.freeBeam(this.beams.length - 1);
     while (this.vortices.length) this.freeVortex(this.vortices.length - 1);
     while (this.totems.length) this.freeTotem(this.totems.length - 1);
+    while (this.fields.length) this.freeField(this.fields.length - 1);
+    while (this.orbits.length) this.freeOrbit(this.orbits.length - 1);
+    while (this.runes.length) this.freeRune(this.runes.length - 1);
     this.pending.length = 0;
   }
 
@@ -791,8 +1215,17 @@ export class SpellCaster {
     return [
       ...this.shots.map((s) => ({ id: s.id, x: +s.x.toFixed(2), z: +s.z.toFixed(2), remaining: +s.remaining.toFixed(2) })),
       ...this.beams.map((b) => ({ id: b.st.id, x: +b.dx.toFixed(2), z: +b.dz.toFixed(2), remaining: +b.time.toFixed(2) })),
-      ...[...this.vortices, ...this.totems].map((o) => ({ id: o.st.id, x: +o.x.toFixed(2), z: +o.z.toFixed(2),
-        remaining: +o.time.toFixed(2) })),
+      ...[...this.vortices, ...this.totems, ...this.fields, ...this.runes].map((o) => ({ id: o.st.id, x: +o.x.toFixed(2),
+        z: +o.z.toFixed(2), remaining: +o.time.toFixed(2) })),
+      ...this.orbits.map((o) => ({ id: o.st.id, x: 0, z: 0, remaining: +o.time.toFixed(2) })),
     ];
   }
+}
+
+/** Tira o grupo da cena e libera os materiais dele (as geometrias são compartilhadas). */
+function freeGroup(group: THREE.Group): void {
+  group.removeFromParent();
+  const mats = new Set<THREE.Material>();
+  group.traverse((o) => { if (o instanceof THREE.Mesh) mats.add(o.material as THREE.Material); });
+  for (const m of mats) m.dispose();
 }

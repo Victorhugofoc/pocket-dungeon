@@ -4,9 +4,7 @@ export const TUNING = {
   /** Resolução adaptativa (game.ts): mira 60 fps. A escala da resolução interna desce quando o tempo de GPU passa de `gpuHigh` ms e
    * sobe quando fica abaixo de `gpuLow`, entre `minScale` e 1 (1 = densidade máxima da qualidade escolhida). */
   frame: { gpuHigh: 12.5, gpuLow: 8.5, minScale: 0.6, step: 0.08, every: 0.75, maxRatio: 1.5 },
-  /** SÓ PARA TESTE (2026-11-14, pedido do usuário): multiplica o dano e a velocidade de todos os heróis. Voltar para 1 ao balancear. */
-  testBoost: { damage: 2, moveSpeed: 4 },
-  /** SÓ PARA TESTE (2026-11-16): tudo desbloqueado (Unlocks.ALL do original), para seguir testando os 9 heróis. Desligar junto com o testBoost. */
+  /** SÓ PARA TESTE (2026-11-16): tudo desbloqueado (Unlocks.ALL do original), para seguir testando os 9 heróis. Desligar ao balancear. */
   unlockAll: true,
   hero: {
     baseHp: 100,

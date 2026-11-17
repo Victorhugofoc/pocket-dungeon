@@ -117,6 +117,11 @@ export interface RunState {
   /** técnica do herói (fora das spells; game_state.lua guarda no slot 0) */
   technique: SpellSlot;
   relics: string[];
+  /** muda a cada relíquia nova (relic_system.lua `relicVersion`): uma evolução recusada volta quando muda */
+  relicVersion: number;
+  /** "espaço:evolução" → `relicVersion` de quando foi recusada (evolution.lua `evolutionDeclined`) */
+  evolutionDeclined: Record<string, number>;
+  evolutionsDone: number;
   upgradesTaken: string[];
   /** raridade de cada melhoria pega, na mesma ordem de `upgradesTaken` */
   upgradeTiers: UpgradeTier[];
@@ -172,6 +177,9 @@ export function newRun(opts: NewRunOptions): RunState {
     spells: [newSpellSlot(opts.startingSpell)],
     technique: newSpellSlot(hero.technique.id),
     relics: [],
+    relicVersion: 0,
+    evolutionDeclined: {},
+    evolutionsDone: 0,
     upgradesTaken: [],
     upgradeTiers: [],
     tags: {},
@@ -227,6 +235,10 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.curseWavesLeft ??= 0;
   run.curseContinues ??= false;
   run.mapHistory ??= [];
+  // checkpoints de antes do M6-06
+  run.relicVersion ??= 0;
+  run.evolutionDeclined ??= {};
+  run.evolutionsDone ??= 0;
   // checkpoints de antes do M6-01
   for (const s of [...run.spells, run.technique]) s.modifiers ??= [];
   // checkpoints de antes do M20-06 guardavam o progresso do jogo antigo (mochila, equipamento, mortes)

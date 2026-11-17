@@ -6,8 +6,9 @@ import type { Enemy } from "./enemy";
 export type StatusIconKind =
   | "burn" | "volatile" | "poison" | "slow" | "brittleChill" | "stun" | "frost" | "shatter";
 
-/** Um estado de um inimigo, já pronto para desenhar. `n` aparece como número no canto (acúmulos). */
-export interface StatusBadge { kind: StatusIconKind; n?: number }
+/** Um estado de um inimigo, já pronto para desenhar. `n` aparece como número no canto (acúmulos); `until` é quando o estado
+ * acaba (o contorno do ícone esvazia até lá). Sem `until` (acúmulos de gelo), o contorno fica cheio. */
+export interface StatusBadge { kind: StatusIconKind; n?: number; until?: number }
 
 /** O que vem da build do herói e muda o significado do estado. */
 export interface StatusContext {
@@ -24,17 +25,38 @@ export function enemyStatuses(e: Enemy, ctx: StatusContext): StatusBadge[] {
   const now = ctx.now;
   const dots = e.dots.filter((d) => d.until > now);
   const burns = dots.filter((d) => d.kind === "burn");
+  const last = (ds: typeof dots) => ds.reduce((m, d) => Math.max(m, d.until), 0);
   if (burns.length) {
     const fire = burns.some((d) => d.spell === "fireball");
-    out.push({ kind: fire && ctx.volatile > 0 ? "volatile" : "burn" });
+    out.push({ kind: fire && ctx.volatile > 0 ? "volatile" : "burn", until: last(burns) });
   }
-  const poison = dots.filter((d) => d.kind === "poison").reduce((n, d) => n + (d.stacks ?? 1), 0);
-  if (poison) out.push({ kind: "poison", n: poison > 1 ? poison : undefined });
-  if (now < e.stunUntil) out.push({ kind: "stun" });
-  if (now < e.frost.brittleUntil) out.push({ kind: "shatter" });
+  const poisons = dots.filter((d) => d.kind === "poison");
+  const poison = poisons.reduce((n, d) => n + (d.stacks ?? 1), 0);
+  if (poison) out.push({ kind: "poison", n: poison > 1 ? poison : undefined, until: last(poisons) });
+  if (now < e.stunUntil) out.push({ kind: "stun", until: e.stunUntil });
+  if (now < e.frost.brittleUntil) out.push({ kind: "shatter", until: e.frost.brittleUntil });
   else if (e.frost.frostStacks > 0) out.push({ kind: "frost", n: e.frost.frostStacks });
-  if (now < e.slowUntil && e.slowPower > 0) out.push({ kind: ctx.brittleChill > 0 ? "brittleChill" : "slow" });
+  if (now < e.slowUntil && e.slowPower > 0) out.push({ kind: ctx.brittleChill > 0 ? "brittleChill" : "slow", until: e.slowUntil });
   return out;
+}
+
+/**
+ * Quanto falta de cada estado, de 1 (acabou de pegar ou de renovar) a 0. O inimigo só guarda o fim (`until`), então a duração
+ * total é medida aqui: quando o fim muda (estado novo ou renovado), o que falta naquele momento vira o 100%.
+ */
+export class StatusTimers<K extends object> {
+  private spans = new WeakMap<K, Map<string, { until: number; span: number }>>();
+
+  left(owner: K, kind: string, until: number, now: number): number {
+    let m = this.spans.get(owner);
+    if (!m) this.spans.set(owner, (m = new Map()));
+    let cur = m.get(kind);
+    if (!cur || cur.until !== until) {
+      cur = { until, span: Math.max(1e-3, until - now) };
+      m.set(kind, cur);
+    }
+    return Math.max(0, Math.min(1, (until - now) / cur.span));
+  }
 }
 
 // ---------------------------------------------------------------- desenho dos ícones
@@ -42,15 +64,45 @@ export function enemyStatuses(e: Enemy, ctx: StatusContext): StatusBadge[] {
 const PX = 64;
 const ICON_SIZE = 0.9; // metros
 const ICON_GAP = 0.08;
+const ENDING = 1; // segundos finais em que o ícone pulsa
+const RING_W = 6;
+const RING_STEPS = 48;
 
+/** Cor do contorno de cada estado: a parte acesa é o relógio (`drawRing`), que esvazia até o estado acabar. */
+const RING: Record<StatusIconKind, string> = {
+  burn: "#ff7a1a", volatile: "#fff2b0", poison: "#5fd35f", slow: "#8fdcff",
+  brittleChill: "#ff6a6a", stun: "#ffd94a", frost: "#8fdcff", shatter: "#ffffff",
+};
+
+/** Fundo do ícone. O contorno aqui é só o trilho apagado; a parte acesa vem por cima, do relógio. */
 function disc(c: CanvasRenderingContext2D, fill: string, ring: string): void {
   c.beginPath();
   c.arc(32, 32, 27, 0, Math.PI * 2);
   c.fillStyle = fill;
   c.fill();
-  c.lineWidth = 4;
+  c.lineWidth = RING_W;
+  c.strokeStyle = "rgba(0,0,0,0.6)";
+  c.stroke();
+  c.globalAlpha = 0.25;
   c.strokeStyle = ring;
   c.stroke();
+  c.globalAlpha = 1;
+}
+
+/** Contorno aceso: arco que sai do topo no sentido horário, com `k` de `RING_STEPS` passos. */
+function drawRing(color: string, k: number): HTMLCanvasElement {
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = PX;
+  if (k <= 0) return cv;
+  const c = cv.getContext("2d")!;
+  const a0 = -Math.PI / 2;
+  c.beginPath();
+  c.arc(32, 32, 27, a0, a0 + (k / RING_STEPS) * Math.PI * 2);
+  c.lineWidth = RING_W;
+  c.lineCap = k < RING_STEPS ? "round" : "butt";
+  c.strokeStyle = color;
+  c.stroke();
+  return cv;
 }
 
 function flame(c: CanvasRenderingContext2D, s: number, outer: string, inner: string): void {
@@ -228,6 +280,7 @@ function drawIcon(kind: StatusIconKind, n: number | undefined): HTMLCanvasElemen
 
 export class StatusIcons {
   private mats = new Map<string, THREE.SpriteMaterial>();
+  private timers = new StatusTimers<Enemy>();
   private pool: THREE.Sprite[] = [];
   private used = 0;
   private right = new THREE.Vector3();
@@ -235,11 +288,10 @@ export class StatusIcons {
 
   constructor(private scene: THREE.Scene) {}
 
-  private material(b: StatusBadge): THREE.SpriteMaterial {
-    const key = `${b.kind}:${b.n ?? ""}`;
+  private cached(key: string, draw: () => HTMLCanvasElement): THREE.SpriteMaterial {
     let m = this.mats.get(key);
     if (!m) {
-      const tex = new THREE.CanvasTexture(drawIcon(b.kind, b.n));
+      const tex = new THREE.CanvasTexture(draw());
       tex.colorSpace = THREE.SRGBColorSpace;
       m = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, toneMapped: false, transparent: true });
       this.mats.set(key, m);
@@ -247,15 +299,24 @@ export class StatusIcons {
     return m;
   }
 
-  private sprite(): THREE.Sprite {
+  private material(b: StatusBadge): THREE.SpriteMaterial {
+    return this.cached(`${b.kind}:${b.n ?? ""}`, () => drawIcon(b.kind, b.n));
+  }
+
+  /** O relógio do ícone, em `RING_STEPS` passos (uma textura por passo e por cor, feitas sob demanda). */
+  private ring(kind: StatusIconKind, left: number): THREE.SpriteMaterial {
+    const k = Math.ceil(left * RING_STEPS);
+    return this.cached(`ring:${kind}:${k}`, () => drawRing(RING[kind], k));
+  }
+
+  private sprite(order: number): THREE.Sprite {
     let s = this.pool[this.used];
     if (!s) {
       s = new THREE.Sprite();
-      s.renderOrder = 20;
-      s.scale.setScalar(ICON_SIZE);
       this.pool.push(s);
       this.scene.add(s);
     }
+    s.renderOrder = order;
     s.visible = true;
     this.used++;
     return s;
@@ -272,10 +333,20 @@ export class StatusIcons {
       const y = e.rig.root.position.y + e.rig.height + 0.55;
       const w = list.length * ICON_SIZE + (list.length - 1) * ICON_GAP;
       for (let i = 0; i < list.length; i++) {
+        const b = list[i];
         const off = -w / 2 + ICON_SIZE / 2 + i * (ICON_SIZE + ICON_GAP);
-        const s = this.sprite();
-        s.material = this.material(list[i]);
-        s.position.set(e.x + this.right.x * off, y, e.z + this.right.z * off);
+        const x = e.x + this.right.x * off;
+        const z = e.z + this.right.z * off;
+        const left = b.until === undefined ? 1 : this.timers.left(e, b.kind, b.until, ctx.now);
+        // no último segundo o ícone pulsa: o estado está para acabar
+        const ending = b.until !== undefined && b.until - ctx.now < ENDING;
+        const size = ICON_SIZE * (ending ? 1 + 0.14 * Math.abs(Math.sin(ctx.now * 9)) : 1);
+        for (const [order, mat] of [[20, this.material(b)], [21, this.ring(b.kind, left)]] as const) {
+          const s = this.sprite(order);
+          s.material = mat;
+          s.scale.setScalar(size);
+          s.position.set(x, y, z);
+        }
       }
       this.particles(e, list, fx, dt);
     }

@@ -343,9 +343,6 @@ export class Game {
     for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
     sources.push(upgradeStats(this.run));
     this.stats = computeStats(sources);
-    // reforço de teste (TUNING.testBoost): fora do core para não mexer nas contas testadas
-    this.stats.damage *= TUNING.testBoost.damage;
-    this.stats.moveSpeed *= TUNING.testBoost.moveSpeed;
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
       ? techniqueStats(tid, 1, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage })
@@ -563,6 +560,10 @@ export class Game {
         pr.z += pr.vz * dt;
       }
       let dead = pr.life <= 0 || this.grid.hits(pr.x, pr.z, pr.r * 0.5);
+      // Rune Traps (D-575): o tiro do ataque básico estoura a runa armada que cruza
+      if (!dead && pr.friendly && pr.source === "auto" && this.spells.hasRunes) {
+        this.spells.shootRunes((x, z, trig) => (x - pr.x) ** 2 + (z - pr.z) ** 2 <= (pr.r + trig) ** 2);
+      }
       if (!dead && pr.friendly) {
         for (const e of this.enemies) {
           if (e.dead || pr.hit.has(e)) continue;
@@ -822,6 +823,7 @@ export class Game {
   addRelic(id: string): void {
     if (this.run.relics.includes(id) || !RELICS[id]) return;
     this.run.relics.push(id);
+    this.run.relicVersion += 1;
     this.ach.relicFound(id);
     this.recompute();
     this.events.toast(`Relic: ${RELICS[id].name}`, "#ffc83d");
@@ -1386,6 +1388,16 @@ export class Game {
         hits++;
       }
       if (hits) this.fx.addShake(0.08);
+      // Rune Traps (D-575): o golpe que passa por uma runa armada estoura a runa
+      if (this.spells.hasRunes) {
+        this.spells.shootRunes((x, z, trig) => {
+          const d = Math.hypot(x - p.x, z - p.z);
+          let da = Math.atan2(x - p.x, z - p.z) - p.facing;
+          while (da > Math.PI) da -= Math.PI * 2;
+          while (da < -Math.PI) da += Math.PI * 2;
+          return d <= range + trig && Math.abs(da) <= arc;
+        });
+      }
     }
   }
 

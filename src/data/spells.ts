@@ -112,8 +112,8 @@ export interface SpellDef {
   startable?: false;
   milestones: SpellMilestone[];
   modifiers: SpellModifier[];
-  /** ids das evoluções (as definições entram no M6-06) */
-  evolutions: string[];
+  /** ids das evoluções (`EVOLUTIONS`) */
+  evolutions: EvolutionId[];
 }
 
 const ms = (level: number, id: string, text: string, effect: SpellEffect): SpellMilestone => ({ level, id, text, effect });
@@ -360,7 +360,175 @@ export const SPELL_CAST = {
   vortexReach: 1.5,
   /** Cyclone: o olho, onde o puxão para (techniques.lua: 2 px) */
   vortexEye: 2 / DR_PX_PER_M,
+  /** Blade Orbit: rad/s do giro (techniques.lua `updateOrbit`: 5,5) e raio do golpe de cada lâmina (12 px) */
+  orbitSpin: 5.5,
+  bladeHit: 12 / DR_PX_PER_M,
+  /** Healing Field: distância dos campos extras do Blooming Sanctuary (tuning.lua `SPELL_FIELD_EXTRA_DISTANCE`, 70 px)
+   * e o teto de campos extras ao mesmo tempo (constants.lua `CAPS.healingFields`) */
+  fieldExtraDistance: 70 / DR_PX_PER_M,
+  fieldExtraCap: 4,
+  /** Rune Traps: o herói conta como andando acima desta velocidade (m/s), e a runa deixada anda sozinha enquanto ele anda */
+  runeWalkSpeed: 0.5,
+  /** Rune Traps: o ataque básico estoura runa armada de longe, menos as que estão a até gatilho + isto do herói (16 px;
+   * techniques.lua `RUNE_SHOT_CLEAR`: o tiro sai dos pés dele) */
+  runeShotClear: 16 / DR_PX_PER_M,
   /** visual: altura e tamanho da bola */
   height: 1.2,
   ballSize: 0.38,
 } as const;
+
+// ---------------------------------------------------------------- evoluções (spells.lua `S.evolutionDefs`, §38)
+
+export const EVOLUTION_ORDER = [
+  "firestorm", "firewave", "blizzard", "lightning_strike", "arcane_strike", "sanctuary",
+  "blade_storm", "plague_bloom", "maelstrom", "rune_circle", "spectrum", "earthen_ward",
+] as const;
+export type EvolutionId = (typeof EVOLUTION_ORDER)[number];
+
+/** O que um modificador ou uma relíquia vira depois da evolução (D-437): a forma nova não usa o efeito antigo. */
+export interface EvolutionConvert { damagePct?: number; lengthPct?: number; widthPct?: number }
+
+/**
+ * Evolução de uma spell: nível 5 mais UMA relíquia de `requires` (D-197); não gasta a relíquia. Números como lá:
+ * distâncias em px (o core passa para metros), `*Mult` e `*Fraction` sobre o valor da spell.
+ */
+export interface EvolutionDef {
+  id: EvolutionId;
+  name: string;
+  spell: SpellId;
+  requires: readonly string[];
+  kind: string;
+  text: string;
+  tags: readonly string[];
+  damageMult?: number;
+  cooldownMult?: number;
+  radius?: number;
+  duration?: number;
+  tick?: number;
+  burnDuration?: number;
+  burnDpsMult?: number;
+  /** Firestorm: tiques por recarga, a fração do dano em cada um e a sobra da aura além da recarga */
+  ticks?: number;
+  tickDamageFraction?: number;
+  durationPad?: number;
+  width?: number;
+  length?: number;
+  healMult?: number;
+  extraBlades?: number;
+  maxRadius?: number;
+  spreadRadius?: number;
+  spreadStacks?: number;
+  followSpeed?: number;
+  flingDistance?: number;
+  flingRadius?: number;
+  flingFraction?: number;
+  linkRange?: number;
+  lineWidth?: number;
+  lineTick?: number;
+  lineFraction?: number;
+  splitAngle?: number;
+  splitLength?: number;
+  rayFraction?: number;
+  burnFraction?: number;
+  slow?: number;
+  slowDuration?: number;
+  jumps?: number;
+  jumpRange?: number;
+  jumpFraction?: number;
+  lureRadius?: number;
+  wardHits?: number;
+  minCooldown?: number;
+  /** modificador da spell → o que ele vale na forma evoluída */
+  convert?: Readonly<Record<string, EvolutionConvert>>;
+  /** atributo de relíquia (fora da receita) → dano por ponto na forma evoluída */
+  relicConvert?: Readonly<Record<string, number>>;
+  /** texto do modificador na forma evoluída */
+  modText?: Readonly<Record<string, string>>;
+}
+
+export const EVOLUTIONS: Readonly<Record<EvolutionId, EvolutionDef>> = {
+  firestorm: {
+    id: "firestorm", name: "FIRESTORM", spell: "fireball", requires: ["ember_heart", "infernal_crown"], kind: "aura",
+    text: "Swaps the projectile for a fire aura that follows the hero and keeps burning everything around.",
+    damageMult: 1.20, radius: 100, burnDuration: 4.0, burnDpsMult: 1.35, cooldownMult: 0.98,
+    ticks: 6, tickDamageFraction: 1 / 6, durationPad: 0.5,
+    tags: ["fire", "burn", "melee", "area"],
+  },
+  firewave: {
+    id: "firewave", name: "FIREWAVE", spell: "fireball", requires: ["ember_heart", "ember_spurs"], kind: "wall",
+    text: "A wall of fire forward (toward the mouse).",
+    damageMult: 1.35, width: 70, length: 240, burnDuration: 3.8, burnDpsMult: 1.25, cooldownMult: 0.98,
+    convert: { long_fuse: { lengthPct: 0.25 }, wider_blast: { widthPct: 0.18 } },
+    modText: { long_fuse: "+25% wall length", wider_blast: "+18% wall width" },
+    tags: ["fire", "burn", "skillshot", "area"],
+  },
+  blizzard: {
+    id: "blizzard", name: "BLIZZARD", spell: "iceball", requires: ["frost_crown", "glacial_shell"], kind: "storm",
+    text: "A lingering storm on the target area: repeated damage and Slow.",
+    damageMult: 1.15, radius: 90, duration: 4.2, tick: 0.55, cooldownMult: 0.98, tickDamageFraction: 0.35,
+    tags: ["ice", "slow", "area", "control"],
+  },
+  lightning_strike: {
+    id: "lightning_strike", name: "LIGHTNING STRIKE", spell: "chain_lightning", requires: ["storm_prism", "storm_coil"],
+    kind: "line", text: "Swaps the chain for a straight-line bolt.",
+    damageMult: 1.85, width: 22, length: 340, cooldownMult: 0.95,
+    convert: { chain_plus_one: { damagePct: 0.08 }, arc_reach: { lengthPct: 0.25 } },
+    relicConvert: { lightningTargets: 0.08 },
+    modText: { chain_plus_one: "+8% Lightning Strike damage", arc_reach: "+25% bolt length",
+      static_field: "15% chance to hit each target twice" },
+    tags: ["lightning", "skillshot", "burst"],
+  },
+  arcane_strike: {
+    id: "arcane_strike", name: "ARCANE STRIKE", spell: "arcane_bolt", requires: ["arcane_core", "aether_focus"],
+    kind: "auto_fusion",
+    text: "Arcane Bolt is no longer cast: when the cooldown is ready, the next Auto Attack is charged (purple) and explodes on hit.",
+    damageMult: 1.15, radius: 58, cooldownMult: 0.95,
+    convert: { resonant_core: { damagePct: 0.10 } },
+    relicConvert: { echoChance: 1 },
+    modText: { resonant_core: "+10% explosion damage" },
+    tags: ["arcane", "auto", "area"],
+  },
+  sanctuary: {
+    id: "sanctuary", name: "SANCTUARY", spell: "healing_field", requires: ["vital_spark", "renewing_heart"],
+    kind: "follow_field", text: "The healing aura grows bigger and golden, and burns the enemies inside.",
+    radius: 90, duration: 10, healMult: 1.45, tick: 0.55, cooldownMult: 0.98,
+    tags: ["healing", "survival", "area"],
+  },
+  blade_storm: {
+    id: "blade_storm", name: "BLADE STORM", spell: "blade_orbit", requires: ["duelist_gloves", "windblade"],
+    kind: "orbit_storm", text: "+2 blades, and the circle widens to a 160 radius while spinning.",
+    damageMult: 1.15, extraBlades: 2, maxRadius: 160, cooldownMult: 0.98, tags: ["auto", "melee", "area"],
+  },
+  plague_bloom: {
+    id: "plague_bloom", name: "PLAGUE BLOOM", spell: "venom_nova", requires: ["living_moss", "venom_eye"], kind: "plague",
+    text: "A poisoned enemy that dies spreads 2 poison stacks to those nearby.",
+    damageMult: 1.15, spreadRadius: 80, spreadStacks: 2, cooldownMult: 0.98, tags: ["area", "magic"],
+  },
+  maelstrom: {
+    id: "maelstrom", name: "MAELSTROM", spell: "cyclone", requires: ["gale_feather", "storm_vane"], kind: "maelstrom",
+    text: "The tornado follows your aim across the arena. When it ends it flings everyone out; whoever hits another enemy takes 60% of the damage.",
+    damageMult: 1.15, followSpeed: 110, flingDistance: 70, flingRadius: 18, flingFraction: 0.60, cooldownMult: 0.98,
+    tags: ["area", "magic", "control"],
+  },
+  rune_circle: {
+    id: "rune_circle", name: "RUNE CIRCLE", spell: "rune_traps", requires: ["binding_chalk", "scribes_quill"],
+    kind: "rune_circle",
+    text: "Each rune links to its two nearest by a line of light; whoever crosses a line takes 35% of the damage. Walking, you draw walls.",
+    damageMult: 1.10, linkRange: 150, lineWidth: 6, lineTick: 0.4, lineFraction: 0.35,
+    tags: ["area", "magic", "control"],
+  },
+  spectrum: {
+    id: "spectrum", name: "SPECTRUM", spell: "prism_beam", requires: ["cut_crystal", "sunstone"], kind: "spectrum",
+    text: "At the first enemy hit, the beam splits into 3 colours: red burns, blue Slows, yellow jumps to 2 nearby enemies.",
+    damageMult: 1.10, splitAngle: 0.40, splitLength: 150, rayFraction: 0.60, burnFraction: 1.0, burnDuration: 2.0,
+    slow: 0.30, slowDuration: 1.0, jumps: 2, jumpRange: 90, jumpFraction: 0.50,
+    tags: ["area", "magic", "fire", "ice", "lightning"],
+  },
+  earthen_ward: {
+    id: "earthen_ward", name: "EARTHEN WARD", spell: "quake_totem", requires: ["geode_heart", "tremor_boots"],
+    kind: "earthen_ward",
+    text: "The totem becomes an idol that draws melee enemies within 140 and takes their blows for you. It breaks after 5 hits.",
+    damageMult: 1.10, lureRadius: 140, wardHits: 5, minCooldown: 8.0,
+    tags: ["area", "magic", "control", "survival"],
+  },
+};
