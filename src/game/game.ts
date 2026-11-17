@@ -1,6 +1,7 @@
 // Loop principal: herói, combate, progressão e as ondas da partida (cada zona = 5 ondas, D13).
 import * as THREE from "three";
 import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
+import { applyEvolution, declineEvolutions, pendingEvolutionOffer, type EvolutionOption } from "../core/evolution";
 import { addXp, applyUpgrade, draft, draftTiers, rerollCost, rerollsLeft, upgradeStats, type UpgradeTier } from "../core/levelup";
 import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
 import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, safeStorage } from "../core/save";
@@ -28,7 +29,7 @@ import { Fx } from "./fx";
 import { IceWalls, type IceWall } from "./icewall";
 import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
-import { SpellCaster } from "./spells";
+import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
@@ -46,6 +47,8 @@ export interface GameEvents {
   mapOpen(): void;
   /** abriu (ou mudou) a escolha de melhoria de nível; o estado está em `Game.levelUp` */
   levelUp(): void;
+  /** abriu a oferta de evolução de spell; as opções estão em `Game.evolutionOffer` */
+  evolution(): void;
   died(): void;
   zoneChanged(): void;
   /** a ficha da partida mudou (relíquia nova) */
@@ -197,6 +200,8 @@ export class Game {
   private bossReward: (() => void) | null = null;
   /** escolha de melhoria aberta; o jogo fica pausado pela tela */
   levelUp: LevelUpDraft | null = null;
+  /** até 3 evoluções oferecidas no intervalo (evolution.lua `pendingOffer`, S18) */
+  evolutionOffer: EvolutionOption[] | null = null;
   private levelUpIndex = 0;
   /** cartas do mapa da partida abertas no fim da onda (run_map.lua); null = fechado */
   mapCards: MapCard[] | null = null;
@@ -540,11 +545,13 @@ export class Game {
     const ice = this.hero.frost === true;
     // Pingente (Frostine): o tiro depois de 3 acertos seguidos no mesmo alvo sai maior e x3
     const icicle = ice && this.icicle.take();
+    // Arcane Strike pronto: o tiro sai carregado, roxo e maior (D-215)
+    const charged = this.spells.arcaneReady;
     this.addProjectile({
       x: p.x + Math.sin(angle) * 0.7, z: p.z + Math.cos(angle) * 0.7, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed,
-      r: 0.24 * (auto.size ?? 1) * (icicle ? 1.9 : 1), dmg: mult * (icicle ? FROST.icicleMult : 1), life: range / speed, friendly: true,
+      r: 0.24 * (auto.size ?? 1) * (icicle ? 1.9 : 1) * (charged ? ARCANE_CHARGED.size : 1), dmg: mult * (icicle ? FROST.icicleMult : 1), life: range / speed, friendly: true,
       pierce: auto.pierce ?? 0, ricochet: auto.ricochet ?? 0, ricochetDamage: auto.ricochetDamage ?? 1,
-      status: auto.status, color: icicle ? 0xf2fbff : auto.color, source: "auto", ice, icicle,
+      status: auto.status, color: icicle ? 0xf2fbff : charged ? ARCANE_CHARGED.color : auto.color, source: "auto", ice, icicle,
     });
   }
 
@@ -581,6 +588,7 @@ export class Game {
           this.hitSource = pr.source === "auto" ? "auto" : "other";
           this.hitEnemy(e, pr.dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined });
           this.hitSource = "other";
+          if (pr.source === "auto") this.spells.onAutoHit(e);
           if (pr.push && !e.isBoss && !e.dead) {
             const sp = Math.hypot(pr.vx, pr.vz) || 1;
             e.kx += (pr.vx / sp) * pr.push * TUNING.enemy.knockback;
@@ -915,6 +923,26 @@ export class Game {
     else this.levelUpIndex = 0;
   }
 
+  /** run_drafts.lua `chooseEvolution`: a spell evolui; as outras spells são oferecidas de novo no quadro seguinte. */
+  chooseEvolution(index: number): void {
+    const o = this.evolutionOffer?.[index];
+    if (!o) return;
+    applyEvolution(this.run, o.slotIndex, o.evoId);
+    this.evolutionOffer = null;
+    this.recompute();
+    const p = this.player;
+    this.fx.burst(p.x, 1.5, p.z, 0xc77dff, 32, 7, 0.16, 0.9, 5);
+    this.audio.play("level");
+    this.events.statusChanged();
+  }
+
+  /** run_drafts.lua `skipEvolution`: recusa até a coleção de relíquias mudar. */
+  skipEvolution(): void {
+    if (!this.evolutionOffer) return;
+    declineEvolutions(this.run, this.evolutionOffer);
+    this.evolutionOffer = null;
+  }
+
   hurtPlayer(amount: number, source: string): void {
     void source;
     const p = this.player;
@@ -1052,6 +1080,15 @@ export class Game {
       if (this.run.pendingLevelUps > 0 && this.playerAlive) {
         this.openLevelUp();
         if (this.levelUp) return;
+      }
+      // S18: depois do nível, a evolução de spell (também volta aqui depois da relíquia do santuário)
+      if (this.evolutionOffer) return;
+      if (this.playerAlive) {
+        this.evolutionOffer = pendingEvolutionOffer(this.run, this.rng.get("evolution"));
+        if (this.evolutionOffer) {
+          this.events.evolution();
+          return;
+        }
       }
       // R19/R20: depois do nível, o mapa da onda seguinte (a maldição que continua pula o mapa)
       if (!this.mapResolved && this.playerAlive) {
@@ -1274,6 +1311,7 @@ export class Game {
   /** Tira da cena o que é da onda (avisos de nascimento); os inimigos saem com a zona ou no fim da onda. */
   private clearWave(): void {
     this.levelUp = null;
+    this.evolutionOffer = null;
     this.levelUpIndex = 0;
     for (const m of this.markers) m.mesh.removeFromParent();
     this.markers.length = 0;
@@ -1371,7 +1409,7 @@ export class Game {
     } else {
       const range = a.range * (1 + (this.stats.range - 1) * 0.5) * (1 + (this.stats.area - 1) * 0.5);
       const arc = (((a.arcDeg ?? 100) * Math.PI) / 180) / 2;
-      this.fx.slash(p.x, p.z, p.facing, range, a.arcDeg ?? 100, a.color);
+      this.fx.slash(p.x, p.z, p.facing, range, a.arcDeg ?? 100, this.spells.arcaneReady ? ARCANE_CHARGED.color : a.color);
       this.audio.play("swing");
       let hits = 0;
       for (const e of this.enemies) {
@@ -1385,6 +1423,7 @@ export class Game {
         this.hitSource = "auto";
         this.hitEnemy(e, a.damage, a.status);
         this.hitSource = "other";
+        this.spells.onAutoHit(e);
         hits++;
       }
       if (hits) this.fx.addShake(0.08);
