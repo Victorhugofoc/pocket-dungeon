@@ -1,5 +1,5 @@
 // Os 9 heróis do Dungeon Reign (dungeon-idle/src/data/characters.lua), adaptados para o RPG.
-// Os efeitos de atributo vêm de lá; elementos viraram `statusPct`/`damagePct`.
+// Os efeitos de atributo vêm de lá; os de efeito seguem a separação da D14 (escola, queimadura, lentidão, veneno).
 import type { StatBlock } from "../core/stats";
 import type { SpellId } from "./spells";
 import { FROST, RICOCHET, SHADOW, SHIELD_THROW, TECHNIQUES, UNBREAKABLE, VENOM, type TechKind } from "./techniques";
@@ -87,7 +87,7 @@ export const HEROES: Record<string, HeroDef> = {
   frostine: {
     id: "frostine", name: "Frostine", title: "Ice Warden", identity: "Ice, defense, control",
     color: 0x8fdcff, accent: 0xe8f8ff, weapon: "staff", weaponName: "Staff",
-    stats: { maxHpPct: 0.22, armor: 12, statusPct: 0.25 },
+    stats: { maxHpPct: 0.22, icePct: 0.35, slowDurationPct: 0.12, armor: 12, firePct: -0.50 },
     auto: { kind: "projectile", rate: 1.7, damage: 1.0, range: 15, speed: 24, color: 0x9be4ff,
       status: { kind: "slow", power: FROST.autoSlow, duration: FROST.autoSlowTime } },
     // os números da técnica vêm de TECHNIQUES (techniqueStats); aqui só o que a interface mostra
@@ -99,7 +99,7 @@ export const HEROES: Record<string, HeroDef> = {
   kaelen: {
     id: "kaelen", name: "Kaelen", title: "Storm Duelist", identity: "Lightning, crit, mobility",
     color: 0xffe066, accent: 0x6fa8ff, weapon: "sword", weaponName: "Blade",
-    stats: { attackSpeedPct: 0.18, moveSpeedPct: 0.10, critChance: 0.08, critDamagePct: 0.10, maxHpPct: -0.10, armor: -5 },
+    stats: { attackSpeedPct: 0.18, lightningPct: 0.10, moveSpeedPct: 0.10, critChance: 0.08, critDamagePct: 0.10, maxHpPct: -0.10, armor: -5 },
     auto: { kind: "projectile", rate: 2.1, damage: 0.85, range: 13, speed: 34, color: 0xfff29a,
       ricochet: 2, ricochetDamage: 0.6 },
     technique: tech("storm_step"),
@@ -109,7 +109,7 @@ export const HEROES: Record<string, HeroDef> = {
   aurelius: {
     id: "aurelius", name: "Aurelius", title: "Arcane Sage", identity: "Magic, cooldown, regeneration",
     color: 0xd08cff, accent: 0xffe9a8, weapon: "staff", weaponName: "Staff",
-    stats: { cdrPct: 0.15, regen: 0.4, maxHpPct: 0.08, areaPct: 0.15, moveSpeedPct: -0.05 },
+    stats: { spellDamagePct: 0.10, cdrPct: 0.15, regen: 0.4, maxHpPct: 0.08, areaPct: 0.15, moveSpeedPct: -0.05 },
     auto: { kind: "projectile", rate: 1.5, damage: 1.15, range: 16, speed: 22, color: 0xd9a0ff, pierce: 2, size: 1.3 },
     technique: tech("time_rift"),
     startingSpells: ["arcane_bolt", "iceball", "prism_beam", "rune_traps"],
@@ -118,7 +118,7 @@ export const HEROES: Record<string, HeroDef> = {
   ignis: {
     id: "ignis", name: "Ignis", title: "Inferno", identity: "Fire, burn, pressure",
     color: 0xff7a1a, accent: 0xffd34d, weapon: "claws", weaponName: "Gauntlets",
-    stats: { statusPct: 0.30, armor: 8, maxHpPct: 0.08, moveSpeedPct: -0.08 },
+    stats: { firePct: 0.25, burnPct: 0.30, armor: 8, maxHpPct: 0.08, icePct: -0.10, moveSpeedPct: -0.08 },
     auto: { kind: "fan", rate: 1.5, damage: 0.5, range: 8.5, speed: 20, count: 5, spreadDeg: 44, color: 0xff8a2a,
       status: { kind: "burn", power: 0.35, duration: 3, maxStacks: 3 } },
     technique: tech("inferno_charge"),
@@ -128,7 +128,7 @@ export const HEROES: Record<string, HeroDef> = {
   zephyr: {
     id: "zephyr", name: "Zephyr", title: "Gunslinger", identity: "Shooting, speed, crit",
     color: 0xe6b366, accent: 0x8a5a2b, weapon: "guns", weaponName: "Revolvers",
-    stats: { damagePct: 0.20, attackSpeedPct: 0.16, critChance: 0.10, moveSpeedPct: 0.08, maxHpPct: 0.10, armor: 8 },
+    stats: { autoDamagePct: 0.20, attackSpeedPct: 0.16, critChance: 0.10, moveSpeedPct: 0.08, spellDamagePct: -0.05, maxHpPct: 0.10, armor: 8 },
     auto: { kind: "projectile", rate: 2.6, damage: 0.8, range: 16, speed: 42, color: 0xffe9b0,
       ricochet: 1, ricochetDamage: 0.7, size: 0.8 },
     technique: tech("fan_the_hammer"),
@@ -168,7 +168,7 @@ export const HEROES: Record<string, HeroDef> = {
   vesper: {
     id: "vesper", name: "Vesper", title: "Venom Weaver", identity: "Poison, bees, area",
     color: 0x8cf273, accent: 0x3a2a55, weapon: "staff", weaponName: "Scepter",
-    stats: { statusPct: 0.30, areaPct: 0.10, maxHpPct: 0.08 },
+    stats: { poisonPct: 0.30, areaPct: 0.10, maxHpPct: 0.08 },
     auto: { kind: "projectile", rate: 1.9, damage: 0.7, range: 14, speed: 26, color: 0x9dff7a,
       status: { kind: "poison", power: VENOM.autoFraction, duration: VENOM.autoDuration, maxStacks: VENOM.autoStacks } },
     technique: tech("brood"),

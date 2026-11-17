@@ -7,20 +7,41 @@ import {
   type EvolutionDef, type EvolutionId, type SpellDef, type SpellEffect, type SpellFlatKey, type SpellId, type SpellKind, type SpellListKey,
 } from "../data/spells";
 import { DR_BASE_DAMAGE, DR_BASE_HP, DR_SPELL_POWER } from "../data/techniques";
+import type { FinalStats } from "./stats";
 import { px, stackMultiplier } from "./techniques";
 
 /** O que a spell precisa dos atributos do herói (subconjunto de FinalStats). */
 export interface SpellContext {
-  /** multiplicador global de recarga (FinalStats.cooldownMult) */
-  cooldownMult: number;
-  area: number;
+  /** recarga global no formato do pool (FinalStats.cooldownValue; negativo = mais rápida), somada ao pool da spell */
+  cooldownValue?: number;
+  /** área global (FinalStats.areaValue), somada ao pool de área da spell */
+  areaValue?: number;
   range: number;
-  /** multiplicador de efeitos: queimadura e duração da lentidão (FinalStats.status) */
-  status: number;
-  /** poder de magia na escala de lá (8 no início). Este jogo ainda não tem o atributo: sem ele, 8. */
+  /** poder de magia na escala de lá (8 no início; FinalStats.spellPower) */
   spellPower?: number;
+  /** dano de spell (FinalStats.spellDamage) */
+  spellDamage?: number;
+  /** dano por escola (FinalStats.school); escola sem bônus próprio vale 1 */
+  school?: Partial<Record<string, number>>;
+  /** queimadura (FinalStats.burn) */
+  burn?: number;
+  /** pontos de lentidão do herói (FinalStats.slowPoints) */
+  slowPoints?: number;
+  /** duração da lentidão (FinalStats.slowDuration) */
+  slowDuration?: number;
+  /** dano de veneno (FinalStats.poison) */
+  poison?: number;
   /** acúmulos extras de veneno do herói (Vesper; stats `poisonStacks` de lá) */
   poisonStacks?: number;
+}
+
+/** O que as spells leem dos atributos finais do herói (D14). */
+export function spellContext(s: FinalStats): SpellContext {
+  return {
+    cooldownValue: s.cooldownValue, areaValue: s.areaValue, range: s.range, spellPower: s.spellPower,
+    spellDamage: s.spellDamage, school: s.school, burn: s.burn, slowPoints: s.slowPoints,
+    slowDuration: s.slowDuration, poison: s.poison,
+  };
 }
 
 /** Um espaço de spell da partida (game_state.lua `newSpellSlot`). */
@@ -204,14 +225,18 @@ export function spellStats(
   const sp = spMult(ctx.spellPower);
   const levelScale = spellLevelScale(level);
   const evo = slotEvolution(slot);
-  const areaMult = ctx.area * stackMultiplier(L.areaPct);
+  // §34: a recarga e a área globais entram no mesmo pool que as da spell (D14)
+  const areaMult = stackMultiplier([...(ctx.areaValue ? [ctx.areaValue] : []), ...L.areaPct]);
   const cooldownMult = Math.max(SPELL_TUNING.cooldownFloor,
-    ctx.cooldownMult * stackMultiplier(L.cooldownPct) * (evo?.cooldownMult ?? 1));
+    stackMultiplier([...(ctx.cooldownValue ? [ctx.cooldownValue] : []), ...L.cooldownPct]) * (evo?.cooldownMult ?? 1));
+  const school = ctx.school?.[def.school] ?? 1;
+  const burnMult = (ctx.burn ?? 1) * (ctx.school?.fire ?? 1);
+  const slowDurMult = ctx.slowDuration ?? 1;
   const st: SpellStats = {
     id: def.id, kind: def.kind, level, milestones: reached, levelScale,
     damage: def.baseDamage !== undefined
       ? ((def.baseDamage + DR_SPELL_POWER * (def.damageScale ?? 0)) * sp * levelScale * stackMultiplier(L.damagePct)
-        * (evo?.damageMult ?? 1)) / DR_BASE_DAMAGE
+        * (ctx.spellDamage ?? 1) * school * (evo?.damageMult ?? 1)) / DR_BASE_DAMAGE
       : 0,
     cooldown: def.cooldown * cooldownMult,
     cooldownMult,
@@ -224,13 +249,13 @@ export function spellStats(
 
   if (def.burnDps !== undefined) {
     const burnBase = (def.burnDps + DR_SPELL_POWER * SPELL_TUNING.burnSpScale) * sp * (1 + SPELL_TUNING.burnLevelStep * (level - 1));
-    st.burnDps = (burnBase / DR_BASE_DAMAGE) * ctx.status * (evo?.burnDpsMult ?? 1);
+    st.burnDps = (burnBase / DR_BASE_DAMAGE) * burnMult * (evo?.burnDpsMult ?? 1);
     st.burnDuration = (evo?.burnDuration ?? def.burnDuration ?? 0) + F.burnDurationFlat;
     st.volatile = stackChance(L.volatileChance);
   }
   if (def.slow !== undefined) {
-    st.slow = Math.max(0, Math.min(SPELL_TUNING.slowMax, def.slow + F.slowPoints));
-    st.slowDuration = ((def.slowDuration ?? 0) + F.slowDurationFlat) * ctx.status * stackMultiplier(L.slowDurationPct);
+    st.slow = Math.max(0, Math.min(SPELL_TUNING.slowMax, def.slow + (ctx.slowPoints ?? 0) + F.slowPoints));
+    st.slowDuration = ((def.slowDuration ?? 0) + F.slowDurationFlat) * slowDurMult * stackMultiplier(L.slowDurationPct);
     st.brittle = F.brittle;
   }
   if (def.targets !== undefined) {
@@ -257,6 +282,8 @@ export function spellStats(
       if (evo?.maxRadius !== undefined) st.maxRadius = px(evo.maxRadius);
       break;
     case "nova":
+      // o dano de veneno do herói (status.lua: `poisonMult` em cada tique de veneno)
+      st.damage *= ctx.poison ?? 1;
       st.stacks = (def.stacks ?? 0) + F.targets + (ctx.poisonStacks ?? 0);
       st.duration = (def.duration ?? 0) + F.durationFlat;
       if (evo) {
@@ -299,10 +326,10 @@ export function spellStats(
         st.splitAngle = evo.splitAngle;
         st.splitLength = px(evo.splitLength ?? 0);
         st.rayDamage = st.damage * (evo.rayFraction ?? 0);
-        st.burnDps = st.damage * (evo.burnFraction ?? 0) * ctx.status;
+        st.burnDps = st.damage * (evo.burnFraction ?? 0) * burnMult;
         st.burnDuration = evo.burnDuration;
         st.slow = evo.slow;
-        st.slowDuration = (evo.slowDuration ?? 0) * ctx.status;
+        st.slowDuration = (evo.slowDuration ?? 0) * slowDurMult;
         st.jumps = evo.jumps;
         st.jumpRange = px(evo.jumpRange ?? 0);
         st.jumpDamage = st.damage * (evo.jumpFraction ?? 0);

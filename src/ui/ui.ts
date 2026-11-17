@@ -6,7 +6,7 @@ import { RunRng, addRecord, continueRun, decodeSeed, newRun, newSpellSlot, recor
 import { addModifier, addSpell, levelUpSpell, type SlotResult } from "../core/spells";
 import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unlockCondition } from "../core/achievements";
 import { ACHIEVEMENTS } from "../data/achievements";
-import { formatStat, STAT_KEYS, type StatBlock } from "../core/stats";
+import { formatStat, STAT_KEYS, type FinalStats, type StatBlock } from "../core/stats";
 import { EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, type EvolutionDef, type SpellId } from "../data/spells";
 import { wantedRelics } from "../core/evolution";
 import { effectsFor, rerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
@@ -78,6 +78,17 @@ function heroKit(h: HeroDef, cooldown: number): string {
     <div class="kit-row"><b>Technique</b><div><span class="kit-name">${h.technique.name}</span>
       <span class="kit-meta">right click or Q · cooldown ${cd} s</span><p>${h.technique.text}</p></div></div>
   </div>`;
+}
+
+/** Linhas da tela de status para os atributos de spell da D14, só os que fogem do neutro. */
+function spellBonusLines(s: FinalStats): string {
+  const signed = (v: number) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`;
+  const rows: [string, number][] = [
+    ["Spell Damage", s.spellDamage - 1], ["Fire Damage", s.school.fire - 1], ["Ice Damage", s.school.ice - 1],
+    ["Lightning Damage", s.school.lightning - 1], ["Arcane Damage", s.school.arcane - 1], ["Burn Damage", s.burn - 1],
+    ["Slow", s.slowPoints], ["Slow Duration", s.slowDuration - 1], ["Poison Damage", s.poison - 1],
+  ];
+  return rows.filter(([, v]) => Math.abs(v) > 1e-9).map(([k, v]) => `<span>${k}</span><b>${signed(v)}</b>`).join("");
 }
 
 function statLines(stats: StatBlock): string {
@@ -703,7 +714,7 @@ export class Ui {
         <div class="section">Attributes</div>
         <div class="statlist">
           <span>HP</span><b>${s.maxHp}</b>
-          <span>Damage per hit</span><b>${Math.round(s.damage * h.auto.damage)}</b>
+          <span>Damage per hit</span><b>${Math.round(s.damage * s.autoDamage * h.auto.damage)}</b>
           <span>Attacks per second</span><b>${(h.auto.rate * s.attackSpeed).toFixed(2)}</b>
           <span>Crit</span><b>${pct(s.critChance)} · x${s.critDamage.toFixed(2)}</b>
           <span>Armor</span><b>${Math.round(s.armor)} (-${pct(1 - s.damageTaken)} damage)</b>
@@ -711,6 +722,8 @@ export class Ui {
           <span>Regeneration</span><b>${s.regen.toFixed(1)}/s</b>
           <span>Move Speed</span><b>${s.moveSpeed.toFixed(1)}</b>
           <span>Range</span><b>+${pct(s.range - 1)}</b>
+          <span>Spell Power</span><b>${Math.round(s.spellPower * 10) / 10}</b>
+          ${spellBonusLines(s)}
           <span>Technique Cooldown</span><b>${(g.tech?.cooldown ?? h.technique.cooldown * s.cooldownMult).toFixed(1)} s</b>
           <span>XP earned</span><b>+${pct(s.xp - 1)}</b>
           <span>Gold earned</span><b>+${pct(s.gold - 1)}</b>
