@@ -337,18 +337,21 @@ const SHOP_SCEN = (() => {
     [{ id: "arcane_bolt", level: 5, mods: [] }, { id: "prism_beam", level: 5, mods: [] }],
     [],
   ];
-  return builds.flatMap((spells) => Array.from({ length: 8 }, (_, k) => ({ spells, size: k % 4 === 3 ? 4 : 3,
-    u: Array.from({ length: 16 }, rnd) })));
+  // M7-05 (S19): a técnica (`spells[0]` de lá) nos níveis 1, 3 e 5 (no 5 não entra mais)
+  const techLevels = [1, 3, 5];
+  return builds.flatMap((spells, b) => Array.from({ length: 8 }, (_, k) => ({ spells, size: k % 4 === 3 ? 4 : 3,
+    tech: techLevels[(b + k) % 3], u: Array.from({ length: 16 }, rnd) })));
 })();
 const SHOP_LIFE = `=(function()
   local S = require("src.shop.shop_system")
   require("src.relics.relic_system").draft = function() return {} end
   local out = { rolls = {}, general = {}, spell = {}, modifier = {} }
   for i, sc in ipairs({${SHOP_SCEN.map((c) => `{ size = ${c.size}, u = {${c.u.join(",")}}, spells = {${c.spells.map((s) =>
-    `{ id = ${luaStr(s.id)}, level = ${s.level}, modifiers = {${s.mods.map(luaStr).join(",")}} }`).join(",")}} }`).join(",")}}) do
+    `{ id = ${luaStr(s.id)}, level = ${s.level}, modifiers = {${s.mods.map(luaStr).join(",")}} }`).join(",")}}, tech = ${c.tech} }`).join(",")}}) do
     local j = 0
     local rng = { pick = function(_, l) j = j + 1 return l[math.floor(sc.u[((j - 1) % #sc.u) + 1] * #l) + 1] end }
     local run = { spells = sc.spells, relics = {}, statistics = {} }
+    run.spells[0] = { id = ${luaStr(HEROES[HERO_ORDER[0]].technique.id)}, level = sc.tech, modifiers = {} }
     local v = S.roll(run, rng, 7, sc.size)
     local o = {}
     for k, x in ipairs(v.offers) do o[k] = { kind = x.kind, spell = x.spell, modifier = x.modifier } end
@@ -910,6 +913,7 @@ describe.skipIf(!dr)("paridade da Magic Shop com o Dungeon Reign (M7-03)", () =>
     SHOP_SCEN.forEach((sc, i) => {
       const run = newRun({ heroId: HERO_ORDER[0], difficultyId: "normal", startingSpell: HEROES[HERO_ORDER[0]].startingSpells[0], randomSeed: 1 });
       run.spells = sc.spells.map((s) => ({ id: s.id, level: s.level, modifiers: [...s.mods], evolution: null }));
+      run.technique.level = sc.tech;
       const v = rollShop(run, scripted(sc.u), 7, [], sc.size);
       const got = v.offers.map((o) => Object.fromEntries(Object.entries({ kind: o.kind, spell: o.spell, modifier: o.modifier })
         .filter(([, x]) => x !== undefined)));
