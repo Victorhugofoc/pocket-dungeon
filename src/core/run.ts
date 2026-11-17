@@ -6,6 +6,7 @@ import { Rng, hashStr } from "./rng";
 import { DIFFICULTIES, RUN_START, type DifficultyId } from "../data/run";
 import { HEROES } from "../data/heroes";
 import type { UpgradeTier } from "./levelup";
+import { newShopState, type ShopState } from "./shop";
 
 /** rng.lua `RNG.STREAMS`: um fluxo de sorteio por finalidade, na mesma ordem. */
 export const RUN_STREAMS = [
@@ -107,6 +108,8 @@ export interface RunState {
   gold: number;
   /** loot.lua `lootBank` (D-618): orbes [ouro, XP] que ficaram no chão no fim de uma onda; voltam como orbe "2x" */
   lootBank: [number, number][];
+  /** Magic Shop (shop_system.lua `Shop.state`): compras, visitas e histórico */
+  shop: ShopState;
   xp: number;
   level: number;
   xpToNext: number;
@@ -174,6 +177,7 @@ export function newRun(opts: NewRunOptions): RunState {
     wave: 0,
     gold: RUN_START.gold,
     lootBank: [],
+    shop: newShopState(),
     xp: RUN_START.xp,
     level: RUN_START.level,
     xpToNext: RUN_START.xpToNext,
@@ -249,6 +253,8 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.devUsed ??= false;
   // checkpoints de antes do M7-02
   run.lootBank ??= [];
+  // checkpoints de antes do M7-03
+  run.shop ??= newShopState();
   // checkpoints de antes do M6-01
   for (const s of [...run.spells, run.technique]) s.modifiers ??= [];
   // checkpoints de antes do M20-06 guardavam o progresso do jogo antigo (mochila, equipamento, mortes)

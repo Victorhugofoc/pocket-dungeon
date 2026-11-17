@@ -20,6 +20,7 @@ import { frostModify, IcicleCounter } from "../core/frost";
 import { FROST, SHADOW, SHIELD_THROW, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, ENEMIES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
+import { shopStats } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -352,6 +353,7 @@ export class Game {
     const sources: StatBlock[] = [this.hero.stats];
     for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
     sources.push(upgradeStats(this.run));
+    sources.push(shopStats(this.run.shop));
     this.stats = computeStats(sources);
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]

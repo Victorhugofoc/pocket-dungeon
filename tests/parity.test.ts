@@ -26,6 +26,8 @@ import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, POOL
 import { generateMap, type MapRng } from "../src/core/runmap";
 import { ambushFor, biasedComposition, bossStats, killReward, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, targetCount, waveMods } from "../src/core/wave";
 import { Rng } from "../src/core/rng";
+import { generalCost, modifierCost, newShopState, rollShop, spellCost } from "../src/core/shop";
+import { SHOP_CATEGORIES, SHOP_GENERAL, SHOP_ITEMS, SHOP_MODIFIER, SHOP_OFFERS, SHOP_RELIC, SHOP_REROLL, SHOP_SPELL, shopLevel } from "../src/data/shop";
 import {
   baseDuration, baseEnemyCount, bossGold, bossTier, bossXp, compositionFor, damageScale, hasMapBefore, hpScale,
   isBossWave, nextXpToNext, segmentOf, waveGold, waveXp,
@@ -41,7 +43,7 @@ const MODULES = [
   "src.core.constants", "src.data.spells", "src.data.characters",
   "src.data.waves", "src.data.tuning", "src.data.run_map", "src.data.difficulties", "src.data.bosses",
   "src.progression.level_up", "src.data.enemies", "src.data.affixes", "src.data.upgrades", "src.data.rooms",
-  "src.data.achievements", "src.data.unlocks",
+  "src.data.achievements", "src.data.unlocks", "src.data.shop",
 ];
 /** Até que onda as fórmulas são comparadas (passa da 20 para cobrir o modo sem fim). */
 const WAVE_CHECK = 40;
@@ -201,7 +203,7 @@ function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
   // expressões longas vão por arquivo (`@caminho`): a linha de comando do Windows tem limite
   const dir = mkdtempSync(join(tmpdir(), "dr-dump-"));
-  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE].map((code, i) => {
+  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE].map((code, i) => {
     if (code.length < 2000) return code;
     const f = join(dir, `arg${i}.lua`);
     writeFileSync(f, code);
@@ -293,6 +295,64 @@ const SPELL_LIFE = `=(function()
     for _, k in ipairs(fields) do if type(st[k]) == "number" then o[k] = st[k] end end
     if st.spread then o.spreadRadius, o.spreadStacks = st.spread.radius, st.spread.stacks end
     out[i] = o
+  end
+  return out
+end)()`;
+
+/** Cenários da loja (M7-03): spells equipadas e os números do sorteio, avaliados lá e cá. */
+const SHOP_SCEN = (() => {
+  let x = 777;
+  const rnd = () => { x = (x * 16807) % 2147483647; return x / 2147483647; };
+  const builds: { id: string; level: number; mods: string[] }[][] = [
+    [{ id: "fireball", level: 1, mods: [] }],
+    [{ id: "iceball", level: 3, mods: ["frost_wave"] }],
+    [{ id: "fireball", level: 5, mods: [] }],
+    [{ id: "chain_lightning", level: 2, mods: [] }, { id: "venom_nova", level: 4, mods: [] }],
+    [{ id: "arcane_bolt", level: 5, mods: [] }, { id: "prism_beam", level: 5, mods: [] }],
+    [],
+  ];
+  return builds.flatMap((spells) => Array.from({ length: 8 }, (_, k) => ({ spells, size: k % 4 === 3 ? 4 : 3,
+    u: Array.from({ length: 16 }, rnd) })));
+})();
+const SHOP_LIFE = `=(function()
+  local S = require("src.shop.shop_system")
+  require("src.relics.relic_system").draft = function() return {} end
+  local out = { rolls = {}, general = {}, spell = {}, modifier = {} }
+  for i, sc in ipairs({${SHOP_SCEN.map((c) => `{ size = ${c.size}, u = {${c.u.join(",")}}, spells = {${c.spells.map((s) =>
+    `{ id = ${luaStr(s.id)}, level = ${s.level}, modifiers = {${s.mods.map(luaStr).join(",")}} }`).join(",")}} }`).join(",")}}) do
+    local j = 0
+    local rng = { pick = function(_, l) j = j + 1 return l[math.floor(sc.u[((j - 1) % #sc.u) + 1] * #l) + 1] end }
+    local run = { spells = sc.spells, relics = {}, statistics = {} }
+    local v = S.roll(run, rng, 7, sc.size)
+    local o = {}
+    for k, x in ipairs(v.offers) do o[k] = { kind = x.kind, spell = x.spell, modifier = x.modifier } end
+    out.rolls[i] = o
+  end
+  for _, kind in ipairs({ "sharpened_weapon", "arcane_tome", "vitality" }) do
+    local t = {}
+    for lvl = 1, 5 do for n = 0, 3 do
+      local run = {}
+      S.state(run).byType[kind] = n
+      t[#t + 1] = S.generalCost(run, kind, lvl)
+    end end
+    out.general[kind] = t
+  end
+  for lvl = 1, 5 do for n = 0, 3 do for _, sl in ipairs({ false, 1, 2, 3, 4 }) do
+    local run = {}
+    S.state(run).spellPurchases = n
+    out.spell[#out.spell + 1] = S.spellCost(run, sl or nil, lvl)
+  end end end
+  local Spells = require("src.data.spells")
+  for _, id in ipairs(Spells.order) do
+    for _, m in ipairs(Spells[id].modifiers or {}) do
+      local t = {}
+      for lvl = 1, 3 do for sl = 1, 5 do for n = 0, 2 do
+        local run = {}
+        S.state(run).modifierPurchases = n
+        t[#t + 1] = S.modifierCost(run, sl, m, lvl)
+      end end end
+      out.modifier[id .. ":" .. m.id] = t
+    end
   end
   return out
 end)()`;
@@ -752,3 +812,58 @@ describe.skipIf(!dr)("paridade das conquistas e desbloqueios com o Dungeon Reign
   });
 });
 
+describe.skipIf(!dr)("paridade da Magic Shop com o Dungeon Reign (M7-03)", () => {
+  it("números de data/shop.lua", () => {
+    const S = dr!["src.data.shop"];
+    expect(SHOP_OFFERS).toBe(S.OFFERS);
+    expect(SHOP_GENERAL).toEqual(S.GENERAL);
+    for (const k of ["sharpened_weapon", "arcane_tome", "vitality"] as const) expect(SHOP_ITEMS[k], k).toEqual(S[k]);
+    expect(SHOP_SPELL).toEqual(S.SPELL);
+    expect(SHOP_MODIFIER).toEqual(S.MODIFIER);
+    expect(SHOP_RELIC).toEqual(S.RELIC);
+    expect(SHOP_REROLL).toEqual(S.REROLL);
+    expect([...SHOP_CATEGORIES]).toEqual(S.CATEGORIES);
+    for (let w = 1; w <= 30; w++) expect(shopLevel(w), `onda ${w}`).toBe(1 + Math.floor((w - 1) / 5));
+  });
+
+  it("preços: itens gerais, spell nova e melhoria, modificadores", () => {
+    const L = dr![SHOP_LIFE];
+    for (const kind of ["sharpened_weapon", "arcane_tome", "vitality"] as const) {
+      const t: number[] = [];
+      for (let lvl = 1; lvl <= 5; lvl++) for (let n = 0; n <= 3; n++) {
+        const st = newShopState();
+        st.byType[kind] = n;
+        t.push(generalCost(st, kind, lvl));
+      }
+      expect(t, kind).toEqual(L.general[kind]);
+    }
+    const sp: number[] = [];
+    for (let lvl = 1; lvl <= 5; lvl++) for (let n = 0; n <= 3; n++) for (const sl of [null, 1, 2, 3, 4]) {
+      const st = newShopState();
+      st.spellPurchases = n;
+      sp.push(spellCost(st, sl, lvl));
+    }
+    expect(sp).toEqual(L.spell);
+    for (const id of SPELL_ORDER) for (const m of SPELLS[id].modifiers) {
+      const t: number[] = [];
+      for (let lvl = 1; lvl <= 3; lvl++) for (let sl = 1; sl <= 5; sl++) for (let n = 0; n <= 2; n++) {
+        const st = newShopState();
+        st.modifierPurchases = n;
+        t.push(modifierCost(st, sl, m.effect, lvl));
+      }
+      expect(t, `${id}:${m.id}`).toEqual(L.modifier[`${id}:${m.id}`]);
+    }
+  });
+
+  it(`ofertas sorteadas iguais às de shop_system.lua em ${SHOP_SCEN.length} visitas`, () => {
+    const L = dr![SHOP_LIFE];
+    SHOP_SCEN.forEach((sc, i) => {
+      const run = newRun({ heroId: HERO_ORDER[0], difficultyId: "normal", startingSpell: HEROES[HERO_ORDER[0]].startingSpells[0], randomSeed: 1 });
+      run.spells = sc.spells.map((s) => ({ id: s.id, level: s.level, modifiers: [...s.mods], evolution: null }));
+      const v = rollShop(run, scripted(sc.u), 7, [], sc.size);
+      const got = v.offers.map((o) => Object.fromEntries(Object.entries({ kind: o.kind, spell: o.spell, modifier: o.modifier })
+        .filter(([, x]) => x !== undefined)));
+      expect(got, `#${i}`).toEqual(L.rolls[i] ?? []);
+    });
+  });
+});
