@@ -6,7 +6,7 @@ import type { Rng } from "./rng";
 import { waveLayer } from "./runmap";
 import { AMBUSH_DELAY, ENEMY_GROUPS, type RoomDef } from "../data/rooms";
 import {
-  baseDuration, baseEnemyCount, bossTier, compositionFor, damageScale, endlessDamage, endlessHp, hpScale, isBossWave, waveGold, waveXp,
+  baseDuration, baseEnemyCount, bossGold, bossTier, bossXp, compositionFor, damageScale, endlessDamage, endlessHp, hpScale, isBossWave, waveGold, waveXp,
 } from "./waves";
 import {
   ARENA_CROWD, BOSS, BOSS_MULTS, CHAMPION, DIFFICULTIES, ENDLESS, RANDOM_CHAMPION, RUN_TUNING, SURVIVOR_FACTOR,
@@ -30,6 +30,8 @@ export interface WaveMods {
   reward: number;
   earlyBossCut: boolean;
   crownHp: number;
+  /** ouro do chefe ou campeão numa sala de risco (emboscada, Toca do Campeão), da dificuldade (Hard) */
+  riskGold: number;
 }
 
 function lateHp(d: Difficulty, wave: number): number {
@@ -55,6 +57,7 @@ export function waveMods(wave: number, difficultyId: DifficultyId, room: RoomDef
     reward: w.reward * d.reward,
     earlyBossCut: d.earlyBossCut === true,
     crownHp: d.crownHp ?? 1,
+    riskGold: d.riskGold ?? 1,
   };
 }
 
@@ -321,6 +324,43 @@ export function waveReward(w: WaveState, mods: WaveMods, goldMult = 1): { gold: 
     xp = Math.floor(xp * k + 0.5);
   }
   return { gold, xp };
+}
+
+/** O que `killReward` precisa saber do inimigo morto. */
+export interface KillTarget {
+  gold: number;
+  xp: number;
+  champion: boolean;
+  /** onda do chefe (o tier sai dela), ou null */
+  bossWave: number | null;
+  /** invocados e filhos da gosma */
+  noReward: boolean;
+  /** afixos do campeão (D-205: +25% por afixo); 1 sem afixos */
+  affixReward?: number;
+}
+
+/** `Rewards.enemyKill` (§13.4): ouro e XP de um inimigo morto. O XP sai antes do multiplicador de XP do herói. */
+export function killReward(t: KillTarget, mods: WaveMods, goldMult = 1): { gold: number; xp: number } {
+  if (t.noReward) return { gold: 0, xp: 0 };
+  let g = t.gold;
+  let x = t.xp;
+  if (t.bossWave !== null) {
+    // boss.lua `rewards`: ouro e XP do chefe da onda com o bônus do tier
+    const k = 1 + BOSS.tier.reward * (bossTier(t.bossWave) - 1);
+    g = bossGold(t.bossWave) * k;
+    x = bossXp(t.bossWave) * k;
+  }
+  if (t.champion) {
+    const k = CHAMPION.rewardMult * (t.affixReward ?? 1);
+    g *= k;
+    x *= k;
+  }
+  const room = mods.room;
+  const risky = !!room && (t.bossWave !== null || t.champion) && (!!room.ambush || (room.champions ?? 0) > 0);
+  return {
+    gold: Math.floor(g * mods.reward * goldMult * (risky ? mods.riskGold : 1)),
+    xp: Math.floor(x * mods.reward),
+  };
 }
 
 /** `Rewards.survivor`: quem sobra no fim rende uma parte (invocados e filhos da gosma não rendem). */

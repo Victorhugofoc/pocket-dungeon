@@ -1,8 +1,7 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
 import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
-import { bossXp } from "../core/waves";
-import { CHAMPION, CHILD_SCALE, MINION_SCALE } from "../data/run";
+import { CHILD_SCALE, MINION_SCALE } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
 import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
@@ -49,7 +48,8 @@ export class Enemy {
   dmg: number;
   speed: number;
   radius: number;
-  xp: number;
+  /** invocados e filhos da gosma não rendem ouro nem XP (`killReward`) */
+  noReward: boolean;
   rig: Rig;
   facing = 0;
   aggro = false;
@@ -115,8 +115,7 @@ export class Enemy {
     this.dmg = st.damage * (derived ? derived.damage : 1);
     this.speed = def.speed * st.speed * (derived ? derived.speed : 1);
     this.radius = def.radius * (this.champion ? 1.2 : 1);
-    // XP de lá; os invocados e filhos da gosma não rendem. O chefe rende o XP do chefe da onda.
-    this.xp = this.summoned || opts.child ? 0 : isBoss ? bossXp(wave) : Math.round(def.xp * (this.champion ? CHAMPION.rewardMult : 1));
+    this.noReward = this.summoned || opts.child === true;
     if (isBoss) this.windupDur = 0.55;
 
     this.rig = this.makeRig();

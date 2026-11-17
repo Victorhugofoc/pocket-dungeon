@@ -10,10 +10,10 @@ import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
 import { chooseCard, expireWaveScope, generateMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
-  canHasten, hasten, healOrbChance, hastenBonus, startWave, stepWave, survivorReward, timeLeft, waveMods, waveReward,
+  canHasten, hasten, healOrbChance, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
   type WaveMods, type WaveSpawn, type WaveState,
 } from "../core/wave";
-import { bossGold, hasMapBefore, isBossWave, segmentOf } from "../core/waves";
+import { hasMapBefore, isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
@@ -764,7 +764,14 @@ export class Game {
     this.audio.play(e.isBoss ? "boss" : "kill");
     this.run.statistics.kills++;
     if (this.stats.lifeOnKill > 0 && this.playerAlive) this.heal(this.stats.lifeOnKill, false);
-    if (e.xp > 0) this.gainXp(e.xp);
+    // rewards.lua `enemyKill`: ouro e XP pela sala e dificuldade, campeão ×4,5, chefe com o tier (M7-01)
+    const r = killReward({ gold: e.def?.gold ?? 0, xp: e.def?.xp ?? 0, champion: e.champion, bossWave: e.isBoss ? e.level : null,
+      noReward: e.noReward }, this.mods, this.stats.gold);
+    if (r.gold > 0) {
+      this.run.gold += r.gold;
+      this.run.statistics.goldEarned += r.gold;
+    }
+    if (r.xp > 0) this.gainXp(r.xp);
     const split = e.def?.splitInto;
     if (split) {
       for (let i = 0; i < split.count; i++) {
@@ -1061,10 +1068,6 @@ export class Game {
     this.hitstop = 0.25;
     this.fx.addShake(1);
     for (const m of this.enemies) if (m.summoned && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
-    const s = this.run;
-    const gold = Math.floor(bossGold(s.wave) * this.mods.reward * this.stats.gold);
-    s.gold += gold;
-    s.statistics.goldEarned += gold;
     // a emboscada dá a relíquia de risco (falta, M12), não a escolha de chefe
     if (e.ambush) return;
     const pool = this.relicPool();
