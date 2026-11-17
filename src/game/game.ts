@@ -20,6 +20,7 @@ import { frostModify, IcicleCounter } from "../core/frost";
 import { FROST, SHADOW, SHIELD_THROW, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, ENEMIES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
+import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -51,6 +52,8 @@ export interface GameEvents {
   levelUp(): void;
   /** abriu a oferta de evolução de spell; as opções estão em `Game.evolutionOffer` */
   evolution(): void;
+  /** abriu a Magic Shop, ou ela mudou (compra, troca); a visita está em `Game.shopVisit` */
+  shop(): void;
   died(): void;
   zoneChanged(): void;
   /** a ficha da partida mudou (relíquia nova) */
@@ -70,6 +73,9 @@ export interface LevelUpDraft {
   index: number;
   total: number;
 }
+
+/** Por que a loja abriu sozinha (run.pendingShop): antes de uma onda de chefe, ou depois de matar um campeão. */
+export type ShopReason = "preboss" | "champion";
 
 /** Em que ponto da onda a partida está. */
 export type WavePhase = "walk" | "intro" | "fight" | "cleared" | "portal";
@@ -213,6 +219,10 @@ export class Game {
   private mapResolved = false;
   /** o santuário de relíquias está com a escolha aberta */
   private shrineOpen = false;
+  /** Magic Shop aberta (shop_system.lua); null = fechada */
+  shopVisit: (ShopVisit & { auto: ShopReason | null }) | null = null;
+  /** loja automática depois desta onda (run.pendingShop): antes de onda de chefe, ou depois de matar um campeão */
+  private pendingShop: ShopReason | null = null;
   private aim = new THREE.Vector3();
   private camTarget = new THREE.Vector3();
   private raycaster = new THREE.Raycaster();
@@ -352,6 +362,7 @@ export class Game {
     const sources: StatBlock[] = [this.hero.stats];
     for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
     sources.push(upgradeStats(this.run));
+    sources.push(shopStats(this.run.shop));
     this.stats = computeStats(sources);
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
@@ -422,6 +433,8 @@ export class Game {
     this.mapCards = null;
     this.mapResolved = false;
     this.shrineOpen = false;
+    this.shopVisit = null;
+    this.pendingShop = null;
     this.phase = "walk";
     this.phaseT = 0;
     this.bossEngaged = false;
@@ -791,6 +804,8 @@ export class Game {
     this.fx.burst(e.x, e.rig.height * 0.5, e.z, color, e.isBoss ? 80 : 14, e.isBoss ? 12 : 6, e.isBoss ? 0.3 : 0.18, e.isBoss ? 1.2 : 0.6);
     this.audio.play(e.isBoss ? "boss" : "kill");
     this.run.statistics.kills++;
+    // D-147: matar um campeão abre a loja depois da onda (a relíquia de risco chega no M12)
+    if (e.champion && !e.isBoss && !e.summoned) this.pendingShop = "champion";
     if (this.stats.lifeOnKill > 0 && this.playerAlive) this.heal(this.stats.lifeOnKill, false);
     // rewards.lua `enemyKill`: ouro e XP pela sala e dificuldade, campeão ×4,5, chefe com o tier (M7-01)
     // loot.lua (M7-02): cai como orbe no chão; o prometido leva também um orbe do banco
@@ -1165,6 +1180,14 @@ export class Game {
           return;
         }
       }
+      // R19: a loja automática antes do mapa; ela nunca trava a onda (sair é sempre possível)
+      if (this.shopVisit) return;
+      if (this.pendingShop && this.playerAlive && this.run.wave !== TOTAL_WAVES) {
+        this.openShop(this.pendingShop);
+        this.pendingShop = null;
+        return;
+      }
+      this.pendingShop = null;
       // R19/R20: depois do nível, o mapa da onda seguinte (a maldição que continua pula o mapa)
       if (!this.mapResolved && this.playerAlive) {
         if (this.mapCards || this.shrineOpen) return;
@@ -1325,6 +1348,8 @@ export class Game {
     this.saveAchievements();
     // §6: a sala vale só para esta onda; a maldição segue para a próxima, que fica sem mapa
     if (expireWaveScope(run)) this.mapResolved = true;
+    // wave_system.lua `complete`: a loja automática antes de toda onda de chefe
+    if (isBossWave(run.wave + 1)) this.pendingShop ??= "preboss";
     this.phase = "cleared";
     this.phaseT = 0;
     this.showRing(false);
@@ -1335,8 +1360,8 @@ export class Game {
 
   // ---------------------------------------------------------------- mapa da partida (run_map.lua)
 
-  /** Cartas que dependem de sistema que ainda não existe aqui: pacto (M12), evento (M12) e loja (M7). */
-  static readonly MAP_DISABLED: ReadonlySet<MapNodeId> = new Set<MapNodeId>(["pact", "event", "shop"]);
+  /** Cartas que dependem de sistema que ainda não existe aqui: pacto (M12) e evento (M12). */
+  static readonly MAP_DISABLED: ReadonlySet<MapNodeId> = new Set<MapNodeId>(["pact", "event"]);
 
   /** Abre o mapa da onda seguinte, se houver; devolve false quando não há mapa (a onda segue direto). */
   private openMap(): boolean {
@@ -1371,7 +1396,59 @@ export class Game {
       }, "Relic Shrine");
       return;
     }
+    if (step === "shop") {
+      this.openShop(null);
+      return;
+    }
     this.mapResolved = true;
+  }
+
+  // ---------------------------------------------------------------- Magic Shop (run_map_flow.lua)
+
+  /** `openAutoShop` (reason) ou a carta "Shop" do mapa (null): uma visita nova, sorteada no fluxo `shop`. */
+  private openShop(auto: ShopReason | null): void {
+    const v = rollShop(this.run, this.rng.get("shop"), this.run.wave + 1, this.relicPool());
+    this.shopVisit = { ...v, auto };
+    this.audio.play("pickup");
+    this.events.shop();
+  }
+
+  /** `buyShop`: compra a oferta; devolve o motivo da recusa, ou null. */
+  buyShop(index: number): string | null {
+    const v = this.shopVisit;
+    if (!v) return "no shop";
+    const r = buyOffer(this.run, v, index, { grantRelic: (id) => this.addRelic(id) });
+    if (!r.ok) {
+      this.audio.play("warn");
+      this.events.shop();
+      return r.reason;
+    }
+    this.recompute();
+    if (r.fullHeal) this.player.hp = this.stats.maxHp;
+    const p = this.player;
+    this.fx.burst(p.x, 1.5, p.z, 0xffd34d, 18, 5, 0.12, 0.6, 3);
+    this.audio.play("coin");
+    this.events.statusChanged();
+    this.events.shop();
+    return null;
+  }
+
+  /** `rerollShop` (D-146): troca as ofertas; devolve o motivo da recusa, ou null. */
+  rerollShop(): string | null {
+    const v = this.shopVisit;
+    if (!v) return "no shop";
+    const r = rerollShop(this.run, v, this.rng.get("shop"), this.relicPool());
+    this.audio.play(r.ok ? "pickup" : "warn");
+    this.events.shop();
+    return r.ok ? null : r.reason;
+  }
+
+  /** `closeShop`: a automática vem antes do mapa; a da carta resolve o mapa. */
+  closeShop(): void {
+    const v = this.shopVisit;
+    if (!v) return;
+    this.shopVisit = null;
+    if (!v.auto) this.mapResolved = true;
   }
 
   /** Depois do chefe da zona: o portal abre no meio da arena e leva à próxima zona (onda seguinte). */

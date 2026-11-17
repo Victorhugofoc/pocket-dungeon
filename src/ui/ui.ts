@@ -11,7 +11,9 @@ import {
   EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
 } from "../data/spells";
 import { wantedRelics } from "../core/evolution";
-import { effectsFor, rerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
+import { effectsFor, rerollCost as levelRerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
+import { evaluateOffer, rerollCost, type ShopOffer } from "../core/shop";
+import { SHOP_ITEMS } from "../data/shop";
 import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
 import { BOSSES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
@@ -124,6 +126,7 @@ export class Ui {
       mapOpen: () => this.showMap(),
       levelUp: () => this.showLevelUp(),
       evolution: () => this.showEvolution(),
+      shop: () => this.showShop(),
       died: () => setTimeout(() => this.showDeath(), 900),
       zoneChanged: () => this.onZoneChanged(),
       statusChanged: () => {
@@ -168,6 +171,12 @@ export class Ui {
   private onKey(e: KeyboardEvent): void {
     if (!this.game.started || e.repeat) return;
     const k = e.code;
+    // a loja: Esc sai, R troca as ofertas (shop.lua); o resto fica preso como nas outras escolhas
+    if (this.overlayKind === "shop") {
+      if (k === "Escape") this.leaveShop();
+      else if (k === "KeyR") this.game.rerollShop();
+      return;
+    }
     const locked = ["title", "relic", "levelup", "evolution", "map", "death", "victory", "results"].includes(this.overlayKind);
     if (locked) return;
     if (k === "Escape") {
@@ -822,6 +831,50 @@ export class Ui {
     };
   }
 
+  /** Magic Shop (shop.lua): 3 ofertas mais a relíquia, preço, motivo da oferta inválida, comprar, trocar, sair. */
+  private showShop(): void {
+    const g = this.game;
+    const v = g.shopVisit;
+    if (!v) return;
+    const panel = this.overlayKind === "shop" ? (this.overlay!.firstChild as HTMLElement) : this.open("shop", "shop");
+    panel.style.width = "min(980px, 96vw)";
+    const run = g.run;
+    const title = v.auto === "preboss" ? "Pre-boss shop: get ready for the next wave"
+      : v.auto === "champion" ? "Champion shop: opens before the map" : "Magic Shop";
+    const reroll = rerollCost(v);
+    panel.innerHTML = `<h2>Magic Shop <small>Lv ${v.level}</small></h2>
+      <p class="sub">${title} · <b class="gold">${run.gold} gold</b></p>
+      <div class="cards shop">${v.offers.map((o, i) => shopOfferHtml(g, o, i)).join("")}</div>
+      <div class="row end">
+        <button data-act="reroll" ${run.gold >= reroll ? "" : "disabled"}>Reroll (R) — ${reroll} gold</button>
+        <button data-act="leave">Leave shop (Esc)</button>
+      </div>`;
+    panel.onclick = (ev) => {
+      const t = ev.target as HTMLElement;
+      if (t.closest("[data-act=leave]")) return this.leaveShop();
+      if (t.closest("[data-act=reroll]")) {
+        g.rerollShop();
+        return;
+      }
+      const i = t.closest<HTMLElement>("[data-offer]")?.dataset.offer;
+      if (i === undefined) return;
+      const reason = g.buyShop(Number(i));
+      if (reason) this.toast(reason, "#ff7a6a");
+    };
+    panel.onmousemove = (ev) => {
+      const card = (ev.target as HTMLElement).closest<HTMLElement>("[data-offer]");
+      const o = card ? v.offers[Number(card.dataset.offer)] : undefined;
+      const html = o ? shopOfferTip(g, o) : "";
+      if (html) return this.showTip(html, ev);
+      this.tip.classList.add("hidden");
+    };
+  }
+
+  private leaveShop(): void {
+    this.close();
+    this.game.closeShop();
+  }
+
   /** As 3 cartas de melhoria (level_up.lua): raridade, efeitos e a troca paga com ouro. */
   private showLevelUp(): void {
     const g = this.game;
@@ -829,7 +882,7 @@ export class Ui {
     if (!L) return;
     const panel = this.open("levelup", "levelup");
     panel.style.width = "min(820px, 96vw)";
-    const cost = rerollCost(g.run);
+    const cost = levelRerollCost(g.run);
     const left = rerollsLeft(L.rerolls);
     const can = left > 0 && g.run.gold >= cost;
     panel.innerHTML = `<h2>Level ${g.run.level - g.run.pendingLevelUps + 1}${L.total > 1 ? ` <small>(${L.index} of ${L.total})</small>` : ""}</h2>
@@ -1049,6 +1102,63 @@ function prettyId(id: string): string {
 
 function spellName(id: string): string {
   return id in SPELLS ? SPELLS[id as SpellId].name : prettyId(id);
+}
+
+/** Uma oferta da loja: tipo, nome, o que faz, preço e, se inválida, o motivo (shop.lua). */
+function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
+  const ev = evaluateOffer(g.run, g.shopVisit!, o);
+  const slot = g.run.spells.find((s) => s.id === o.spell);
+  let meta = "", name = "", body = "", color = "#ffd34d";
+  if (o.kind === "spell_upgrade") {
+    meta = "Spell upgrade";
+    name = spellName(o.spell!);
+    body = slot ? `<p>Lv ${slot.level} → ${Math.min(slot.level + 1, SPELL_MAX_LEVEL)}</p>` : "";
+    const ms = isSpellKey(o.spell!) && slot ? SPELLS[o.spell!].milestones.find((m) => m.level === slot.level + 1) : undefined;
+    if (ms) body += `<p class="evo">Lv${ms.level} ${ms.id}: ${ms.text}</p>`;
+    color = "#7ad94a";
+  } else if (o.kind === "spell_modifier") {
+    const m = isSpellKey(o.spell!) ? SPELLS[o.spell!].modifiers.find((x) => x.id === o.modifier) : undefined;
+    meta = `${spellName(o.spell!)} modifier (shop)`;
+    name = m?.name ?? prettyId(o.modifier!);
+    body = `<p>${isSpellKey(o.spell!) ? modifierText(o.spell!, o.modifier!, slot?.evolution ?? null) : ""}</p>`;
+    color = "#4fa3ff";
+  } else if (o.kind === "new_spell") {
+    meta = "New spell";
+    name = spellName(o.spell!);
+    body = `<p class="note">Takes a free spell slot, starts at Lv 1.</p>`;
+    color = "#b36bff";
+  } else if (o.kind === "relic") {
+    const d = RELICS[o.relic!];
+    meta = `${RELIC_RARITY[d.rarity]} relic`;
+    name = d.name;
+    body = statLines(d.stats);
+    const evo = wantedRelics(g.run)[o.relic!];
+    if (evo) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
+    color = hex(d.color);
+  } else {
+    const item = SHOP_ITEMS[o.kind];
+    meta = "Item";
+    name = item.name;
+    body = `<p>${item.text}</p>`;
+  }
+  const afford = ev.cost !== null && g.run.gold >= ev.cost;
+  const price = o.bought ? `<div class="price done">Bought${o.paid ? ` · ${o.paid} gold` : ""}</div>`
+    : !ev.valid ? `<div class="price bad">${ev.reason}${ev.cost !== null ? ` · ${ev.cost} gold` : ""}</div>`
+    : `<div class="price${afford ? "" : " bad"}">${ev.cost} gold</div>`;
+  const off = o.bought || !ev.valid ? " off" : "";
+  return `<div class="card${off}" data-offer="${i}" style="--cc:${color}"><div class="meta">${meta}</div><h3>${name}</h3>${body}${price}</div>`;
+}
+
+/** Dica da oferta: a ficha da spell equipada (M6-08), ou os números da spell nova no nível 1. */
+function shopOfferTip(g: Game, o: ShopOffer): string {
+  if (!o.spell) return "";
+  const i = g.run.spells.findIndex((s) => s.id === o.spell);
+  if (i >= 0) return spellTipHtml(g, i);
+  if (!isSpellKey(o.spell)) return "";
+  const def = SPELLS[o.spell];
+  const L = [`Cooldown ${def.cooldown.toFixed(2)}s`, `School ${def.school}`];
+  for (const m of def.milestones) L.push(`Lv${m.level} ${m.id}: ${m.text}`);
+  return `<h4>${def.name}  Lv 1</h4><div class="spell-tip">${L.map((t) => `<div>${t}</div>`).join("")}</div>`;
 }
 
 /** Uma carta do mapa: o tipo, a sala sorteada e o que ela muda na onda. */
