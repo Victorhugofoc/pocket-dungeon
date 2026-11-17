@@ -142,6 +142,8 @@ export interface RunState {
   statistics: RunStatistics;
   /** quem deu o golpe final (results.lua `killedBy`); null enquanto vivo */
   killedBy: string | null;
+  /** o DEV Grimoire (F1) foi aberto: a partida não grava checkpoint nem entra nos registros (run_save.lua, results.lua) */
+  devUsed: boolean;
 }
 
 export interface NewRunOptions {
@@ -192,6 +194,7 @@ export function newRun(opts: NewRunOptions): RunState {
     resumes: 0,
     statistics: { kills: 0, damage: 0, damageTaken: 0, elapsed: 0, goldEarned: 0, goldSpent: 0, xpEarned: 0, healed: 0 },
     killedBy: null,
+    devUsed: false,
   };
 }
 
@@ -239,6 +242,8 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.relicVersion ??= 0;
   run.evolutionDeclined ??= {};
   run.evolutionsDone ??= 0;
+  // checkpoints de antes do M6-07
+  run.devUsed ??= false;
   // checkpoints de antes do M6-01
   for (const s of [...run.spells, run.technique]) s.modifiers ??= [];
   // checkpoints de antes do M20-06 guardavam o progresso do jogo antigo (mochila, equipamento, mortes)
@@ -313,6 +318,11 @@ export function summarize(run: RunState): RunSummary {
 }
 
 /** records.lua `add`: soma a partida encerrada; devolve true quando é a melhor daquele herói nessa dificuldade. */
+/** results.lua: partida com o DEV Grimoire não soma nos registros. */
+export function recordsRun(run: Pick<RunState, "devUsed">): boolean {
+  return !run.devUsed;
+}
+
 export function addRecord(rec: Records, s: RunSummary, date: string): boolean {
   rec.runs++;
   if (s.victory) rec.wins++;

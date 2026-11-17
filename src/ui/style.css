@@ -178,3 +178,18 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 input.seed { background: var(--panel-2); color: var(--text); border: 2px solid var(--line); border-radius: 8px; padding: 8px 12px;
   font: inherit; font-size: 18px; letter-spacing: 3px; text-transform: uppercase; width: 180px; }
 input.seed:focus { outline: none; border-color: var(--gold); }
+
+/* DEV Grimoire (F1) */
+#grimoire .panel { width: min(1040px, 97vw); display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-height: 92vh; overflow: auto; }
+@media (max-width: 860px) { #grimoire .panel { grid-template-columns: 1fr; } }
+.g-spells { display: grid; gap: 4px; }
+.g-spell { display: flex; gap: 4px; }
+.g-spell button { padding: 4px 8px; font-size: 12px; }
+.g-spell .g-name { flex: 1; text-align: left; }
+.g-spell .g-name small { color: var(--muted); }
+.g-spell.owned .g-name small { color: var(--gold); }
+.g-spell.on .g-name, .g-grid button.on { border-color: var(--gold); background: #2e2814; }
+.g-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.g-grid button { padding: 4px 8px; font-size: 12px; text-align: left; }
+.g-desc { font-size: 12px; color: #cfd3e2; margin: 4px 0 6px; }
+.g-msg { min-height: 1.2em; color: var(--gold); font-size: 13px; margin-top: 10px; }

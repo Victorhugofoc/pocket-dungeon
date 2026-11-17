@@ -2,17 +2,18 @@
 import { canHasten, hastenBonus } from "../core/wave";
 import { DIFFICULTIES, DIFFICULTY_ORDER, DIFFICULTY_TEXT, TOTAL_WAVES, type DifficultyId } from "../data/run";
 import { clearRun, discardLegacySave, loadRecords, loadRun, safeStorage, writeRecords } from "../core/save";
-import { RunRng, addRecord, continueRun, decodeSeed, newRun, summarize, type NewRunOptions, type RunState } from "../core/run";
+import { RunRng, addRecord, continueRun, decodeSeed, newRun, newSpellSlot, recordsRun, summarize, type NewRunOptions, type RunState } from "../core/run";
+import { addModifier, addSpell, levelUpSpell, type SlotResult } from "../core/spells";
 import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unlockCondition } from "../core/achievements";
 import { ACHIEVEMENTS } from "../data/achievements";
 import { formatStat, STAT_KEYS, type StatBlock } from "../core/stats";
-import { EVOLUTIONS, SPELL_MAX_LEVEL, SPELL_TEXT, SPELLS, type EvolutionDef, type SpellId } from "../data/spells";
+import { EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, type EvolutionDef, type SpellId } from "../data/spells";
 import { wantedRelics } from "../core/evolution";
 import { effectsFor, rerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
 import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
 import { BOSSES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
-import { RELICS } from "../data/relics";
+import { RELICS, RELIC_IDS } from "../data/relics";
 import { ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
 import type { MapCard, MapNodeId } from "../core/runmap";
 import { TUNING } from "../data/tuning";
@@ -166,6 +167,10 @@ export class Ui {
     } else if (k === "F3") {
       e.preventDefault();
       this.r.perf.classList.toggle("hidden");
+    } else if (k === "F1" && TUNING.devTools) {
+      e.preventDefault();
+      if (this.overlayKind === "grimoire") this.close();
+      else this.showGrimoire();
     }
   }
 
@@ -383,7 +388,7 @@ export class Ui {
       <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
       <div id="banner" data-r="banner"></div>
       <canvas id="minimap" width="176" height="176"></canvas>
-      <div class="hud-help">1 and 2 spells · H hasten the wave · I status · Esc pause<br>F3 performance</div>
+      <div class="hud-help">1 and 2 spells · H hasten the wave · I status · Esc pause<br>F3 performance${TUNING.devTools ? " · F1 DEV grimoire" : ""}</div>
       <div id="bossbar" class="hidden" data-r="boss"><h3 data-r="bossName"></h3><div class="bar"><i data-r="bossFill"></i><span data-r="bossText"></span></div></div>
       <div id="hint" class="hidden" data-r="hint"></div>
       <div id="perf" class="hidden" data-r="perf"></div>
@@ -565,6 +570,116 @@ export class Ui {
     ctx.restore();
   }
 
+  // ---------------------------------------------------------------- DEV Grimoire (grimoire.lua, F1)
+  private grimoireSpell: SpellId | "" = "";
+  private grimoireMsg = "";
+
+  /**
+   * Painel de teste de grimoire.lua, fora do jogo canônico: dá spells, níveis, modificadores e relíquias
+   * pelas mesmas funções que a loja vai usar (`addSpell`, `levelUpSpell`, `addModifier`). Marca a partida [DEV].
+   */
+  private showGrimoire(): void {
+    const g = this.game;
+    const run = g.run;
+    g.markDev();
+    const panel = this.overlayKind === "grimoire" ? (this.overlay!.firstChild as HTMLElement) : this.open("grimoire", "grimoire");
+    const slotOf = (id: string) => run.spells.findIndex((sp) => sp.id === id);
+    const sel = this.grimoireSpell;
+    const spellRows = SPELL_ORDER.map((id) => {
+      const i = slotOf(id);
+      const slot = run.spells[i];
+      const evo = slot?.evolution ? EVOLUTIONS[slot.evolution as keyof typeof EVOLUTIONS]?.name ?? slot.evolution : "";
+      const status = slot ? `slot ${i + 1} · Lv ${slot.level}${evo ? ` · ${evo}` : ""}` : "not equipped";
+      const btns = slot
+        ? `<button data-g="lv" data-id="${id}">Lv +</button><button data-g="lv5" data-id="${id}">Lv ${SPELL_MAX_LEVEL}</button>`
+        : `<button data-g="equip" data-id="${id}">Equip</button>`;
+      return `<div class="g-spell${sel === id ? " on" : ""}${slot ? " owned" : ""}">
+        <button class="g-name" data-g="pick" data-id="${id}" title="${SPELL_TEXT[id]}">${SPELL_ICON[id] ?? "✦"} ${SPELLS[id].name} <small>(${status})</small></button>${btns}</div>`;
+    }).join("");
+    let mods = "";
+    if (sel) {
+      const slot = run.spells[slotOf(sel)];
+      mods = `<div class="section">Shop modifiers — ${SPELLS[sel].name}</div><p class="g-desc">${SPELL_TEXT[sel]}</p>
+        <div class="g-grid">${SPELLS[sel].modifiers.map((m) => {
+          const n = slot ? slot.modifiers.filter((x) => x === m.id).length : 0;
+          return `<button data-g="mod" data-id="${m.id}" title="${m.text}" ${slot ? "" : "disabled"} class="${n ? "on" : ""}">+ ${m.name}${n ? ` x${n}` : ""}</button>`;
+        }).join("")}</div>`;
+    }
+    const relics = RELIC_IDS.map((id) => {
+      const d = RELICS[id];
+      const own = run.relics.includes(id);
+      return `<button data-g="relic" data-id="${id}" class="${own ? "on" : ""}" style="${own ? `border-color:${hex(d.color)}` : ""}">${d.name}</button>`;
+    }).join("");
+    const nextBoss = Math.min(TOTAL_WAVES, (Math.floor(Math.max(1, run.wave) / 5) + 1) * 5);
+    panel.innerHTML = `
+      <div>
+        <h2>DEV GRIMOIRE</h2>
+        <p class="sub" style="color:var(--bad)">Test tool, outside the canonical game. This run is marked [DEV] and does not count for records.</p>
+        <div class="section">Spells (click a name to see modifiers)</div>
+        <div class="g-spells">${spellRows}</div>
+        ${mods}
+      </div>
+      <div>
+        <div class="section" style="margin-top:0">Relics — full catalog (click to add/remove)</div>
+        <div class="g-grid">${relics}</div>
+        <div class="section">Utilities</div>
+        <div class="g-grid">
+          <button data-g="heal">Full heal</button><button data-g="cd">Reset cooldowns</button>
+          <button data-g="kill">Kill all enemies</button><button data-g="end">End wave</button>
+          <button data-g="boss">Go to W${nextBoss}</button>
+        </div>
+        <p class="g-msg" data-r="gmsg">${this.grimoireMsg}</p>
+        <p class="note" style="color:var(--muted)">Evolutions show up at the end of the wave when a recipe is complete.</p>
+        <div class="row end"><button data-act="close">Close (F1 / Esc)</button></div>
+      </div>`;
+    const say = (r: SlotResult, ok: string, why: Partial<Record<string, string>> = {}) => {
+      this.grimoireMsg = r.ok ? ok : `Refused: ${why[r.reason] ?? r.reason}`;
+    };
+    panel.onclick = (ev) => {
+      const t = ev.target as HTMLElement;
+      if (t.closest("[data-act=close]")) return this.close();
+      const b = t.closest<HTMLButtonElement>("[data-g]");
+      if (!b || b.disabled) return;
+      const id = b.dataset.id ?? "";
+      switch (b.dataset.g) {
+        case "pick": this.grimoireSpell = id as SpellId; break;
+        case "equip":
+          say(addSpell(run.spells, id, newSpellSlot), `${spellName(id)} equipped (Lv1)`, { no_slot: `no free slot (max ${MAX_SPELLS})` });
+          this.grimoireSpell = id as SpellId;
+          break;
+        case "lv": {
+          const r = levelUpSpell(run.spells, slotOf(id));
+          say(r, `${spellName(id)} Lv${run.spells[slotOf(id)]?.level}`, { max_level: `max level ${SPELL_MAX_LEVEL}` });
+          break;
+        }
+        case "lv5":
+          while (levelUpSpell(run.spells, slotOf(id)).ok);
+          this.grimoireMsg = `${spellName(id)} Lv${SPELL_MAX_LEVEL}`;
+          break;
+        case "mod": {
+          const m = sel ? SPELLS[sel].modifiers.find((x) => x.id === id) : undefined;
+          say(addModifier(run.spells, sel ? slotOf(sel) : -1, id), `${m?.name ?? id} applied`, { no_slot: "equip the spell first" });
+          break;
+        }
+        case "relic":
+          if (run.relics.includes(id)) { g.devRemoveRelic(id); this.grimoireMsg = `${RELICS[id].name} removed (DEV)`; }
+          else { g.addRelic(id); this.grimoireMsg = `${RELICS[id].name} obtained`; }
+          break;
+        case "heal": g.devHealFull(); this.grimoireMsg = "HP full"; break;
+        case "cd": g.devResetCooldowns(); this.grimoireMsg = "cooldowns reset"; break;
+        case "kill": this.grimoireMsg = `${g.devKillAll()} enemies killed`; break;
+        case "end": this.grimoireMsg = g.devEndWave() ? "wave ended" : "Refused: no wave in progress"; break;
+        case "boss":
+          this.grimoireMsg = `next wave: ${nextBoss}`;
+          this.close();
+          g.prepareWave(nextBoss);
+          return;
+      }
+      g.recompute();
+      this.showGrimoire();
+    };
+  }
+
   // ---------------------------------------------------------------- status da partida
   /** Ficha da partida (I): atributos calculados, spells, melhorias e relíquias. Não há equipamento (D13). */
   private showStatus(): void {
@@ -584,7 +699,7 @@ export class Ui {
       <div>
         <h2 style="color:${hex(h.color)}">${h.name}</h2>
         <p class="sub">${h.title} · level ${run.level} · ${run.xp}/${run.xpToNext} XP</p>
-        <p class="sub">wave ${run.wave} of ${TOTAL_WAVES}${run.endless ? " · endless" : ""} · ${run.gold} gold · seed ${run.seedCode}</p>
+        <p class="sub">wave ${run.wave} of ${TOTAL_WAVES}${run.endless ? " · endless" : ""} · ${run.gold} gold · seed ${run.seedCode}${run.devUsed ? ` · <b style="color:var(--bad)">[DEV]</b>` : ""}</p>
         <div class="section">Attributes</div>
         <div class="statlist">
           <span>HP</span><b>${s.maxHp}</b>
@@ -799,8 +914,9 @@ export class Ui {
     const g = this.game, run = g.run;
     clearRun(this.storage);
     const rec = loadRecords(this.storage);
-    const isBest = addRecord(rec, summarize(run), new Date().toISOString().slice(0, 10));
-    writeRecords(this.storage, rec);
+    // results.lua: partida com o DEV Grimoire não entra nos registros
+    const isBest = recordsRun(run) && addRecord(rec, summarize(run), new Date().toISOString().slice(0, 10));
+    if (recordsRun(run)) writeRecords(this.storage, rec);
     g.ach.recordKills = rec.kills;
     g.saveAchievements();
     const best = rec.best[`${run.heroId}/${run.difficultyId}`];

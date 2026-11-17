@@ -296,6 +296,7 @@ export class Game {
     this.player.hp = Math.min(this.stats.maxHp, run.hp ?? this.stats.maxHp);
     this.started = true;
     this.ach.runStart(run.heroId);
+    this.ach.devUsed = run.devUsed;
     this.saveAchievements();
     this.prepareWave(Math.max(1, run.wave), true);
   }
@@ -361,7 +362,7 @@ export class Game {
    * continuar recomeça aquela onda, na entrada do trecho dela.
    */
   saveCheckpoint(): void {
-    if (!this.run) return;
+    if (!this.run || this.run.devUsed) return; // run_save.lua: partida DEV nunca é gravada
     this.run.hp = this.playerAlive ? this.player.hp : null;
     writeRun(this.storage, checkpoint(this.run, this.rng, Math.max(1, this.run.wave)));
   }
@@ -842,6 +843,50 @@ export class Game {
   /** O combate da onda está correndo: cura e regeneração valem `RUN_TUNING.combatHealMult` (damage.lua). */
   get inCombat(): boolean {
     return !!this.wave && this.wave.started && !this.wave.complete;
+  }
+
+  // ---------------------------------------------------------------- DEV Grimoire (grimoire.lua, F1)
+
+  /** Abrir o grimório marca a partida: sem checkpoint, sem registros e sem medalha (run.lua `devUsed`). */
+  markDev(): void {
+    this.run.devUsed = true;
+    this.ach.devUsed = true;
+  }
+
+  /** relic_system.lua `devRemove` */
+  devRemoveRelic(id: string): void {
+    const i = this.run.relics.indexOf(id);
+    if (i < 0) return;
+    this.run.relics.splice(i, 1);
+    this.run.relicVersion += 1;
+    this.recompute();
+    this.events.statusChanged();
+  }
+
+  devHealFull(): void {
+    this.heal(this.stats.maxHp, true, true);
+  }
+
+  devResetCooldowns(): void {
+    this.spells.cooldown.fill(0);
+    this.player.techCd = 0;
+  }
+
+  /** Damage.killEnemy em todos: conta abate e dá XP, como lá. */
+  devKillAll(): number {
+    const alive = this.enemies.filter((e) => !e.dead);
+    for (const e of alive) {
+      e.hp = 0;
+      this.killEnemy(e, "other");
+    }
+    return alive.length;
+  }
+
+  /** WaveSystem.complete na onda em curso; false se não há luta. */
+  devEndWave(): boolean {
+    if (this.phase !== "fight" || !this.wave || this.wave.complete) return false;
+    this.completeWave();
+    return true;
   }
 
   /** `full`: o orbe de cura não sofre o corte do combate. */
