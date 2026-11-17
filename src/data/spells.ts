@@ -380,6 +380,10 @@ export const SPELL_CAST = {
    * queimando depois, sem ferir (behaviors.lua `FIREWAVE_LINGER`) */
   wallSweepTime: 0.30,
   firewaveLinger: 0.8,
+  /** Earthen Ward: raio do ídolo para quem bate nele (techniques.lua `hitRadius = 10` px) */
+  wardHitRadius: 10 / DR_PX_PER_M,
+  /** Plague Bloom: a quantos vizinhos as veias do contágio chegam no desenho (techniques.lua `onKill`: 6) */
+  plagueVeins: 6,
   /** visual: altura e tamanho da bola */
   height: 1.2,
   ballSize: 0.38,

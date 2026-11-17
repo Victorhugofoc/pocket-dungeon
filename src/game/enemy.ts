@@ -3,6 +3,7 @@ import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
 import { bossXp } from "../core/waves";
 import { CHAMPION, CHILD_SCALE, MINION_SCALE } from "../data/run";
+import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
 import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
 import type { StatusKind } from "../data/heroes";
@@ -21,6 +22,9 @@ export interface Dot {
   /** Venom Nova: um efeito só com contador de acúmulos (status.lua `applyPoison`); o dano por segundo vale por acúmulo */
   stacks?: number;
   maxStacks?: number;
+  /** Plague Bloom: duração de cada aplicação e o contágio na morte (status.lua `po.spread`) */
+  duration?: number;
+  spread?: { radius: number; stacks: number };
 }
 
 /** freio do empurrão (`kx`, `kz`): a velocidade cai por exp(-KNOCK_DECAY·t), então um empurrão de d metros é d·KNOCK_DECAY */
@@ -385,10 +389,24 @@ export class Enemy {
       if (this.windupT >= this.windupDur) {
         this.windupT = -1;
         this.attackAnim = 0;
-        const d = Math.hypot(p.x - this.x, p.z - this.z);
-        if (d <= range + 1.1) game.hurtPlayer(this.dmg, this.name);
+        const ward = this.boss ? null : game.spells.wardFor(this);
+        if (ward) game.spells.hitWard(ward);
+        else {
+          const d = Math.hypot(p.x - this.x, p.z - this.z);
+          if (d <= range + 1.1) game.hurtPlayer(this.dmg, this.name);
+        }
         this.cd = this.boss ? this.boss.attackCooldown : this.def!.cooldown;
       }
+      return;
+    }
+    // Earthen Ward (ai.lua `melee`, D-539): o ídolo no raio de atração puxa o inimigo, que bate nele no lugar do herói
+    const ward = this.boss ? null : game.spells.wardFor(this);
+    if (ward) {
+      this.face(ward.x, ward.z);
+      const wd = Math.hypot(ward.x - this.x, ward.z - this.z);
+      const reach = range - 0.3 + SPELL_CAST.wardHitRadius;
+      if (wd > reach * 0.85) this.moveToward(game, ward.x, ward.z, speed, dt);
+      else if (this.cd <= 0) this.windupT = 0;
       return;
     }
     this.face(p.x, p.z);

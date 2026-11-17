@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { isSpellId, spellStats, type SpellStats } from "../core/spells";
 import { MAX_SPELLS, SPELL_CAST } from "../data/spells";
 import { DR_BASE_HP, FROST } from "../data/techniques";
-import { KNOCK_DECAY, type Enemy } from "./enemy";
+import { KNOCK_DECAY, type Dot, type Enemy } from "./enemy";
 import type { Game } from "./game";
 
 /** Cor de cada spell no jogo (projétil, impacto e raio). */
@@ -20,7 +20,10 @@ export const SPELL_COLOR: Record<string, number> = {
 
 /** Cores das formas evoluídas (M6-10). */
 const EVO_COLOR = { firestorm: 0xff6a1a, firewave: 0xff7a1a, blizzard: 0xbfe6ff, lightning_strike: 0xffe14a,
-  arcane_strike: 0xc28cff, sanctuary: 0xffd45a } as const;
+  arcane_strike: 0xc28cff, sanctuary: 0xffd45a, blade_storm: 0xbfe0ff, plague_bloom: 0xb070ff, maelstrom: 0x8fb0ff,
+  rune_circle: 0xd8b0ff, earthen_ward: 0x8fe0a0 } as const;
+/** Spectrum: as 3 cores do raio dividido, com o lado de cada uma (techniques.lua `SPECTRUM_RAYS`) */
+const SPECTRUM_RAYS = [["red", -1, 0xff5a3a], ["yellow", 0, 0xffe14a], ["blue", 1, 0x7fc8ff]] as const;
 /** tiro do ataque básico com o Arcane Strike pronto (D-215: roxo e maior) */
 export const ARCANE_CHARGED = { color: EVO_COLOR.arcane_strike, size: 1.35 };
 
@@ -46,6 +49,9 @@ interface Beam {
   dx: number; dz: number;
   glow: THREE.Mesh;
   core: THREE.Mesh;
+  /** Spectrum: distância do herói até onde o raio se divide (o primeiro inimigo), ou null sem inimigo na linha */
+  split: number | null;
+  rays: THREE.Mesh[];
 }
 
 /** Cyclone em pé (techniques.lua `world.vortexes`): parado na mira, puxa e fere a cada tique. */
@@ -72,6 +78,11 @@ interface Totem {
   bob: number;
   group: THREE.Group;
   runes: THREE.MeshBasicMaterial;
+  /** Earthen Ward: golpes que o ídolo ainda aguenta e o anel do raio de atração */
+  hits?: number;
+  lure?: GroundRing;
+  /** tremor do golpe levado, de 1 a 0 */
+  shake: number;
 }
 
 /** Healing Field (behaviors.lua `Field`): anel que segue o herói, ou um dos campos extras parados do Blooming Sanctuary. */
@@ -324,6 +335,9 @@ export class SpellCaster {
   private walls: Wall[] = [];
   private storms: Storm[] = [];
   private pending: PendingCast[] = [];
+  /** Rune Circle: as linhas desenhadas (reaproveitadas a cada quadro) e o tique das linhas de cada espaço */
+  private lines: THREE.Mesh[] = [];
+  private runeTicks = new Map<number, number>();
   private mats = new Map<number, THREE.MeshBasicMaterial>();
 
   constructor(private game: Game) {}
@@ -572,8 +586,9 @@ export class SpellCaster {
       return m;
     };
     const { dx, dz } = this.aimDir();
+    const rays = st.evolution === "spectrum" ? SPECTRUM_RAYS.map(([, , c]) => mk(c, 0.9)) : [];
     this.beams.push({ slot: i, st, time: st.duration ?? 1, tickLeft: 0, dx, dz,
-      glow: mk(0xffc860, 0.4), core: mk(SPELL_COLOR.prism_beam, 0.95) });
+      glow: mk(0xffc860, 0.4), core: mk(SPELL_COLOR.prism_beam, 0.95), split: null, rays });
     g.audio.play("tech");
     return true;
   }
@@ -597,10 +612,25 @@ export class SpellCaster {
         this.freeBeam(k);
         continue;
       }
-      const len = b.st.range;
+      // Spectrum: o raio para no primeiro inimigo e se abre em 3 cores dali
+      const len = b.split ?? b.st.range;
       const w = b.st.width ?? 1;
       const ang = Math.atan2(b.dx, b.dz);
       const fade = Math.min(1, b.time / 0.25);
+      b.rays.forEach((m, n) => {
+        m.visible = b.split !== null;
+        if (b.split === null) return;
+        const ra = ang - SPECTRUM_RAYS[n][1] * (b.st.splitAngle ?? 0);
+        m.position.set(p.x + b.dx * b.split, SPELL_CAST.height, p.z + b.dz * b.split);
+        m.rotation.set(0, ra, 0);
+        m.scale.set(w * 0.5 * (0.85 + Math.random() * 0.3), 1, b.st.splitLength ?? 1);
+        (m.material as THREE.MeshBasicMaterial).opacity = 0.9 * fade;
+        if (Math.random() < 0.4) {
+          const t = Math.random() * (b.st.splitLength ?? 1);
+          g.fx.glow(m.position.x + Math.sin(ra) * t, SPELL_CAST.height, m.position.z + Math.cos(ra) * t, SPECTRUM_RAYS[n][2],
+            0.45, 0.25, 0, 0.5, 0);
+        }
+      });
       const flick = 0.85 + Math.random() * 0.3;
       const parts: [THREE.Mesh, number, number][] = [[b.glow, w * 1.6 * flick, 0.4], [b.core, w * 0.45, 0.95]];
       for (const [m, width, op] of parts) {
@@ -622,6 +652,10 @@ export class SpellCaster {
     const p = g.player;
     const hw = (b.st.width ?? 1) / 2;
     const len = b.st.range;
+    if (b.st.evolution === "spectrum") {
+      this.spectrumTick(b);
+      return;
+    }
     for (const e of g.enemies) {
       if (e.dead) continue;
       const ex = e.x - p.x;
@@ -634,9 +668,60 @@ export class SpellCaster {
     }
   }
 
+  /**
+   * techniques.lua `beamTick` (Spectrum): o raio para no primeiro inimigo da linha (dano cheio) e se divide ali em 3:
+   * vermelho queima, amarelo segue reto e o primeiro que ele pega salta para `jumps` vizinhos, azul dá Slow.
+   */
+  private spectrumTick(b: Beam): void {
+    const g = this.game;
+    const p = g.player;
+    const st = b.st;
+    const hw = (st.width ?? 1) / 2;
+    const first = this.inSegment(p.x, p.z, b.dx, b.dz, 0, st.range, hw)
+      .map((e) => ({ e, t: (e.x - p.x) * b.dx + (e.z - p.z) * b.dz }))
+      .sort((u, v) => u.t - v.t)[0];
+    b.split = first ? Math.max(0, first.t) : null;
+    if (!first) return;
+    const hit = new Set<Enemy>([first.e]);
+    g.spellHit(first.e, st.damage);
+    const sx = p.x + b.dx * b.split!;
+    const sz = p.z + b.dz * b.split!;
+    const a = Math.atan2(b.dx, b.dz);
+    for (const [color, side, c] of SPECTRUM_RAYS) {
+      const ra = a - side * (st.splitAngle ?? 0);
+      const dx = Math.sin(ra);
+      const dz = Math.cos(ra);
+      const hits = this.inSegment(sx, sz, dx, dz, 0, st.splitLength ?? 0, hw, hit)
+        .map((e) => ({ e, t: (e.x - sx) * dx + (e.z - sz) * dz }))
+        .sort((u, v) => u.t - v.t);
+      hits.forEach(({ e }, n) => {
+        g.spellHit(e, st.rayDamage ?? 0);
+        if (e.dead) return;
+        if (color === "red") this.applyBurn(e, st, b.slot);
+        else if (color === "blue") this.applySlow(e, st.slow ?? 0, st.slowDuration ?? 0);
+        else if (n === 0) this.spectrumJump(st, e, hit);
+        if (Math.random() < 0.4) g.fx.spark(e.x, 1.2, e.z, c, 0.12, 0.3, 1);
+      });
+    }
+  }
+
+  /** techniques.lua `spectrumJump`: o amarelo salta do primeiro inimigo dele para os `jumps` vizinhos mais perto. */
+  private spectrumJump(st: SpellStats, from: Enemy, hit: Set<Enemy>): void {
+    const g = this.game;
+    const range2 = (st.jumpRange ?? 0) ** 2;
+    const near = g.enemies
+      .filter((e) => !e.dead && e !== from && !hit.has(e) && (e.x - from.x) ** 2 + (e.z - from.z) ** 2 <= range2)
+      .sort((u, v) => ((u.x - from.x) ** 2 + (u.z - from.z) ** 2) - ((v.x - from.x) ** 2 + (v.z - from.z) ** 2))
+      .slice(0, st.jumps ?? 0);
+    for (const e of near) {
+      g.spellHit(e, st.jumpDamage ?? 0);
+      this.arc(from.x, from.z, e.x, e.z, 1);
+    }
+  }
+
   private freeBeam(k: number): void {
     const b = this.beams[k];
-    for (const m of [b.glow, b.core]) {
+    for (const m of [b.glow, b.core, ...b.rays]) {
       m.removeFromParent();
       (m.material as THREE.Material).dispose();
     }
@@ -654,20 +739,22 @@ export class SpellCaster {
     const r = st.radius;
     const color = SPELL_COLOR.venom_nova;
     const dps = g.stats.damage * st.damage;
+    // Plague Bloom: o veneno leva o contágio (spell_stats.lua `st.spread`)
+    const spread = st.spreadRadius ? { radius: st.spreadRadius, stacks: st.spreadStacks ?? 1 } : undefined;
     for (const e of g.enemies) {
       if (e.dead) continue;
       if ((e.x - p.x) ** 2 + (e.z - p.z) ** 2 > (r + e.radius) ** 2) continue;
-      this.applyPoison(e, dps, st.duration ?? 0, st.stacks ?? 1);
+      this.applyPoison(e, dps, st.duration ?? 0, st.stacks ?? 1, spread);
       if (!e.aggro) e.setAggro(g);
       g.fx.burst(e.x, 0.4, e.z, color, 10, 3, 0.15, 0.5, -1); // respingo aos pés de cada um (D-417)
     }
     g.fx.shockwave(p.x, p.z, r, color, 0.45);
-    g.fx.shockwave(p.x, p.z, r * 0.8, 0x3f8f2a, 0.75);
+    g.fx.shockwave(p.x, p.z, r * 0.8, spread ? EVO_COLOR.plague_bloom : 0x3f8f2a, 0.75);
     for (let k = 0; k < 26; k++) {
       const a = Math.random() * Math.PI * 2;
       const d = r * (0.25 + 0.75 * Math.random());
       const out = 1.2 + Math.random() * 1.5;
-      g.fx.glow(p.x + Math.sin(a) * d, 0.35, p.z + Math.cos(a) * d, k % 3 ? color : 0x2f6b1f, 0.9 + Math.random() * 0.6,
+      g.fx.glow(p.x + Math.sin(a) * d, 0.35, p.z + Math.cos(a) * d, k % 3 ? color : spread ? EVO_COLOR.plague_bloom : 0x2f6b1f, 0.9 + Math.random() * 0.6,
         0.6 + Math.random() * 0.4, Math.sin(a) * out, 0.7, Math.cos(a) * out);
     }
     g.fx.flashLight(p.x, 1, p.z, color, 2, 0.35);
@@ -679,15 +766,46 @@ export class SpellCaster {
    * status.lua `applyPoison`: um efeito só por inimigo; cada aplicação soma um acúmulo (até o máximo) e renova a duração;
    * fica o maior dano por segundo. Vive à parte do veneno do tiro da Vesper (que aqui é um efeito por acúmulo).
    */
-  private applyPoison(e: Enemy, dps: number, duration: number, maxStacks: number): void {
+  private applyPoison(e: Enemy, dps: number, duration: number, maxStacks: number, spread?: Dot["spread"]): void {
     const until = this.game.time + duration;
     const cur = e.dots.find((d) => d.kind === "poison" && d.spell === "venom_nova");
     if (cur) {
       cur.dps = Math.max(cur.dps, dps);
       cur.until = Math.max(cur.until, until);
+      cur.duration = Math.max(cur.duration ?? 0, duration);
       cur.maxStacks = Math.max(cur.maxStacks ?? 1, maxStacks);
       cur.stacks = Math.min(cur.maxStacks, (cur.stacks ?? 1) + 1);
-    } else e.dots.push({ kind: "poison", dps, until, spell: "venom_nova", stacks: 1, maxStacks });
+      cur.spread ??= spread;
+    } else e.dots.push({ kind: "poison", dps, until, duration, spell: "venom_nova", stacks: 1, maxStacks, spread });
+  }
+
+  /**
+   * techniques.lua `Tech.onKill` (Plague Bloom): quem morre envenenado passa `stacks` acúmulos do mesmo veneno, com o
+   * mesmo contágio, a quem está no raio; veias violetas do morto até os vizinhos (D-418).
+   */
+  private plagueSpread(e: Enemy): void {
+    const g = this.game;
+    const po = e.dots.find((d) => d.spell === "venom_nova" && d.spread && d.until > g.time);
+    if (!po?.spread) return;
+    const { radius, stacks } = po.spread;
+    const targets = this.inArea(e.x, e.z, radius).filter((o) => o !== e);
+    for (const o of targets) {
+      for (let n = 0; n < stacks; n++) this.applyPoison(o, po.dps, po.duration ?? 0, po.maxStacks ?? 1, po.spread);
+      if (!o.aggro) o.setAggro(g);
+    }
+    const c = EVO_COLOR.plague_bloom;
+    for (const o of targets.slice(0, SPELL_CAST.plagueVeins)) {
+      const d = Math.hypot(o.x - e.x, o.z - e.z);
+      const n = Math.max(3, Math.round(d / 0.35));
+      for (let k = 1; k <= n; k++) {
+        const t = k / n;
+        const w = Math.sin(t * Math.PI) * 0.25 * Math.sin(k * 2.3 + e.x);
+        g.fx.glow(e.x + (o.x - e.x) * t + w, 0.3, e.z + (o.z - e.z) * t - w, k % 2 ? c : SPELL_COLOR.venom_nova, 0.45, 0.35 + t * 0.25);
+      }
+      g.fx.burst(o.x, 0.5, o.z, c, 6, 2.5, 0.1, 0.4, -1);
+    }
+    g.fx.shockwave(e.x, e.z, radius, c, 0.35);
+    g.fx.burst(e.x, 0.6, e.z, c, 16, 4, 0.14, 0.5, -1);
   }
 
   // ---------------------------------------------------------------- Cyclone
@@ -700,7 +818,7 @@ export class SpellCaster {
     const cones: THREE.Mesh[] = [];
     for (const [rad, h, op] of FUNNELS) {
       const m = new THREE.Mesh(FUNNEL_GEO, new THREE.MeshBasicMaterial({
-        color: SPELL_COLOR.cyclone, vertexColors: true, transparent: true, opacity: op, depthWrite: false,
+        color: st.followSpeed ? EVO_COLOR.maelstrom : SPELL_COLOR.cyclone, vertexColors: true, transparent: true, opacity: op, depthWrite: false,
         toneMapped: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       }));
       m.scale.set(st.radius * rad, h, st.radius * rad);
@@ -723,6 +841,19 @@ export class SpellCaster {
       const v = this.vortices[k];
       const st = v.st;
       v.time -= dt;
+      if (st.followSpeed) {
+        // Maelstrom: o olho anda atrás da mira (o alcance do herói ainda limita)
+        const a = g.aimPoint(st.range);
+        const dx = a.x - v.x;
+        const dz = a.z - v.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 0.05) {
+          const step = Math.min(d, st.followSpeed * dt);
+          v.x += (dx / d) * step;
+          v.z += (dz / d) * step;
+          v.group.position.set(v.x, 0, v.z);
+        }
+      }
       const reach = st.radius * SPELL_CAST.vortexReach;
       const pull = st.pull ?? 0;
       const eye = SPELL_CAST.vortexEye;
@@ -747,6 +878,7 @@ export class SpellCaster {
       }
       if (v.time <= 0) {
         g.fx.burst(v.x, 1.2, v.z, 0xdfeeff, 18, 5, 0.18, 0.5, 2);
+        if (st.followSpeed) this.flingOut(v);
         this.freeVortex(k);
         continue;
       }
@@ -772,6 +904,48 @@ export class SpellCaster {
     }
   }
 
+  /**
+   * techniques.lua `flingOut` (Maelstrom): no fim, quem está no alcance do funil (menos chefe) é arremessado para fora
+   * `flingDistance`; quem cai em cima de outro inimigo leva `flingFraction` do dano de um tique, e o outro também.
+   */
+  private flingOut(v: Vortex): void {
+    const g = this.game;
+    const st = v.st;
+    const dist = st.flingDistance ?? 0;
+    const landed: { e: Enemy; x: number; z: number }[] = [];
+    for (const e of this.inArea(v.x, v.z, st.radius * SPELL_CAST.vortexReach)) {
+      if (e.isBoss) continue;
+      let dx = e.x - v.x;
+      let dz = e.z - v.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 0.05) [dx, dz] = [1, 0];
+      else [dx, dz] = [dx / d, dz / d];
+      e.kx += dx * dist * KNOCK_DECAY;
+      e.kz += dz * dist * KNOCK_DECAY;
+      landed.push({ e, x: e.x + dx * dist, z: e.z + dz * dist });
+      // rastro de poeira na direção do arremesso (D-526)
+      for (let n = 0; n < 5; n++) {
+        const t = Math.random();
+        g.fx.glow(e.x + dx * dist * t, 0.3 + Math.random() * 0.5, e.z + dz * dist * t, n % 2 ? 0xb9a98a : EVO_COLOR.maelstrom,
+          0.6, 0.5, dx * 2, 0.8, dz * 2);
+      }
+    }
+    const bump = st.damage * (st.flingFraction ?? 0);
+    for (const l of landed) {
+      for (const o of g.enemies) {
+        if (o === l.e || o.dead || l.e.dead) continue;
+        if ((o.x - l.x) ** 2 + (o.z - l.z) ** 2 > ((st.flingRadius ?? 0) + o.radius) ** 2) continue;
+        g.spellHit(l.e, bump, true);
+        g.spellHit(o, bump, true);
+        g.fx.burst((o.x + l.x) / 2, 0.8, (o.z + l.z) / 2, 0xffffff, 8, 4, 0.1, 0.3, 4);
+        break;
+      }
+    }
+    g.fx.shockwave(v.x, v.z, st.radius * SPELL_CAST.vortexReach, EVO_COLOR.maelstrom, 0.4);
+    g.fx.addShake(0.15);
+    g.audio.play("hit");
+  }
+
   private freeVortex(k: number): void {
     const v = this.vortices[k];
     v.group.removeFromParent();
@@ -788,7 +962,8 @@ export class SpellCaster {
     const group = new THREE.Group();
     const stone = new THREE.MeshStandardMaterial({ color: 0x8b8072, roughness: 1, flatShading: true });
     const dark = new THREE.MeshStandardMaterial({ color: 0x5f564c, roughness: 1, flatShading: true });
-    const runes = new THREE.MeshBasicMaterial({ color: SPELL_COLOR.quake_totem, toneMapped: false });
+    const ward = !!st.lureRadius;
+    const runes = new THREE.MeshBasicMaterial({ color: ward ? EVO_COLOR.earthen_ward : SPELL_COLOR.quake_totem, toneMapped: false });
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, y = 0, shadow = true) => {
       const m = new THREE.Mesh(geo, mat);
       m.position.y = y;
@@ -814,7 +989,10 @@ export class SpellCaster {
     }
     group.position.set(a.x, 0, a.z);
     g.scene.add(group);
-    this.totems.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 1, age: 0, bob: 0, group, runes });
+    // Earthen Ward: anel do raio de atração e os golpes que aguenta
+    const lure = ward ? this.groundRing(EVO_COLOR.earthen_ward, st.lureRadius!, a.x, a.z) : undefined;
+    this.totems.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 1, age: 0, bob: 0, group, runes,
+      hits: ward ? st.wardHits : undefined, lure, shake: 0 });
     g.fx.burst(a.x, 0.3, a.z, 0x9a8a72, 22, 5, 0.18, 0.5, 10);
     g.fx.addShake(0.08);
     g.audio.play("tech");
@@ -828,6 +1006,16 @@ export class SpellCaster {
       const t = this.totems[k];
       t.time -= dt;
       t.age += dt;
+      if (t.hits !== undefined && t.hits <= 0) {
+        // Earthen Ward: o ídolo quebrou
+        g.fx.burst(t.x, 1.2, t.z, 0x8b8072, 40, 7, 0.22, 0.7, 12);
+        g.fx.burst(t.x, 1.4, t.z, EVO_COLOR.earthen_ward, 16, 5, 0.14, 0.5, 4);
+        g.fx.shockwave(t.x, t.z, 2, EVO_COLOR.earthen_ward, 0.35);
+        g.fx.addShake(0.12);
+        g.audio.play("hit");
+        this.freeTotem(k);
+        continue;
+      }
       t.tickLeft -= dt;
       while (t.tickLeft <= 0 && t.time > -1e-6) {
         t.tickLeft += t.st.tick ?? 1;
@@ -845,8 +1033,49 @@ export class SpellCaster {
       const b = t.bob;
       t.group.position.y = -2.2 * (1 - rise) + 0.25 * Math.sin(b * Math.PI);
       t.group.scale.set(1 + 0.1 * b, 1 - 0.12 * b, 1 + 0.1 * b);
-      t.runes.color.setHex(SPELL_COLOR.quake_totem).multiplyScalar(0.45 + 0.55 * b + 0.1 * Math.sin(g.time * 6));
+      const color = t.hits !== undefined ? EVO_COLOR.earthen_ward : SPELL_COLOR.quake_totem;
+      t.runes.color.setHex(color).multiplyScalar(0.45 + 0.55 * b + 0.1 * Math.sin(g.time * 6));
+      if (t.lure) {
+        // o ídolo treme quando apanha; o anel pulsa e marca quanto falta (golpes) no relógio
+        t.shake = Math.max(0, t.shake - dt * 6);
+        t.group.rotation.z = Math.sin(g.time * 60) * 0.06 * t.shake;
+        this.drawRing(t.lure, t.x, t.z, t.st.lureRadius!, t.time, t.st.duration ?? 1, 0.5 + 0.5 * Math.sin(g.time * 5));
+        t.lure.clock.geometry = clockGeo(t.hits! / (t.st.wardHits ?? 1));
+        // o anel é grande (cobre boa parte da tela): só a borda aparece, o fundo quase some
+        t.lure.disc.opacity *= 0.15;
+        t.lure.edge.opacity *= 0.5;
+        (t.lure.clock.material as THREE.MeshBasicMaterial).opacity = 0.3;
+        // fios de atração até os inimigos puxados
+        for (const e of g.enemies) {
+          if (e.dead || this.wardFor(e) !== t || Math.random() > 0.25) continue;
+          const u = Math.random();
+          g.fx.glow(e.x + (t.x - e.x) * u, 0.5, e.z + (t.z - e.z) * u, EVO_COLOR.earthen_ward, 0.3, 0.3);
+        }
+      }
     }
+  }
+
+  /** techniques.lua `Tech.wardFor`: o ídolo de pé mais perto que atrai este inimigo (nunca chefe), ou null. */
+  wardFor(e: Enemy): Totem | null {
+    if (e.isBoss) return null;
+    let best: Totem | null = null;
+    let bestD2 = Infinity;
+    for (const t of this.totems) {
+      if (t.hits === undefined || t.hits <= 0) continue;
+      const d2 = (e.x - t.x) ** 2 + (e.z - t.z) ** 2;
+      if (d2 <= (t.st.lureRadius ?? 0) ** 2 && d2 < bestD2) [best, bestD2] = [t, d2];
+    }
+    return best;
+  }
+
+  /** ai.lua `melee`: o golpe que o inimigo dá no ídolo tira um dos `wardHits`. */
+  hitWard(t: Totem): void {
+    const g = this.game;
+    if (t.hits === undefined) return;
+    t.hits--;
+    t.shake = 1;
+    g.fx.burst(t.x, 1.2, t.z, 0x9a8a72, 10, 4, 0.12, 0.35, 8);
+    g.audio.play("hit");
   }
 
   /**
@@ -882,6 +1111,7 @@ export class SpellCaster {
 
   private freeTotem(k: number): void {
     const t = this.totems[k];
+    if (t.lure) freeGroup(t.lure.group);
     t.group.removeFromParent();
     const mats = new Set<THREE.Material>();
     t.group.traverse((o) => { if (o instanceof THREE.Mesh) mats.add(o.material as THREE.Material); });
@@ -1022,7 +1252,8 @@ export class SpellCaster {
     const dur = st.duration ?? 1;
     const spin = Math.max(1, dur / Math.max(0.1, st.cooldown || dur));
     const group = new THREE.Group();
-    const steel = new THREE.MeshBasicMaterial({ color: 0xe8eef8, toneMapped: false });
+    const storm = st.evolution === "blade_storm";
+    const steel = new THREE.MeshBasicMaterial({ color: storm ? EVO_COLOR.blade_storm : 0xe8eef8, toneMapped: false });
     const gold = new THREE.MeshStandardMaterial({ color: 0xc9a24a, roughness: 0.5, metalness: 0.6 });
     const blades: THREE.Object3D[] = [];
     for (let b = 0; b < (st.blades ?? 1); b++) {
@@ -1035,10 +1266,11 @@ export class SpellCaster {
       group.add(blade);
       blades.push(blade);
     }
-    const clock = new THREE.Mesh(clockGeo(1), groundMat(SPELL_COLOR.blade_orbit, 0.16));
+    const clock = new THREE.Mesh(clockGeo(1), groundMat(storm ? EVO_COLOR.blade_storm : SPELL_COLOR.blade_orbit, storm ? 0.22 : 0.16));
     clock.position.y = 0.04;
     group.add(clock);
     g.scene.add(group);
+    if (storm) g.fx.shockwave(g.player.x, g.player.z, st.radius, EVO_COLOR.blade_storm, 0.35);
     this.orbits.push({ slot: i, st, time: dur, duration: dur, angle: 0, spin, hitCooldown: (st.hitCooldown ?? 0.5) / spin,
       lastHit: new WeakMap(), group, blades, clock });
     g.audio.play("tech");
@@ -1058,7 +1290,17 @@ export class SpellCaster {
         continue;
       }
       o.angle += dt * SPELL_CAST.orbitSpin * o.spin;
-      const r = o.st.radius;
+      // Blade Storm: o círculo abre do raio até `maxRadius` durante o giro (techniques.lua `curRadius`)
+      const opened = 1 - o.time / o.duration;
+      const r = o.st.maxRadius !== undefined ? o.st.radius + (o.st.maxRadius - o.st.radius) * opened : o.st.radius;
+      if (o.st.maxRadius !== undefined && Math.random() < 0.7) {
+        // rastro de vento no círculo, girando junto
+        const a = Math.random() * Math.PI * 2;
+        const t = Math.cos(a) * r;
+        const u = Math.sin(a) * r;
+        const v = SPELL_CAST.orbitSpin * o.spin * r * 0.5;
+        g.fx.glow(p.x + t, 0.9 + Math.random() * 0.4, p.z + u, EVO_COLOR.blade_storm, 0.45, 0.3, -Math.sin(a) * v, 0, Math.cos(a) * v);
+      }
       const n = o.blades.length;
       const hit = SPELL_CAST.bladeHit;
       // entram crescendo e somem encolhendo nos últimos 0,3 s
@@ -1104,7 +1346,7 @@ export class SpellCaster {
     const mine = this.runes.filter((r) => r.slot === i && r.fade === undefined);
     if (mine.length >= (st.maxRunes ?? 1)) mine[0].fade = 0.35;
     const group = new THREE.Group();
-    const glyph = new THREE.MeshBasicMaterial({ map: runeTexture(), color: SPELL_COLOR.rune_traps, transparent: true,
+    const glyph = new THREE.MeshBasicMaterial({ map: runeTexture(), color: st.linkRange ? EVO_COLOR.rune_circle : SPELL_COLOR.rune_traps, transparent: true,
       opacity: 0.3, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending });
     const plate = new THREE.Mesh(RUNE_GEO, glyph);
     plate.position.y = 0.04;
@@ -1154,6 +1396,81 @@ export class SpellCaster {
       r.glyph.opacity = (armed ? 0.7 + 0.15 * Math.sin(g.time * 3 + r.x) : 0.3) * ending;
       r.clock.geometry = clockGeo(r.time / r.duration);
     }
+    this.updateRuneLines(dt);
+  }
+
+  /** techniques.lua `runeLinks` (Rune Circle): cada runa do espaço às duas mais perto até `linkRange`, cada par uma vez. */
+  private runeLinks(slot: number): [Rune, Rune][] {
+    const mine = this.runes.filter((r) => r.slot === slot && r.fade === undefined && r.st.linkRange);
+    const links: [Rune, Rune][] = [];
+    const seen = new Set<number>();
+    mine.forEach((a, i) => {
+      const range2 = (a.st.linkRange ?? 0) ** 2;
+      const near = mine
+        .map((b, j) => ({ j, d2: (a.x - b.x) ** 2 + (a.z - b.z) ** 2 }))
+        .filter((n) => n.j !== i && n.d2 <= range2)
+        .sort((u, v) => u.d2 - v.d2)
+        .slice(0, 2);
+      for (const { j } of near) {
+        const key = Math.min(i, j) * 1000 + Math.max(i, j);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        links.push([a, mine[j]]);
+      }
+    });
+    return links;
+  }
+
+  /**
+   * techniques.lua `updateRuneLines`: a cada `lineTick` as linhas do espaço ferem quem está nelas (uma vez por inimigo
+   * por tique, mesmo em cima de várias). As linhas são faixas de luz no chão, refeitas a cada quadro.
+   */
+  private updateRuneLines(dt: number): void {
+    const g = this.game;
+    let used = 0;
+    const slots = new Map<number, SpellStats>();
+    for (const r of this.runes) if (r.st.linkRange && r.fade === undefined) slots.set(r.slot, r.st);
+    for (const slot of [...this.runeTicks.keys()]) if (!slots.has(slot)) this.runeTicks.delete(slot);
+    for (const [slot, st] of slots) {
+      const links = this.runeLinks(slot);
+      let left = (this.runeTicks.get(slot) ?? st.lineTick ?? 0.4) - dt;
+      const tick = left <= 0;
+      if (tick) left += st.lineTick ?? 0.4;
+      this.runeTicks.set(slot, left);
+      const hit = new Set<Enemy>();
+      const hw = (st.lineWidth ?? 0.2) / 2;
+      for (const [a, b] of links) {
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const len = Math.hypot(dx, dz);
+        if (len < 0.05) continue;
+        if (tick) {
+          for (const e of this.inSegment(a.x, a.z, dx / len, dz / len, 0, len, hw, hit)) {
+            g.spellHit(e, st.lineDamage ?? 0, true);
+            g.fx.spark(e.x, 0.8, e.z, EVO_COLOR.rune_circle, 0.1, 0.25, 1);
+          }
+        }
+        // desenho: faixa de luz que pulsa, mais forte no tique
+        let m = this.lines[used];
+        if (!m) {
+          m = new THREE.Mesh(BEAM_GEO, new THREE.MeshBasicMaterial({ color: EVO_COLOR.rune_circle, transparent: true,
+            depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+          m.renderOrder = 2;
+          this.lines.push(m);
+        }
+        used++;
+        if (!m.parent) g.scene.add(m);
+        m.position.set(a.x, 0.07, a.z);
+        m.rotation.set(0, Math.atan2(dx, dz), 0);
+        m.scale.set(Math.max(0.12, hw * 2) * (0.8 + 0.2 * Math.sin(g.time * 7 + a.x)), 1, len);
+        (m.material as THREE.MeshBasicMaterial).opacity = tick ? 1 : 0.55 + 0.15 * Math.sin(g.time * 4 + a.z);
+        if (Math.random() < 0.15) {
+          const t = Math.random();
+          g.fx.glow(a.x + dx * t, 0.15, a.z + dz * t, EVO_COLOR.rune_circle, 0.35, 0.4, 0, 0.8, 0);
+        }
+      }
+    }
+    for (let k = used; k < this.lines.length; k++) this.lines[k].removeFromParent();
   }
 
   /** há runa no chão (o ataque básico só procura runa quando há) */
@@ -1569,6 +1886,7 @@ export class SpellCaster {
   /** spell_system.lua `onKill` (S17, Volátil): inimigo queimando pelo Fireball pode explodir ao morrer. */
   onKill(e: Enemy): void {
     const g = this.game;
+    this.plagueSpread(e);
     const burn = e.dots.find((d) => d.spell === "fireball" && d.until > g.time);
     if (!burn || burn.slot === undefined) return;
     const st = this.stats[burn.slot];
@@ -1599,6 +1917,8 @@ export class SpellCaster {
     while (this.fields.length) this.freeField(this.fields.length - 1);
     while (this.orbits.length) this.freeOrbit(this.orbits.length - 1);
     while (this.runes.length) this.freeRune(this.runes.length - 1);
+    for (const m of this.lines) m.removeFromParent();
+    this.runeTicks.clear();
     for (const a of this.auras) freeGroup(a.ring.group);
     this.auras.length = 0;
     for (const s of this.storms) freeGroup(s.ring.group);
