@@ -1,6 +1,7 @@
 // Loop principal: herói, combate, progressão e as ondas da partida (cada zona = 5 ondas, D13).
 import * as THREE from "three";
 import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
+import { applyEvolution, declineEvolutions, pendingEvolutionOffer, type EvolutionOption } from "../core/evolution";
 import { addXp, applyUpgrade, draft, draftTiers, rerollCost, rerollsLeft, upgradeStats, type UpgradeTier } from "../core/levelup";
 import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
 import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, safeStorage } from "../core/save";
@@ -46,6 +47,8 @@ export interface GameEvents {
   mapOpen(): void;
   /** abriu (ou mudou) a escolha de melhoria de nível; o estado está em `Game.levelUp` */
   levelUp(): void;
+  /** abriu a oferta de evolução de spell; as opções estão em `Game.evolutionOffer` */
+  evolution(): void;
   died(): void;
   zoneChanged(): void;
   /** a ficha da partida mudou (relíquia nova) */
@@ -197,6 +200,8 @@ export class Game {
   private bossReward: (() => void) | null = null;
   /** escolha de melhoria aberta; o jogo fica pausado pela tela */
   levelUp: LevelUpDraft | null = null;
+  /** até 3 evoluções oferecidas no intervalo (evolution.lua `pendingOffer`, S18) */
+  evolutionOffer: EvolutionOption[] | null = null;
   private levelUpIndex = 0;
   /** cartas do mapa da partida abertas no fim da onda (run_map.lua); null = fechado */
   mapCards: MapCard[] | null = null;
@@ -915,6 +920,26 @@ export class Game {
     else this.levelUpIndex = 0;
   }
 
+  /** run_drafts.lua `chooseEvolution`: a spell evolui; as outras spells são oferecidas de novo no quadro seguinte. */
+  chooseEvolution(index: number): void {
+    const o = this.evolutionOffer?.[index];
+    if (!o) return;
+    applyEvolution(this.run, o.slotIndex, o.evoId);
+    this.evolutionOffer = null;
+    this.recompute();
+    const p = this.player;
+    this.fx.burst(p.x, 1.5, p.z, 0xc77dff, 32, 7, 0.16, 0.9, 5);
+    this.audio.play("level");
+    this.events.statusChanged();
+  }
+
+  /** run_drafts.lua `skipEvolution`: recusa até a coleção de relíquias mudar. */
+  skipEvolution(): void {
+    if (!this.evolutionOffer) return;
+    declineEvolutions(this.run, this.evolutionOffer);
+    this.evolutionOffer = null;
+  }
+
   hurtPlayer(amount: number, source: string): void {
     void source;
     const p = this.player;
@@ -1052,6 +1077,15 @@ export class Game {
       if (this.run.pendingLevelUps > 0 && this.playerAlive) {
         this.openLevelUp();
         if (this.levelUp) return;
+      }
+      // S18: depois do nível, a evolução de spell (também volta aqui depois da relíquia do santuário)
+      if (this.evolutionOffer) return;
+      if (this.playerAlive) {
+        this.evolutionOffer = pendingEvolutionOffer(this.run, this.rng.get("evolution"));
+        if (this.evolutionOffer) {
+          this.events.evolution();
+          return;
+        }
       }
       // R19/R20: depois do nível, o mapa da onda seguinte (a maldição que continua pula o mapa)
       if (!this.mapResolved && this.playerAlive) {
@@ -1274,6 +1308,7 @@ export class Game {
   /** Tira da cena o que é da onda (avisos de nascimento); os inimigos saem com a zona ou no fim da onda. */
   private clearWave(): void {
     this.levelUp = null;
+    this.evolutionOffer = null;
     this.levelUpIndex = 0;
     for (const m of this.markers) m.mesh.removeFromParent();
     this.markers.length = 0;

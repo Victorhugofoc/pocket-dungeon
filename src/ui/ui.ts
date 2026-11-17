@@ -6,7 +6,8 @@ import { RunRng, addRecord, continueRun, decodeSeed, newRun, summarize, type New
 import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unlockCondition } from "../core/achievements";
 import { ACHIEVEMENTS } from "../data/achievements";
 import { formatStat, STAT_KEYS, type StatBlock } from "../core/stats";
-import { SPELL_MAX_LEVEL, SPELL_TEXT, SPELLS, type SpellId } from "../data/spells";
+import { EVOLUTIONS, SPELL_MAX_LEVEL, SPELL_TEXT, SPELLS, type EvolutionDef, type SpellId } from "../data/spells";
+import { wantedRelics } from "../core/evolution";
 import { effectsFor, rerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
 import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
 import { BOSSES } from "../data/enemies";
@@ -108,6 +109,7 @@ export class Ui {
       relicChoice: (ids, pick, title) => this.showRelicChoice(ids, pick, title),
       mapOpen: () => this.showMap(),
       levelUp: () => this.showLevelUp(),
+      evolution: () => this.showEvolution(),
       died: () => setTimeout(() => this.showDeath(), 900),
       zoneChanged: () => this.onZoneChanged(),
       statusChanged: () => {
@@ -152,7 +154,7 @@ export class Ui {
   private onKey(e: KeyboardEvent): void {
     if (!this.game.started || e.repeat) return;
     const k = e.code;
-    const locked = ["title", "relic", "levelup", "map", "death", "victory", "results"].includes(this.overlayKind);
+    const locked = ["title", "relic", "levelup", "evolution", "map", "death", "victory", "results"].includes(this.overlayKind);
     if (locked) return;
     if (k === "Escape") {
       if (this.overlay) this.close();
@@ -638,11 +640,14 @@ export class Ui {
   private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!"): void {
     const panel = this.open("relic", "relic");
     panel.style.width = "min(820px, 96vw)";
+    // D-197: a relíquia que evolui uma spell equipada (com a spell no nível 5)
+    const wanted = wantedRelics(this.game.run);
     panel.innerHTML = `<h2>${title}</h2><p class="sub">Choose a relic. The bonus is permanent.</p>
       <div class="cards">${ids.map((id) => {
         const d = RELICS[id];
+        const evo = wanted[id] ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
         return `<div class="card" data-relic="${id}" style="--cc:${hex(d.color)}"><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${statLines(d.stats)}</div>`;
+          <h3>${d.name}</h3>${statLines(d.stats)}${evo}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
       const id = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]")?.dataset.relic;
@@ -700,6 +705,36 @@ export class Ui {
       if (i === undefined) return;
       this.close();
       g.chooseUpgrade(Number(i));
+    };
+  }
+
+  /** spell_evolution.lua (S18): até 3 evoluções, e o jogador pode pular; as relíquias da receita não são gastas. */
+  private showEvolution(): void {
+    const g = this.game;
+    const offer = g.evolutionOffer;
+    if (!offer) return;
+    const panel = this.open("evolution", "evolution");
+    panel.style.width = "min(820px, 96vw)";
+    panel.innerHTML = `<h2>Spell evolution</h2><p class="sub">Evolve a spell.</p>
+      <div class="cards">${offer.map((o, i) => {
+        const evo = EVOLUTIONS[o.evoId];
+        const recipe = evo.requires.map((r) => RELICS[r]?.name ?? prettyId(r)).join(" or ");
+        return `<div class="card" data-evo="${i}" style="--cc:#c77dff"><div class="meta">${spellName(evo.spell)} (slot ${o.slotIndex + 1})</div>
+          <h3>${evo.name}</h3><p>${evo.text}</p><p class="evo">${evoStatLine(evo)}</p>
+          <p class="note">Recipe: ${recipe}</p><p class="note">(relics are NOT consumed)</p></div>`;
+      }).join("")}</div>
+      <div class="row end"><button data-act="skip">Skip evolution</button></div>`;
+    panel.onclick = (ev) => {
+      const t = ev.target as HTMLElement;
+      if (t.closest("[data-act=skip]")) {
+        this.close();
+        g.skipEvolution();
+        return;
+      }
+      const i = t.closest<HTMLElement>("[data-evo]")?.dataset.evo;
+      if (i === undefined) return;
+      this.close();
+      g.chooseEvolution(Number(i));
     };
   }
 
@@ -820,9 +855,27 @@ function isSpellKey(id: string): id is SpellId {
   return id in SPELLS;
 }
 
-function spellName(id: string): string {
-  if (id in SPELLS) return SPELLS[id as SpellId].name;
+/** spell_evolution.lua `statLine`: os números da forma evoluída, na ordem de lá. */
+function evoStatLine(e: EvolutionDef): string {
+  const t: string[] = [];
+  if (e.damageMult) t.push(`Damage x${e.damageMult.toFixed(2)}`);
+  if (e.healMult) t.push(`Heal x${e.healMult.toFixed(2)}`);
+  if (e.radius) t.push(`Radius ${e.radius}`);
+  if (e.width) t.push(`Width ${e.width} x ${e.length}`);
+  if (e.duration) t.push(`Duration ${e.duration.toFixed(1)}s`);
+  if (e.tick) t.push(`Tick ${e.tick.toFixed(2)}s`);
+  if (e.burnDuration && e.burnDpsMult) t.push(`Burn ${e.burnDuration.toFixed(1)}s x${e.burnDpsMult.toFixed(2)}`);
+  else if (e.burnDuration) t.push(`Burn ${e.burnDuration.toFixed(1)}s`);
+  if (e.cooldownMult) t.push(`Cooldown x${e.cooldownMult.toFixed(2)}`);
+  return t.join("  •  ");
+}
+
+function prettyId(id: string): string {
   return id.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+}
+
+function spellName(id: string): string {
+  return id in SPELLS ? SPELLS[id as SpellId].name : prettyId(id);
 }
 
 /** Uma carta do mapa: o tipo, a sala sorteada e o que ela muda na onda. */
