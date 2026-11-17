@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { SPELL_ORDER, SPELLS } from "../src/data/spells";
-import { addModifier, addSpell, levelUpSpell, spellStats, spMult, stackChance, type SpellSlotState } from "../src/core/spells";
+import { SPELL_ORDER, SPELLS, modifierCounts, modifierText } from "../src/data/spells";
+import { addModifier, addSpell, levelUpSpell, spellContext, spellStats, spMult, stackChance, type SpellSlotState } from "../src/core/spells";
 import { newSpellSlot } from "../src/core/run";
+import { computeStats } from "../src/core/stats";
+import { HEROES } from "../src/data/heroes";
 
-const CTX = { cooldownMult: 1, area: 1, range: 1, status: 1 };
+const CTX = { range: 1 };
 const slot = (id: string, level = 1, modifiers: string[] = []) => ({ id, level, modifiers });
 
 describe("spellStats", () => {
@@ -41,7 +43,7 @@ describe("spellStats", () => {
   });
 
   it("a recarga tem piso de 35%", () => {
-    const st = spellStats(slot("arcane_bolt", 1, ["quick_bolt"]), { ...CTX, cooldownMult: 0.3 });
+    const st = spellStats(slot("arcane_bolt", 1, ["quick_bolt"]), { ...CTX, cooldownValue: -0.9 });
     expect(st.cooldownMult).toBe(0.35);
   });
 
@@ -89,5 +91,59 @@ describe("espaços de spell", () => {
     expect(addModifier(s, 0, "quick_arc")).toEqual({ ok: false, reason: "not_in_pool" });
     expect(addModifier(s, 0, "deep_burn")).toEqual({ ok: true });
     expect(spellStats(s[0], CTX).burnDuration).toBe(3 + 0.75 + 1.5);
+  });
+});
+
+describe("atributos de spell do herói (D14)", () => {
+  const base = spellContext(computeStats([]));
+  it("sem bônus, os números são os mesmos de sem atributos", () => {
+    for (const id of ["fireball", "iceball", "venom_nova", "arcane_bolt"]) {
+      expect(spellStats(slot(id, 3), base)).toEqual(spellStats(slot(id, 3), CTX));
+    }
+  });
+  it("poder de magia, dano de spell e escola multiplicam o dano da spell da escola certa", () => {
+    const f0 = spellStats(slot("fireball"), base);
+    const ctx = spellContext(computeStats([{ spellDamagePct: 0.10, firePct: 0.25, icePct: -0.5 }]));
+    expect(spellStats(slot("fireball"), ctx).damage).toBeCloseTo(f0.damage * 1.1 * 1.25);
+    const i0 = spellStats(slot("iceball"), base);
+    expect(spellStats(slot("iceball"), ctx).damage).toBeCloseTo(i0.damage * 1.1 * 0.5);
+    const sp = spellStats(slot("fireball"), spellContext(computeStats([{ spellPower: 4 }])));
+    expect(sp.damage).toBeGreaterThan(f0.damage);
+  });
+  it("queimadura leva o bônus de queimadura e o de fogo; lentidão, os pontos e a duração", () => {
+    const f0 = spellStats(slot("fireball"), base);
+    const f = spellStats(slot("fireball"), spellContext(computeStats([HEROES.ignis.stats])));
+    expect(f.burnDps!).toBeCloseTo(f0.burnDps! * 1.30 * 1.25);
+    const i0 = spellStats(slot("iceball"), base);
+    const i = spellStats(slot("iceball"), spellContext(computeStats([{ slowPct: 0.10, slowDurationPct: 0.20 }])));
+    expect(i.slow!).toBeCloseTo(i0.slow! + 0.10);
+    expect(i.slowDuration!).toBeCloseTo(i0.slowDuration! * 1.2);
+  });
+  it("veneno do herói sobe o dano da Venom Nova", () => {
+    const v0 = spellStats(slot("venom_nova"), base);
+    const v = spellStats(slot("venom_nova"), spellContext(computeStats([HEROES.vesper.stats])));
+    expect(v.damage).toBeCloseTo(v0.damage * 1.3);
+  });
+  it("recarga e área globais entram no mesmo pool da spell (piso de 35%)", () => {
+    const quick = spellStats(slot("arcane_bolt", 1, ["quick_bolt"]), base);
+    const ctx = spellContext(computeStats([{ cdrPct: 0.10, areaPct: 0.10 }]));
+    const both = spellStats(slot("arcane_bolt", 1, ["quick_bolt"]), ctx);
+    expect(both.cooldownMult).toBeLessThan(quick.cooldownMult);
+    expect(both.cooldownMult).toBeGreaterThanOrEqual(0.35);
+    expect(spellStats(slot("fireball"), ctx).areaMult).toBeCloseTo(1.1);
+  });
+});
+
+describe("texto e contagem dos modificadores (M6-08)", () => {
+  it("modifierText: o texto da spell, ou o da forma evoluída que converte o modificador (D-437)", () => {
+    expect(modifierText("chain_lightning", "chain_plus_one")).toBe("+1 target");
+    expect(modifierText("chain_lightning", "chain_plus_one", "lightning_strike")).toBe("+8% Lightning Strike damage");
+    expect(modifierText("chain_lightning", "quick_arc", "lightning_strike")).toBe("-12% cooldown");
+    expect(modifierText("fireball", "long_fuse", "firewave")).toBe("+25% wall length");
+  });
+  it("modifierCounts agrupa repetidos na ordem em que vieram, como o painel de lá", () => {
+    expect(modifierCounts("fireball", ["deep_burn", "hotter_core", "deep_burn"])).toEqual([
+      { id: "deep_burn", name: "DEEP BURN", count: 2 }, { id: "hotter_core", name: "HOTTER CORE", count: 1 },
+    ]);
   });
 });

@@ -653,7 +653,8 @@ export class Game {
     const s = this.stats;
     const now = this.time;
     const crit = hit?.crit === true || Math.random() < s.critChance;
-    let amount = s.damage * mult * (0.9 + Math.random() * 0.2);
+    // ataque básico e técnicas levam o dano do ataque (autoDamagePct); as spells, não (D14)
+    let amount = s.damage * s.autoDamage * mult * (0.9 + Math.random() * 0.2);
     const back = this.hero.auto.backstab !== undefined && this.isBackstab(e);
     if (back) amount *= 1 + this.hero.auto.backstab!;
     let deepChill = false;
@@ -696,10 +697,11 @@ export class Game {
 
   applyStatus(e: Enemy, st: StatusSpec, hitDamage: number): void {
     const now = this.time;
-    const potency = this.stats.status;
+    // D14: a queimadura e o veneno do ataque têm atributo próprio; a lentidão do ataque é fixa, como lá
+    const potency = st.kind === "burn" ? this.stats.burn : st.kind === "poison" ? this.stats.poison : 1;
     if (st.kind === "slow") {
       e.slowUntil = Math.max(e.slowUntil, now + st.duration);
-      const v = Math.min(0.85, st.power * Math.min(1.6, potency));
+      const v = Math.min(0.85, st.power);
       // chefes: o gelo da Frostine deixa lento até FROST.bossSlowCap; o resto vale 40%
       e.slowPower = e.isBoss ? (this.hero.frost ? Math.min(FROST.bossSlowCap, v) : v * 0.4) : v;
     } else if (st.kind === "stun") {

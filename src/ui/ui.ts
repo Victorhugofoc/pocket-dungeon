@@ -6,8 +6,10 @@ import { RunRng, addRecord, continueRun, decodeSeed, newRun, newSpellSlot, recor
 import { addModifier, addSpell, levelUpSpell, type SlotResult } from "../core/spells";
 import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unlockCondition } from "../core/achievements";
 import { ACHIEVEMENTS } from "../data/achievements";
-import { formatStat, STAT_KEYS, type StatBlock } from "../core/stats";
-import { EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, type EvolutionDef, type SpellId } from "../data/spells";
+import { formatStat, STAT_KEYS, type FinalStats, type StatBlock } from "../core/stats";
+import {
+  EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
+} from "../data/spells";
 import { wantedRelics } from "../core/evolution";
 import { effectsFor, rerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
 import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
@@ -78,6 +80,17 @@ function heroKit(h: HeroDef, cooldown: number): string {
     <div class="kit-row"><b>Technique</b><div><span class="kit-name">${h.technique.name}</span>
       <span class="kit-meta">right click or Q · cooldown ${cd} s</span><p>${h.technique.text}</p></div></div>
   </div>`;
+}
+
+/** Linhas da tela de status para os atributos de spell da D14, só os que fogem do neutro. */
+function spellBonusLines(s: FinalStats): string {
+  const signed = (v: number) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`;
+  const rows: [string, number][] = [
+    ["Spell Damage", s.spellDamage - 1], ["Fire Damage", s.school.fire - 1], ["Ice Damage", s.school.ice - 1],
+    ["Lightning Damage", s.school.lightning - 1], ["Arcane Damage", s.school.arcane - 1], ["Burn Damage", s.burn - 1],
+    ["Slow", s.slowPoints], ["Slow Duration", s.slowDuration - 1], ["Poison Damage", s.poison - 1],
+  ];
+  return rows.filter(([, v]) => Math.abs(v) > 1e-9).map(([k, v]) => `<span>${k}</span><b>${signed(v)}</b>`).join("");
 }
 
 function statLines(stats: StatBlock): string {
@@ -689,11 +702,19 @@ export class Ui {
     const h = g.hero;
     const panel = this.overlayKind === "status" ? (this.overlay!.firstChild as HTMLElement) : this.open("status", "status");
     const pct = (v: number) => `${Math.round(v * 100)}%`;
-    const spellLine = (name: string, level: number, note: string) =>
-      `<div class="relic">${name} <small>Lv ${level}/${SPELL_MAX_LEVEL}${note ? " · " + note : ""}</small></div>`;
+    const spellLine = (name: string, level: number, note: string, mods = "", idx = -1) =>
+      `<div class="relic spell-row"${idx >= 0 ? ` data-spell-slot="${idx}"` : ""}>${name} <small>Lv ${level}/${SPELL_MAX_LEVEL}${note ? " · " + note : ""}</small>${mods}</div>`;
+    // hud/panel.lua: cada spell com os modificadores comprados ("NOME x2"), ou "no modifiers"
+    const modLine = (id: string, mods: readonly string[]) => {
+      if (!isSpellKey(id)) return "";
+      const parts = modifierCounts(id, mods).map((m) => m.name + (m.count > 1 ? ` x${m.count}` : ""));
+      return `<div class="mods${parts.length ? "" : " none"}">${parts.length ? parts.join(", ") : "no modifiers"}</div>`;
+    };
     const spells = [
       spellLine(h.technique.name, run.technique.level, "technique"),
-      ...run.spells.map((sp) => spellLine(spellName(sp.id), sp.level, sp.evolution ? "evolved" : "")),
+      ...run.spells.map((sp, i) => spellLine(
+        sp.evolution ? EVOLUTIONS[sp.evolution as keyof typeof EVOLUTIONS]?.name ?? spellName(sp.id) : spellName(sp.id),
+        sp.level, sp.evolution ? "evolved" : "", modLine(sp.id, sp.modifiers), i)),
     ];
     panel.innerHTML = `
       <div>
@@ -703,7 +724,7 @@ export class Ui {
         <div class="section">Attributes</div>
         <div class="statlist">
           <span>HP</span><b>${s.maxHp}</b>
-          <span>Damage per hit</span><b>${Math.round(s.damage * h.auto.damage)}</b>
+          <span>Damage per hit</span><b>${Math.round(s.damage * s.autoDamage * h.auto.damage)}</b>
           <span>Attacks per second</span><b>${(h.auto.rate * s.attackSpeed).toFixed(2)}</b>
           <span>Crit</span><b>${pct(s.critChance)} · x${s.critDamage.toFixed(2)}</b>
           <span>Armor</span><b>${Math.round(s.armor)} (-${pct(1 - s.damageTaken)} damage)</b>
@@ -711,6 +732,8 @@ export class Ui {
           <span>Regeneration</span><b>${s.regen.toFixed(1)}/s</b>
           <span>Move Speed</span><b>${s.moveSpeed.toFixed(1)}</b>
           <span>Range</span><b>+${pct(s.range - 1)}</b>
+          <span>Spell Power</span><b>${Math.round(s.spellPower * 10) / 10}</b>
+          ${spellBonusLines(s)}
           <span>Technique Cooldown</span><b>${(g.tech?.cooldown ?? h.technique.cooldown * s.cooldownMult).toFixed(1)} s</b>
           <span>XP earned</span><b>+${pct(s.xp - 1)}</b>
           <span>Gold earned</span><b>+${pct(s.gold - 1)}</b>
@@ -733,6 +756,11 @@ export class Ui {
       if ((ev.target as HTMLElement).closest("[data-act=close]")) this.close();
     };
     panel.onmousemove = (ev) => {
+      const sp = (ev.target as HTMLElement).closest<HTMLElement>("[data-spell-slot]");
+      if (sp) {
+        const html = spellTipHtml(g, Number(sp.dataset.spellSlot));
+        if (html) return this.showTip(html, ev);
+      }
       const rel = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]");
       if (rel) {
         const d = RELICS[rel.dataset.relic!];
@@ -984,6 +1012,31 @@ function evoStatLine(e: EvolutionDef): string {
   else if (e.burnDuration) t.push(`Burn ${e.burnDuration.toFixed(1)}s`);
   if (e.cooldownMult) t.push(`Cooldown x${e.cooldownMult.toFixed(2)}`);
   return t.join("  •  ");
+}
+
+/** hud/tooltips.lua `spellTooltip`: os números da spell, os marcos, os modificadores e a evolução. */
+function spellTipHtml(g: Game, i: number): string {
+  const slot = g.run.spells[i];
+  const st = g.spells.stats[i];
+  if (!slot || !st || !isSpellKey(slot.id)) return "";
+  const def = SPELLS[slot.id];
+  const evo = slot.evolution ? EVOLUTIONS[slot.evolution as keyof typeof EVOLUTIONS] : undefined;
+  const dmg = g.stats.damage;
+  const L: string[] = [];
+  const line = (t: string, cls = "") => L.push(`<div${cls ? ` class="${cls}"` : ""}>${t}</div>`);
+  if (st.damage) line(`Damage ${(st.damage * dmg).toFixed(1)}   (level x${st.levelScale.toFixed(2)})`);
+  if (st.heal) line(`Heals ${(st.heal * g.stats.maxHp).toFixed(1)} HP every ${(st.tick ?? 0).toFixed(2)}s for ${(st.duration ?? 0).toFixed(1)}s`, "good");
+  line(`Cooldown ${st.cooldown.toFixed(2)}s   Range ${(st.length ?? st.range).toFixed(1)} m`);
+  if (st.radius > 0) line(`Radius ${st.radius.toFixed(1)} m`);
+  if (st.burnDps) line(`Burn ${(st.burnDps * dmg).toFixed(1)}/s for ${(st.burnDuration ?? 0).toFixed(2)}s   Volatile ${Math.round((st.volatile ?? 0) * 100)}%`, "fire");
+  if (st.slow) line(`Slow ${Math.round(st.slow * 100)}% for ${(st.slowDuration ?? 0).toFixed(2)}s`, "ice");
+  if (st.targets && !evo) line(`${st.targets} targets, jump ${(st.chainRange ?? 0).toFixed(1)} m, Static ${Math.round((st.doubleHit ?? 0) * 100)}%`);
+  if (st.projectiles && st.projectiles > 1) line(`${st.projectiles} projectiles`);
+  if (st.echo) line(`Echo ${Math.round(st.echo * 100)}%`);
+  for (const m of def.milestones) if (slot.level >= m.level) line(`Lv${m.level} ${m.id}: ${m.text}`, "good");
+  for (const m of slot.modifiers) line(`+ ${SPELLS[slot.id].modifiers.find((x) => x.id === m)?.name ?? m}: ${modifierText(slot.id, m, slot.evolution)}`, "gold");
+  if (evo) line(`EVOLUTION ${evo.name}: ${evo.text}`, "title");
+  return `<h4>${def.name}  Lv ${slot.level}</h4><div class="spell-tip">${L.join("")}</div>`;
 }
 
 function prettyId(id: string): string {

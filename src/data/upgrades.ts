@@ -165,13 +165,25 @@ export const BUILD_FIT = {
 /**
  * Como um atributo de lá vira atributo daqui (`scale` multiplica o valor). Os que faltam ainda não têm sistema no
  * jogo (spells, elementos, tiros extras, empurrão, ouro dos campeões...) e prendem a melhoria fora do sorteio.
- * Diferenças: o dano do ataque básico (`autoDamagePct`) vale para todo o dano, porque ainda não há spells; a recarga de
- * spell (`spellCooldownPct`, negativa = mais rápida) vale para a técnica, como lá.
+ * Diferenças: o dano do ataque básico (`autoDamagePct`) vale para o ataque e para as técnicas; a recarga de spell
+ * (`spellCooldownPct`, negativa = mais rápida) vale para a técnica, como lá, e entra no pool de cada spell (D14).
  */
 export const UPGRADE_STAT: Readonly<Record<string, { key: StatKey; scale: number }>> = {
   damageFlat: { key: "damage", scale: 1 },
   attackSpeedPct: { key: "attackSpeedPct", scale: 1 },
-  autoDamagePct: { key: "damagePct", scale: 1 },
+  autoDamagePct: { key: "autoDamagePct", scale: 1 },
+  // D14: poder de magia, dano de spell e de escola, queimadura, lentidão e veneno
+  spellPowerFlat: { key: "spellPower", scale: 1 },
+  spellDamagePct: { key: "spellDamagePct", scale: 1 },
+  firePct: { key: "firePct", scale: 1 },
+  icePct: { key: "icePct", scale: 1 },
+  lightningPct: { key: "lightningPct", scale: 1 },
+  arcanePct: { key: "arcanePct", scale: 1 },
+  burnPct: { key: "burnPct", scale: 1 },
+  slowPct: { key: "slowPct", scale: 1 },
+  slowDurationPct: { key: "slowDurationPct", scale: 1 },
+  poisonPct: { key: "poisonPct", scale: 1 },
+  areaPct: { key: "areaPct", scale: 1 },
   critChance: { key: "critChance", scale: 1 },
   armor: { key: "armor", scale: 1 },
   moveSpeedPct: { key: "moveSpeedPct", scale: 1 },

@@ -446,7 +446,7 @@ describe.skipIf(!dr)("paridade com o Dungeon Reign", () => {
     const conv = { px: DR_PX_PER_M, dmg: DR_BASE_DAMAGE, hp: DR_BASE_HP, 1: 1 } as const;
     SPELL_SCEN.forEach((c, i) => {
       const ours = spellStats({ id: c.id, level: c.level, modifiers: c.mods, evolution: c.evo },
-        { cooldownMult: 1, area: 1, range: 1, status: 1, spellPower: c.sp }) as unknown as Record<string, number | undefined>;
+        { range: 1, spellPower: c.sp }) as unknown as Record<string, number | undefined>;
       const theirs = SPELL_CALC[i];
       const tag = `${c.id} nv${c.level} [${c.mods.join(",")}] sp${c.sp}${c.evo ? " " + c.evo : ""}`;
       for (const [k, unit] of Object.entries({ ...SPELL_FIELDS, spreadRadius: "px", spreadStacks: 1 } as const)) {

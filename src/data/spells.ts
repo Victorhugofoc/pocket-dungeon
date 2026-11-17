@@ -343,6 +343,23 @@ export function modifierDef(spellId: SpellId, modId: string): SpellModifier | un
   return SPELLS[spellId].modifiers.find((m) => m.id === modId);
 }
 
+/** spells.lua `S.modifierText`: o texto do modificador, ou o da forma evoluída que o converte (D-437). */
+export function modifierText(spellId: SpellId, modId: string, evoId?: string | null): string {
+  const evo = evoId && Object.prototype.hasOwnProperty.call(EVOLUTIONS, evoId) ? EVOLUTIONS[evoId as EvolutionId] : undefined;
+  return evo?.modText?.[modId] ?? modifierDef(spellId, modId)?.text ?? modId;
+}
+
+/** Os modificadores do espaço agrupados na ordem em que vieram, com a contagem (hud/panel.lua). */
+export function modifierCounts(spellId: SpellId, mods: readonly string[]): { id: string; name: string; count: number }[] {
+  const out: { id: string; name: string; count: number }[] = [];
+  for (const m of mods) {
+    const e = out.find((x) => x.id === m);
+    if (e) e.count++;
+    else out.push({ id: m, name: modifierDef(spellId, m)?.name ?? m, count: 1 });
+  }
+  return out;
+}
+
 /** Números do lançamento no jogo (behaviors.lua, status.lua, tuning.lua), já em metros. */
 export const SPELL_CAST = {
   /** rad entre projéteis múltiplos (tuning.lua `SPELL_PROJECTILE_SPREAD`) */

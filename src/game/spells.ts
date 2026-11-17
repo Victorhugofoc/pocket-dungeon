@@ -5,7 +5,7 @@
 // tornado, totem, campo de cura, lâminas em órbita, runas, impacto, queimadura, lentidão, veneno, empurrão, atordoamento,
 // Eco e Volátil.
 import * as THREE from "three";
-import { isSpellId, spellStats, type SpellStats } from "../core/spells";
+import { isSpellId, spellContext, spellStats, type SpellStats } from "../core/spells";
 import { MAX_SPELLS, SPELL_CAST } from "../data/spells";
 import { DR_BASE_HP, FROST } from "../data/techniques";
 import { KNOCK_DECAY, type Dot, type Enemy } from "./enemy";
@@ -348,7 +348,7 @@ export class SpellCaster {
     const s = g.stats;
     this.stats = g.run.spells.slice(0, MAX_SPELLS).map((slot) =>
       isSpellId(slot.id)
-        ? spellStats(slot, { cooldownMult: s.cooldownMult, area: s.area, range: s.range, status: s.status })
+        ? spellStats(slot, spellContext(s))
         : null);
     while (this.cooldown.length < this.stats.length) this.cooldown.push(0);
     this.cooldown.length = this.stats.length;

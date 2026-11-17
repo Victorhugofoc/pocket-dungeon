@@ -44,11 +44,14 @@ describe("melhorias de nível (level_up.lua)", () => {
     expect(new Set(a).size).toBe(3);
     for (const id of a) expect(upgradeLive(UPGRADE_BY_ID[id])).toBe(true);
   });
-  it("as ligadas: as de ataque, defesa e economia cujos atributos existem aqui", () => {
+  it("as ligadas: ataque, defesa, economia e, com a D14, magia, escolas, queimadura e lentidão", () => {
     const live = UPGRADES.filter(upgradeLive).map((u) => u.id);
     expect(live).toEqual([
-      "brutality", "rapid_strike", "deadly_edge", "critical_edge", "glass_cannon", "fleetfoot", "vitality", "long_reach",
-      "evasive_footwork", "phantom_step", "second_wind", "arcane_haste", "quickened_mind", "blade_discipline", "wisdom", "golden_instinct",
+      "spellweave", "brutality", "rapid_strike", "deadly_edge", "critical_edge", "glass_cannon", "kindling", "fleetfoot",
+      "vitality", "long_reach", "evasive_footwork", "phantom_step", "second_wind", "iron_skin", "runic_ward",
+      "infernal_affinity", "frost_affinity", "storm_affinity", "arcane_affinity", "elemental_attunement", "arcane_conversion",
+      "cold_precision", "martial_focus", "arcane_focus", "arcane_power", "arcane_haste", "spell_surge", "quickened_mind",
+      "spellsworn", "overchannel", "blade_discipline", "wisdom", "golden_instinct",
     ]);
   });
   it("aplicar grava a raridade e as tags e gasta um nível; a única não volta", () => {
@@ -72,7 +75,7 @@ describe("melhorias de nível (level_up.lua)", () => {
     r.upgradesTaken = ["glass_cannon", "arcane_haste", "vitality", "brutality"];
     r.upgradeTiers = ["epic", "rare", "common", "common"];
     const s = upgradeStats(r);
-    expect(s.damagePct).toBeCloseTo(0.5);
+    expect(s.autoDamagePct).toBeCloseTo(0.5);
     expect(s.armor).toBe(-15);
     // a parte negativa nunca cresce: Arcane Haste (-10% de recarga) é sempre comum, como lá
     expect(s.cdrPct).toBeCloseTo(0.1);
