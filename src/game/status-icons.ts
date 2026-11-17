@@ -4,7 +4,7 @@ import * as THREE from "three";
 import type { Enemy } from "./enemy";
 
 export type StatusIconKind =
-  | "burn" | "volatile" | "poison" | "slow" | "brittleChill" | "stun" | "frost" | "shatter";
+  | "burn" | "volatile" | "poison" | "slow" | "brittleChill" | "stun" | "frost" | "shatter" | "loot";
 
 /** Um estado de um inimigo, já pronto para desenhar. `n` aparece como número no canto (acúmulos); `until` é quando o estado
  * acaba (o contorno do ícone esvazia até lá). Sem `until` (acúmulos de gelo), o contorno fica cheio. */
@@ -37,6 +37,8 @@ export function enemyStatuses(e: Enemy, ctx: StatusContext): StatusBadge[] {
   if (now < e.frost.brittleUntil) out.push({ kind: "shatter", until: e.frost.brittleUntil });
   else if (e.frost.frostStacks > 0) out.push({ kind: "frost", n: e.frost.frostStacks });
   if (now < e.slowUntil && e.slowPower > 0) out.push({ kind: ctx.brittleChill > 0 ? "brittleChill" : "slow", until: e.slowUntil });
+  // D-637: leva um orbe do banco (ao morrer, o orbe sai em dobro); não é estado, então vai por último
+  if (e.lootBonus) out.push({ kind: "loot" });
   return out;
 }
 
@@ -71,7 +73,7 @@ const RING_STEPS = 48;
 /** Cor do contorno de cada estado: a parte acesa é o relógio (`drawRing`), que esvazia até o estado acabar. */
 const RING: Record<StatusIconKind, string> = {
   burn: "#ff7a1a", volatile: "#fff2b0", poison: "#5fd35f", slow: "#8fdcff",
-  brittleChill: "#ff6a6a", stun: "#ffd94a", frost: "#8fdcff", shatter: "#ffffff",
+  brittleChill: "#ff6a6a", stun: "#ffd94a", frost: "#8fdcff", shatter: "#ffffff", loot: "#ffc83d",
 };
 
 /** Fundo do ícone. O contorno aqui é só o trilho apagado; a parte acesa vem por cima, do relógio. */
@@ -270,6 +272,24 @@ function drawIcon(kind: StatusIconKind, n: number | undefined): HTMLCanvasElemen
       disc(c, "#1a2a3a", "#ffffff");
       crystal(c, "#e6f8ff", "#ffffff");
       crack(c, "#1a5a8a");
+      break;
+    case "loot":
+      // duas moedas de lado: o orbe sai em dobro
+      disc(c, "#3a2a08", "#ffc83d");
+      for (const [x, y] of [[25, 36], [38, 28]]) {
+        c.beginPath();
+        c.ellipse(x, y, 12, 12, 0, 0, Math.PI * 2);
+        c.fillStyle = "#ffc83d";
+        c.fill();
+        c.lineWidth = 3;
+        c.strokeStyle = "#8a5a10";
+        c.stroke();
+        c.beginPath();
+        c.ellipse(x, y, 6, 6, 0, 0, Math.PI * 2);
+        c.strokeStyle = "#fff0b0";
+        c.lineWidth = 2;
+        c.stroke();
+      }
       break;
   }
   if (n !== undefined) badge(c, String(Math.min(99, n)), kind === "poison" ? "#2f8f2f" : "#2f6f9f");

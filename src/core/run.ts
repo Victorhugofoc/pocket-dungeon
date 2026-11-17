@@ -105,6 +105,8 @@ export interface RunState {
   /** onda atual (0 antes da primeira) */
   wave: number;
   gold: number;
+  /** loot.lua `lootBank` (D-618): orbes [ouro, XP] que ficaram no chão no fim de uma onda; voltam como orbe "2x" */
+  lootBank: [number, number][];
   xp: number;
   level: number;
   xpToNext: number;
@@ -171,6 +173,7 @@ export function newRun(opts: NewRunOptions): RunState {
     startingSpell: opts.startingSpell,
     wave: 0,
     gold: RUN_START.gold,
+    lootBank: [],
     xp: RUN_START.xp,
     level: RUN_START.level,
     xpToNext: RUN_START.xpToNext,
@@ -244,6 +247,8 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.evolutionsDone ??= 0;
   // checkpoints de antes do M6-07
   run.devUsed ??= false;
+  // checkpoints de antes do M7-02
+  run.lootBank ??= [];
   // checkpoints de antes do M6-01
   for (const s of [...run.spells, run.technique]) s.modifiers ??= [];
   // checkpoints de antes do M20-06 guardavam o progresso do jogo antigo (mochila, equipamento, mortes)

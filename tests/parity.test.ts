@@ -402,6 +402,12 @@ describe.skipIf(!dr)("paridade com o Dungeon Reign", () => {
     expect(VENOM.broodLife).toBe(b.life);
   });
 
+  it("orbes de ouro e XP no chão (tuning.lua LOOT, constants.lua PLAYER.radius)", () => {
+    const { pickup, settle, pullSpeed, pullAccel, maxOnFloor } = RUN_TUNING.loot;
+    expect({ pickup, settle, pullSpeed, pullAccel, maxOnFloor }).toEqual(TU.LOOT);
+    expect(RUN_TUNING.loot.heroRadius).toBe(C.PLAYER.radius);
+  });
+
   it("Inquebrável do Varok", () => {
     expect(UNBREAKABLE.maxHitFraction).toBe(CH.varok.maxHitFraction);
     expect(HEROES.varok.maxHitFraction).toBe(CH.varok.maxHitFraction);

@@ -397,7 +397,7 @@ export class Ui {
   private buildHud(): void {
     this.hud.innerHTML = `
       <div id="vignette"></div>
-      <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold" data-r="gold"></p><div class="points hidden" data-r="points"></div></div>
+      <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold"><span data-r="gold"></span><span class="bank hidden" data-r="bank" title="BANKED LOOT: orbs left on the floor were banked. Enemies with the coin under them drop double until it runs out."></span></p><div class="points hidden" data-r="points"></div></div>
       <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
       <div id="banner" data-r="banner"></div>
       <canvas id="minimap" width="176" height="176"></canvas>
@@ -512,6 +512,10 @@ export class Ui {
     r.hasten.classList.toggle("hidden", !can);
     if (can && w) r.hasten.textContent = `H hasten +${Math.round(hastenBonus(w) * 100)}%`;
     r.gold.textContent = `${g.run.gold} gold`;
+    // D-637: os orbes guardados no banco, ao lado do ouro
+    const banked = g.run.lootBank.length;
+    r.bank.classList.toggle("hidden", banked <= 0);
+    if (banked > 0) r.bank.textContent = `2x ×${banked}`;
     r.boss.style.top = "64px";
     const hint = g.nearPortal ? "E — go on to the next zone" : g.phase === "walk" && g.playerAlive ? `Step into the circle to start wave ${n}` : "";
     if (r.hint.textContent !== hint) r.hint.textContent = hint;

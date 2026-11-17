@@ -1,6 +1,6 @@
 // Efeitos sonoros sintetizados (WebAudio), sem arquivos.
 
-type Sfx = "shoot" | "swing" | "hit" | "crit" | "kill" | "hurt" | "level" | "pickup" | "rare" | "tech" | "dash" | "boss" | "potion" | "warn" | "zap";
+type Sfx = "shoot" | "swing" | "hit" | "crit" | "kill" | "hurt" | "level" | "pickup" | "rare" | "tech" | "dash" | "boss" | "potion" | "warn" | "zap" | "coin" | "bank";
 
 const SPEC: Record<Sfx, { type: OscillatorType; f0: number; f1: number; dur: number; vol: number; noise?: number }> = {
   shoot: { type: "square", f0: 720, f1: 260, dur: 0.07, vol: 0.05 },
@@ -18,6 +18,8 @@ const SPEC: Record<Sfx, { type: OscillatorType; f0: number; f1: number; dur: num
   potion: { type: "sine", f0: 330, f1: 660, dur: 0.3, vol: 0.1 },
   warn: { type: "square", f0: 300, f1: 300, dur: 0.08, vol: 0.04 },
   zap: { type: "sawtooth", f0: 1500, f1: 110, dur: 0.22, vol: 0.08, noise: 0.9 },
+  coin: { type: "square", f0: 1320, f1: 1980, dur: 0.06, vol: 0.035 },
+  bank: { type: "triangle", f0: 880, f1: 1760, dur: 0.45, vol: 0.09 },
 };
 
 export class Audio {

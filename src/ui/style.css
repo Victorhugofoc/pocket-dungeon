@@ -33,6 +33,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .float-text.crit { color: #ffe066; font-size: 24px; }
 .float-text.hurt { color: #ff5a4a; font-size: 20px; }
 .float-text.heal { color: #5fd35f; }
+.float-text.gold { color: #ffd34d; font-size: 14px; }
 .float-text.burn { color: #ff9a3c; font-size: 14px; }
 .float-text.poison { color: #8cf273; font-size: 14px; }
 .float-text.dodge { color: #c8d9ff; font-size: 15px; }
@@ -171,6 +172,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 #wavebar span { font-size: 14px; color: #e8eaf2; font-variant-numeric: tabular-nums; }
 #wavebar .hasten { color: #ffc83d; font-size: 12px; border: 1px solid rgba(255, 200, 61, 0.6); border-radius: 5px; padding: 1px 6px; }
 .hud-top-left .gold { color: #ffd27a; }
+.hud-top-left .bank { margin-left: 8px; padding: 0 5px; border-radius: 6px; background: rgba(255,200,61,0.18); color: #ffc83d; font-weight: 800; }
 #banner { position: absolute; left: 50%; top: 28%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; text-shadow: 0 2px 8px #000; }
 #banner h1 { font-size: 46px; letter-spacing: 3px; color: #ffe6a8; margin: 0; }
 #banner p { font-size: 16px; color: #e8eaf2; margin: 6px 0 0; }

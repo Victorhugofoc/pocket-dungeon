@@ -50,6 +50,8 @@ export class Enemy {
   radius: number;
   /** invocados e filhos da gosma não rendem ouro nem XP (`killReward`) */
   noReward: boolean;
+  /** D-637: leva a promessa de um orbe do banco (moeda sob os pés; ao morrer, o orbe sai em dobro) */
+  lootBonus = false;
   rig: Rig;
   facing = 0;
   aggro = false;
