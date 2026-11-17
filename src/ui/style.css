@@ -119,6 +119,13 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .relics { display: flex; flex-wrap: wrap; gap: 6px; }
 .relic { border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; background: #151722; }
 .relic small { color: var(--muted); }
+.relic.spell-row { cursor: help; }
+.relic .mods { font-size: 11px; color: var(--gold); margin-top: 2px; }
+.relic .mods.none { color: var(--muted); }
+.spell-tip div { font-size: 12px; line-height: 1.45; }
+#tip:has(.spell-tip) { width: 320px; }
+.spell-tip .good { color: var(--good); } .spell-tip .gold { color: var(--gold); } .spell-tip .title { color: #ffe9a8; }
+.spell-tip .fire { color: #ff9a4a; } .spell-tip .ice { color: #9be4ff; }
 #tip { position: fixed; z-index: 10; pointer-events: none !important; background: #0d0f17; border: 1px solid var(--line); border-radius: 8px;
   padding: 10px 12px; width: 250px; font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6); }
 #tip h4 { margin: 0 0 2px; font-size: 15px; }

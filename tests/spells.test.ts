@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SPELL_ORDER, SPELLS } from "../src/data/spells";
+import { SPELL_ORDER, SPELLS, modifierCounts, modifierText } from "../src/data/spells";
 import { addModifier, addSpell, levelUpSpell, spellContext, spellStats, spMult, stackChance, type SpellSlotState } from "../src/core/spells";
 import { newSpellSlot } from "../src/core/run";
 import { computeStats } from "../src/core/stats";
@@ -131,5 +131,19 @@ describe("atributos de spell do herói (D14)", () => {
     expect(both.cooldownMult).toBeLessThan(quick.cooldownMult);
     expect(both.cooldownMult).toBeGreaterThanOrEqual(0.35);
     expect(spellStats(slot("fireball"), ctx).areaMult).toBeCloseTo(1.1);
+  });
+});
+
+describe("texto e contagem dos modificadores (M6-08)", () => {
+  it("modifierText: o texto da spell, ou o da forma evoluída que converte o modificador (D-437)", () => {
+    expect(modifierText("chain_lightning", "chain_plus_one")).toBe("+1 target");
+    expect(modifierText("chain_lightning", "chain_plus_one", "lightning_strike")).toBe("+8% Lightning Strike damage");
+    expect(modifierText("chain_lightning", "quick_arc", "lightning_strike")).toBe("-12% cooldown");
+    expect(modifierText("fireball", "long_fuse", "firewave")).toBe("+25% wall length");
+  });
+  it("modifierCounts agrupa repetidos na ordem em que vieram, como o painel de lá", () => {
+    expect(modifierCounts("fireball", ["deep_burn", "hotter_core", "deep_burn"])).toEqual([
+      { id: "deep_burn", name: "DEEP BURN", count: 2 }, { id: "hotter_core", name: "HOTTER CORE", count: 1 },
+    ]);
   });
 });
