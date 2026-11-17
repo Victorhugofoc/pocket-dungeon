@@ -24,7 +24,7 @@ import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } 
 import { newRun } from "../src/core/run";
 import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, POOL_TICK, ROOM_BIAS, ROOM_BY_ID, ROOMS, STORM } from "../src/data/rooms";
 import { generateMap, type MapRng } from "../src/core/runmap";
-import { ambushFor, biasedComposition, bossStats, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, targetCount, waveMods } from "../src/core/wave";
+import { ambushFor, biasedComposition, bossStats, killReward, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, targetCount, waveMods } from "../src/core/wave";
 import { Rng } from "../src/core/rng";
 import {
   baseDuration, baseEnemyCount, bossGold, bossTier, bossXp, compositionFor, damageScale, hasMapBefore, hpScale,
@@ -176,7 +176,15 @@ const ROOM_LIFE = `=(function()
         local orc = Enemy.create("orc", w, m, 0, 0)
         local amb = WS.ambushFor(m)
         local b = Boss.stats("gravekeeper", w, m, { ambush = amb })
-        out[id][did .. w] = { reward = m.reward, enemyHp = m.enemyHp, enemyDamage = m.enemyDamage, enemySpeed = m.enemySpeed,
+        local Rw, B = require("src.progression.rewards"), require("src.data.bosses")
+        local run = { stats = { compute = function() return { goldMult = 1.2, championGoldMult = 1, championXpMult = 1 } end } }
+        local champ = Enemy.create("orc", w, m, 0, 0, { champion = true })
+        champ.isChampion, champ.affixReward = true, nil
+        local boss = { isBoss = true, build = true, tier = B.tier(w), wave = w, def = { gold = 0, xp = 0 } }
+        local og, ox = Rw.enemyKill(run, orc, m)
+        local cg, cx = Rw.enemyKill(run, champ, m)
+        local bg, bx = Rw.enemyKill(run, boss, m)
+        out[id][did .. w] = { kill = { orc = { og, ox }, champion = { cg, cx }, boss = { bg, bx } }, reward = m.reward, enemyHp = m.enemyHp, enemyDamage = m.enemyDamage, enemySpeed = m.enemySpeed,
           projectileSpeed = m.projectileSpeed, bossHp = m.bossHp, bossDamage = m.bossDamage, bossSpeed = m.bossSpeed,
           enemyCount = m.enemyCount, target = WS.targetCount(w, m), comp = comp, orcHp = orc.hp, orcDamage = orc.damage,
           bossHpStat = b.hp, bossDamageStat = b.damage, champions = m.champions }
@@ -392,6 +400,12 @@ describe.skipIf(!dr)("paridade com o Dungeon Reign", () => {
     expect(VENOM.broodEvery).toBe(b.every);
     expect(VENOM.broodMax).toBe(b.max);
     expect(VENOM.broodLife).toBe(b.life);
+  });
+
+  it("orbes de ouro e XP no chão (tuning.lua LOOT, constants.lua PLAYER.radius)", () => {
+    const { pickup, settle, pullSpeed, pullAccel, maxOnFloor } = RUN_TUNING.loot;
+    expect({ pickup, settle, pullSpeed, pullAccel, maxOnFloor }).toEqual(TU.LOOT);
+    expect(RUN_TUNING.loot.heroRadius).toBe(C.PLAYER.radius);
   });
 
   it("Inquebrável do Varok", () => {
@@ -616,6 +630,15 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
           expect(b.hp, ctx).toBeCloseTo(o.bossHpStat, 6);
           expect(b.damage, ctx).toBeCloseTo(o.bossDamageStat, 8);
           expect(room.champions ?? 0, ctx).toBe(o.champions);
+          // rewards.lua `enemyKill` (M7-01), com +20% de ouro do herói
+          const kill = (t: { champion?: boolean; boss?: boolean }) => {
+            const r = killReward({ gold: ENEMIES.orc.gold, xp: ENEMIES.orc.xp, champion: !!t.champion, bossWave: t.boss ? w : null,
+              noReward: false }, m, 1.2);
+            return [r.gold, r.xp];
+          };
+          expect(kill({}), `${ctx} orc`).toEqual(o.kill.orc);
+          expect(kill({ champion: true }), `${ctx} campeão`).toEqual(o.kill.champion);
+          expect(kill({ boss: true }), `${ctx} chefe`).toEqual(o.kill.boss);
         }
       }
     }

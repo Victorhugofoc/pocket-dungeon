@@ -169,6 +169,12 @@ export const RUN_TUNING = {
   enemyDamageMult: 1.5,
   /** orbes de cura deixados por inimigos */
   healOrb: { heal: 0.08, maxPerWave: 2, life: 8, pickup: 32, chance: { normal: 0.02, elite: 0.04, champion: 0.10, swarm: 0 } },
+  /**
+   * tuning.lua `LOOT` (D-618), em px de lá (÷ `DR_PX_PER_M`): o ouro e o XP do inimigo morto ficam no chão como orbe.
+   * `pickup` conta da borda do herói (`heroRadius`, constants.lua `PLAYER.radius`); `settle` é o tempo antes de poder ser puxado;
+   * `maxOnFloor` é o teto (o mais velho absorve o novo); `hop` é o pulo para fora do corpo (loot.lua `onKill`).
+   */
+  loot: { pickup: 36, settle: 0.25, pullSpeed: 160, pullAccel: 900, maxOnFloor: 220, heroRadius: 12, hop: [4, 14] },
   /** Apressar: acelera o resto de uma onda normal por mais recompensa */
   hasten: { unlockAfter: 5, timeMult: 1.5, spawnMult: 2.0, maxBonus: 0.30, fullAt: 20, exponent: 1.4, enemySpeed: 1.20 },
 } as const;

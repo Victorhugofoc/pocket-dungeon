@@ -10,10 +10,10 @@ import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
 import { chooseCard, expireWaveScope, generateMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
-  canHasten, hasten, healOrbChance, hastenBonus, startWave, stepWave, survivorReward, timeLeft, waveMods, waveReward,
+  canHasten, hasten, healOrbChance, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
   type WaveMods, type WaveSpawn, type WaveState,
 } from "../core/wave";
-import { bossGold, hasMapBefore, isBossWave, segmentOf } from "../core/waves";
+import { hasMapBefore, isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
@@ -31,6 +31,8 @@ import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
 import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
+import { LootView } from "./loot";
+import { promisesBank } from "../core/loot";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -189,6 +191,8 @@ export class Game {
   spells = new SpellCaster(this);
   /** ícones de estado sobre os inimigos (M5-05) */
   private statusIcons = new StatusIcons(this.scene);
+  /** orbes de ouro e XP no chão (M7-02) */
+  readonly loot = new LootView(this.scene);
   private projPool: THREE.Mesh[] = [];
   private projMats = new Map<number, THREE.MeshBasicMaterial>();
 
@@ -481,6 +485,7 @@ export class Game {
     this.statusIcons.clear();
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
+    this.loot.clear();
     for (const b of this.bees) disposeRig(b.rig);
     this.bees.length = 0;
     this.iceWalls.clear();
@@ -497,12 +502,35 @@ export class Game {
   spawnEnemy(id: string, wave: number, x: number, z: number,
     opts: { champion?: boolean; summoned?: boolean; child?: boolean; aggro?: boolean } = {}): Enemy {
     const e = new Enemy(this, enemyDef(id), wave, x, z, opts);
+    // D-637: o banco promete seus orbes aos inimigos que nascem (moeda sob os pés)
+    if (!e.noReward && promisesBank(this.run.lootBank, this.lootReserved())) e.lootBonus = true;
     if (opts.aggro) {
       e.aggro = true;
       e.hunter = true;
     }
     this.enemies.push(e);
     return e;
+  }
+
+  /** loot.lua `reserved`: inimigos vivos com a promessa de um orbe do banco. */
+  lootReserved(): number {
+    let n = 0;
+    for (const e of this.enemies) if (e.lootBonus && !e.dead) n++;
+    return n;
+  }
+
+  /** Os orbes que chegaram ao herói: ouro, XP e o texto do ouro. */
+  private collectLoot(dt: number): void {
+    const got = this.loot.update(dt, this.player, this.playerAlive);
+    for (const o of got) {
+      if (o.gold > 0) {
+        this.run.gold += o.gold;
+        this.run.statistics.goldEarned += o.gold;
+        this.fx.text(o.x, 1.8, o.z, `+${o.gold}g`, "gold");
+      }
+      if (o.xp > 0) this.gainXp(o.xp);
+    }
+    if (got.length) this.audio.play("coin");
   }
 
   countSummons(): number {
@@ -764,7 +792,11 @@ export class Game {
     this.audio.play(e.isBoss ? "boss" : "kill");
     this.run.statistics.kills++;
     if (this.stats.lifeOnKill > 0 && this.playerAlive) this.heal(this.stats.lifeOnKill, false);
-    if (e.xp > 0) this.gainXp(e.xp);
+    // rewards.lua `enemyKill`: ouro e XP pela sala e dificuldade, campeão ×4,5, chefe com o tier (M7-01)
+    // loot.lua (M7-02): cai como orbe no chão; o prometido leva também um orbe do banco
+    const r = killReward({ gold: e.def?.gold ?? 0, xp: e.def?.xp ?? 0, champion: e.champion, bossWave: e.isBoss ? e.level : null,
+      noReward: e.noReward }, this.mods, this.stats.gold);
+    this.loot.drop(e.x, e.z, r.gold, r.xp, e.lootBonus ? this.run.lootBank : null);
     const split = e.def?.splitInto;
     if (split) {
       for (let i = 0; i < split.count; i++) {
@@ -1061,10 +1093,6 @@ export class Game {
     this.hitstop = 0.25;
     this.fx.addShake(1);
     for (const m of this.enemies) if (m.summoned && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
-    const s = this.run;
-    const gold = Math.floor(bossGold(s.wave) * this.mods.reward * this.stats.gold);
-    s.gold += gold;
-    s.statistics.goldEarned += gold;
     // a emboscada dá a relíquia de risco (falta, M12), não a escolha de chefe
     if (e.ambush) return;
     const pool = this.relicPool();
@@ -1277,6 +1305,8 @@ export class Game {
     for (const pr of this.projectiles) if (!pr.friendly) pr.life = 0;
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
+    // D-618: o ouro e o XP que ficaram no chão vão para o banco e voltam como orbe "2x" nas próximas ondas
+    if (this.loot.bank(run.lootBank) > 0) this.audio.play("bank");
     // D-159: vencer um chefe (da arena ou da emboscada) cura 20%
     if (((w.isBossWave && w.bossesDefeated) || w.ambushSpawned) && this.playerAlive) {
       const amount = Math.min(this.stats.maxHp - this.player.hp, this.stats.maxHp * BOSS.healPct);
@@ -2198,6 +2228,7 @@ export class Game {
       this.spells.update(dt, [inp.wasPressed("Digit1") || inp.wasPressed("Numpad1"), inp.wasPressed("Digit2") || inp.wasPressed("Numpad2")]);
       this.updateAllies(dt);
       this.updateDrops(dt);
+      this.collectLoot(dt);
       this.fx.update(dt, this.camera, window.innerWidth, window.innerHeight);
       this.updateCamera(dt);
     }

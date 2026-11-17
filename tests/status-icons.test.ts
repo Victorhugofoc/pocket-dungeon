@@ -9,6 +9,9 @@ const enemy = (over: Partial<Record<string, unknown>> = {}): Enemy => ({
 const ctx = { now: 10, volatile: 0, brittleChill: 0 };
 
 describe("enemyStatuses (M5-05)", () => {
+  it("moeda do banco (D-637) por último", () => {
+    expect(enemyStatuses(enemy({ lootBonus: true, stunUntil: 11 }), ctx)).toMatchObject([{ kind: "stun" }, { kind: "loot" }]);
+  });
   it("sem estado, sem ícone", () => {
     expect(enemyStatuses(enemy(), ctx)).toEqual([]);
   });
