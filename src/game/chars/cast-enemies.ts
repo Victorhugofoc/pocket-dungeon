@@ -316,18 +316,19 @@ export const ENEMIES: Record<string, Spec> = {
 function orcAxe(b: Builder): void {
   const IRON_D = 0x34363a, IRON_M = 0x63666c, HIDE_D = 0x3a1d0e, DARK = 0x160e0c, HAND = 0.38;
   const R = restArm(b, 1, HAND);
-  // cabo deitado atravessando a frente do quadril, cabeça para o lado esquerdo, como no sprite: só assim o cabo passa ao alcance
-  // da mão esquerda (apontado para a frente ele ficava a 1,2 do ombro esquerdo, e o braço alcança 0,84)
-  const dir = new THREE.Vector3(-1, 0.02, 0.1).normalize();
+  // em guarda: cabo na diagonal diante do corpo, da mão direita no quadril até a cabeça do machado acima do ombro esquerdo; o cabo
+  // passa perto do ombro esquerdo, ao alcance da mão (o braço alcança 0,84)
+  const dir = new THREE.Vector3(-0.78, 0.66, 0.08).normalize();
   const aim = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
-  const HEAD = 0.95, BLADE = 1.1;
+  const HEAD = 0.95, BLADE = 1.1 + Math.PI / 4;
   const axeG: G[] = [
     at(cyl(0.032, 0.036, 1.5, 0x6a4024, 7), 0, 0.4, 0),
     at(stud(0.05, IRON_M, IRON_D, 1, 1, 1, 0), 0, -0.36, 0),
     at(cyl(0.04, 0.04, 0.18, HIDE_D, 7), 0, 0.42, 0),
     at(cyl(0.065, 0.065, 0.28, IRON_D, 8), 0, HEAD, 0),
     at(cone(0.05, 0.12, IRON_M, 6, IRON_D), 0, HEAD + 0.2, 0),
-    at(cyl(0.05, 0.05, 0.16, DARK, 8), 0, HEAD, 0, 0, 0, Math.PI / 2),
+    // miolo escuro ligando as duas lâminas, girado junto com elas
+    cyl(0.06, 0.06, 0.22, DARK, 8).rotateZ(Math.PI / 2).rotateY(Math.PI / 2 + BLADE).translate(0, HEAD, 0),
   ];
   // lâmina em meia-lua: na forma, x ao longo do cabo e y para fora; o gume (fora) é claro
   const moon = new THREE.Shape();
@@ -345,7 +346,7 @@ function orcAxe(b: Builder): void {
     g.rotateY(s > 0 ? Math.PI / 2 + BLADE : -Math.PI / 2 + BLADE); // lâminas em pé: para cima e para baixo do cabo
     axeG.push(at(g, 0, HEAD, 0));
   }
-  // machado deslizado para a frente: a mão direita segura perto do pomo e a esquerda no meio do cabo, longe da lâmina
+  // a mão direita segura perto do pomo e a esquerda no meio do cabo, longe da lâmina
   b.add("weapon", ...axeG.map((g) => g.rotateX(Math.PI).translate(0, -0.3, 0)));
-  b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.68 };
+  b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.6 };
 }

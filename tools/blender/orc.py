@@ -77,11 +77,11 @@ def head():
         smooth(ear)
         paint(ear, lambda co, n: mix(SKIN_D, SKIN, 0.55 + 0.45 * n.z))
         parts["solid"].append(ear)
-        # presa grossa e curva subindo do lábio de baixo, abrindo para fora; base amarelada, ponta clara
-        tusk = tube("tusk", [(s * 0.072, -0.24, -0.105), (s * 0.085, -0.262, -0.06), (s * 0.103, -0.27, -0.02), (s * 0.122, -0.262, 0.012)],
-                    [0.026, 0.022, 0.013, 0.002], seg=8)
+        # presa cônica subindo do lábio de baixo, rente à boca e aberta para fora; a ponta fica abaixo e por fora do olho
+        tusk = tube("tusk", [(s * 0.082, -0.238, -0.11), (s * 0.095, -0.25, -0.085), (s * 0.11, -0.254, -0.06), (s * 0.125, -0.25, -0.04)],
+                    [0.027, 0.021, 0.012, 0.002], seg=8)
         smooth(tusk)
-        paint(tusk, lambda co, n: mix(hexc(0x9a8a62), TUSK, ss(-0.09, -0.02, co.z)))
+        paint(tusk, lambda co, n: mix(hexc(0x9a8a62), TUSK, ss(-0.1, -0.06, co.z)))
         parts["solid"].append(tusk)
         nost = ball("nostril", (s * 0.022, -0.238, -0.03), (0.012, 0.008, 0.008), seg=(6, 4))
         paint(nost, lambda co, n: DARK)
@@ -138,30 +138,39 @@ def torso():
         straps.append(st)
     buckle = ball("buckle", (0, -0.245, z0 + 0.285), (0.05, 0.02, 0.05), seg=(10, 6))
     paint(buckle, lambda co, n: mix(IRON_M, IRON_L, ss(-0.3, 0.6, n.z)))
-    # ombreira no ombro esquerdo, presa ao tronco (no braço giraria com a pegada do machado): uma cúpula de aço por cima do ombro,
-    # com aba virada e crista, e três lâminas curvas separadas descendo em volta do alto do braço, cada uma por fora da de cima.
+    # ombreira no ombro esquerdo, presa ao tronco (no braço giraria com a pegada do machado): cúpula de ferro escuro e enferrujado,
+    # três espetos grandes para cima e um para fora, aba escura com rebites e três lâminas curvas descendo em volta do braço.
     sx, sz = -SH_X, T + SH_Y
-    steel = lambda co, n: mix(IRON_D, IRON_M, 0.3 + 0.7 * ss(-0.3, 0.9, n.z))
-    dome = ball("pauldron", (sx - 0.02, 0.0, sz + 0.08), (0.2, 0.19, 0.1), rot=(0, -0.45, 0), seg=(16, 8))
+    cx = sx - 0.02
+    RUST = hexc(0x5a2a16)
+    steel = lambda co, n: mix(mix(IRON_D, IRON_M, 0.15 + 0.6 * ss(-0.3, 0.9, n.z)), RUST, 0.35 * ss(0.2, -0.6, n.z))
+    dome = ball("pauldron", (cx, 0.0, sz + 0.08), (0.2, 0.19, 0.1), rot=(0, -0.45, 0), seg=(16, 8))
     smooth(dome)
     paint(dome, steel)
-    rim = tube("rim", [(sx - 0.02 + 0.2 * math.cos(a) * math.cos(0.45) + 0.0, 0.19 * math.sin(a), sz + 0.08 - 0.2 * math.cos(a) * math.sin(0.45) * -1)
+    rim = tube("rim", [(cx + 0.2 * math.cos(a) * math.cos(0.45), 0.19 * math.sin(a), sz + 0.08 + 0.2 * math.cos(a) * math.sin(0.45))
                        for a in [k * 2 * math.pi / 16 for k in range(17)]], [0.018] * 17, seg=6, cap=False)
     smooth(rim)
-    paint(rim, lambda co, n: IRON_L)
-    crest = tube("crest", [(sx - 0.02, 0.15, sz + 0.13), (sx - 0.05, 0.0, sz + 0.2), (sx - 0.02, -0.15, sz + 0.13)], [0.02, 0.03, 0.02], seg=6,
-                 squash=(0.4, 1.0), ref=(0, 0, 1))
-    paint(crest, lambda co, n: mix(IRON_M, IRON_L, 0.5))
-    pad = [dome, rim, crest]
-    for i in range(3):  # lâminas: arcos em volta do braço, finos e altos, cada um mais baixo e mais aberto
+    paint(rim, lambda co, n: mix(IRON_D, IRON_M, 0.5))
+    pad = [dome, rim]
+    spike = lambda co, n, a, b: mix(IRON_D, IRON_L, ss(a, b, co.z) * 0.9)
+    for y, h in ((-0.1, 0.17), (0.0, 0.24), (0.1, 0.17)):  # espetos em fila sobre a cúpula, o do meio maior, inclinados para fora
+        base = (cx - 0.03, y, sz + 0.15)
+        tip = (cx - 0.03 - 0.45 * h, y * 1.25, sz + 0.15 + h)
+        sp = smooth(cone("spike", base, tip, 0.045, seg=7))
+        paint(sp, lambda co, n, a=base[2], b=tip[2]: spike(co, n, a, b))
+        pad.append(sp)
+    side = smooth(cone("spike", (cx - 0.16, 0.0, sz + 0.03), (cx - 0.33, 0.0, sz + 0.07), 0.04, seg=7))
+    paint(side, lambda co, n: mix(IRON_D, IRON_L, ss(cx - 0.18, cx - 0.33, co.x) * 0.9))
+    pad.append(side)
+    for i in range(3):  # lâminas: arcos em volta do braço, cada um mais baixo e mais aberto, borda de baixo enferrujada
         R, z = 0.165 + i * 0.022, sz - 0.02 - i * 0.075
-        pts = [(sx - 0.02 - R * math.cos(t), R * math.sin(t), z + 0.03 * math.cos(t)) for t in [-1.35 + k * 2.7 / 10 for k in range(11)]]
+        pts = [(cx - R * math.cos(t), R * math.sin(t), z + 0.03 * math.cos(t)) for t in [-1.35 + k * 2.7 / 10 for k in range(11)]]
         lm = smooth(tube("lame", pts, [0.045] * 11, seg=6, squash=(0.28, 1.0), ref=(0, 0, 1)))
-        paint(lm, lambda co, n, z=z: IRON_L if co.z < z - 0.032 else steel(co, n))
+        paint(lm, lambda co, n, z=z: RUST if co.z < z - 0.032 else steel(co, n))
         pad.append(lm)
     for ra in (-0.7, 0.0, 0.7):  # rebites na aba
-        rv = ball("rivet", (sx - 0.02 - 0.17 * math.cos(ra) * 0.92, 0.17 * math.sin(ra), sz + 0.1 - 0.17 * math.cos(ra) * 0.435), (0.016, 0.016, 0.016), seg=(6, 4))
-        paint(rv, lambda co, n: IRON_L)
+        rv = ball("rivet", (cx - 0.17 * math.cos(ra) * 0.92, 0.17 * math.sin(ra), sz + 0.1 - 0.17 * math.cos(ra) * 0.435), (0.016, 0.016, 0.016), seg=(6, 4))
+        paint(rv, lambda co, n: IRON_M)
         pad.append(rv)
     return {"torso": [t, buckle] + straps + pad}
 
