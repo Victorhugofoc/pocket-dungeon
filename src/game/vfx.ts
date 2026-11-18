@@ -883,6 +883,24 @@ export class Vfx {
     }
   }
 
+  /** M16-01: cria uma peça de cada (fora da vista do jogador não importa: `renderer.compile` compila tudo que está na
+   * cena), para os shaders compilarem no carregamento da zona e não no primeiro uso em combate. Chamar `clear` depois. */
+  warm(x: number, z: number): void {
+    const o = { color: 0xffffff, dur: 1 };
+    this.ring(x, z, { ...o, radius: 1, dust: 2 });
+    this.burst(x, 1, z, { ...o, radius: 1, light: 0 });
+    this.beam(x, 1, z, x + 2, 1, z, { ...o });
+    this.beam(x, 1, z, x + 2, 1, z, { ...o, flare: true });
+    this.lightning(x, 1, z, x + 2, 1, z, { ...o });
+    const tr = this.trail({ ...o });
+    for (let i = 0; i < 3; i++) tr.push(x + i, 1, z);
+    this.pillar(x, z, { ...o, radius: 1, height: 2 });
+    this.groundCrack(x, z, { ...o, radius: 1, scorch: 1 });
+    this.orbit(x, 1, z, { ...o, radius: 1 });
+    this.smoke(x, 1, z, { ...o, radius: 1 });
+    this.spikes(x, z, { ...o, radius: 1 });
+  }
+
   clear(): void {
     for (const l of this.live) { l.dispose(); l.t = -1; }
     this.live.length = 0;

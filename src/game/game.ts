@@ -43,6 +43,8 @@ import { Pipeline } from "./render";
 import { U } from "./shared";
 import { SUN_OFFSET, stepMotes } from "./air";
 import { buildWorld, driftSun, fireFlicker, setZoneAtmosphere, type WorldView } from "./world";
+import { FrameProbe } from "./perf";
+import { initLamps, updateLamps } from "./lamps";
 
 /** Cores dos efeitos das técnicas (M5-03): só visual, sem número de jogo */
 const TECH_FX = {
@@ -281,6 +283,8 @@ export class Game {
   /** de onde veio o golpe em curso (o "ataque básico" de quick_trigger) */
   private hitSource: KillSource = "other";
   fps = 60;
+  /** registro de tempo por quadro (F3, M16-01) */
+  probe: FrameProbe;
 
   constructor(private canvas: HTMLCanvasElement, textLayer: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -288,6 +292,7 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.camera = new THREE.PerspectiveCamera(38, 1, 1, 400);
     this.pipeline = new Pipeline(this.renderer, this.scene, this.camera);
+    this.probe = new FrameProbe(this.renderer);
     this.fx = new Fx(this.scene, textLayer);
     this.hazards = new RoomHazards({
       scene: this.scene,
@@ -310,6 +315,7 @@ export class Game {
     this.sun.shadow.normalBias = 0.05;
     this.sun.shadow.radius = 2.5;
     this.scene.add(this.hemi, this.sun, this.sun.target);
+    initLamps(this.scene);
 
     window.addEventListener("resize", () => this.resize());
     this.resize();
@@ -317,6 +323,7 @@ export class Game {
   }
 
   private resize(): void {
+    this.probe?.tag("resize");
     const w = window.innerWidth;
     const h = window.innerHeight;
     this.renderer.setPixelRatio(this.pixelRatio());
@@ -508,6 +515,18 @@ export class Game {
     this.sun.color.set(zone.sun);
     this.sun.intensity = zone.sunIntensity;
     setZoneAtmosphere(this.scene, zone);
+    // M16-01: compila os shaders da zona e dos efeitos agora, no carregamento, e não no primeiro golpe
+    // (e os modelos dos inimigos da zona e dos chefes: esculpidos uma vez, ver `chars/build.ts`)
+    this.fx.lib.warm(this.layout.spawn.x, this.layout.spawn.z);
+    const warmRigs = [...zone.enemies.map(([id]) => characterRig(id, "enemy")), characterRig(zone.enemies[0][0], "enemy", true),
+      ...Object.keys(BOSSES).map((id) => characterRig(id, "boss"))];
+    for (const r of warmRigs) {
+      r.root.position.set(this.layout.spawn.x, 0, this.layout.spawn.z);
+      this.scene.add(r.root);
+    }
+    this.pipeline.compile(this.scene, this.camera);
+    for (const r of warmRigs) disposeRig(r);
+    this.fx.lib.clear();
 
     this.boss = null;
     this.bossEngaged = false;
@@ -2632,6 +2651,7 @@ export class Game {
     const raw = Math.min(0.05, real);
     this.lastFrame = t;
     this.fps += (1 / Math.max(real, 0.001) - this.fps) * 0.05;
+    this.probe.begin();
     if (!this.started) {
       this.input.endFrame();
       return;
@@ -2659,7 +2679,9 @@ export class Game {
       this.updateCamera(dt);
     }
     this.input.endFrame();
+    updateLamps();
     this.pipeline.render();
     this.adaptResolution(raw);
+    this.probe.end(real * 1000, this.time);
   }
 }

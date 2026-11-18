@@ -545,6 +545,8 @@ export class Ui {
     r.hint.classList.toggle("hidden", !hint || !!this.overlay);
     if (this.frameN % 15 === 0 && !r.perf.classList.contains("hidden")) {
       r.perf.textContent = `${Math.round(g.fps)} fps · GPU ${g.pipeline.gpuMs < 0 ? "?" : g.pipeline.gpuMs.toFixed(1) + " ms"} · quality ${QUALITY[g.quality]} · ${g.pipeline.bufferSize.x}×${g.pipeline.bufferSize.y} (${Math.round(g.resScale * 100)}%)`;
+      const rep = g.probe.report();
+      r.perf.textContent += ` · frame ${rep.median} ms, worst ${rep.worst} ms, spikes ${rep.over2x}/${rep.frames}`;
     }
     if (this.frameN++ % 5 === 0) this.drawMinimap();
   }
