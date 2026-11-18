@@ -286,7 +286,7 @@ Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de 
 
 | ID | Inimigos | Ponto de atenção |
 |---|---|---|
-| M3-01 | goblin, orc | Mesma família (pele verde); goblin pequeno e curvado, orc largo com ombreira |
+| M3-01 | goblin, orc | Mesma família (pele verde); goblin pequeno e curvado, orc largo com ombreira Revisão 6 (usuário achou a 5 pior: "bundudo", nada medonho; mandou duas referências 3D): corpo refeito em pé, tronco em V fundo, coxas verdes sem calça e quadril estreito, pele verde-lima, braçadeiras e faixas nas canelas, cinto largo com fivela redonda, tanga em tiras, coque com rabo, ombreira de quatro placas cor de osso com miolo vermelho, forro de couro e chifres curvos; machado de duas lâminas numa mão só, caído ao lado (sem pegada de duas mãos), `scale` 1,3. Um crítico: ombreira grande demais, faixas enterradas na pele, verde escuro, machado de perfil (tudo corrigido). ~8,8 mil triângulos. |
 | M3-02 | swarm, splitter | Não humanoides: morcego com asas de membrana; gosma translúcida com ossos dentro |
 | M3-03 | archer, assassin | Esqueleto com manto; ninja com máscara de raposa |
 | M3-04 | spellcaster, summoner | Mantos; coroa de cristal; cabelo longo e livro |

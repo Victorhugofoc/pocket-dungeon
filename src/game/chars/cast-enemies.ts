@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { paint, prep } from "../flora";
 import { modelParts } from "./baked";
-import { type Builder, type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
+import { type Builder, type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
 
 export const ENEMIES: Record<string, Spec> = {
   // ------------------------------------------------ inimigos
@@ -141,10 +141,11 @@ export const ENEMIES: Record<string, Spec> = {
   // ficam esqueleto, postura e o machado (osso "weapon", pegada de duas mãos), que continua por código. A versão inteira por código
   // fica como orc_v1, para comparar.
   orc: (b) => {
-    b.bulk = 1.45; b.scale = 1.08; b.style = "swing"; b.rough = 0.65; b.glowColor = 0xe8442a;
-    b.lean = 0.3; b.crouch = 0.36; b.armOut = 0.14;
-    b.poseR = [-0.6, -0.8]; b.poseL = [-0.55, -0.8];
-    b.dims = { hipY: 0.84, headY: 0.6, shoulderY: 0.52, shoulderX: 0.41, arm: 0.4, hipX: 0.2, thigh: 0.38 };
+    // bruto ereto, peito em V e braços enormes caídos ao lado (referências 3D do usuário, 2026-11-18)
+    b.bulk = 1.45; b.scale = 1.3; b.style = "swing"; b.rough = 0.65; b.glowColor = 0xe8442a;
+    b.lean = 0.1; b.crouch = 0.16; b.armOut = 0.2;
+    b.poseR = [-0.2, -0.45]; b.poseL = [-0.05, -0.25];
+    b.dims = { hipY: 0.84, headY: 0.6, shoulderY: 0.52, shoulderX: 0.45, arm: 0.4, hipX: 0.2, thigh: 0.38 };
     for (const [key, g] of modelParts("orc")) {
       const [bone, layer] = key.split("@");
       if (layer === "lit") b.lit(bone, g);
@@ -316,21 +317,19 @@ export const ENEMIES: Record<string, Spec> = {
 function orcAxe(b: Builder): void {
   const IRON_D = 0x34363a, IRON_M = 0x63666c, HIDE_D = 0x3a1d0e, DARK = 0x160e0c, HAND = 0.38;
   const R = restArm(b, 1, HAND);
-  // em guarda: cabo na diagonal diante do corpo, da mão direita no quadril até a cabeça do machado acima do ombro esquerdo; o cabo
-  // passa perto do ombro esquerdo, ao alcance da mão (o braço alcança 0,84)
-  const dir = new THREE.Vector3(-0.78, 0.66, 0.08).normalize();
-  const aim = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
-  const HEAD = 0.95, BLADE = 1.1 + Math.PI / 4;
+  // machado de duas lâminas numa mão só, caído ao lado da perna com a cabeça à frente do pé (como as lâminas da referência 2D);
+  // modelado na vertical do mundo com a origem na mão: o cabo desce, o pomo fica logo acima do punho
+  const HEAD = 0.56, TILT = 0.45;
   const axeG: G[] = [
-    at(cyl(0.032, 0.036, 1.5, 0x6a4024, 7), 0, 0.4, 0),
-    at(stud(0.05, IRON_M, IRON_D, 1, 1, 1, 0), 0, -0.36, 0),
-    at(cyl(0.04, 0.04, 0.18, HIDE_D, 7), 0, 0.42, 0),
-    at(cyl(0.065, 0.065, 0.28, IRON_D, 8), 0, HEAD, 0),
-    at(cone(0.05, 0.12, IRON_M, 6, IRON_D), 0, HEAD + 0.2, 0),
-    // miolo escuro ligando as duas lâminas, girado junto com elas
-    cyl(0.06, 0.06, 0.22, DARK, 8).rotateZ(Math.PI / 2).rotateY(Math.PI / 2 + BLADE).translate(0, HEAD, 0),
+    at(cyl(0.03, 0.034, 0.88, 0x6a4024, 7), 0, 0.26, 0),
+    at(stud(0.048, IRON_M, IRON_D, 1, 1, 1, 0), 0, -0.2, 0),
+    at(cyl(0.038, 0.038, 0.16, HIDE_D, 7), 0, 0.0, 0),
+    at(cyl(0.062, 0.062, 0.26, IRON_D, 8), 0, HEAD, 0),
+    at(cone(0.045, 0.11, IRON_M, 6, IRON_D), 0, HEAD + 0.19, 0),
+    cyl(0.058, 0.058, 0.2, DARK, 8).rotateZ(Math.PI / 2).translate(0, HEAD, 0),
   ];
-  // lâmina em meia-lua: na forma, x ao longo do cabo e y para fora; o gume (fora) é claro
+  // lâmina em meia-lua: na forma, x ao longo do cabo e y para fora; o gume (fora) é claro. As lâminas abrem para os lados, de
+  // frente para a câmera alta; o cabo pende para fora para a lâmina de dentro não entrar na perna
   const moon = new THREE.Shape();
   moon.moveTo(-0.07, 0.03);
   moon.quadraticCurveTo(-0.2, 0.14, -0.27, 0.32);
@@ -341,12 +340,12 @@ function orcAxe(b: Builder): void {
     const g = prep(new THREE.ExtrudeGeometry(moon, { depth: 0.035, bevelEnabled: false, curveSegments: 6 }), false);
     g.translate(0, 0, -0.0175);
     paint(g, IRON_M, 0xd8dce2, 0.28, 0.4);
-    g.scale(1.05, 1.05, 1);
-    g.rotateZ(Math.PI / 2); // x da forma -> y do cabo; y da forma -> -x
-    g.rotateY(s > 0 ? Math.PI / 2 + BLADE : -Math.PI / 2 + BLADE); // lâminas em pé: para cima e para baixo do cabo
+    g.scale(0.85, 0.85, 1);
+    g.rotateZ(Math.PI / 2);
+    if (s < 0) g.rotateY(Math.PI);
     axeG.push(at(g, 0, HEAD, 0));
   }
-  // a mão direita segura perto do pomo e a esquerda no meio do cabo, longe da lâmina
-  b.add("weapon", ...axeG.map((g) => g.rotateX(Math.PI).translate(0, -0.3, 0)));
-  b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.6 };
+  // cabeça para baixo, inclinada para a frente e para fora
+  for (const g of axeG) g.rotateX(Math.PI).rotateX(-TILT).rotateZ(0.3);
+  b.add("foreR", ...hang(axeG, R.inv, HAND));
 }
