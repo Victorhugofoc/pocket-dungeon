@@ -10,6 +10,7 @@ import { MAX_SPELLS, SPELL_CAST } from "../data/spells";
 import { DR_BASE_HP, FROST, TECH_EVO } from "../data/techniques";
 import { KNOCK_DECAY, type Dot, type Enemy } from "./enemy";
 import type { Game } from "./game";
+import { ease, type BeamHandle, type MoveHandle, type TrailHandle } from "./vfx";
 
 /** Cor de cada spell no jogo (projétil, impacto e raio). */
 export const SPELL_COLOR: Record<string, number> = {
@@ -24,6 +25,25 @@ const EVO_COLOR = { firestorm: 0xff6a1a, firewave: 0xff7a1a, blizzard: 0xbfe6ff,
   rune_circle: 0xd8b0ff, earthen_ward: 0x8fe0a0 } as const;
 /** Spectrum: as 3 cores do raio dividido, com o lado de cada uma (techniques.lua `SPECTRUM_RAYS`) */
 const SPECTRUM_RAYS = [["red", -1, 0xff5a3a], ["yellow", 0, 0xffe14a], ["blue", 1, 0x7fc8ff]] as const;
+/** Arcane Bolt: miolo quase branco e violeta escuro das fagulhas e do selo (M5-08) */
+const ARCANE_CORE = 0xf4e6ff;
+const ARCANE_DEEP = 0x8a4dff;
+/** orbe do Arcane Bolt: lilás claro, não branco, para o violeta mandar */
+const ARCANE_ORB = 0xd6b0ff;
+/** Chain Lightning: corpo amarelo do raio e miolo branco-quente */
+const BOLT_BODY = 0xffd84a;
+const BOLT_CORE = 0xfffbe6;
+/** s entre um salto e o próximo no desenho da cadeia */
+const CHAIN_STEP = 0.045;
+/** altura do raio: acima do meio do corpo, para os inimigos não o cobrirem vistos de cima */
+const ARC_Y = 1.7;
+/** Prism Beam: halo dourado e corpo do raio */
+const PRISM_HALO = 0xffd890;
+const PRISM_GOLD = 0xfff0b8;
+const PRISM_HALO_POWER = 1;
+const PRISM_CORE_POWER = 0.7;
+const PRISM_FRINGE = [0xff5ad0, 0x4ae0ff];
+
 /** tiro do ataque básico com o Arcane Strike pronto (D-215: roxo e maior) */
 export const ARCANE_CHARGED = { color: EVO_COLOR.arcane_strike, size: 1.35 };
 
@@ -38,6 +58,11 @@ interface SpellProjectile {
   color: number;
   /** Chain Lightning: o dardo rápido que começa a cadeia no primeiro inimigo que toca */
   chain?: boolean;
+  /** efeitos do voo (M5-08): rastro e pontos em órbita, encerrados no `free` */
+  trail?: TrailHandle;
+  motes?: MoveHandle;
+  /** Chain Lightning: relâmpago da mão até o dardo */
+  zap?: BeamHandle;
 }
 
 /** Prism Beam aceso: sai do herói e gira com a mira (techniques.lua `Tech.beam`). */
@@ -47,11 +72,14 @@ interface Beam {
   time: number;
   tickLeft: number;
   dx: number; dz: number;
-  glow: THREE.Mesh;
-  core: THREE.Mesh;
+  /** halo largo e quente, raio branco por cima e o prisma girando na mão (M5-08) */
+  halo: BeamHandle;
+  core: BeamHandle;
+  fringe: BeamHandle[];
+  prism: MoveHandle;
   /** Spectrum: distância do herói até onde o raio se divide (o primeiro inimigo), ou null sem inimigo na linha */
   split: number | null;
-  rays: THREE.Mesh[];
+  rays: BeamHandle[];
 }
 
 /** Cyclone em pé (techniques.lua `world.vortexes`): parado na mira, puxa e fere a cada tique. */
@@ -335,6 +363,8 @@ export class SpellCaster {
   private walls: Wall[] = [];
   private storms: Storm[] = [];
   private pending: PendingCast[] = [];
+  /** efeitos atrasados (`later`) */
+  private delayed: { t: number; fn: () => void }[] = [];
   /** Rune Circle: as linhas desenhadas (reaproveitadas a cada quadro) e o tique das linhas de cada espaço */
   private lines: THREE.Mesh[] = [];
   private runeTicks = new Map<number, number>();
@@ -387,6 +417,13 @@ export class SpellCaster {
       const st = this.stats[pc.slot];
       const g = this.game;
       if (st && g.playerAlive && this.cast(pc.slot, st)) g.fx.text(g.player.x, 2.8, g.player.z, "Echo", "frost");
+    }
+    for (let k = this.delayed.length - 1; k >= 0; k--) {
+      const d = this.delayed[k];
+      d.t -= dt;
+      if (d.t > 0) continue;
+      this.delayed.splice(k, 1);
+      d.fn();
     }
     this.updateShots(dt);
     this.updateBeams(dt);
@@ -480,13 +517,47 @@ export class SpellCaster {
       mesh.scale.setScalar(SPELL_CAST.ballSize);
       mesh.position.set(p.x, SPELL_CAST.height, p.z);
       g.scene.add(mesh);
-      this.shots.push({ slot: i, id: st.id, st, x: p.x, z: p.z, dx: Math.sin(a), dz: Math.cos(a), remaining: st.range,
-        speed: st.speed ?? 20, mesh, color });
+      const shot: SpellProjectile = { slot: i, id: st.id, st, x: p.x, z: p.z, dx: Math.sin(a), dz: Math.cos(a), remaining: st.range,
+        speed: st.speed ?? 20, mesh, color };
+      if (st.id === "arcane_bolt") this.arcaneFlight(shot);
+      this.shots.push(shot);
     }
     p.facing = base;
     g.audio.play("tech");
-    g.fx.burst(p.x + dx * 0.8, SPELL_CAST.height, p.z + dz * 0.8, color, 12, 4, 0.12, 0.3, 2);
+    if (st.id === "arcane_bolt") this.arcaneCast(p.x + dx * 0.9, p.z + dz * 0.9);
+    else g.fx.burst(p.x + dx * 0.8, SPELL_CAST.height, p.z + dz * 0.8, color, 12, 4, 0.12, 0.3, 2);
     return true;
+  }
+
+  // ---------------------------------------------------------------- Arcane Bolt (M5-08)
+  /** Orbe violeta de miolo branco, rastro curto e três fagulhas girando em volta, de pé como um giroscópio. */
+  private arcaneFlight(pr: SpellProjectile): void {
+    const lib = this.game.fx.lib;
+    const color = SPELL_COLOR.arcane_bolt;
+    pr.mesh.material = this.mat(ARCANE_ORB);
+    pr.mesh.scale.setScalar(SPELL_CAST.ballSize * 0.45);
+    pr.trail = lib.trail({ color: ARCANE_DEEP, core: color, width: 0.5, life: 0.08, head: 0.7, sheds: 14 });
+    pr.motes = lib.orbit(pr.x, SPELL_CAST.height, pr.z, { radius: 0.45, count: 3, color: ARCANE_DEEP, core: ARCANE_CORE,
+      speed: 2.6, tilt: 0.6, size: 0.36, bob: 0, dur: Infinity });
+  }
+
+  /** Lançamento: clarão violeta na mão e um anel pequeno que se abre no chão. */
+  private arcaneCast(x: number, z: number): void {
+    const lib = this.game.fx.lib;
+    lib.burst(x, SPELL_CAST.height, z, { radius: 0.9, color: SPELL_COLOR.arcane_bolt, core: ARCANE_CORE, rays: 5, sparks: 6, light: 1, dur: 0.22 });
+    lib.ring(x, z, { radius: 1.1, color: ARCANE_DEEP, core: ARCANE_CORE, width: 0.18, dur: 0.3, power: 0.7 });
+  }
+
+  /** Impacto: implosão (anel que fecha), depois clarão com raios, onda no raio da área e um selo rúnico que gira e apaga. */
+  private arcaneImpact(x: number, z: number, r: number): void {
+    const g = this.game;
+    const lib = g.fx.lib;
+    const color = SPELL_COLOR.arcane_bolt;
+    lib.burst(x, 1, z, { radius: Math.max(1.4, r * 0.75), color: ARCANE_DEEP, core: color, rays: 7, sparks: 14, light: 2.6, dur: 0.38 });
+    lib.ring(x, z, { radius: r, color, core: ARCANE_CORE, width: 0.7, from: 0.15, fill: 0.3, dust: 4, dur: 0.3 });
+    lib.ring(x, z, { radius: r * 0.55, color: ARCANE_DEEP, core: color, width: 0.2, from: 0.9, dur: 0.3, curve: "fade", power: 0.8 });
+    lib.orbit(x, 0.35, z, { radius: r * 0.5, count: 5, color: ARCANE_DEEP, core: ARCANE_CORE, speed: -1.4, tilt: 0, size: 0.32, bob: 0.05, dur: 0.32 });
+    g.fx.addShake(0.1);
   }
 
   /**
@@ -498,16 +569,21 @@ export class SpellCaster {
     const p = g.player;
     const { dx, dz } = this.aimDir();
     const color = SPELL_COLOR.chain_lightning;
-    const mesh = new THREE.Mesh(BALL_GEO, this.mat(color));
-    mesh.scale.set(SPELL_CAST.ballSize * 0.45, SPELL_CAST.ballSize * 0.45, SPELL_CAST.ballSize * 2.2);
+    const mesh = new THREE.Mesh(BALL_GEO, this.mat(BOLT_CORE));
+    mesh.scale.set(SPELL_CAST.ballSize * 0.35, SPELL_CAST.ballSize * 0.35, SPELL_CAST.ballSize * 2.4);
     mesh.rotation.y = Math.atan2(dx, dz);
     mesh.position.set(p.x, SPELL_CAST.height, p.z);
     g.scene.add(mesh);
+    // o dardo leva um ou dois quadros: em vez de um fuso, um relâmpago esticado da mão até ele
+    mesh.visible = false;
+    const hx = p.x + dx * 0.6, hz = p.z + dz * 0.6;
+    const zap = g.fx.lib.lightning(hx, ARC_Y, hz, hx, ARC_Y, hz, { color: BOLT_BODY, core: BOLT_CORE, width: 0.3, branches: 2,
+      jag: 0.12, dur: Infinity, curve: "hold", power: 1.4 });
     this.shots.push({ slot: i, id: st.id, st, x: p.x, z: p.z, dx, dz, remaining: st.range, speed: SPELL_CAST.chainBoltSpeed,
-      mesh, color, chain: true });
+      mesh, color, chain: true, zap });
     p.facing = Math.atan2(dx, dz);
     g.audio.play("tech");
-    g.fx.burst(p.x + dx * 0.8, SPELL_CAST.height, p.z + dz * 0.8, color, 10, 5, 0.1, 0.25, 0);
+    g.fx.lib.burst(p.x + dx * 0.8, SPELL_CAST.height, p.z + dz * 0.8, { radius: 0.8, color: BOLT_BODY, core: BOLT_CORE, rays: 6, sparks: 6, light: 1.2, dur: 0.16 });
     return true;
   }
 
@@ -527,12 +603,13 @@ export class SpellCaster {
       hit.add(e);
       const cx = e.x;
       const cz = e.z;
-      this.arc(px, pz, cx, cz, count);
+      this.arc(px, pz, cx, cz, count, (count - 1) * CHAIN_STEP);
       g.spellHit(e, st.damage);
       // Static Field: chance de acertar o primeiro alvo duas vezes
       if (count === 1 && st.doubleHit && !e.dead && Math.random() < st.doubleHit) {
         g.spellHit(e, st.damage);
         g.fx.text(cx, 2.6, cz, "x2", "frost");
+        g.fx.lib.burst(cx, 1.1, cz, { radius: 1.6, color: BOLT_BODY, core: BOLT_CORE, rays: 9, sparks: 14, light: 2.2, dur: 0.3 });
       }
       let next: Enemy | null = null;
       let nd = Infinity;
@@ -549,46 +626,61 @@ export class SpellCaster {
     g.fx.addShake(0.1);
   }
 
-  /** Um salto do raio: linha em zigue-zague e clarão no alvo. */
-  private arc(x0: number, z0: number, x1: number, z1: number, n: number): void {
-    const fx = this.game.fx;
+  /**
+   * Um salto do raio (M5-08): relâmpago da biblioteca, que se redesenha e pisca, com clarão e faíscas no alvo. `delay`
+   * atrasa só o desenho (o dano já entrou), para a cadeia se ler como um raio correndo de alvo em alvo.
+   */
+  private arc(x0: number, z0: number, x1: number, z1: number, n: number, delay = 0): void {
+    const g = this.game;
+    const lib = g.fx.lib;
+    const life = 0.26 + Math.min(n, 4) * 0.02;
+    const dur = life + delay;
     const len = Math.hypot(x1 - x0, z1 - z0);
-    const nx = -(z1 - z0) / (len || 1);
-    const nz = (x1 - x0) / (len || 1);
-    const parts = Math.max(3, Math.round(len / 1.2));
-    let ax = x0;
-    let az = z0;
-    for (let k = 1; k <= parts; k++) {
-      const t = k / parts;
-      const j = k === parts ? 0 : (Math.random() - 0.5) * Math.min(1.4, len * 0.25);
-      const bx = x0 + (x1 - x0) * t + nx * j;
-      const bz = z0 + (z1 - z0) * t + nz * j;
-      fx.streak(ax, az, bx, bz, 0.6, 0xffe14a, 0.14 + n * 0.03);
-      fx.streak(ax, az, bx, bz, 0.2, 0xfffbe0, 0.22 + n * 0.03);
-      ax = bx;
-      az = bz;
-    }
-    fx.burst(x1, 1.1, z1, 0xfff29a, 10, 5, 0.1, 0.3, 0);
-    fx.flashLight(x1, 1.4, z1, 0xfff0a0, 1.6, 0.18);
+    lib.lightning(x0, ARC_Y, z0, x1, ARC_Y, z1, {
+      color: BOLT_BODY, core: BOLT_CORE, dur, width: 0.3, branches: len > 3 ? 4 : 2, jag: 0.16, power: 1.2,
+      curve: (t) => { const s = t * dur - delay; return s < 0 ? 0 : ease("flash", s / life); },
+    });
+    this.later(delay, () => {
+      lib.burst(x1, ARC_Y, z1, { radius: 1.1, color: BOLT_BODY, core: BOLT_CORE, rays: 6, sparks: 10, light: 1.8, dur: 0.24 });
+      lib.ring(x1, z1, { radius: 1.3, color: BOLT_BODY, core: BOLT_CORE, width: 0.24, dur: 0.22, power: 0.8 });
+    });
   }
 
-  /** techniques.lua `Tech.beam.cast`: raio que sai do herói e gira com a mira; relançar troca o raio aceso. */
+  /** Efeito marcado para daqui a `t` s (tempo do jogo). */
+  private later(t: number, fn: () => void): void {
+    if (t <= 0) fn();
+    else this.delayed.push({ t, fn });
+  }
+
+  /**
+   * techniques.lua `Tech.beam.cast`: raio que sai do herói e gira com a mira; relançar troca o raio aceso. Visual (M5-08):
+   * halo largo e dourado, raio branco-quente por cima com ruído correndo para a ponta, prisma de três pontos girando na mão
+   * e clarão onde o raio sai; Spectrum abre em três raios de cor no primeiro inimigo.
+   */
   private castBeam(i: number, st: SpellStats): boolean {
     const g = this.game;
+    const lib = g.fx.lib;
+    const p = g.player;
     for (let k = this.beams.length - 1; k >= 0; k--) if (this.beams[k].slot === i) this.freeBeam(k);
-    const mk = (color: number, opacity: number) => {
-      const m = new THREE.Mesh(BEAM_GEO, new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-      }));
-      m.renderOrder = 3;
-      g.scene.add(m);
-      return m;
-    };
     const { dx, dz } = this.aimDir();
-    const rays = st.evolution === "spectrum" ? SPECTRUM_RAYS.map(([, , c]) => mk(c, 0.9)) : [];
-    this.beams.push({ slot: i, st, time: st.duration ?? 1, tickLeft: 0, dx, dz,
-      glow: mk(0xffc860, 0.4), core: mk(SPELL_COLOR.prism_beam, 0.95), split: null, rays });
+    const w = st.width ?? 1;
+    const y = SPELL_CAST.height;
+    const x0 = p.x + dx * 0.6, z0 = p.z + dz * 0.6, x1 = p.x + dx * st.range, z1 = p.z + dz * st.range;
+    const halo = lib.beam(x0, y, z0, x1, y, z1, { color: PRISM_HALO, core: PRISM_GOLD, width: w * 1.1, flow: 7, flare: false,
+      dur: Infinity, power: PRISM_HALO_POWER });
+    const core = lib.beam(x0, y, z0, x1, y, z1, { color: PRISM_GOLD, core: 0xffffff, width: w * 0.42, flow: 16, dur: Infinity,
+      power: PRISM_CORE_POWER });
+    // franjas de prisma: vermelho de um lado e azul do outro, finas, coladas ao raio
+    const fringe = PRISM_FRINGE.map((c) => lib.beam(x0, y, z0, x1, y, z1, { color: c, width: w * 0.2, flow: 10, flare: false,
+      dur: Infinity, power: 0 }));
+    const prism = lib.orbit(x0, y, z0, { radius: 0.38, count: 3, color: PRISM_GOLD, core: 0xffffff, speed: 1.6, tilt: 1.4, size: 0.22,
+      bob: 0, dur: Infinity });
+    const rays = st.evolution === "spectrum"
+      ? SPECTRUM_RAYS.map(([, , c]) => lib.beam(x0, y, z0, x0, y, z0, { color: c, width: w * 0.22, flow: 14, dur: Infinity, power: 0 }))
+      : [];
+    lib.burst(x0, y, z0, { radius: 1.4, color: PRISM_HALO, core: 0xffffff, rays: 8, sparks: 10, light: 2.2, dur: 0.3 });
+    lib.ring(p.x, p.z, { radius: 1.8, color: PRISM_HALO, core: PRISM_GOLD, width: 0.3, from: 0.3, dur: 0.35 });
+    this.beams.push({ slot: i, st, time: st.duration ?? 1, tickLeft: 0, dx, dz, halo, core, fringe, prism, split: null, rays });
     g.audio.play("tech");
     return true;
   }
@@ -614,35 +706,39 @@ export class SpellCaster {
       }
       // Spectrum: o raio para no primeiro inimigo e se abre em 3 cores dali
       const len = b.split ?? b.st.range;
-      const w = b.st.width ?? 1;
       const ang = Math.atan2(b.dx, b.dz);
-      const fade = Math.min(1, b.time / 0.25);
-      b.rays.forEach((m, n) => {
-        m.visible = b.split !== null;
-        if (b.split === null) return;
-        const ra = ang - SPECTRUM_RAYS[n][1] * (b.st.splitAngle ?? 0);
-        m.position.set(p.x + b.dx * b.split, SPELL_CAST.height, p.z + b.dz * b.split);
-        m.rotation.set(0, ra, 0);
-        m.scale.set(w * 0.5 * (0.85 + Math.random() * 0.3), 1, b.st.splitLength ?? 1);
-        (m.material as THREE.MeshBasicMaterial).opacity = 0.9 * fade;
-        if (Math.random() < 0.4) {
-          const t = Math.random() * (b.st.splitLength ?? 1);
-          g.fx.glow(m.position.x + Math.sin(ra) * t, SPELL_CAST.height, m.position.z + Math.cos(ra) * t, SPECTRUM_RAYS[n][2],
-            0.45, 0.25, 0, 0.5, 0);
-        }
+      // acende em 0,08 s e apaga nos últimos 0,25 s
+      const total = b.st.duration ?? 1;
+      const fade = Math.min(1, b.time / 0.25, (total - b.time) / 0.08 + 0.3);
+      const y = SPELL_CAST.height;
+      const x0 = p.x + b.dx * 0.6, z0 = p.z + b.dz * 0.6;
+      const x1 = p.x + b.dx * len, z1 = p.z + b.dz * len;
+      b.halo.set(x0, y, z0, x1, y, z1);
+      b.core.set(x0, y, z0, x1, y, z1);
+      b.halo.power = PRISM_HALO_POWER * fade;
+      b.core.power = PRISM_CORE_POWER * fade;
+      // franjas deslocadas de lado, na perpendicular do raio no chão
+      b.fringe.forEach((f, n) => {
+        const o = (n === 0 ? -1 : 1) * (b.st.width ?? 1) * 0.26;
+        f.set(x0 - b.dz * o, y, z0 + b.dx * o, x1 - b.dz * o, y, z1 + b.dx * o);
+        f.power = 0.9 * fade;
       });
-      const flick = 0.85 + Math.random() * 0.3;
-      const parts: [THREE.Mesh, number, number][] = [[b.glow, w * 1.6 * flick, 0.4], [b.core, w * 0.45, 0.95]];
-      for (const [m, width, op] of parts) {
-        m.position.set(p.x + b.dx * 0.5, SPELL_CAST.height, p.z + b.dz * 0.5);
-        m.rotation.set(0, ang, 0);
-        m.scale.set(width, 1, len);
-        (m.material as THREE.MeshBasicMaterial).opacity = op * fade;
+      b.prism.move(x0, y, z0);
+      b.prism.power = fade;
+      // a ponta queima o chão por onde passa; centelhas correm pelo raio para fora
+      if (Math.random() < dt * 30) g.fx.glow(x1, 0.15, z1, PRISM_HALO, 0.9, 0.35, 0, 0.2, 0);
+      for (let n = Math.floor(dt * 40 + Math.random()); n > 0; n--) {
+        const t = Math.random() * len * 0.5, sp = 22 + Math.random() * 10, off = (Math.random() - 0.5) * (b.st.width ?? 1) * 0.5;
+        g.fx.glow(x0 + b.dx * t - b.dz * off, y, z0 + b.dz * t + b.dx * off, Math.random() < 0.5 ? 0xffffff : PRISM_GOLD, 0.35 * fade,
+          Math.min(0.3, (len - t) / sp), b.dx * sp, 0, b.dz * sp);
       }
-      if (Math.random() < 0.6) {
-        const t = Math.random() * len;
-        g.fx.glow(p.x + b.dx * t, SPELL_CAST.height, p.z + b.dz * t, 0xfff6d8, 0.5, 0.25, 0, 0.6, 0);
-      }
+      b.rays.forEach((ray, n) => {
+        if (b.split === null) { ray.power = 0; return; }
+        const ra = ang - SPECTRUM_RAYS[n][1] * (b.st.splitAngle ?? 0);
+        const sl = b.st.splitLength ?? 1;
+        ray.set(x1, y, z1, x1 + Math.sin(ra) * sl, y, z1 + Math.cos(ra) * sl);
+        ray.power = fade;
+      });
     }
   }
 
@@ -721,10 +817,8 @@ export class SpellCaster {
 
   private freeBeam(k: number): void {
     const b = this.beams[k];
-    for (const m of [b.glow, b.core, ...b.rays]) {
-      m.removeFromParent();
-      (m.material as THREE.Material).dispose();
-    }
+    for (const h of [b.halo, b.core, ...b.fringe, ...b.rays]) h.kill(0.2);
+    b.prism.kill(0.2);
     this.beams.splice(k, 1);
   }
 
@@ -1836,13 +1930,24 @@ export class SpellCaster {
       }
       if (done) {
         if (pr.chain) {
-          if (target) this.chainFrom(pr.st, target, pr.x - pr.dx * 0.6, pr.z - pr.dz * 0.6);
-          else g.fx.burst(pr.x, SPELL_CAST.height, pr.z, pr.color, 8, 3, 0.1, 0.25, 0); // errou: apaga
+          // o primeiro salto sai da mão do herói: o dardo leva um ou dois quadros e o que se lê é o raio saindo dele
+          if (target) this.chainFrom(pr.st, target, g.player.x + pr.dx * 0.6, g.player.z + pr.dz * 0.6);
+          else g.fx.lib.burst(pr.x, SPELL_CAST.height, pr.z, { radius: 0.6, color: BOLT_BODY, core: BOLT_CORE, rays: 4, sparks: 5, dur: 0.18 }); // errou: apaga
         } else this.impact(pr);
         this.free(pr);
         this.shots.splice(k, 1);
       } else {
         pr.mesh.position.set(pr.x, SPELL_CAST.height, pr.z);
+        if (pr.zap) {
+          const p = g.player;
+          pr.zap.set(p.x + pr.dx * 0.6, ARC_Y, p.z + pr.dz * 0.6, pr.x, ARC_Y, pr.z);
+          continue;
+        }
+        if (pr.trail) {
+          pr.trail.push(pr.x, SPELL_CAST.height, pr.z);
+          pr.motes?.move(pr.x, SPELL_CAST.height, pr.z);
+          continue;
+        }
         g.fx.glow(pr.x, SPELL_CAST.height, pr.z, pr.color, SPELL_CAST.ballSize * 5, 0.25, -pr.dx * 1.5, 0.3, -pr.dz * 1.5);
         if (Math.random() < 0.5) g.fx.spark(pr.x, SPELL_CAST.height, pr.z, pr.color, 0.1, 0.3, 0.8);
       }
@@ -1860,6 +1965,10 @@ export class SpellCaster {
       if (st.id === "fireball") this.applyBurn(e, st, pr.slot);
       g.spellHit(e, st.damage);
       if (st.id === "iceball" && !e.dead) this.applySlow(e, st.slow ?? 0, st.slowDuration ?? 0);
+    }
+    if (st.id === "arcane_bolt") {
+      this.arcaneImpact(pr.x, pr.z, r);
+      return;
     }
     const fire = st.id === "fireball";
     g.fx.shockwave(pr.x, pr.z, r, pr.color, 0.4);
@@ -1918,6 +2027,9 @@ export class SpellCaster {
 
   private free(pr: SpellProjectile): void {
     pr.mesh.removeFromParent();
+    pr.trail?.kill();
+    pr.motes?.kill(0.08);
+    pr.zap?.kill(0.06);
   }
 
   /** Limpa projéteis, raios e Ecos (troca de zona, fim de partida). A recarga continua, como lá. */
@@ -1942,6 +2054,7 @@ export class SpellCaster {
     }
     this.walls.length = 0;
     this.pending.length = 0;
+    this.delayed.length = 0;
   }
 
   /** Partida nova: sem projéteis e recargas zeradas (game_state.lua `newSpellSlot`). */
