@@ -64,6 +64,18 @@ const VENOM_CORE = 0xe4ff9a;
 const VENOM_CLOUD = 0x9ad63a;
 /** Cyclone: miolo branco do vento */
 const WIND_CORE = 0xffffff;
+/** Quake Totem: pedra, poeira e as fendas em brasa da batida */
+const QUAKE_STONE = 0x8b8072;
+const QUAKE_DUST = 0x8a7a62;
+const QUAKE_DEEP = 0xc8501a;
+const QUAKE_CORE = 0xffe0a0;
+/** Healing Field: miolo claro da cura */
+const HEAL_CORE = 0xeaffef;
+/** Blade Orbit: aço frio e o brilho do fio */
+const BLADE_STEEL = 0xa8c0e8;
+const BLADE_CORE = 0xffffff;
+/** Rune Traps: miolo da runa */
+const RUNE_CORE = 0xf0e8ff;
 
 /** tiro do ataque básico com o Arcane Strike pronto (D-215: roxo e maior) */
 export const ARCANE_CHARGED = { color: EVO_COLOR.arcane_strike, size: 1.35 };
@@ -137,6 +149,8 @@ interface Totem {
   /** Earthen Ward: golpes que o ídolo ainda aguenta e o anel do raio de atração */
   hits?: number;
   lure?: GroundRing;
+  /** a área da batida marcada no chão enquanto o totem está de pé (M5-08) */
+  area?: VfxHandle;
   /** tremor do golpe levado, de 1 a 0 */
   shake: number;
 }
@@ -157,6 +171,8 @@ interface Field {
   edge: THREE.MeshBasicMaterial;
   clock: THREE.Mesh;
   spin: THREE.Object3D;
+  /** luzes de cura girando devagar dentro do anel (M5-08) */
+  motes: MoveHandle;
 }
 
 /** Blade Orbit (techniques.lua `world.orbits`): lâminas girando em volta do herói. */
@@ -173,6 +189,8 @@ interface Orbit {
   group: THREE.Group;
   blades: THREE.Object3D[];
   clock: THREE.Mesh;
+  /** rastro de cada lâmina no giro (M5-08) */
+  trails: TrailHandle[];
 }
 
 /** Rune Traps (techniques.lua `world.runes`): runa no chão; arma depois de `arm` s e estoura no primeiro inimigo. */
@@ -187,6 +205,10 @@ interface Rune {
   clock: THREE.Mesh;
   /** sumindo (trocada pela mais nova ou vencida): segundos que faltam para sumir */
   fade?: number;
+  /** já armou (o clarão de armar sai uma vez) */
+  armed?: boolean;
+  /** clarão ao armar, de 1 a 0 */
+  flash: number;
 }
 
 /** Firestorm (behaviors.lua `world.fireAuras`): aura de fogo que segue o herói e fere a cada tique. */
@@ -1258,11 +1280,29 @@ export class SpellCaster {
     // Earthen Ward: anel do raio de atração e os golpes que aguenta
     const lure = ward ? this.groundRing(EVO_COLOR.earthen_ward, st.lureRadius!, a.x, a.z) : undefined;
     this.totems.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 1, age: 0, bob: 0, group, runes,
-      hits: ward ? st.wardHits : undefined, lure, shake: 0 });
-    g.fx.burst(a.x, 0.3, a.z, 0x9a8a72, 22, 5, 0.18, 0.5, 10);
+      hits: ward ? st.wardHits : undefined, lure, shake: 0,
+      area: g.fx.lib.ring(a.x, a.z, { radius: st.radius, color: ward ? EVO_COLOR.earthen_ward : SPELL_COLOR.quake_totem, core: QUAKE_CORE, width: 0.22,
+        from: 1, fill: 0.1, dust: 0, dur: Infinity, power: 0.4 }) });
+    // M5-08: o totem rompe o chão, com pedras brotando em volta e poeira
+    const lib = g.fx.lib;
+    const tint = ward ? EVO_COLOR.earthen_ward : SPELL_COLOR.quake_totem;
+    lib.spikes(a.x, a.z, { radius: 1.5, count: 8, height: 1, color: QUAKE_STONE, core: 0x2a160a, dur: 0.75 });
+    lib.ring(a.x, a.z, { radius: 2.4, color: tint, core: QUAKE_CORE, width: 0.4, from: 0.2, dust: 8, dur: 0.35 });
+    this.dustPuffs(a.x, a.z, 1.3, 4);
     g.fx.addShake(0.08);
     g.audio.play("tech");
     return true;
+  }
+
+  /** Poeira de pedra em volta de um ponto (Quake Totem). */
+  private dustPuffs(x: number, z: number, r: number, n: number): void {
+    const lib = this.game.fx.lib;
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + Math.random() * 0.8;
+      const d = r * (0.7 + 0.3 * Math.random());
+      lib.smoke(x + Math.cos(a) * d, 0.35, z + Math.sin(a) * d, { radius: 0.9 + Math.random() * 0.5, color: QUAKE_DUST, alpha: 0.32,
+        rise: 0.45, drift: [Math.cos(a) * 0.8, Math.sin(a) * 0.8], dur: 0.7 + Math.random() * 0.3 });
+    }
   }
 
   /** techniques.lua `updateTotem`: bate a cada tique enquanto dura; com o Aftershock, chance de bater de novo. */
@@ -1274,9 +1314,10 @@ export class SpellCaster {
       t.age += dt;
       if (t.hits !== undefined && t.hits <= 0) {
         // Earthen Ward: o ídolo quebrou
-        g.fx.burst(t.x, 1.2, t.z, 0x8b8072, 40, 7, 0.22, 0.7, 12);
-        g.fx.burst(t.x, 1.4, t.z, EVO_COLOR.earthen_ward, 16, 5, 0.14, 0.5, 4);
-        g.fx.shockwave(t.x, t.z, 2, EVO_COLOR.earthen_ward, 0.35);
+        g.fx.burst(t.x, 1.2, t.z, QUAKE_STONE, 40, 7, 0.22, 0.7, 12);
+        g.fx.lib.burst(t.x, 1.4, t.z, { radius: 1.4, color: EVO_COLOR.earthen_ward, core: QUAKE_CORE, rays: 0, sparks: 12, light: 1.6, dur: 0.3, wave: 0 });
+        g.fx.lib.ring(t.x, t.z, { radius: 2, color: EVO_COLOR.earthen_ward, core: QUAKE_CORE, width: 0.4, dust: 8, dur: 0.35 });
+        this.dustPuffs(t.x, t.z, 0.8, 5);
         g.fx.addShake(0.12);
         g.audio.play("hit");
         this.freeTotem(k);
@@ -1289,7 +1330,9 @@ export class SpellCaster {
         if (t.st.doubleHit && Math.random() < t.st.doubleHit) this.slam(t);
       }
       if (t.time <= 0) {
-        g.fx.burst(t.x, 0.6, t.z, 0x8b8072, 26, 5, 0.2, 0.6, 12);
+        // afunda no chão levantando poeira
+        this.dustPuffs(t.x, t.z, 0.7, 4);
+        g.fx.burst(t.x, 0.6, t.z, QUAKE_STONE, 14, 4, 0.18, 0.5, 12);
         this.freeTotem(k);
         continue;
       }
@@ -1340,7 +1383,7 @@ export class SpellCaster {
     if (t.hits === undefined) return;
     t.hits--;
     t.shake = 1;
-    g.fx.burst(t.x, 1.2, t.z, 0x9a8a72, 10, 4, 0.12, 0.35, 8);
+    g.fx.burst(t.x, 1.2, t.z, QUAKE_STONE, 10, 4, 0.12, 0.35, 8);
     g.audio.play("hit");
   }
 
@@ -1366,11 +1409,14 @@ export class SpellCaster {
       if (st.stun) g.applyStatus(e, { kind: "stun", power: 1, duration: st.stun }, 0);
     }
     t.bob = 1;
-    g.fx.shockwave(t.x, t.z, r, SPELL_COLOR.quake_totem, 0.4);
-    g.fx.shockwave(t.x, t.z, r * 0.6, 0x9a8a72, 0.3);
-    g.fx.burst(t.x, 0.3, t.z, 0x9a8a72, 30, 6, 0.2, 0.55, 12);
-    g.fx.burst(t.x, 0.2, t.z, 0xffc070, 12, 4, 0.12, 0.35, 6);
-    g.fx.flashLight(t.x, 1, t.z, SPELL_COLOR.quake_totem, 1.8, 0.25);
+    // M5-08: onda de terra até o raio, fendas em brasa, pedras que saltam do chão na área e poeira na borda
+    const lib = g.fx.lib;
+    const tint = t.hits !== undefined ? EVO_COLOR.earthen_ward : SPELL_COLOR.quake_totem;
+    lib.ring(t.x, t.z, { radius: r, color: tint, core: QUAKE_CORE, width: 0.75, fill: 0.22, dust: 12, dur: 0.4 });
+    lib.groundCrack(t.x, t.z, { radius: r * 0.8, count: 5, width: 0.34, scorch: 0.6, color: QUAKE_DEEP, core: tint, dur: 0.75 });
+    lib.spikes(t.x, t.z, { radius: r * 0.9, count: 11, height: 1.35, color: QUAKE_STONE, core: 0x2a160a, dur: 0.5 });
+    lib.burst(t.x, 0.3, t.z, { radius: 1.3, color: tint, core: QUAKE_CORE, rays: 0, sparks: 10, light: 1.8, dur: 0.25, wave: 0 });
+    this.dustPuffs(t.x, t.z, r * 0.85, 5);
     g.fx.addShake(0.1);
     g.audio.play("hit");
   }
@@ -1378,6 +1424,7 @@ export class SpellCaster {
   private freeTotem(k: number): void {
     const t = this.totems[k];
     if (t.lure) freeGroup(t.lure.group);
+    t.area?.kill(0.2);
     t.group.removeFromParent();
     const mats = new Set<THREE.Material>();
     t.group.traverse((o) => { if (o instanceof THREE.Mesh) mats.add(o.material as THREE.Material); });
@@ -1409,7 +1456,6 @@ export class SpellCaster {
       const d = SPELL_CAST.fieldExtraDistance;
       this.fields.push(this.makeField(i, st, p.x + Math.cos(a) * d, p.z + Math.sin(a) * d, false));
     }
-    g.fx.shockwave(p.x, p.z, st.radius, SPELL_COLOR.healing_field, 0.45);
     g.audio.play("tech");
     return true;
   }
@@ -1455,7 +1501,12 @@ export class SpellCaster {
     group.position.set(x, 0, z);
     g.scene.add(group);
     const dur = st.duration ?? 1;
-    return { slot, st, x, z, follow, time: dur, duration: dur, tickLeft: st.tick ?? 1, pulse: 0, group, disc, edge, clock, spin };
+    const lib = g.fx.lib;
+    const motes = lib.orbit(x, 0.6, z, { radius: st.radius * 0.72, count: 4, color, core: HEAL_CORE, speed: 0.3, tilt: 0.06, size: 0.24,
+      bob: 0.35, dur: Infinity, power: 0.75 });
+    lib.ring(x, z, { radius: st.radius, color, core: HEAL_CORE, width: 0.45, from: 0.3, fill: 0.15, dust: 0, dur: 0.45 });
+    lib.burst(x, 0.6, z, { radius: 1.1, color, core: HEAL_CORE, rays: 0, sparks: 8, light: 1.2, dur: 0.3, wave: 0 });
+    return { slot, st, x, z, follow, time: dur, duration: dur, tickLeft: st.tick ?? 1, pulse: 0, group, disc, edge, clock, spin, motes };
   }
 
   /** behaviors.lua `Field.update`: a cada tique, cura o herói se ele está dentro (o que segue o herói sempre está). */
@@ -1478,8 +1529,9 @@ export class SpellCaster {
         if (f.st.surge && Math.random() < f.st.surge) amount += 1 / DR_BASE_HP;
         g.heal(g.stats.maxHp * amount, true);
         f.pulse = 1;
-        g.fx.burst(p.x, 0.4, p.z, f.st.evolution === "sanctuary" ? EVO_COLOR.sanctuary : SPELL_COLOR.healing_field,
-          6, 2.5, 0.12, 0.6, -2);
+        // M5-08: coluna de luz suave subindo pelo herói a cada cura
+        const c = f.st.evolution === "sanctuary" ? EVO_COLOR.sanctuary : SPELL_COLOR.healing_field;
+        g.fx.lib.pillar(p.x, p.z, { radius: 0.6, height: 3, color: c, core: HEAL_CORE, speed: 3, dur: 0.6, power: 0.9 });
       }
       if (f.time <= 0) {
         this.freeField(k);
@@ -1494,6 +1546,15 @@ export class SpellCaster {
       f.edge.opacity = (0.45 + 0.4 * f.pulse) * born * ending;
       f.clock.geometry = clockGeo(f.time / f.duration);
       f.spin.rotation.y = g.time * 0.6;
+      f.motes.move(f.x, 0.6, f.z);
+      f.motes.power = 0.75 * born * ending;
+      // pétalas de luz subindo devagar dentro do anel
+      if (Math.random() < dt * 16 * born) {
+        const a = Math.random() * Math.PI * 2;
+        const d = f.st.radius * 0.9 * Math.sqrt(Math.random());
+        g.fx.glow(f.x + Math.cos(a) * d, 0.1, f.z + Math.sin(a) * d, Math.random() < 0.35 ? HEAL_CORE : f.edge.color.getHex(),
+          0.22, 1.1, 0, 1.1, 0, 0);
+      }
     }
   }
 
@@ -1516,6 +1577,7 @@ export class SpellCaster {
 
   private freeField(k: number): void {
     const f = this.fields[k];
+    f.motes.kill(0.2);
     freeGroup(f.group);
     this.fields.splice(k, 1);
   }
@@ -1545,13 +1607,20 @@ export class SpellCaster {
       group.add(blade);
       blades.push(blade);
     }
-    const clock = new THREE.Mesh(clockGeo(1), groundMat(storm ? EVO_COLOR.blade_storm : SPELL_COLOR.blade_orbit, storm ? 0.22 : 0.16));
+    const clock = new THREE.Mesh(clockGeo(1), groundMat(storm ? EVO_COLOR.blade_storm : SPELL_COLOR.blade_orbit, storm ? 0.22 : 0.08));
     clock.position.y = 0.04;
     group.add(clock);
     g.scene.add(group);
     if (storm) g.fx.shockwave(g.player.x, g.player.z, st.radius, EVO_COLOR.blade_storm, 0.35);
+    // M5-08: fio de luz atrás de cada lâmina e um corte em anel ao lançar
+    const lib = g.fx.lib;
+    const tint = storm ? EVO_COLOR.blade_storm : BLADE_STEEL;
+    const trails = blades.map(() => lib.trail({ color: tint, core: BLADE_CORE, width: 0.85, life: 0.3, head: 0, sheds: 6 }));
+    const p = g.player;
+    lib.ring(p.x, p.z, { radius: st.radius, color: tint, core: BLADE_CORE, width: 0.22, from: 0.35, dust: 0, dur: 0.28, power: 0.8 });
+    lib.burst(p.x, 1, p.z, { radius: 0.9, color: tint, core: BLADE_CORE, rays: 4, sparks: 8, light: 0.8, dur: 0.2, wave: 0 });
     this.orbits.push({ slot: i, st, time: dur, duration: dur, angle: 0, spin, hitCooldown: (st.hitCooldown ?? 0.5) / spin,
-      lastHit: new WeakMap(), group, blades, clock });
+      lastHit: new WeakMap(), group, blades, clock, trails });
     g.audio.play("tech");
     return true;
   }
@@ -1564,7 +1633,11 @@ export class SpellCaster {
       const o = this.orbits[k];
       o.time -= dt;
       if (o.time <= 0) {
-        g.fx.burst(p.x, 1, p.z, SPELL_COLOR.blade_orbit, 14, 5, 0.1, 0.35, 4);
+        // cada lâmina se desfaz em faíscas onde está
+        for (const b of o.blades) {
+          g.fx.lib.burst(p.x + b.position.x, b.position.y, p.z + b.position.z, { radius: 0.5, color: BLADE_STEEL, core: BLADE_CORE, rays: 0,
+            sparks: 5, light: 0, dur: 0.18, wave: 0 });
+        }
         this.freeOrbit(k);
         continue;
       }
@@ -1593,7 +1666,11 @@ export class SpellCaster {
         blade.position.set(bx, 1 + 0.1 * Math.sin(g.time * 4 + b), bz);
         // a ponta vai na frente do giro
         blade.rotation.set(0, -a - Math.PI / 2, 0.25);
-        blade.scale.setScalar(2.2 * grow);
+        blade.scale.setScalar(3 * grow);
+        // o rastro segue a ponta da lâmina, um pouco além do centro do giro
+        const tip = 1 + 0.35 / Math.max(0.5, r);
+        o.trails[b].power = grow;
+        o.trails[b].push(p.x + bx * tip, blade.position.y, p.z + bz * tip);
         for (const e of g.enemies) {
           if (e.dead) continue;
           if ((e.x - p.x - bx) ** 2 + (e.z - p.z - bz) ** 2 > (hit + e.radius) ** 2) continue;
@@ -1601,7 +1678,7 @@ export class SpellCaster {
           if (last !== undefined && g.time - last < o.hitCooldown) continue;
           o.lastHit.set(e, g.time);
           g.spellHit(e, o.st.damage);
-          g.fx.burst(p.x + bx, 1, p.z + bz, 0xffffff, 5, 4, 0.08, 0.2, 6);
+          g.fx.lib.burst(e.x, 1, e.z, { radius: 0.7, color: BLADE_STEEL, core: BLADE_CORE, rays: 3, sparks: 6, light: 0, dur: 0.14, wave: 0 });
         }
       }
       o.clock.scale.setScalar(r);
@@ -1610,6 +1687,7 @@ export class SpellCaster {
   }
 
   private freeOrbit(k: number): void {
+    for (const t of this.orbits[k].trails) t.kill(0.12);
     freeGroup(this.orbits[k].group);
     this.orbits.splice(k, 1);
   }
@@ -1639,7 +1717,12 @@ export class SpellCaster {
     group.position.set(p.x, 0, p.z);
     g.scene.add(group);
     const dur = st.duration ?? 1;
-    this.runes.push({ slot: i, st, x: p.x, z: p.z, time: dur, duration: dur, group, glyph, clock });
+    this.runes.push({ slot: i, st, x: p.x, z: p.z, time: dur, duration: dur, group, glyph, clock, flash: 0 });
+    // M5-08: a runa é gravada no chão com um anel que fecha e poucas fagulhas
+    const lib = g.fx.lib;
+    const tint = st.linkRange ? EVO_COLOR.rune_circle : SPELL_COLOR.rune_traps;
+    lib.ring(p.x, p.z, { radius: (st.trigger ?? 1) + 0.45, color: tint, core: RUNE_CORE, width: 0.16, from: 0.3, dust: 0, dur: 0.28, power: 0.7 });
+    lib.burst(p.x, 0.2, p.z, { radius: 0.6, color: tint, core: RUNE_CORE, rays: 0, sparks: 4, light: 0, dur: 0.18, wave: 0 });
     return true;
   }
 
@@ -1662,6 +1745,14 @@ export class SpellCaster {
       }
       const age = r.duration - r.time;
       const armed = age >= (r.st.arm ?? 0);
+      if (armed && !r.armed) {
+        // armou: o desenho acende de uma vez e solta um anel curto
+        r.armed = true;
+        r.flash = 1;
+        const tint = r.st.linkRange ? EVO_COLOR.rune_circle : SPELL_COLOR.rune_traps;
+        g.fx.lib.ring(r.x, r.z, { radius: (r.st.trigger ?? 1) + 0.9, color: tint, core: RUNE_CORE, width: 0.14, from: 0.6, dust: 0, dur: 0.3, power: 0.6 });
+      }
+      r.flash = Math.max(0, r.flash - dt * 4);
       if (armed) {
         const hit = g.enemies.find((e) => !e.dead && (e.x - r.x) ** 2 + (e.z - r.z) ** 2 <= ((r.st.trigger ?? 1) + e.radius) ** 2);
         if (hit) {
@@ -1672,7 +1763,7 @@ export class SpellCaster {
       }
       // armada: acende e respira; no último segundo pisca
       const ending = r.time < 1 ? 0.45 + 0.55 * Math.abs(Math.cos(g.time * 9)) : 1;
-      r.glyph.opacity = (armed ? 0.7 + 0.15 * Math.sin(g.time * 3 + r.x) : 0.3) * ending;
+      r.glyph.opacity = Math.min(1, (armed ? 0.7 + 0.15 * Math.sin(g.time * 3 + r.x) : 0.3) * ending + 0.5 * r.flash);
       r.clock.geometry = clockGeo(r.time / r.duration);
     }
     this.updateRuneLines(dt);
@@ -1788,11 +1879,16 @@ export class SpellCaster {
     blast();
     const twice = !!st.doubleHit && Math.random() < st.doubleHit;
     if (twice) blast();
-    const c = SPELL_COLOR.rune_traps;
-    g.fx.shockwave(r.x, r.z, st.radius, c, 0.4);
-    if (twice) g.fx.shockwave(r.x, r.z, st.radius * 0.7, 0xffffff, 0.5);
-    g.fx.burst(r.x, 0.3, r.z, c, 24, 6, 0.14, 0.45, 4);
-    g.fx.flashLight(r.x, 0.8, r.z, c, 2, 0.25);
+    // M5-08: coluna de luz violeta sobe da runa, a onda vai até o raio e um selo gira no chão; Twin Glyph bate de novo em branco
+    const lib = g.fx.lib;
+    const c = st.linkRange ? EVO_COLOR.rune_circle : SPELL_COLOR.rune_traps;
+    lib.pillar(r.x, r.z, { radius: 1.1, height: 5, color: c, core: RUNE_CORE, speed: 7, dur: 0.6 });
+    lib.ring(r.x, r.z, { radius: st.radius, color: c, core: RUNE_CORE, width: 0.45, from: 0.1, fill: 0.12, dust: 8, dur: 0.4 });
+    lib.burst(r.x, 0.6, r.z, { radius: 1.3, color: c, core: RUNE_CORE, rays: 6, sparks: 12, light: 0, dur: 0.3 });
+    lib.orbit(r.x, 0.3, r.z, { radius: st.radius * 0.5, count: 4, color: c, core: RUNE_CORE, speed: -1.4, tilt: 0, size: 0.3, bob: 0.05, dur: 0.4 });
+    if (twice) {
+      this.later(0.14, () => lib.ring(r.x, r.z, { radius: st.radius * 0.8, color: RUNE_CORE, core: 0xffffff, width: 0.4, from: 0.1, dust: 0, dur: 0.3 }));
+    }
     g.audio.play("hit");
   }
 
