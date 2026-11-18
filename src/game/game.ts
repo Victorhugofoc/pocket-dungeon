@@ -32,6 +32,7 @@ import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
 import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
+import type { TrailHandle } from "./vfx";
 import { LootView } from "./loot";
 import { promisesBank } from "../core/loot";
 import { Input } from "./input";
@@ -42,6 +43,16 @@ import { Pipeline } from "./render";
 import { U } from "./shared";
 import { SUN_OFFSET, stepMotes } from "./air";
 import { buildWorld, driftSun, fireFlicker, setZoneAtmosphere, type WorldView } from "./world";
+
+/** Cores dos efeitos das técnicas (M5-03): só visual, sem número de jogo */
+const TECH_FX = {
+  /** Kaelen: corpo e miolo do relâmpago */
+  boltBody: 0xffd84a, boltCore: 0xfffbe6,
+  /** Umbra: fumaça escura, brilho roxo da borda */
+  shadow: 0x4a2a6e, shadowCore: 0x9a5ad0, shadowGlow: 0xa06cf0,
+  /** Ignis: chama funda, miolo e fumaça */
+  fireDeep: 0xff4a0a, fireCore: 0xffd070, fireSmoke: 0x2a1d17,
+} as const;
 
 export interface GameEvents {
   toast(msg: string, color?: string): void;
@@ -142,7 +153,7 @@ export interface PlayerState {
   nestT: number;
   flash: number; hurtT: number;
   leap: { t: number; dur: number; x0: number; z0: number; x1: number; z1: number } | null;
-  rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number; x0: number; z0: number } | null;
+  rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number; x0: number; z0: number; fire?: TrailHandle } | null;
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -490,6 +501,7 @@ export class Game {
     const p = this.player;
     p.x = this.layout.spawn.x;
     p.z = this.layout.spawn.z;
+    p.rush?.fire?.kill();
     p.leap = p.rush = null;
     this.endAegis(false);
     p.shadowUntil = 0;
@@ -1117,6 +1129,7 @@ export class Game {
     if (p.hp <= 0) {
       p.hp = 0;
       this.playerAlive = false;
+      p.rush?.fire?.kill();
       p.leap = p.rush = null;
       this.endAegis(false);
       this.run.killedBy = source;
@@ -1665,14 +1678,21 @@ export class Game {
         this.grid.resolve(p, 0.5);
         p.iframes = Math.max(p.iframes, T.invuln ?? 0.3);
         this.addTrail(x0, z0, p.x, p.z, hw, T.trail ?? 2, T.trailTick ?? 0.4, T.damage * (T.trailFraction ?? 0.35), color);
-        this.fx.streak(x0, z0, p.x, p.z, 1.4, 0xfff6c0, 0.3);
-        this.fx.burst(x0, 1, z0, color, 14, 5, 0.14, 0.4);
-        this.fx.burst(p.x, 1, p.z, 0xfff29a, 24, 7, 0.14, 0.4);
-        this.fx.flashLight(p.x, 1.6, p.z, 0xfff0a0, 2.4, 0.3);
-        if (T.shockRadius) {
-          this.areaHit(p.x, p.z, T.shockRadius, T.damage);
-          this.fx.shockwave(p.x, p.z, T.shockRadius, 0xfff29a, 0.45);
-        } else this.fx.shockwave(p.x, p.z, 34 / 12, 0xfff29a, 0.3);
+        // M5-03: o herói vira raio; relâmpago do ponto de saída ao de chegada, estalo na saída e descarga na chegada
+        const lib = this.fx.lib;
+        lib.lightning(x0, 1.1, z0, p.x, 1.1, p.z, { color: TECH_FX.boltBody, core: TECH_FX.boltCore, width: 0.28, branches: 3, rate: 0.05, dur: 0.3 });
+        lib.burst(x0, 1, z0, { radius: 0.9, color: TECH_FX.boltBody, core: TECH_FX.boltCore, rays: 4, sparks: 8, light: 0, dur: 0.2, wave: 0 });
+        lib.burst(p.x, 1, p.z, { radius: 1.1, color: TECH_FX.boltBody, core: TECH_FX.boltCore, rays: 5, sparks: 12, light: 1.2, dur: 0.24, wave: 0, power: 0.85 });
+        const shock = T.shockRadius ?? 34 / 12;
+        if (T.shockRadius) this.areaHit(p.x, p.z, T.shockRadius, T.damage);
+        lib.ring(p.x, p.z, { radius: shock, color: TECH_FX.boltBody, core: TECH_FX.boltCore, width: 0.35, from: 0.2, dust: 6, dur: 0.3 });
+        // ramos curtos descendo da chegada até o chão em volta
+        for (let k = 0; k < 3; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = shock * (0.5 + 0.4 * Math.random());
+          lib.lightning(p.x, 1.4, p.z, p.x + Math.cos(a) * d, 0.1, p.z + Math.sin(a) * d,
+            { color: TECH_FX.boltBody, core: TECH_FX.boltCore, width: 0.14, branches: 1, rate: 0.06, dur: 0.16 });
+        }
         this.fx.addShake(0.18);
         break;
       }
@@ -1721,7 +1741,11 @@ export class Game {
           return;
         }
         const dur = T.dashTime ?? 0.22;
-        p.rush = { t: 0, dur, dx: (dest.x - p.x) / d, dz: (dest.z - p.z) / d, hit: new Set(), speed: d / dur, x0: p.x, z0: p.z };
+        // M5-03: fita de fogo atrás do herói durante o avanço
+        const fire = this.fx.lib.trail({ color: TECH_FX.fireDeep, core: TECH_FX.fireCore, width: 2.4, life: 0.35, head: 1.2, sheds: 40 });
+        p.rush = { t: 0, dur, dx: (dest.x - p.x) / d, dz: (dest.z - p.z) / d, hit: new Set(), speed: d / dur, x0: p.x, z0: p.z, fire };
+        this.fx.lib.burst(p.x, 1, p.z, { radius: 1.6, color: TECH_FX.fireDeep, core: TECH_FX.fireCore, rays: 5, sparks: 14, light: 1.6, dur: 0.24, wave: 0 });
+        this.fx.lib.ring(p.x, p.z, { radius: 1.8, color: 0xff8a2a, core: TECH_FX.fireCore, width: 0.4, from: 0.2, dust: 6, dur: 0.3 });
         p.iframes = Math.max(p.iframes, T.invuln ?? 0.22);
         break;
       }
@@ -1765,17 +1789,33 @@ export class Game {
         p.iframes = Math.max(p.iframes, T.invuln ?? 0.6);
         p.shadowUntil = this.time + SHADOW.afterStep;
         p.attackAnim = 0;
-        for (const [x, z] of [[x0, z0], [p.x, p.z]]) {
-          this.fx.burst(x, 1, z, 0x2a1a3d, 26, 4, 0.22, 0.6, -1);
-          this.fx.burst(x, 1, z, color, 12, 5, 0.12, 0.4);
+        // M5-03: some numa nuvem de sombra e sai de outra atrás do alvo; fita escura liga os dois pontos; golpe com clarão de crítico
+        const lib = this.fx.lib;
+        for (const [x, z, big] of [[x0, z0, 1], [p.x, p.z, 1.25]]) {
+          for (let k = 0; k < 3; k++) {
+            const a = Math.random() * Math.PI * 2;
+            lib.smoke(x + Math.cos(a) * 0.4, 0.7 + k * 0.35, z + Math.sin(a) * 0.4, { radius: (1 + Math.random() * 0.4) * big, color: TECH_FX.shadow,
+              core: TECH_FX.shadowCore, alpha: 0.7, rise: 0.6, dur: 0.55 + Math.random() * 0.2 });
+          }
+          lib.ring(x, z, { radius: 1.6 * big, color: TECH_FX.shadowGlow, core: color, width: 0.25, from: 0.3, dust: 0, dur: 0.3, power: 0.7 });
         }
-        this.fx.streak(x0, z0, p.x, p.z, 0.35, 0x6a4a9a, 0.35);
+        // borrão do dash: fita larga que afina, curvada para o lado como o arco de um corte
+        const rib = lib.trail({ color: TECH_FX.shadowGlow, core: color, width: 1.2, life: 0.2, head: 0, sheds: 0 });
+        const sx = -(p.z - z0), sz = p.x - x0;
+        const sl = Math.hypot(sx, sz) || 1;
+        for (let k = 0; k <= 10; k++) {
+          const u = k / 10;
+          const bend = Math.sin(u * Math.PI) * 0.18 * sl;
+          rib.push(x0 + (p.x - x0) * u + (sx / sl) * bend, 1, z0 + (p.z - z0) * u + (sz / sl) * bend);
+        }
+        rib.kill();
         this.hitEnemy(target, T.damage, undefined, { crit: true });
-        this.fx.slash(p.x, p.z, p.facing, 2.6, 80, color);
+        this.fx.slash(p.x, p.z, p.facing, 3.4, 100, color);
+        lib.burst(target.x, 1.1, target.z, { radius: 1.3, color: TECH_FX.shadowGlow, core: 0xffffff, rays: 6, sparks: 10, light: 1.4, dur: 0.24, wave: 0 });
         // Eclipse: uma sombra fica e repete o golpe 1 s depois, com 60% do dano
         if (T.echoDelay) {
           this.echoes.push({ x: p.x, z: p.z, target, at: this.time + T.echoDelay, dmg: T.damage * (T.echoFraction ?? 0.6) });
-          this.fx.burst(p.x, 1, p.z, 0x2a1a3d, 20, 1.5, 0.3, T.echoDelay, 0);
+          lib.smoke(p.x, 1, p.z, { radius: 1.2, color: TECH_FX.shadow, core: TECH_FX.shadowCore, alpha: 0.45, rise: 0.1, dur: T.echoDelay });
         }
         this.fx.addShake(0.25);
         this.hitstop = Math.max(this.hitstop, 0.05);
@@ -1917,7 +1957,13 @@ export class Game {
       p.x = nx;
       p.z = nz;
       p.moveAmt = 1;
+      r.fire?.push(p.x, 1, p.z);
+      if (Math.random() < 0.35) {
+        this.fx.lib.smoke(p.x - r.dx * 0.8, 0.9, p.z - r.dz * 0.8, { radius: 0.9 + Math.random() * 0.4, color: TECH_FX.fireSmoke, core: 0x7a3414,
+          alpha: 0.35, rise: 0.8, dur: 0.6 });
+      }
       if (r.t >= r.dur) {
+        r.fire?.kill();
         p.rush = null;
         if (T) {
           this.infernoRing(T);
@@ -2110,13 +2156,20 @@ export class Game {
     const p = this.player;
     const r = T.radius ?? 6.25;
     this.areaHit(p.x, p.z, r, T.damage * (T.ringMult ?? 1.3), this.chargeBurn(T));
-    this.fx.shockwave(p.x, p.z, r, 0xff8a2a, 0.45);
-    this.fx.shockwave(p.x, p.z, r * 0.6, 0xffd34d, 0.3);
-    for (let i = 0; i < 28; i++) {
-      const a = (i / 28) * Math.PI * 2;
+    // M5-03: soco no chão; anel de fogo até o raio, fendas em brasa, clarão e fumaça subindo da borda
+    const lib = this.fx.lib;
+    lib.ring(p.x, p.z, { radius: r, color: 0xff8a2a, core: TECH_FX.fireCore, width: 0.8, fill: 0.35, dust: 14, dur: 0.4 });
+    lib.groundCrack(p.x, p.z, { radius: r * 0.45, count: 6, width: 0.24, scorch: 0.6, color: TECH_FX.fireDeep, core: TECH_FX.fireCore, dur: 0.7 });
+    lib.burst(p.x, 0.8, p.z, { radius: 1.6, color: TECH_FX.fireDeep, core: TECH_FX.fireCore, rays: 7, sparks: 16, light: 2.6, dur: 0.32 });
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
       this.fx.glow(p.x + Math.sin(a) * r * 0.9, 0.4, p.z + Math.cos(a) * r * 0.9, i % 2 ? 0xff8a2a : 0xffd34d, 0.7, 0.5, Math.sin(a) * 2, 2.2, Math.cos(a) * 2);
     }
-    this.fx.flashLight(p.x, 1.3, p.z, 0xff8a2a, 2.6, 0.3);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.random();
+      lib.smoke(p.x + Math.sin(a) * r * 0.7, 0.8, p.z + Math.cos(a) * r * 0.7, { radius: 1.2 + Math.random() * 0.5, color: TECH_FX.fireSmoke,
+        alpha: 0.35, rise: 0.9, dur: 0.8 });
+    }
     this.fx.addShake(0.4);
     this.hitstop = Math.max(this.hitstop, 0.04);
     this.audio.play("kill");
@@ -2159,25 +2212,6 @@ export class Game {
     mesh.scale.set(hw * 0.7, len, 1);
     this.scene.add(mesh);
     this.trails.push({ x0, z0, x1, z1, hw, until: this.time + dur, tick: every, every, dmg, color, mesh, burn });
-  }
-
-  /** Raio em zigue-zague ao longo do rastro (traços finos com desvio lateral aleatório). */
-  private boltAlong(t: Trail, width: number, dur: number): void {
-    const len = Math.hypot(t.x1 - t.x0, t.z1 - t.z0);
-    const n = Math.max(4, Math.round(len / 1.3));
-    const nx = -(t.z1 - t.z0) / (len || 1);
-    const nz = (t.x1 - t.x0) / (len || 1);
-    let px = t.x0;
-    let pz = t.z0;
-    for (let i = 1; i <= n; i++) {
-      const k = i / n;
-      const off = i === n ? 0 : (Math.random() - 0.5) * t.hw * 1.4;
-      const qx = t.x0 + (t.x1 - t.x0) * k + nx * off;
-      const qz = t.z0 + (t.z1 - t.z0) * k + nz * off;
-      this.fx.streak(px, pz, qx, qz, width, 0xfff6c0, dur);
-      px = qx;
-      pz = qz;
-    }
   }
 
   /** Broodmother (techniques.lua): poça de 50 px de raio por 3 s; a cada 0,5 s envenena quem está dentro. */
@@ -2271,8 +2305,8 @@ export class Game {
         }
         continue;
       }
-      (t.mesh.material as THREE.MeshBasicMaterial).opacity = Math.min(1, left / 0.4) * (0.04 + Math.random() * 0.06);
-      if (Math.random() < dt * 9) this.boltAlong(t, 0.08, 0.1);
+      // M5-03: sem a faixa no chão (lia como decalque); o rastro é feito de faíscas e do relâmpago de cada pulso
+      (t.mesh.material as THREE.MeshBasicMaterial).opacity = 0;
       // faíscas correndo pelo rastro
       if (Math.random() < 0.6) {
         const k = Math.random();
@@ -2281,8 +2315,9 @@ export class Game {
       if (t.tick <= 0 && left > 0) {
         t.tick = t.every;
         this.lineHit(t.x0, t.z0, t.x1, t.z1, t.hw, t.dmg);
-        this.boltAlong(t, 0.16, 0.16);
-        this.boltAlong(t, 0.1, 0.12);
+        // M5-03: cada pulso do rastro é um relâmpago rente ao chão de ponta a ponta
+        this.fx.lib.lightning(t.x0, 0.35, t.z0, t.x1, 0.35, t.z1, { color: TECH_FX.boltBody, core: TECH_FX.boltCore, width: 0.18, branches: 2,
+          rate: 0.05, dur: 0.18 });
       }
       if (left <= 0) {
         this.disposeTrail(t);
