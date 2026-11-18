@@ -10,7 +10,7 @@ import { MAX_SPELLS, SPELL_CAST } from "../data/spells";
 import { DR_BASE_HP, FROST, TECH_EVO } from "../data/techniques";
 import { KNOCK_DECAY, type Dot, type Enemy } from "./enemy";
 import type { Game } from "./game";
-import { ease, type BeamHandle, type MoveHandle, type TrailHandle } from "./vfx";
+import { ease, type BeamHandle, type MoveHandle, type TrailHandle, type VfxHandle } from "./vfx";
 
 /** Cor de cada spell no jogo (projétil, impacto e raio). */
 export const SPELL_COLOR: Record<string, number> = {
@@ -43,6 +43,27 @@ const PRISM_GOLD = 0xfff0b8;
 const PRISM_HALO_POWER = 1;
 const PRISM_CORE_POWER = 0.7;
 const PRISM_FRINGE = [0xff5ad0, 0x4ae0ff];
+/** Fireball: chama vermelho-laranja, miolo amarelo, fumaça escura com brasa por dentro */
+const FIRE_DEEP = 0xff4a0a;
+const FIRE_CORE = 0xffd070;
+const FIRE_SMOKE = 0x221c19;
+const FIRE_SMOKE_HOT = 0x7a3414;
+/** Iceball: cristal azul-gelo com brilho próprio, rastro e névoa */
+const ICE_DEEP = 0x4aa0ff;
+const ICE_CORE = 0xf2fbff;
+const ICE_MIST = 0xcfe8ff;
+const ICE_MAT = new THREE.MeshStandardMaterial({ color: 0xcdeeff, emissive: 0x3d8fe0, emissiveIntensity: 0.9, roughness: 0.15,
+  metalness: 0.1, flatShading: true });
+/** cristal da Iceball: octaedro esticado no eixo do voo */
+const CRYSTAL_GEO = new THREE.OctahedronGeometry(1, 0).scale(0.42, 1, 0.42);
+const UP = new THREE.Vector3(0, 1, 0);
+const SPIN_Q = new THREE.Quaternion();
+/** Venom Nova: verde tóxico, nuvem escura e o miolo ácido */
+const VENOM_DARK = 0x2f6b1f;
+const VENOM_CORE = 0xe4ff9a;
+const VENOM_CLOUD = 0x9ad63a;
+/** Cyclone: miolo branco do vento */
+const WIND_CORE = 0xffffff;
 
 /** tiro do ataque básico com o Arcane Strike pronto (D-215: roxo e maior) */
 export const ARCANE_CHARGED = { color: EVO_COLOR.arcane_strike, size: 1.35 };
@@ -61,6 +82,10 @@ interface SpellProjectile {
   /** efeitos do voo (M5-08): rastro e pontos em órbita, encerrados no `free` */
   trail?: TrailHandle;
   motes?: MoveHandle;
+  /** Fireball: tempo até a próxima baforada de fumaça; Iceball: giro do cristal */
+  puff?: number;
+  spin?: number;
+  align?: THREE.Quaternion;
   /** Chain Lightning: relâmpago da mão até o dardo */
   zap?: BeamHandle;
 }
@@ -91,6 +116,9 @@ interface Vortex {
   tickLeft: number;
   group: THREE.Group;
   cones: THREE.Mesh[];
+  /** correntes de vento em volta (pé e meio do funil) e a área no chão */
+  winds: MoveHandle[];
+  area?: VfxHandle;
 }
 
 /** Quake Totem em pé (techniques.lua `world.totems`): bate no chão a cada tique. */
@@ -236,7 +264,7 @@ function funnelGeometry(): THREE.BufferGeometry {
 }
 const FUNNEL_GEO = funnelGeometry();
 /** altura e raio (em raios da spell) de cada funil, de fora para dentro, e a opacidade */
-const FUNNELS: readonly [number, number, number][] = [[0.5, 4.2, 0.16], [0.34, 3.4, 0.22], [0.2, 3.8, 0.2]];
+const FUNNELS: readonly [number, number, number][] = [[0.36, 5.2, 0.12], [0.25, 4.4, 0.17], [0.15, 4.8, 0.16]];
 
 // ---------------------------------------------------------------- relógio no chão
 // Mesma ideia do contorno dos ícones de estado: um arco que sai do topo da tela e esvazia no sentido horário até a coisa
@@ -520,13 +548,114 @@ export class SpellCaster {
       const shot: SpellProjectile = { slot: i, id: st.id, st, x: p.x, z: p.z, dx: Math.sin(a), dz: Math.cos(a), remaining: st.range,
         speed: st.speed ?? 20, mesh, color };
       if (st.id === "arcane_bolt") this.arcaneFlight(shot);
+      else if (st.id === "fireball") this.fireFlight(shot);
+      else if (st.id === "iceball") this.iceFlight(shot);
       this.shots.push(shot);
     }
     p.facing = base;
     g.audio.play("tech");
     if (st.id === "arcane_bolt") this.arcaneCast(p.x + dx * 0.9, p.z + dz * 0.9);
+    else if (st.id === "fireball") this.fireCast(p.x + dx * 0.9, p.z + dz * 0.9);
+    else if (st.id === "iceball") this.iceCast(p.x + dx * 0.9, p.z + dz * 0.9);
     else g.fx.burst(p.x + dx * 0.8, SPELL_CAST.height, p.z + dz * 0.8, color, 12, 4, 0.12, 0.3, 2);
     return true;
+  }
+
+  // ---------------------------------------------------------------- Fireball (M5-08)
+  /** Bola de chama: miolo amarelo pequeno, rastro largo vermelho-laranja soltando brasas e fumaça escura atrás. */
+  private fireFlight(pr: SpellProjectile): void {
+    const lib = this.game.fx.lib;
+    pr.mesh.material = this.mat(FIRE_CORE);
+    pr.mesh.scale.setScalar(SPELL_CAST.ballSize * 0.75);
+    pr.trail = lib.trail({ color: FIRE_DEEP, core: FIRE_CORE, width: 1.1, life: 0.2, head: 1.4, sheds: 34 });
+    pr.puff = 0;
+  }
+
+  private fireCast(x: number, z: number): void {
+    const lib = this.game.fx.lib;
+    lib.burst(x, SPELL_CAST.height, z, { radius: 1, color: FIRE_DEEP, core: FIRE_CORE, rays: 0, sparks: 9, light: 1.4, dur: 0.22, wave: 0 });
+    lib.smoke(x, SPELL_CAST.height, z, { radius: 0.8, color: FIRE_SMOKE, core: FIRE_SMOKE_HOT, alpha: 0.4, rise: 0.8, dur: 0.6 });
+  }
+
+  /** Explosão: clarão com raios, onda que enche o raio da área, chão rachado em brasa, brasas caindo e fumaça subindo. */
+  private fireImpact(x: number, z: number, r: number): void {
+    const g = this.game;
+    const lib = g.fx.lib;
+    lib.burst(x, 1, z, { radius: Math.max(1.7, r * 0.95), color: FIRE_DEEP, core: 0xffe8a0, rays: 8, sparks: 18, light: 3.2, dur: 0.4 });
+    lib.ring(x, z, { radius: r, color: SPELL_COLOR.fireball, core: FIRE_CORE, width: 0.65, fill: 0.5, dust: 8, dur: 0.35 });
+    lib.groundCrack(x, z, { radius: r * 0.5, count: 7, width: 0.26, scorch: 0.7, color: FIRE_DEEP, core: FIRE_CORE, dur: 0.8 });
+    for (let n = 0; n < 16; n++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 2 + Math.random() * 4;
+      g.fx.glow(x, 0.8, z, n % 3 ? SPELL_COLOR.fireball : FIRE_CORE, 0.3 + Math.random() * 0.2, 0.7 + Math.random() * 0.6,
+        Math.cos(a) * s, 4 + Math.random() * 4, Math.sin(a) * s, 12);
+    }
+    for (let n = 0; n < 5; n++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = r * 0.45 * Math.random();
+      lib.smoke(x + Math.cos(a) * d, 0.9 + Math.random() * 0.6, z + Math.sin(a) * d, { radius: 1.1 + Math.random() * 0.6, color: FIRE_SMOKE,
+        core: FIRE_SMOKE_HOT, alpha: 0.5, rise: 1.3, drift: [Math.cos(a) * 0.6, Math.sin(a) * 0.6], dur: 1 + Math.random() * 0.4 });
+    }
+    g.fx.addShake(0.14);
+  }
+
+  // ---------------------------------------------------------------- Iceball (M5-08)
+  /** Cristal de gelo girando no eixo do voo, rastro fino, duas fagulhas de geada em volta e flocos caindo. */
+  private iceFlight(pr: SpellProjectile): void {
+    const lib = this.game.fx.lib;
+    pr.mesh.geometry = CRYSTAL_GEO;
+    pr.mesh.material = ICE_MAT;
+    pr.mesh.scale.setScalar(SPELL_CAST.ballSize * 1.6);
+    pr.align = new THREE.Quaternion().setFromUnitVectors(UP, new THREE.Vector3(pr.dx, 0, pr.dz));
+    pr.spin = 0;
+    pr.trail = lib.trail({ color: ICE_DEEP, core: 0x8fe8ff, width: 0.65, life: 0.16, head: 0.75, sheds: 18 });
+  }
+
+  private iceCast(x: number, z: number): void {
+    const lib = this.game.fx.lib;
+    lib.burst(x, SPELL_CAST.height, z, { radius: 0.9, color: ICE_DEEP, core: ICE_CORE, rays: 6, sparks: 8, light: 1, dur: 0.22, wave: 0 });
+    lib.smoke(x, SPELL_CAST.height, z, { radius: 0.7, color: ICE_MIST, alpha: 0.3, rise: 0.2, dur: 0.5 });
+  }
+
+  /** Impacto: espinhos de gelo brotando no raio, geada no chão, clarão frio, flocos e névoa baixa. */
+  private iceImpact(x: number, z: number, r: number): void {
+    const g = this.game;
+    const lib = g.fx.lib;
+    lib.spikes(x, z, { radius: r * 0.85, count: 16, height: 2.4, color: 0xcdeeff, core: 0x3d8fe0, opacity: 0.88, dur: 0.95 });
+    lib.burst(x, 0.9, z, { radius: Math.max(1.3, r * 0.7), color: ICE_DEEP, core: ICE_CORE, rays: 6, sparks: 14, light: 2.2, dur: 0.32 });
+    lib.ring(x, z, { radius: r, color: SPELL_COLOR.iceball, core: ICE_CORE, width: 0.4, fill: 0.3, dust: 0, dur: 0.5, curve: "fade", power: 0.8 });
+    for (let n = 0; n < 18; n++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 1 + Math.random() * 3;
+      g.fx.glow(x, 0.6 + Math.random(), z, n % 3 ? ICE_CORE : SPELL_COLOR.iceball, 0.2 + Math.random() * 0.15, 0.8 + Math.random() * 0.5,
+        Math.cos(a) * s, 2.5 + Math.random() * 2.5, Math.sin(a) * s, 5);
+    }
+    for (let n = 0; n < 4; n++) {
+      const a = (n / 4) * Math.PI * 2 + Math.random();
+      const d = r * (0.3 + 0.4 * Math.random());
+      lib.smoke(x + Math.cos(a) * d, 0.35, z + Math.sin(a) * d, { radius: 1 + Math.random() * 0.5, color: 0x9fe0ff, core: 0xeaf8ff, alpha: 0.12, rise: 0.15,
+        drift: [Math.cos(a) * 0.8, Math.sin(a) * 0.8], dur: 0.55 });
+    }
+    g.fx.addShake(0.1);
+  }
+
+  /** a cada quadro de voo: fumaça e chama da Fireball, giro e flocos da Iceball */
+  private flightFx(pr: SpellProjectile, dt: number): void {
+    const g = this.game;
+    const y = SPELL_CAST.height;
+    if (pr.id === "fireball") {
+      g.fx.glow(pr.x, y, pr.z, SPELL_COLOR.fireball, 2.2 + Math.random() * 1, 0.05);
+      pr.puff = (pr.puff ?? 0) - dt;
+      if (pr.puff <= 0) {
+        pr.puff += 0.045;
+        g.fx.lib.smoke(pr.x - pr.dx * 0.5, y + 0.1, pr.z - pr.dz * 0.5, { radius: 0.5 + Math.random() * 0.3, color: FIRE_SMOKE,
+          core: FIRE_SMOKE_HOT, alpha: 0.42, rise: 0.7, dur: 0.55 });
+      }
+    } else if (pr.id === "iceball" && pr.align) {
+      pr.spin = (pr.spin ?? 0) + dt * 9;
+      pr.mesh.quaternion.copy(pr.align).multiply(SPIN_Q.setFromAxisAngle(UP, pr.spin));
+      if (Math.random() < 0.35) g.fx.glow(pr.x, y, pr.z, ICE_CORE, 0.22, 0.6, (Math.random() - 0.5) * 1.2, -1.2, (Math.random() - 0.5) * 1.2);
+    }
   }
 
   // ---------------------------------------------------------------- Arcane Bolt (M5-08)
@@ -832,6 +961,7 @@ export class SpellCaster {
     const p = g.player;
     const r = st.radius;
     const color = SPELL_COLOR.venom_nova;
+    const lib = g.fx.lib;
     const dps = g.stats.damage * st.damage;
     // Plague Bloom: o veneno leva o contágio (spell_stats.lua `st.spread`)
     const spread = st.spreadRadius ? { radius: st.spreadRadius, stacks: st.spreadStacks ?? 1 } : undefined;
@@ -840,20 +970,39 @@ export class SpellCaster {
       if ((e.x - p.x) ** 2 + (e.z - p.z) ** 2 > (r + e.radius) ** 2) continue;
       this.applyPoison(e, dps, st.duration ?? 0, st.stacks ?? 1, spread);
       if (!e.aggro) e.setAggro(g);
-      g.fx.burst(e.x, 0.4, e.z, color, 10, 3, 0.15, 0.5, -1); // respingo aos pés de cada um (D-417)
+      // respingo aos pés de cada um (D-417)
+      lib.burst(e.x, 0.5, e.z, { radius: 0.8, color, core: VENOM_CORE, rays: 0, sparks: 6, light: 0, wave: 0, dur: 0.25 });
     }
-    g.fx.shockwave(p.x, p.z, r, color, 0.45);
-    g.fx.shockwave(p.x, p.z, r * 0.8, spread ? EVO_COLOR.plague_bloom : 0x3f8f2a, 0.75);
-    for (let k = 0; k < 26; k++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = r * (0.25 + 0.75 * Math.random());
-      const out = 1.2 + Math.random() * 1.5;
-      g.fx.glow(p.x + Math.sin(a) * d, 0.35, p.z + Math.cos(a) * d, k % 3 ? color : spread ? EVO_COLOR.plague_bloom : 0x2f6b1f, 0.9 + Math.random() * 0.6,
-        0.6 + Math.random() * 0.4, Math.sin(a) * out, 0.7, Math.cos(a) * out);
-    }
-    g.fx.flashLight(p.x, 1, p.z, color, 2, 0.35);
+    this.novaFx(p.x, p.z, r, spread ? EVO_COLOR.plague_bloom : VENOM_DARK);
     g.audio.play("tech");
     return true;
+  }
+
+  /**
+   * Onda de veneno (M5-08): frente verde-ácida que abre até o raio, segunda onda escura atrás, nuvem tóxica rolando para
+   * fora pela borda e bolhas subindo do chão. `deep` é o verde escuro (violeta no Plague Bloom).
+   */
+  private novaFx(x: number, z: number, r: number, deep: number): void {
+    const g = this.game;
+    const lib = g.fx.lib;
+    const color = SPELL_COLOR.venom_nova;
+    lib.burst(x, 1, z, { radius: 1.3, color, core: VENOM_CORE, rays: 0, sparks: 10, light: 2, dur: 0.3, wave: 0 });
+    lib.ring(x, z, { radius: r, color, core: VENOM_CORE, width: 0.9, fill: 0.25, dust: 10, dur: 0.45 });
+    lib.ring(x, z, { radius: r * 0.85, color: deep, core: color, width: 0.55, from: 0.05, fill: 0.2, dust: 0, dur: 0.65, curve: "fade", power: 0.9 });
+    for (let n = 0; n < 20; n++) {
+      const a = (n / 20) * Math.PI * 2 + Math.random() * 0.3;
+      const d = r * (0.3 + 0.3 * Math.random());
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      lib.smoke(x + ca * d * 0.6, 0.6, z + sa * d * 0.6, { radius: 1.4 + Math.random() * 0.6, color: VENOM_CLOUD, core: VENOM_CORE, alpha: 0.24,
+        rise: 0.5, drift: [ca * d * 0.5, sa * d * 0.5], dur: 0.6 + Math.random() * 0.2 });
+    }
+    for (let n = 0; n < 22; n++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = r * (0.2 + 0.8 * Math.random());
+      g.fx.glow(x + Math.cos(a) * d, 0.2, z + Math.sin(a) * d, n % 3 ? color : VENOM_CORE, 0.3 + Math.random() * 0.25,
+        0.6 + Math.random() * 0.6, Math.cos(a) * 0.6, 1 + Math.random() * 1.5, Math.sin(a) * 0.6);
+    }
   }
 
   /**
@@ -922,8 +1071,20 @@ export class SpellCaster {
     }
     group.position.set(a.x, 0, a.z);
     g.scene.add(group);
-    this.vortices.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 0.5, group, cones });
-    g.fx.shockwave(a.x, a.z, st.radius, SPELL_COLOR.cyclone, 0.4);
+    // correntes de vento: uma rente ao chão no alcance do puxão, outra no meio do funil (M5-08)
+    const lib = g.fx.lib;
+    const tint = st.followSpeed ? EVO_COLOR.maelstrom : SPELL_COLOR.cyclone;
+    const reach = st.radius * SPELL_CAST.vortexReach;
+    const winds = [
+      lib.orbit(a.x, 0.45, a.z, { radius: reach * 0.6, count: 4, color: tint, core: WIND_CORE, speed: 1.3, tilt: 0.08, size: 0.34, bob: 0.12, dur: Infinity }),
+      lib.orbit(a.x, 2.1, a.z, { radius: st.radius * 0.42, count: 3, color: tint, core: WIND_CORE, speed: 2.1, tilt: 0.15, size: 0.28, bob: 0.25, dur: Infinity }),
+    ];
+    // a área que fere, parada no chão (o Maelstrom anda, então fica sem)
+    const area = st.followSpeed ? undefined
+      : lib.ring(a.x, a.z, { radius: st.radius, color: tint, core: WIND_CORE, width: 0.22, from: 1, fill: 0.12, dust: 0, dur: Infinity, power: 0.45 });
+    this.vortices.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 0.5, group, cones, winds, area });
+    lib.ring(a.x, a.z, { radius: reach, color: tint, core: WIND_CORE, width: 0.35, from: 0.2, dust: 10, dur: 0.4 });
+    lib.burst(a.x, 0.8, a.z, { radius: 1.2, color: tint, core: WIND_CORE, rays: 0, sparks: 8, light: 0.8, dur: 0.25, wave: 0 });
     g.audio.play("tech");
     return true;
   }
@@ -946,6 +1107,8 @@ export class SpellCaster {
           v.x += (dx / d) * step;
           v.z += (dz / d) * step;
           v.group.position.set(v.x, 0, v.z);
+          v.winds[0].move(v.x, 0.45, v.z);
+          v.winds[1].move(v.x, 2.1, v.z);
         }
       }
       const reach = st.radius * SPELL_CAST.vortexReach;
@@ -971,7 +1134,9 @@ export class SpellCaster {
         }
       }
       if (v.time <= 0) {
-        g.fx.burst(v.x, 1.2, v.z, 0xdfeeff, 18, 5, 0.18, 0.5, 2);
+        const tint = st.followSpeed ? EVO_COLOR.maelstrom : SPELL_COLOR.cyclone;
+        g.fx.lib.burst(v.x, 1.4, v.z, { radius: 1.4, color: tint, core: WIND_CORE, rays: 0, sparks: 14, light: 0.8, dur: 0.3, wave: 0 });
+        g.fx.lib.ring(v.x, v.z, { radius: reach, color: tint, core: WIND_CORE, width: 0.3, from: 0.3, dust: 6, dur: 0.35, power: 0.7 });
         if (st.followSpeed) this.flingOut(v);
         this.freeVortex(k);
         continue;
@@ -979,21 +1144,26 @@ export class SpellCaster {
       // visual: os funis giram, crescem no começo e somem no fim
       const fade = Math.min(1, ((st.duration ?? 1) - v.time) / 0.25, v.time / 0.35);
       v.cones.forEach((m, n) => {
-        const [, h, op] = FUNNELS[n];
+        const [rad, h, op] = FUNNELS[n];
         m.rotation.y += dt * (7 + n * 3) * (n % 2 ? -1 : 1);
         (m.material as THREE.MeshBasicMaterial).opacity = op * fade;
         m.scale.y = h * (0.6 + 0.4 * fade);
+        // no fim o funil afina antes de sumir
+        const w = st.radius * rad * (0.35 + 0.65 * fade);
+        m.scale.x = m.scale.z = w;
       });
       v.group.rotation.z = Math.sin(g.time * 3.1 + v.x) * 0.05;
       v.group.rotation.x = Math.cos(g.time * 2.7 + v.z) * 0.05;
-      // poeira girando em volta do pé do funil
-      for (let n = 0; n < 3; n++) {
+      for (const w of v.winds) w.power = fade;
+      if (v.area) v.area.power = 0.45 * fade;
+      // folhas e cisco claros girando no vento
+      for (let n = 0; n < 2; n++) {
         const a = Math.random() * Math.PI * 2;
-        const d = reach * (0.4 + 0.6 * Math.random());
+        const d = reach * (0.3 + 0.6 * Math.random());
         const sx = Math.sin(a);
         const sz = Math.cos(a);
-        g.fx.glow(v.x + sx * d, 0.25 + Math.random() * 0.4, v.z + sz * d, n ? 0xb9a98a : 0xe8f4ff, 0.5 + Math.random() * 0.4,
-          0.45, sz * 6 - sx * 3, 1.8 + Math.random() * 2, -sx * 6 - sz * 3);
+        g.fx.glow(v.x + sx * d, 0.3 + Math.random() * 1.5, v.z + sz * d, n ? 0xd8c8a4 : 0xe8f4ff, 0.3 + Math.random() * 0.2,
+          0.45, sz * 6 - sx * 3, 2 + Math.random() * 2.5, -sx * 6 - sz * 3);
       }
     }
   }
@@ -1044,6 +1214,8 @@ export class SpellCaster {
     const v = this.vortices[k];
     v.group.removeFromParent();
     for (const m of v.cones) (m.material as THREE.Material).dispose();
+    for (const w of v.winds) w.kill(0.15);
+    v.area?.kill(0.2);
     this.vortices.splice(k, 1);
   }
 
@@ -1946,6 +2118,7 @@ export class SpellCaster {
         if (pr.trail) {
           pr.trail.push(pr.x, SPELL_CAST.height, pr.z);
           pr.motes?.move(pr.x, SPELL_CAST.height, pr.z);
+          this.flightFx(pr, dt);
           continue;
         }
         g.fx.glow(pr.x, SPELL_CAST.height, pr.z, pr.color, SPELL_CAST.ballSize * 5, 0.25, -pr.dx * 1.5, 0.3, -pr.dz * 1.5);
@@ -1970,12 +2143,11 @@ export class SpellCaster {
       this.arcaneImpact(pr.x, pr.z, r);
       return;
     }
-    const fire = st.id === "fireball";
-    g.fx.shockwave(pr.x, pr.z, r, pr.color, 0.4);
-    g.fx.burst(pr.x, 0.8, pr.z, pr.color, fire ? 36 : 28, fire ? 8 : 6, 0.16, 0.55, fire ? -2 : 8);
-    g.fx.burst(pr.x, 0.6, pr.z, fire ? 0xffe08a : 0xf2fbff, 14, 4, 0.12, 0.4, 4);
-    g.fx.flashLight(pr.x, 1.2, pr.z, pr.color, fire ? 3 : 2.2, 0.3);
-    g.fx.addShake(fire ? 0.14 : 0.1);
+    if (st.id === "fireball") {
+      this.fireImpact(pr.x, pr.z, r);
+      return;
+    }
+    if (st.id === "iceball") this.iceImpact(pr.x, pr.z, r);
   }
 
   /** status.lua `applyBurn`: não acumula; fica o maior dano por segundo e a maior duração; lembra o espaço (Volátil). */
