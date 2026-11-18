@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { merge } from "../flora";
 import type { Rig } from "../models";
 import { applyAtmosphere, U } from "../shared";
+import { addLamp } from "../lamps";
 import { type IkLeg, type Ribbon, newPhys } from "./animate";
 import { BOSSES } from "./cast-bosses";
 import { ENEMIES } from "./cast-enemies";
@@ -139,7 +140,26 @@ function lavaMaterial(lava: number, rough: number): THREE.MeshStandardMaterial {
   return mat;
 }
 
-export function buildChar(id: string, scaleMult: number, champion: boolean): Rig {
+/** Receita esculpida e geometrias já fundidas, por personagem (e coroa de campeão). */
+interface Prepared {
+  b: Builder;
+  /** camadas sólida, detalhe, brilho e pelagem: geometria fundida por osso */
+  solid: Map<Bone | string, G>;
+  detail: Map<Bone | string, G>;
+  glow: Map<Bone | string, G>;
+  pelt: Map<Bone | string, G>;
+  legs: { femur: G; tibia: G }[];
+}
+
+/** M16-01: esculpir e fundir um personagem leva de 5 a 15 ms; cada inimigo que nascia refazia tudo (e o descarte não
+ * soltava as geometrias). Agora cada receita é esculpida uma vez e as geometrias são compartilhadas; por instância só
+ * se montam ossos, malhas e materiais. As geometrias do cache nunca são descartadas. */
+const PREPARED = new Map<string, Prepared>();
+
+function prepare(id: string, champion: boolean): Prepared {
+  const key = id + (champion ? "|champ" : "");
+  const hit = PREPARED.get(key);
+  if (hit) return hit;
   const b = new Builder();
   CAST[id](b);
   if (champion) {
@@ -149,6 +169,18 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     b.lit(target, at(torus(0.17, 0.03, 0xffc83d), 0, y, 0));
     for (let i = 0; i < 5; i++) b.lit(target, at(cone(0.035, 0.12, 0xffc83d, 4), Math.cos(i * 1.257) * 0.17, y + 0.08, Math.sin(i * 1.257) * 0.17));
   }
+  const fuseAll = (m: Map<Bone | string, G[]>) => new Map([...m].map(([k, list]) => [k, fuse(list)] as const));
+  const p: Prepared = {
+    b, solid: fuseAll(b.solid), detail: fuseAll(b.detail), glow: fuseAll(b.glow), pelt: fuseAll(b.pelt),
+    legs: b.ikLegs.map((spec) => ({ femur: fuse(spec.femur), tibia: fuse(spec.tibia) })),
+  };
+  PREPARED.set(key, p);
+  return p;
+}
+
+export function buildChar(id: string, scaleMult: number, champion: boolean): Rig {
+  const P = prepare(id, champion);
+  const b = P.b;
   const root = new THREE.Group();
   const inner = new THREE.Group();
   root.add(inner);
@@ -190,12 +222,12 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     mk("wingR", hips, 0.16, 0.05, 0);
   }
   const mats = [main, glow];
-  const layers: [Map<Bone | string, G[]>, THREE.MeshStandardMaterial][] = [[b.solid, main], [b.detail, main], [b.glow, glow]];
+  const layers: [Map<Bone | string, G>, THREE.MeshStandardMaterial][] = [[P.solid, main], [P.detail, main], [P.glow, glow]];
   let legMat = main;
-  if (b.pelt.size) {
+  if (P.pelt.size) {
     const fur = b.surface === "lava" ? lavaMaterial(b.lava, b.rough) : furMaterial(b.stripe, b.rough);
     mats.push(fur);
-    layers.push([b.pelt, fur]);
+    layers.push([P.pelt, fur]);
     legMat = fur;
   }
   // patas com cinemática inversa: presas a `inner`, resolvidas em animate
@@ -205,8 +237,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     femur.add(tibia);
     root.add(femur);
     inner.add(root);
-    for (const [bone, list] of [[femur, spec.femur], [tibia, spec.tibia]] as const) {
-      const geo = fuse(list);
+    for (const [bone, geo] of [[femur, P.legs[i].femur], [tibia, P.legs[i].tibia]] as const) {
       const mesh = new THREE.Mesh(geo, legMat);
       mesh.castShadow = true;
       bone.add(mesh, new THREE.Mesh(geo, OUTLINE));
@@ -218,17 +249,13 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     };
   });
   for (const [map, material] of layers) {
-    for (const [name, list] of map) {
+    for (const [name, geo] of map) {
       const parent = bones[name as Bone];
-      if (!parent) {
-        for (const g of list) g.dispose();
-        continue;
-      }
-      const geo = fuse(list);
+      if (!parent) continue;
       const mesh = new THREE.Mesh(geo, material);
       mesh.castShadow = material !== glow;
       parent.add(mesh);
-      if (material !== glow && map !== b.detail) parent.add(new THREE.Mesh(geo, OUTLINE));
+      if (material !== glow && map !== P.detail) parent.add(new THREE.Mesh(geo, OUTLINE));
     }
   }
   // fitas com física: malha em anel de 4 vértices por gomo (esquerda, cima, direita, baixo), no espaço de `root`, refeita em animate
@@ -264,9 +291,8 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     });
   }
   for (const l of b.lights) {
-    const light = new THREE.PointLight(l.color, l.intensity, l.distance, 1.7);
-    light.position.set(l.x, l.y, l.z);
-    bones[l.bone]?.add(light);
+    const bone = bones[l.bone];
+    if (bone) addLamp(bone, l.x, l.y, l.z, l.color, l.intensity, l.distance);
   }
   applyAtmosphere(root);
   const scale = b.scale * scaleMult;
