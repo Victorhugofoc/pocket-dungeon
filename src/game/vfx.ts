@@ -115,6 +115,8 @@ const FLAT_VS = "varying vec2 vP; void main() { vP = position.xy; gl_Position = 
 const DISC = new THREE.CircleGeometry(1, 64);
 const QUAD = new THREE.PlaneGeometry(2, 2);
 const PILLAR = new THREE.CylinderGeometry(1, 1, 1, 32, 8, true).translate(0, 0.5, 0);
+/** espinho de base no chão: pirâmide de 5 faces, altura 1 */
+const SPIKE = new THREE.ConeGeometry(1, 1, 5, 1).translate(0, 0.5, 0);
 
 /** Fita com 2 vértices por segmento: `aAlong` 0..1 ao longo, `aSide` -1/1 de lado. A posição real sai no shader. */
 function stripGeometry(segments: number): THREE.BufferGeometry {
@@ -768,6 +770,97 @@ export class Vfx {
     }, () => { for (const t of tails) t.kill(); }) as MoveHandle;
     h.move = (a, b, d) => c.set(a, b, d);
     return h;
+  }
+
+  /**
+   * Baforada de fumaça ou poeira voltada para a câmera, com mistura normal (escurece o que está atrás, ao contrário das outras
+   * peças): borda rasgada por ruído que se mexe, cresce, sobe e some. `radius` final; `rise` subida em u/s; `drift` vento (x, z);
+   * `alpha` opacidade máxima. `core` clareia o miolo (fumaça de fogo com brasa por dentro).
+   */
+  smoke(x: number, y: number, z: number, o: Base & { radius: number; rise?: number; drift?: [number, number]; alpha?: number }): VfxHandle {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(o.color) }, uCore: { value: new THREE.Color(o.core ?? o.color) },
+        uSize: { value: 0 }, uA: { value: 0 }, uK: { value: 0 }, uSeed: { value: Math.random() * 40 }, uTime: { value: 0 },
+      },
+      vertexShader: `varying vec2 vP; uniform float uSize;
+        void main() {
+          vP = position.xy;
+          vec4 mv = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+          mv.xy += position.xy * uSize;
+          mv.z += uSize; // puxada para a câmera: o quadrado não corta no chão
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: NOISE + `varying vec2 vP; uniform vec3 uColor, uCore; uniform float uA, uK, uSeed, uTime;
+        void main() {
+          float d = length(vP);
+          float n = fbm(vP * 2.2 + uSeed + vec2(uTime * 0.4, -uTime * 0.7));
+          float edge = 0.55 + 0.35 * n; // borda rasgada
+          float a = smoothstep(edge, edge - 0.35, d) * (0.55 + 0.45 * n) * uA;
+          vec3 col = mix(uCore, uColor, smoothstep(0.0, 0.6, d + uK * 0.8));
+          gl_FragColor = vec4(col, a);
+        }`,
+      transparent: true, depthWrite: false, toneMapped: true,
+    });
+    const mesh = new THREE.Mesh(QUAD, mat);
+    mesh.position.set(x, y, z);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 4;
+    const u = mat.uniforms, R = o.radius, rise = o.rise ?? 0.8, [wx, wz] = o.drift ?? [0, 0], A = o.alpha ?? 0.55;
+    const enter = (t: number) => Math.min(1, t / 0.12) * (1 - ease("in", t));
+    return this.add(mesh, { ...o, curve: o.curve ?? enter }, "fade", 0.9, (dt, k, i) => {
+      mesh.position.x += wx * dt;
+      mesh.position.y += rise * dt * (1 - k * 0.6);
+      mesh.position.z += wz * dt;
+      u.uSize.value = R * (0.45 + 0.55 * ease("out", k));
+      u.uA.value = Math.min(1, i) * A;
+      u.uK.value = k;
+      u.uTime.value = this.time;
+      return true;
+    });
+  }
+
+  /**
+   * Espinhos que brotam do chão em volta de um centro (gelo, pedra): pirâmides facetadas e iluminadas, inclinadas para fora,
+   * que saem rápido, ficam e afundam no fim. `radius` alcance; `count` espinhos; `height` do maior; `seed` repete o desenho;
+   * `color` corpo, `core` brilho próprio (emissivo); `opacity` < 1 para cristal.
+   */
+  spikes(x: number, z: number, o: Base & { radius: number; count?: number; height?: number; seed?: number; opacity?: number }): VfxHandle {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+    const rand = rng(o.seed);
+    const count = o.count ?? 9, H = o.height ?? 1.2, R = o.radius;
+    const mat = new THREE.MeshStandardMaterial({
+      color: o.color, emissive: o.core ?? o.color, emissiveIntensity: 0.35, roughness: 0.25, metalness: 0.1, flatShading: true,
+      transparent: (o.opacity ?? 1) < 1, opacity: o.opacity ?? 1,
+    });
+    const items: { m: THREE.Mesh; h: number; delay: number }[] = [];
+    for (let n = 0; n < count; n++) {
+      const a = (n / count) * Math.PI * 2 + (rand() - 0.5) * 0.9;
+      const d = n === 0 ? 0 : R * (0.25 + 0.75 * Math.sqrt(rand()));
+      const h = H * (n === 0 ? 1 : 0.45 + 0.5 * rand()) * (1 - 0.3 * d / R);
+      const w = h * (0.26 + 0.12 * rand());
+      const m = new THREE.Mesh(SPIKE, mat);
+      m.scale.set(w, h, w * (0.7 + 0.5 * rand()));
+      m.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+      const lean = (d / R) * 0.55 + rand() * 0.15;
+      m.rotation.set(Math.sin(a) * lean, rand() * 6.28, -Math.cos(a) * lean, "YXZ");
+      m.castShadow = true;
+      group.add(m);
+      items.push({ m, h, delay: (d / R) * 0.08 });
+    }
+    return this.add(group, o, "hold", 0.9, (dt, k, i) => {
+      const t = k * (Number.isFinite(o.dur ?? 0.9) ? (o.dur ?? 0.9) : 1);
+      for (const it of items) {
+        const up = ease("out", Math.min(1, Math.max(0, (t - it.delay) / 0.09)));
+        const sink = Math.max(0, (k - 0.72) / 0.28);
+        it.m.position.y = -it.h * (1 - up) - it.h * ease("in", sink) * 0.9;
+        it.m.visible = up > 0;
+      }
+      mat.emissiveIntensity = 0.35 + 0.9 * Math.max(0, 1 - t / 0.25);
+      mat.opacity = (o.opacity ?? 1) * Math.min(1, i * 1.2);
+      return true;
+    });
   }
 
   update(dt: number): void {
