@@ -52,6 +52,12 @@ const TECH_FX = {
   shadow: 0x4a2a6e, shadowCore: 0x9a5ad0, shadowGlow: 0xa06cf0,
   /** Ignis: chama funda, miolo e fumaça */
   fireDeep: 0xff4a0a, fireCore: 0xffd070, fireSmoke: 0x2a1d17,
+  /** Varok: golpe de execução, pedra e poeira */
+  execRed: 0xf2594a, execCore: 0xffd8b0, rock: 0x7a6a58, rockCore: 0x3a2a1a, dust: 0x8a7a64,
+  /** Frostine: gelo, miolo e névoa */
+  ice: 0x8fdcff, iceCore: 0xf0fbff, mist: 0xd8f2ff,
+  /** Aurelius: arcano e miolo */
+  arcane: 0xb07cff, arcaneCore: 0xf2e6ff,
 } as const;
 
 export interface GameEvents {
@@ -152,7 +158,7 @@ export interface PlayerState {
   /** Vesper: tempo até a próxima abelha da Ninhada */
   nestT: number;
   flash: number; hurtT: number;
-  leap: { t: number; dur: number; x0: number; z0: number; x1: number; z1: number } | null;
+  leap: { t: number; dur: number; x0: number; z0: number; x1: number; z1: number; fx?: TrailHandle } | null;
   rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number; x0: number; z0: number; fire?: TrailHandle } | null;
 }
 
@@ -502,6 +508,7 @@ export class Game {
     p.x = this.layout.spawn.x;
     p.z = this.layout.spawn.z;
     p.rush?.fire?.kill();
+    p.leap?.fx?.kill();
     p.leap = p.rush = null;
     this.endAegis(false);
     p.shadowUntil = 0;
@@ -1130,6 +1137,7 @@ export class Game {
       p.hp = 0;
       this.playerAlive = false;
       p.rush?.fire?.kill();
+      p.leap?.fx?.kill();
       p.leap = p.rush = null;
       this.endAegis(false);
       this.run.killedBy = source;
@@ -1700,9 +1708,17 @@ export class Game {
         // Aurelius: fenda no mouse que deixa lento, segura os tiros inimigos e implode
         const T = this.tech!;
         const dest = this.aimPoint(T.range);
-        this.rifts.add({ x: dest.x, z: dest.z, r: T.radius ?? 6.7, dur: T.duration ?? 3, slow: T.riftSlow ?? 0.6,
+        const rr = T.radius ?? 6.7;
+        const rift = this.rifts.add({ x: dest.x, z: dest.z, r: rr, dur: T.duration ?? 3, slow: T.riftSlow ?? 0.6,
           damage: T.damage, perEnemy: T.perEnemy ?? 0.15, maxMult: T.maxMult ?? 3, stun: T.stun ?? 0 });
-        this.fx.burst(dest.x, 0.5, dest.z, 0xc28cff, 30, 5, 0.14, 0.6, -2);
+        // M5-03: a fenda abre com um anel arcano e um clarão; pontos de luz giram devagar na borda até a implosão
+        const lib = this.fx.lib;
+        lib.ring(dest.x, dest.z, { radius: rr, color: TECH_FX.arcane, core: TECH_FX.arcaneCore, width: 0.4, from: 0.1, fill: 0.2, dust: 10, dur: 0.35 });
+        lib.burst(dest.x, 0.9, dest.z, { radius: 1.4, color: TECH_FX.arcane, core: TECH_FX.arcaneCore, rays: 6, sparks: 12, light: 1.4, dur: 0.26, wave: 0 });
+        lib.burst(p.x + Math.sin(p.facing) * 0.8, 1.6, p.z + Math.cos(p.facing) * 0.8, { radius: 0.7, color: TECH_FX.arcane, core: TECH_FX.arcaneCore,
+          rays: 4, sparks: 6, light: 0, dur: 0.18, wave: 0, power: 0.8 });
+        rift.fx = lib.orbit(dest.x, 0.5, dest.z, { radius: rr * 0.92, count: 5, speed: 0.22, tilt: 0, size: 0.5, bob: 0.15,
+          color: TECH_FX.arcane, core: TECH_FX.arcaneCore, dur: Infinity, power: 0.8 });
         break;
       }
       case "fan": {
@@ -1754,8 +1770,21 @@ export class Game {
         const pl = IceWalls.place(p.x, p.z, this.aim.x, this.aim.z, T.minRange ?? 4, T.maxRange ?? 16);
         this.iceWalls.add({ ...pl, length: T.length ?? 12, thickness: T.thickness ?? 1.2, dur: T.duration ?? 5,
           damage: T.damage, freeze: T.freeze ?? 1, shatter: T.shatter === true });
-        this.fx.burst(pl.x, 0.4, pl.z, 0xcdeeff, 40, 6, 0.16, 0.6, 6);
-        this.fx.flashLight(pl.x, 1.5, pl.z, 0x9fdcff, 2.2, 0.4);
+        // M5-03: a parede sobe com estalos de gelo ao longo dela e névoa fria rolando no pé
+        const lib = this.fx.lib;
+        const len = T.length ?? 12;
+        const n = 5;
+        lib.beam(p.x, 0.25, p.z, pl.x, 0.25, pl.z, { color: TECH_FX.ice, core: TECH_FX.iceCore, width: 0.35, dur: 0.25 });
+        for (let i = 0; i < n; i++) {
+          const s0 = ((i + 0.5) / n - 0.5) * len;
+          const x = pl.x + pl.az * s0;
+          const z = pl.z - pl.ax * s0;
+          lib.burst(x, 0.5, z, { radius: 1.1, color: TECH_FX.ice, core: TECH_FX.iceCore, rays: 4, sparks: 8, light: i === 2 ? 1.8 : 0, dur: 0.22, wave: 0, power: 0.8 });
+          lib.smoke(x, 0.2, z, { radius: 1.1 + Math.random() * 0.4, color: TECH_FX.mist, alpha: 0.22, rise: 0.1,
+            drift: [-pl.ax * 0.8, -pl.az * 0.8], dur: 1.1 + Math.random() * 0.4 });
+        }
+        lib.burst(p.x + Math.sin(p.facing) * 0.8, 1.6, p.z + Math.cos(p.facing) * 0.8, { radius: 0.7, color: TECH_FX.ice, core: TECH_FX.iceCore,
+          rays: 4, sparks: 6, light: 0, dur: 0.18, wave: 0, power: 0.8 });
         this.fx.addShake(0.2);
         break;
       }
@@ -1843,7 +1872,15 @@ export class Game {
           return;
         }
         const dur = T.leapTime ?? 0.45;
-        p.leap = { t: 0, dur, x0: p.x, z0: p.z, x1: dest.x, z1: dest.z };
+        // M5-03: o herói sai do chão levantando poeira e deixa um rastro vermelho no arco do salto
+        const lib = this.fx.lib;
+        lib.ring(p.x, p.z, { radius: 2.4, color: TECH_FX.execRed, core: TECH_FX.execCore, width: 0.5, from: 0.3, dust: 8, dur: 0.3 });
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2 + Math.random();
+          lib.smoke(p.x + Math.sin(a) * 0.9, 0.4, p.z + Math.cos(a) * 0.9, { radius: 0.7 + Math.random() * 0.3, color: 0xb8a888, alpha: 0.3, rise: 0.5, dur: 0.5 });
+        }
+        const trail = lib.trail({ color: TECH_FX.execRed, core: TECH_FX.execCore, width: 1.7, life: 0.25, head: 0.8, sheds: 14 });
+        p.leap = { t: 0, dur, x0: p.x, z0: p.z, x1: dest.x, z1: dest.z, fx: trail };
         p.iframes = Math.max(p.iframes, dur);
         break;
       }
@@ -1933,7 +1970,9 @@ export class Game {
       p.x = l.x0 + (l.x1 - l.x0) * k;
       p.z = l.z0 + (l.z1 - l.z0) * k;
       lift = Math.sin(k * Math.PI) * 4.5;
+      l.fx?.push(p.x, lift + 1.3, p.z);
       if (k >= 1) {
+        l.fx?.kill();
         p.leap = null;
         const T = this.tech!;
         this.grid.resolve(p, 0.5);
@@ -2132,16 +2171,25 @@ export class Game {
     if (target) {
       const pct = (target.maxHp * (T.maxHpFraction ?? 0.08)) / Math.max(1, this.stats.damage);
       this.hitEnemy(target, Math.max(T.damage, pct));
-      this.fx.burst(target.x, 1.2, target.z, 0xff5040, 26, 8, 0.16, 0.5, 8);
+      // M5-03: a execução no mais forte: clarão vermelho e coluna de luz que cai sobre ele
+      this.fx.lib.burst(target.x, 1.2, target.z, { radius: 1.2, color: TECH_FX.execRed, core: 0xffa070, rays: 7, sparks: 14, light: 1.2, dur: 0.24, wave: 0, power: 0.7 });
+      this.fx.lib.pillar(target.x, target.z, { radius: 0.9, height: 5, color: TECH_FX.execRed, core: TECH_FX.execCore, dur: 0.35 });
     }
     for (const e of inside) {
       if (e !== target) this.hitEnemy(e, T.damage * 0.5);
       if (!e.dead) this.applyStatus(e, { kind: "stun", power: 1, duration: T.stun ?? 0.5 }, 0);
     }
-    this.fx.shockwave(p.x, p.z, r, this.hero.color, 0.45);
-    this.fx.shockwave(p.x, p.z, r * 0.55, 0xffd0a0, 0.3);
-    this.fx.burst(p.x, 0.3, p.z, 0xc8b89a, 50, 11, 0.22, 0.8);
-    this.fx.flashLight(p.x, 1.2, p.z, 0xffb070, 2.5, 0.3);
+    // M5-03: cratera; onda até o raio, fendas e lascas de pedra saltando do chão, poeira na borda
+    const lib = this.fx.lib;
+    lib.ring(p.x, p.z, { radius: r, color: TECH_FX.execRed, core: TECH_FX.execCore, width: 0.7, from: 0.15, fill: 0.25, dust: 16, dur: 0.4 });
+    lib.groundCrack(p.x, p.z, { radius: r * 0.7, count: 7, width: 0.45, scorch: 0.7, color: TECH_FX.execRed, core: TECH_FX.execCore, dur: 1.1 });
+    lib.spikes(p.x, p.z, { radius: r * 0.55, count: 12, height: 1.6, color: TECH_FX.rock, core: TECH_FX.rockCore, dur: 0.9 });
+    lib.burst(p.x, 0.6, p.z, { radius: 1.4, color: TECH_FX.execRed, core: 0xffa070, rays: 6, sparks: 18, light: 1.8, dur: 0.26, power: 0.7 });
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
+      lib.smoke(p.x + Math.sin(a) * r * 0.8, 0.5, p.z + Math.cos(a) * r * 0.8, { radius: 0.9 + Math.random() * 0.4, color: 0xa89878,
+        alpha: 0.3, rise: 0.8, drift: [Math.sin(a) * 1.2, Math.cos(a) * 1.2], dur: 0.9 });
+    }
     this.fx.addShake(0.7);
     this.hitstop = Math.max(this.hitstop, 0.06);
   }
@@ -2184,20 +2232,30 @@ export class Game {
       W.collide(e, (w: IceWall) => {
         this.hitEnemy(e, w.damage, undefined, { ice: true });
         if (!e.dead && !e.isBoss) this.applyStatus(e, { kind: "stun", power: 1, duration: w.freeze }, 0);
-        this.fx.burst(e.x, 0.8, e.z, 0xcdeeff, 10, 4, 0.12, 0.4, 4);
+        this.fx.lib.burst(e.x, 0.8, e.z, { radius: 0.9, color: TECH_FX.ice, core: TECH_FX.iceCore, rays: 4, sparks: 8, light: 0, dur: 0.2, wave: 0 });
       });
     }
     W.update(dt, (w: IceWall) => {
       const mx = (w.x0 + w.x1) / 2;
       const mz = (w.z0 + w.z1) / 2;
-      this.fx.burst(mx, 0.8, mz, 0xcdeeff, 30, 5, 0.14, 0.6, 8);
-      if (!w.shatter) return;
+      // M5-03: o gelo se parte; lascas e névoa ao longo da parede
+      const lib = this.fx.lib;
       const half = Math.hypot(w.x1 - w.x0, w.z1 - w.z0) / 2;
+      for (let i = 0; i < 4; i++) {
+        const k = (i + 0.5) / 4;
+        const x = w.x0 + (w.x1 - w.x0) * k;
+        const z = w.z0 + (w.z1 - w.z0) * k;
+        lib.burst(x, 0.9, z, { radius: 1, color: TECH_FX.ice, core: TECH_FX.iceCore, rays: 3, sparks: 10, light: 0, dur: 0.24, wave: 0, power: 0.7 });
+        lib.smoke(x, 0.3, z, { radius: 0.9, color: TECH_FX.mist, alpha: 0.18, rise: 0.4, dur: 0.6 });
+      }
+      if (!w.shatter) return;
       for (const e of this.enemies) {
         if (e.dead) continue;
         if (Math.hypot(e.x - mx, e.z - mz) < half + px(20) + e.radius) this.hitEnemy(e, w.damage * 3, undefined, { ice: true });
       }
-      this.fx.shockwave(mx, mz, half, 0xcdeeff, 0.5);
+      lib.ring(mx, mz, { radius: half * 0.6, color: TECH_FX.ice, core: TECH_FX.iceCore, width: 0.5, from: 0.3, dust: 14, dur: 0.3, power: 0.8 });
+      lib.spikes(mx, mz, { radius: half * 0.7, count: 12, height: 1.6, color: 0xcdeeff, core: 0x3a9bd0, opacity: 0.85, dur: 0.8 });
+      lib.burst(mx, 1, mz, { radius: 2, color: TECH_FX.ice, core: TECH_FX.iceCore, rays: 7, sparks: 20, light: 2.2, dur: 0.3 });
       this.fx.addShake(0.35);
     });
   }
@@ -2344,9 +2402,18 @@ export class Game {
         this.hitEnemy(e, r.damage * mult);
         if (r.stun > 0 && !e.dead) this.applyStatus(e, { kind: "stun", power: 1, duration: r.stun }, 0);
       }
-      this.fx.shockwave(r.x, r.z, r.r, 0xe0c0ff, 0.35);
-      this.fx.burst(r.x, 0.8, r.z, 0xc28cff, 30 + inside.length * 6, 9, 0.16, 0.5, 4);
-      this.fx.flashLight(r.x, 1.5, r.z, 0xc28cff, 2 + inside.length * 0.3, 0.35);
+      // M5-03: implosão; raios arcanos correm da borda para o centro, coluna de luz e clarão crescendo com os presos
+      const lib = this.fx.lib;
+      const big = 1 + Math.min(1, inside.length * 0.1);
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2 + Math.random() * 0.4;
+        lib.lightning(r.x + Math.cos(a) * r.r * 0.75, 0.4, r.z + Math.sin(a) * r.r * 0.75, r.x, 0.9, r.z,
+          { color: TECH_FX.arcane, core: TECH_FX.arcaneCore, width: 0.26, branches: 1, rate: 0.05, dur: 0.22 });
+      }
+      lib.pillar(r.x, r.z, { radius: 1.2 * big, height: 6, color: TECH_FX.arcane, core: TECH_FX.arcaneCore, dur: 0.5 });
+      lib.burst(r.x, 1, r.z, { radius: 2.2 * big, color: TECH_FX.arcane, core: TECH_FX.arcaneCore, rays: 7, sparks: 16 + inside.length * 3,
+        light: 2 + inside.length * 0.3, dur: 0.3, power: 0.75 });
+      lib.ring(r.x, r.z, { radius: r.r, color: TECH_FX.arcane, core: TECH_FX.arcaneCore, width: 0.6, from: 0.15, fill: 0.3, dust: 14, dur: 0.35 });
       this.fx.addShake(0.2 + Math.min(0.3, inside.length * 0.04));
     });
   }
