@@ -1,5 +1,6 @@
 // Efeitos: partículas instanciadas, telegrafias no chão, ondas de choque, arcos de golpe e números flutuantes.
 import * as THREE from "three";
+import { Vfx } from "./vfx";
 
 interface Particle {
   x: number; y: number; z: number;
@@ -121,8 +122,11 @@ export class Fx {
   private gPoints: THREE.Points;
   private gMat: THREE.ShaderMaterial;
   private lights: { light: THREE.PointLight; t: number; dur: number; power: number }[] = [];
+  /** biblioteca de efeitos (M5-02): anel, clarão, raio, rastro, coluna, rachadura, órbita */
+  readonly lib: Vfx;
 
   constructor(private scene: THREE.Scene, private textLayer: HTMLElement) {
+    this.lib = new Vfx(scene, this);
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshBasicMaterial({ toneMapped: false });
     this.pMesh = new THREE.InstancedMesh(geo, mat, this.cap);
@@ -459,6 +463,7 @@ export class Fx {
       l.light.intensity = l.power * k * k;
     }
 
+    this.lib.update(dt);
     this.shake = Math.max(0, this.shake - dt * 3.2);
   }
 
@@ -478,5 +483,6 @@ export class Fx {
     this.texts.length = 0;
     this.particles.length = 0;
     this.glows.length = 0;
+    this.lib.clear();
   }
 }

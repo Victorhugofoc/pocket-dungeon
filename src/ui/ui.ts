@@ -35,6 +35,17 @@ const UPGRADE_LABEL: Record<string, string> = {
   damageFlat: "Damage", attackSpeedPct: "Attack Speed", autoDamagePct: "Damage", critChance: "Crit Chance",
   armor: "Armor", moveSpeedPct: "Move Speed", maxHpFlat: "HP", maxHpPct: "HP", rangePct: "Range",
   dodge: "Dodge", regen: "Regeneration/s", xpPct: "XP earned", goldPct: "Gold earned", spellCooldownPct: "Technique Cooldown",
+  // D14 e o resto de upgrades.ts, com as palavras do en.lua de lá
+  damagePct: "Damage", spellPowerFlat: "Spell Power", spellDamagePct: "Spell Damage", spellCritChance: "Spell Crit",
+  firePct: "Fire Damage", icePct: "Ice Damage", lightningPct: "Lightning Damage", arcanePct: "Arcane Damage", earthPct: "Earth Damage",
+  windPct: "Wind Damage", lightPct: "Light Damage", runePct: "Rune Damage", poisonPct: "Poison Damage", burnPct: "Burn Damage",
+  slowPct: "Slow", slowDurationPct: "Slow Duration", slowedDamagePct: "damage vs. Slowed targets", areaPct: "Area", cdrPct: "Cooldown",
+  critDamagePct: "Crit Damage", echoChance: "Echo chance", volatileChance: "Volatile chance", chainRangePct: "Lightning jump",
+  knockbackPct: "Knockback", autoProjectileSpeedPct: "Projectile Speed", bossDamagePct: "Boss damage", executionerPct: "damage to bosses below 30% HP",
+  techniqueDamagePct: "Technique damage", followThroughPct: "damage for 3 s after the technique", deathHealChance: "chance to heal on kill",
+  healPct: "Healing Received", championGoldPct: "Champion gold", championXpPct: "Champion XP", championHpPct: "Champion HP",
+  survivorRewardPct: "Survivor reward", shopPricePct: "Shop prices", riftDurationFlat: "s Time Rift duration",
+  doubleShot: "shot in a row", coneShot: "projectile in a cone", pierce: "Pierce",
 };
 /** Nome e texto de cada carta do mapa, como em data/run_map.lua (o nome fica em inglês, igual ao de lá). */
 const MAP_NODE: Record<MapNodeId, { name: string; text: string; color: string }> = {
@@ -54,7 +65,7 @@ const ROOM_MOD_LABEL: [keyof RoomMods, string][] = [
 ];
 
 /** Na recarga, negativo é bom (format.lua `INVERTED`). */
-const INVERTED: Record<string, true> = { spellCooldownPct: true };
+const INVERTED: Record<string, true> = { spellCooldownPct: true, cdrPct: true, shopPricePct: true };
 
 function upgradeLine(e: UpgradeEffect): string {
   const good = INVERTED[e.stat] ? e.value < 0 : e.value > 0;
