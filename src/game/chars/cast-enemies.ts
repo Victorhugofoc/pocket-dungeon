@@ -1,7 +1,7 @@
 // Inimigos comuns. Goblin e orc refeitos no M3-01 pelo método da seção 4 do roadmap; os outros ainda na versão antiga.
 import * as THREE from "three";
 import { paint, prep } from "../flora";
-import { type G, type Spec, at, axe, beard, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
+import { type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
 
 export const ENEMIES: Record<string, Spec> = {
   // ------------------------------------------------ inimigos
@@ -15,42 +15,72 @@ export const ENEMIES: Record<string, Spec> = {
     const col = (h: number) => new THREE.Color(h);
     const cSkin = col(SKIN), cSkinD = col(SKIN_D), cSkinL = col(SKIN_L);
     const HAND = 0.29;
-    b.scale = 0.7; b.style = "swing"; b.rough = 0.7;
+    b.scale = 0.7; b.style = "swing"; b.rough = 0.7; b.glowColor = EYE;
     b.lean = 0.62; b.crouch = 0.95; b.armOut = 0.22;
     b.poseR = [-0.9, -0.75]; b.poseL = [-0.3, -0.75];
     b.dims = { hipY: 0.66, headY: 0.48, shoulderY: 0.4, shoulderX: 0.24, arm: 0.3, hipX: 0.16, thigh: 0.27 };
 
-    // ---- cabeça: malha única, queixo e boca para a frente, arcada pesada, órbitas fundas; levantada para olhar à frente apesar da curva
-    const { socket } = headMask;
-    const head = headBase({ w: 0.19, h: 0.18, d: 0.2, muzzle: 0.1, muzzleNarrow: 0.2, palate: null, brow: 0.06, socket: 0.045, cheek: 0.025, seg: [18, 13], tint: (n, c) => {
-      c.copy(cSkinD).lerp(cSkin, 0.7 + 0.3 * ss(-0.9, 0.0, n.y)).lerp(cSkinL, ss(0.35, 0.95, n.y) * 0.5); // embaixo só um pouco mais escuro: o rosto não some na câmera alta
-      if (socket(n) > 0.45) c.copy(cSkinD);
-    } });
+    // ---- cabeça: escultura própria (a cabeça base redonda dava cara de bonzinho). Crânio comprido para trás, arcada pesada em V que
+    // desce para o meio, órbitas fundas com olhos estreitos, maçãs salientes e bochechas fundas, mandíbula larga projetada (dentes de
+    // baixo para fora), boca rasgada de canto caído, testa com rugas. Rosnado, não sorriso.
+    const cDark = col(DARK);
+    const browY = (x: number) => 0.2 + 0.4 * Math.abs(x); // linha da arcada: ponta de dentro mais baixa
+    const head = sculpt(26, 20, (n, p) => {
+      const ax = Math.abs(n.x), front = ss(0.25, 0.85, n.z), low = ss(-0.15, -0.65, n.y);
+      let x = n.x * 0.17, y = n.y * (n.y > 0 ? 0.14 : 0.165), z = n.z * 0.17; // crânio baixo
+      if (n.z < 0) z *= 1.3 + 0.25 * ss(0, 0.8, n.y); // crânio comprido para trás
+      z -= 0.05 * ss(0.3, 1, n.y) * ss(-0.2, 0.6, n.z); // testa baixa, inclinada para trás
+      z += 0.085 * bell(n.y - browY(n.x), 0.09) * front * bell(n.x, 0.7); // arcada
+      z -= 0.05 * bell(n.y - browY(n.x) + 0.2, 0.11) * bell(ax - 0.36, 0.17) * front; // órbita
+      x += Math.sign(n.x) * 0.02 * bell(n.y + 0.02, 0.12) * ss(0.45, 0.85, ax); // maçã do rosto
+      x -= Math.sign(n.x) * 0.038 * bell(n.y + 0.28, 0.15) * ss(0.35, 0.8, ax) * ss(-0.1, 0.5, n.z); // bochecha funda
+      z += 0.14 * low * ss(-0.1, 0.7, n.z); // mandíbula para a frente (queixo à frente do lábio de cima)
+      x *= 1 + 0.2 * low; // e larga
+      y -= 0.04 * low * front; // queixo comprido
+      z -= 0.018 * bell(n.y + 0.5, 0.05) * front * bell(n.x, 0.5); // fenda da boca
+      x *= 1 - 0.16 * ss(-0.1, 0.8, n.y) * ss(-0.6, 0.4, n.z); // têmporas estreitas: a cabeça não fica bola
+      p.set(x, y, z);
+    }, (n, c) => {
+      const ax = Math.abs(n.x), front = ss(0.3, 0.8, n.z);
+      c.copy(cSkinD).lerp(cSkin, 0.7 + 0.3 * ss(-0.9, 0.0, n.y)).lerp(cSkinL, ss(0.4, 0.95, n.y) * 0.4);
+      c.lerp(cDark, 0.8 * bell(n.y - browY(n.x) + 0.2, 0.2) * bell(ax - 0.36, 0.28) * front); // sombra funda da órbita: os olhos acesos saem do escuro
+      c.lerp(cSkinD, 0.35 * ss(-0.45, -0.9, n.y)); // embaixo da mandíbula
+    });
     const HX = 0, HY = 0.12, HZ = 0.1, HR = -0.5, HS = 1.3; // a curva do tronco inclina a cabeça; ela volta a olhar para a frente
     const H = (g: G, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => at(at(g, x, y, z, rx, ry, rz), HX, HY, HZ, HR, 0, 0, HS);
     b.add("head", H(head, 0, 0, 0));
-    // nariz adunco e queixo
-    b.add("head", H(tubeMesh(7, 8, (k, o) => { o.set(0, 0.03 - 0.1 * k * k, 0.16 + 0.15 * Math.sin(k * 1.4)); }, (k) => 0.055 * (1 - k) + 0.012, (_a, k, c) => { c.copy(cSkin).lerp(cSkinD, k * 0.5); }), 0, 0, 0));
-    // sorriso maldoso: boca em crescente rente ao rosto, com a fileira de dentes de cima à mostra
-    b.flat("head", H(tubeMesh(5, 10, (k, o) => { const x = (k - 0.5) * 0.15; o.set(x, -0.1 + 2.2 * x * x, 0.205 - 2.6 * x * x); }, () => 0.014, (_a, _k, c) => { c.set(0x2a120c); }, new THREE.Vector3(0, 1, 0)), 0, 0, 0));
-    for (let i = -2; i <= 2; i++) { const x = i * 0.024; b.flat("head", H(bx(0.016, 0.018, 0.01, TOOTH), x, -0.092 + 2.2 * x * x, 0.214 - 2.6 * x * x, 0, 0, 0)); }
+    // nariz adunco, comprido e pontudo, caindo sobre a boca; narinas escuras
+    b.add("head", H(tubeMesh(8, 8, (k, o) => { o.set(0, 0.005 - 0.06 * k * k, 0.15 + 0.12 * Math.sin(k * 1.4)); }, (k) => 0.06 * (1 - k) * (1 - 0.3 * k) + 0.007, (_a, k, c) => { c.copy(cSkin).lerp(cSkinD, k * 0.4); }), 0, 0, 0));
+    // boca: esgar largo e aberto, cantos puxados para cima e para trás, fundo vermelho escuro, dentes cerrados de cima e de baixo
+    const mouthY = (x: number) => -0.115 - 1.0 * x * x, mouthZ = (x: number) => 0.235 - 2.4 * x * x;
+    b.flat("head", H(sculpt(12, 8, (n, p) => { const x = n.x * 0.1; p.set(x, mouthY(x) + n.y * 0.03 * (1 - 0.6 * n.x * n.x), mouthZ(x) + n.z * 0.012 - 0.008); }, (n, c) => { c.set(0x2a0808).lerp(new THREE.Color(0x0e0303), ss(0.2, -0.6, n.z)); }), 0, 0, 0));
+    const FANG = 0xd6c896, jag = [0.8, 1.15, 0.9, 1.2, 0.85];
+    for (let i = 0; i < 5; i++) {
+      const x = (i - 2) * 0.03, z = mouthZ(x) + 0.004, len = 0.024 * jag[i];
+      b.flat("head", H(cone(0.011, len, FANG, 4, dk(FANG, 0.7)), x, mouthY(x) + 0.028 - len / 2, z, Math.PI, 0, (i - 2) * 0.12)); // dentes de cima, tortos
+      if (i % 2 === 1) b.flat("head", H(cone(0.01, 0.018, FANG, 4, dk(FANG, 0.7)), x, mouthY(x) - 0.024, z - 0.002)); // de baixo
+    }
+    // narinas
+    for (const s of [-1, 1]) b.flat("head", H(stud(0.012, DARK, DARK, 1.2, 0.7, 0.6, 0), s * 0.02, -0.048, 0.245));
     for (const s of [-1, 1]) {
-      // olho amarelo com pupila e sobrancelha de ponta interna baixa (cara de raiva)
-      b.flat("head", H(stud(0.032, EYE, EYE, 1.2, 0.85, 0.5, 0), s * 0.075, 0.05, 0.2), H(stud(0.013, DARK, DARK, 1, 1.2, 0.5, 0), s * 0.07, 0.05, 0.215));
-      b.add("head", H(stud(0.04, SKIN, SKIN_D, 1.5, 0.5, 0.7), s * 0.068, 0.088, 0.19, 0, 0, s * 0.5)); // arcada saliente na cor da pele, ponta de dentro mais baixa
-      // dentes de cima e presinhas de baixo
-      b.flat("head", H(cone(0.012, 0.03, TOOTH, 4), s * 0.075, -0.1, 0.2, 0.15));
+      // presa de baixo grande, subindo por fora do lábio de cima
+      b.flat("head", H(cone(0.018, s < 0 ? 0.075 : 0.06, TOOTH, 5, dk(TOOTH, 0.7)), s * 0.075, mouthY(0.075) - 0.01, mouthZ(0.075) + 0.012, 0.25, 0, -s * 0.25)); // presa de baixo subindo por cima do lábio; uma lascada
+      // olho estreito e amarelo, fundo na órbita, pálpebra de cima cortando em diagonal (raiva); pupila em fenda
+      const ey = 0.035, ex = s * 0.066;
+      b.lit("head", H(stud(0.03, EYE, EYE, 1.35, 0.42, 0.45, 0), ex, ey, 0.165, 0, 0, -s * 0.3));
+      b.flat("head", H(stud(0.011, DARK, DARK, 0.6, 1.4, 0.5, 0), ex - s * 0.004, ey, 0.177));
+      b.add("head", H(stud(0.042, SKIN, 0x1a240a, 1.65, 0.5, 0.65), ex + s * 0.008, ey + 0.024, 0.165, 0.3, 0, s * 0.42)); // arcada grossa em V, sombreando o olho
       // orelha longa em folha, para fora e para trás, com a ponta subindo
       const ear = sculpt(10, 6, (n, p) => {
         const t = (n.x + 1) / 2;
-        p.set(t * 0.3, n.y * 0.095 * (1 - 0.85 * t) + 0.05 * t * t, n.z * (0.035 - 0.022 * t));
+        p.set(t * 0.37, n.y * 0.095 * (1 - 0.85 * t) + 0.05 * t * t, n.z * (0.035 - 0.022 * t));
       }, (n, c) => {
         const t = (n.x + 1) / 2;
         c.copy(cSkinD).lerp(cSkin, 0.6 + 0.4 * n.y);
         if (Math.abs(n.y) < 0.55 && t > 0.08 && t < 0.8) c.lerp(cSkinD, 0.6);
       });
       if (s < 0) ear.rotateY(Math.PI);
-      b.add("head", H(ear, s * 0.16, 0.07, -0.04, 0, s * 0.85, s * 0.4));
+      b.add("head", H(ear, s * 0.14, 0.05, -0.07, 0, s * 1.25, s * 0.22));
     }
 
     // ---- tronco: colete de couro, magro, ombros caídos; ombreira de couro só de um lado
