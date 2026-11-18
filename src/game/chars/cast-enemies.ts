@@ -316,7 +316,9 @@ export const ENEMIES: Record<string, Spec> = {
 function orcAxe(b: Builder): void {
   const IRON_D = 0x34363a, IRON_M = 0x63666c, HIDE_D = 0x3a1d0e, DARK = 0x160e0c, HAND = 0.38;
   const R = restArm(b, 1, HAND);
-  const dir = new THREE.Vector3(-0.75, 0.05, 0.66).normalize();
+  // cabo deitado atravessando a frente do quadril, cabeça para o lado esquerdo, como no sprite: só assim o cabo passa ao alcance
+  // da mão esquerda (apontado para a frente ele ficava a 1,2 do ombro esquerdo, e o braço alcança 0,84)
+  const dir = new THREE.Vector3(-1, 0.02, 0.1).normalize();
   const aim = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
   const HEAD = 0.95, BLADE = 1.1;
   const axeG: G[] = [
@@ -343,6 +345,7 @@ function orcAxe(b: Builder): void {
     g.rotateY(s > 0 ? Math.PI / 2 + BLADE : -Math.PI / 2 + BLADE); // lâminas em pé: para cima e para baixo do cabo
     axeG.push(at(g, 0, HEAD, 0));
   }
-  b.add("weapon", ...axeG.map((g) => g.rotateX(Math.PI)));
-  b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.5 };
+  // machado deslizado para a frente: a mão direita segura perto do pomo e a esquerda no meio do cabo, longe da lâmina
+  b.add("weapon", ...axeG.map((g) => g.rotateX(Math.PI).translate(0, -0.3, 0)));
+  b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.68 };
 }

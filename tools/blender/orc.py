@@ -2,6 +2,7 @@
 # Grava art/orc.blend e src/game/chars/models/orc.json (malhas por osso). O machado de duas lâminas continua por código na
 # receita (osso "weapon", com a pegada de duas mãos da animação). Sprite de referência: docs/ref/orc.png.
 # Blender: z para cima, frente em -y. Pivôs iguais a b.dims da receita "orc" em src/game/chars/cast-enemies.ts.
+import math
 import os
 import sys
 
@@ -48,8 +49,8 @@ def head():
         EL((0, 0.04, 0.04), (0.12, 0.14, 0.11)),                  # crânio careca, baixo e estreito
         EL((0, 0.03, 0.12), (0.075, 0.1, 0.05)),                  # topo afunilado
         EL((0, -0.06, -0.01), (0.135, 0.12, 0.11)),               # massa do rosto
-        CAP((-0.135, -0.13, 0.075), (-0.018, -0.185, 0.02), 0.04, stiff=1.6),  # arcada pesada em V, carrancuda no meio
-        CAP((0.135, -0.13, 0.075), (0.018, -0.185, 0.02), 0.04, stiff=1.6),
+        CAP((-0.135, -0.12, 0.085), (-0.02, -0.19, 0.012), 0.042, stiff=1.6),  # arcada pesada em V fechado, carrancuda no meio
+        CAP((0.135, -0.12, 0.085), (0.02, -0.19, 0.012), 0.042, stiff=1.6),
         EL((-0.11, -0.13, -0.03), (0.05, 0.045, 0.04)),           # maçãs
         EL((0.11, -0.13, -0.03), (0.05, 0.045, 0.04)),
         EL((0, -0.08, -0.1), (0.17, 0.13, 0.08)),                 # mandíbula mais larga que o crânio
@@ -57,14 +58,17 @@ def head():
         EL((0, -0.2, -0.015), (0.05, 0.045, 0.035)),              # nariz largo e chato
         EL((-0.066, -0.2, -0.004), (0.04, 0.045, 0.022), neg=True),  # órbitas fundas sob a arcada
         EL((0.066, -0.2, -0.004), (0.04, 0.045, 0.022), neg=True),
-        EL((0, -0.235, -0.072), (0.095, 0.05, 0.016), neg=True),  # boca: fenda larga entre lábio e mandíbula
+        EL((0, -0.235, -0.068), (0.06, 0.05, 0.018), neg=True),   # boca em esgar: meio alto, cantos caídos
+        EL((-0.06, -0.225, -0.085), (0.04, 0.05, 0.016), neg=True),
+        EL((0.06, -0.225, -0.085), (0.04, 0.05, 0.016), neg=True),
+        EL((0, -0.215, 0.045), (0.022, 0.02, 0.03), neg=True),    # vinco de carranca entre as sobrancelhas
     ])
     smooth(h, iters=4, factor=0.5, target=950)
     paint(h, skin)
     parts["solid"].append(h)
     for s in (-1, 1):
         # olho em fenda, inclinado para dentro e para baixo (carranca), fundo na órbita
-        eye = ball("eye", (s * 0.066, -0.192, -0.006), (0.026, 0.01, 0.0075), rot=(0, -s * 0.42, 0), seg=(8, 5))
+        eye = ball("eye", (s * 0.064, -0.192, -0.01), (0.025, 0.01, 0.007), rot=(0, -s * 0.55, 0), seg=(8, 5))
         paint(eye, lambda co, n: EYE)
         parts["lit"].append(eye)
         # orelha pequena e pontuda, para o lado e um pouco para trás
@@ -73,20 +77,22 @@ def head():
         smooth(ear)
         paint(ear, lambda co, n: mix(SKIN_D, SKIN, 0.55 + 0.45 * n.z))
         parts["solid"].append(ear)
-        # presa grossa subindo da mandíbula, por fora do lábio
-        tusk = cone("tusk", (s * 0.075, -0.25, -0.1), (s * 0.095, -0.27, -0.005), 0.024, seg=7)
+        # presa grossa e curva subindo do lábio de baixo, abrindo para fora; base amarelada, ponta clara
+        tusk = tube("tusk", [(s * 0.072, -0.24, -0.105), (s * 0.085, -0.262, -0.06), (s * 0.103, -0.27, -0.02), (s * 0.122, -0.262, 0.012)],
+                    [0.026, 0.022, 0.013, 0.002], seg=8)
         smooth(tusk)
-        paint(tusk, lambda co, n: mix(hexc(0xa89a78), TUSK, ss(-0.1, -0.02, co.z)))
+        paint(tusk, lambda co, n: mix(hexc(0x9a8a62), TUSK, ss(-0.09, -0.02, co.z)))
         parts["solid"].append(tusk)
         nost = ball("nostril", (s * 0.022, -0.238, -0.03), (0.012, 0.008, 0.008), seg=(6, 4))
         paint(nost, lambda co, n: DARK)
         parts["flat"].append(nost)
-    m = ball("mouth", (0, -0.21, -0.072), (0.09, 0.03, 0.014), seg=(12, 6))
+    m = ball("mouth", (0, -0.212, -0.076), (0.085, 0.03, 0.016), seg=(12, 6))
     paint(m, lambda co, n: MOUTH)
     parts["flat"].append(m)
-    for x in (-0.045, -0.015, 0.015, 0.045):  # dentes de baixo, curtos
-        t = cone("tooth", (x, -0.238 + abs(x) * 0.3, -0.085), (x, -0.24 + abs(x) * 0.3, -0.06), 0.011, seg=4)
-        paint(t, lambda co, n: TUSK)
+    # poucos dentes de baixo, tortos e amarelados, de tamanhos diferentes (nada de fileira certinha)
+    for x, ln, lean in ((-0.035, 0.022, 0.15), (0.0, 0.016, -0.1), (0.032, 0.026, -0.2)):
+        t = cone("tooth", (x, -0.245, -0.092), (x + lean * 0.05, -0.25, -0.092 + ln), 0.012, seg=4)
+        paint(t, lambda co, n: mix(hexc(0x9a8a62), TUSK, 0.6))
         parts["flat"].append(t)
     return parts
 
@@ -132,29 +138,56 @@ def torso():
         straps.append(st)
     buckle = ball("buckle", (0, -0.245, z0 + 0.285), (0.05, 0.02, 0.05), seg=(10, 6))
     paint(buckle, lambda co, n: mix(IRON_M, IRON_L, ss(-0.3, 0.6, n.z)))
-    # ombreira: peça única de chumbo que envolve o ombro esquerdo e desce em quatro lâminas em degrau, cada uma com o reflexo frio
-    # só na borda de baixo. Presa ao tronco (no braço giraria com a pegada do machado).
-    X0, Y0 = -0.38, T + 0.66
-    lam = [((X0 - i * 0.06, -0.0, Y0 - i * 0.105), 0.17 - i * 0.01) for i in range(4)]
-    pd = meta("pauldron", [EL(B((x, y, -z)), (r * 1.05, r * 1.0, r * 0.3), rot=(0, -(0.35 + i * 0.25), 0), stiff=4.0)
-                           for i, ((x, z, y), r) in enumerate(lam)], res=0.012)
-    smooth(pd, iters=1, target=420)
-    cuts = [B((x, y, -z))[2] for (x, z, y), _ in lam]
-
-    def ptint(co, n):
-        d = min(abs(co.z - (c - 0.035)) for c in cuts)  # borda de baixo de cada lâmina
-        if d < 0.014 and n.z < 0.6:
-            return IRON_L
-        if d < 0.026 and n.z < 0.6:
-            return IRON_D
-        return mix(IRON_D, IRON_M, 0.35 + 0.65 * ss(-0.2, 1.0, n.z))
-    paint(pd, ptint)
-    pad = [pd]
-    for i, ((x, z, y), r) in enumerate(lam):  # rebites
-        rv = ball("rivet", B((x - 0.03, y + 0.05, -z - 0.09)), (0.017, 0.017, 0.017), seg=(6, 4))
+    # ombreira no ombro esquerdo, presa ao tronco (no braço giraria com a pegada do machado): uma cúpula de aço por cima do ombro,
+    # com aba virada e crista, e três lâminas curvas separadas descendo em volta do alto do braço, cada uma por fora da de cima.
+    sx, sz = -SH_X, T + SH_Y
+    steel = lambda co, n: mix(IRON_D, IRON_M, 0.3 + 0.7 * ss(-0.3, 0.9, n.z))
+    dome = ball("pauldron", (sx - 0.02, 0.0, sz + 0.08), (0.2, 0.19, 0.1), rot=(0, -0.45, 0), seg=(16, 8))
+    smooth(dome)
+    paint(dome, steel)
+    rim = tube("rim", [(sx - 0.02 + 0.2 * math.cos(a) * math.cos(0.45) + 0.0, 0.19 * math.sin(a), sz + 0.08 - 0.2 * math.cos(a) * math.sin(0.45) * -1)
+                       for a in [k * 2 * math.pi / 16 for k in range(17)]], [0.018] * 17, seg=6, cap=False)
+    smooth(rim)
+    paint(rim, lambda co, n: IRON_L)
+    crest = tube("crest", [(sx - 0.02, 0.15, sz + 0.13), (sx - 0.05, 0.0, sz + 0.2), (sx - 0.02, -0.15, sz + 0.13)], [0.02, 0.03, 0.02], seg=6,
+                 squash=(0.4, 1.0), ref=(0, 0, 1))
+    paint(crest, lambda co, n: mix(IRON_M, IRON_L, 0.5))
+    pad = [dome, rim, crest]
+    for i in range(3):  # lâminas: arcos em volta do braço, finos e altos, cada um mais baixo e mais aberto
+        R, z = 0.165 + i * 0.022, sz - 0.02 - i * 0.075
+        pts = [(sx - 0.02 - R * math.cos(t), R * math.sin(t), z + 0.03 * math.cos(t)) for t in [-1.35 + k * 2.7 / 10 for k in range(11)]]
+        lm = smooth(tube("lame", pts, [0.045] * 11, seg=6, squash=(0.28, 1.0), ref=(0, 0, 1)))
+        paint(lm, lambda co, n, z=z: IRON_L if co.z < z - 0.032 else steel(co, n))
+        pad.append(lm)
+    for ra in (-0.7, 0.0, 0.7):  # rebites na aba
+        rv = ball("rivet", (sx - 0.02 - 0.17 * math.cos(ra) * 0.92, 0.17 * math.sin(ra), sz + 0.1 - 0.17 * math.cos(ra) * 0.435), (0.016, 0.016, 0.016), seg=(6, 4))
         paint(rv, lambda co, n: IRON_L)
         pad.append(rv)
     return {"torso": [t, buckle] + straps + pad}
+
+
+def fist(x, y, z, s):
+    """mão fechada numa superfície só (contorno limpo): dorso, quatro dedos dobrados em fila com os nós para a frente e o polegar
+    cruzando por cima; sulcos escuros pintados entre os dedos"""
+    els = [EL((x, y + 0.01, z + 0.015), (0.068, 0.06, 0.06))]
+    xs = (-0.045, -0.015, 0.015, 0.045)
+    for dx in xs:
+        els += [CAP((x + dx, y - 0.035, z + 0.03), (x + dx, y - 0.065, z - 0.02), 0.024, stiff=3.0),   # falange de cima, nó à frente
+                CAP((x + dx, y - 0.065, z - 0.02), (x + dx, y - 0.03, z - 0.055), 0.022, stiff=3.0)]  # ponta dobrada para dentro
+    els += [CAP((x - s * 0.06, y - 0.0, z + 0.02), (x - s * 0.055, y - 0.05, z - 0.0), 0.026, stiff=3.0),
+            CAP((x - s * 0.055, y - 0.05, z - 0.0), (x - s * 0.02, y - 0.08, z - 0.005), 0.02, stiff=3.0)]
+    f = meta("fist", els, res=0.006)
+    smooth(f, iters=1, target=360)
+
+    def tint(co, n):
+        c = skin(co, n)
+        if co.y < y - 0.03 and abs(co.x - x) < 0.06:
+            g = min(abs(co.x - (x + m)) for m in (-0.03, 0.0, 0.03))
+            if g < 0.006:
+                c = mix(c, SKIN_D, 0.7)  # vão entre os dedos
+        return c
+    paint(f, tint)
+    return [f]
 
 
 def limbs():
@@ -169,8 +202,7 @@ def limbs():
         fx, fy, fz = PIV["fore" + side]
         f = meta("fore" + side, [CAP((fx, fy, fz), (fx, fy, fz - 0.3), 0.11),
                                   EL((fx, fy, fz - 0.1), (0.125, 0.12, 0.14)),
-                                  EL((fx, fy - 0.01, fz - HAND), (0.085, 0.09, 0.085)),            # punho
-                                  EL((fx + s * 0.05, fy - 0.06, fz - HAND + 0.02), (0.04, 0.04, 0.045))],  # polegar
+                                  EL((fx, fy + 0.01, fz - HAND + 0.02), (0.07, 0.065, 0.075))],    # palma e dorso da mão
                  res=0.014)
         smooth(f, iters=1, target=320)
         paint(f, skin)
@@ -201,7 +233,7 @@ def limbs():
             paint(c, lambda co, n: TUSK)
             nails.append(c)
         out["arm" + side] = [a]
-        out["fore" + side] = [f, br]
+        out["fore" + side] = [f, br] + fist(fx, fy, fz - HAND, s)
         out["thigh" + side] = [th]
         out["shin" + side] = [sh] + nails
     return out
