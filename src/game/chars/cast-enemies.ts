@@ -1,25 +1,201 @@
-// Inimigos comuns (versão antiga, a refazer em M3 pelo método da seção 4 do roadmap).
+// Inimigos comuns. Goblin e orc refeitos no M3-01 pelo método da seção 4 do roadmap; os outros ainda na versão antiga.
 import * as THREE from "three";
 import { paint, prep } from "../flora";
-import { type Spec, at, axe, beard, belt, body, bow, bx, cape, club, cone, cyl, dagger, hairCap, hairLong, hood, hornHelm, lathe, pauldron, sph, staff, torus, BONE, IRON, LEATHER } from "./kit";
+import { type G, type Spec, at, axe, beard, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
 
 export const ENEMIES: Record<string, Spec> = {
   // ------------------------------------------------ inimigos
+  // Redesenho a partir do sprite (docs/ref/goblin.png): baixinho, muito curvado e agachado, cabeça grande projetada para a frente com
+  // orelhas longas para trás, nariz adunco, arcada pesada e boca de dentes; colete de couro com ombreira, calça escura, pés grandes
+  // e descalços, clava nodosa de ponta clara apontada para a frente. Medidas do sprite (altura 40 px): cabeça 13 px (um terço),
+  // orelha 9 px, braço fino até o joelho, pernas curtas.
   goblin: (b) => {
-    body(b, { skin: 0x6fae4a, top: 0x7a5230, bottom: 0x5a3c22, boots: 0x6fae4a, sleeve: 0x6fae4a, head: 1.25, eyes: 0xffe14a });
-    b.scale = 0.66; b.poseR = [-0.6, -0.8]; b.lean = 0.32; b.crouch = 0.5; b.armOut = 0.3;
-    for (const s of [-1, 1]) b.add("head", at(cone(0.09, 0.36, 0x6fae4a, 5), s * 0.34, 0.27, -0.02, 0, 0, -s * 1.35));
-    b.add("head", at(cone(0.05, 0.16, 0x5a9a3c, 6), 0, 0.18, 0.29, Math.PI / 2));
-    b.add("foreR", ...club());
+    const SKIN = 0x768e36, SKIN_D = 0x3a4a18, SKIN_L = 0x9cae52, VEST = 0x7a4a2a, VEST_D = 0x40240f, PAD = 0x94603a;
+    const PANTS = 0x46523e, PANTS_D = 0x2f3b33, CLUB = 0x7a4426, CLUB_L = 0xa86e40, EYE = 0xffd23a, DARK = 0x1c120e, TOOTH = 0xeee2b8;
+    const col = (h: number) => new THREE.Color(h);
+    const cSkin = col(SKIN), cSkinD = col(SKIN_D), cSkinL = col(SKIN_L);
+    const HAND = 0.29;
+    b.scale = 0.7; b.style = "swing"; b.rough = 0.7;
+    b.lean = 0.62; b.crouch = 0.95; b.armOut = 0.22;
+    b.poseR = [-0.9, -0.75]; b.poseL = [-0.3, -0.75];
+    b.dims = { hipY: 0.66, headY: 0.48, shoulderY: 0.4, shoulderX: 0.24, arm: 0.3, hipX: 0.16, thigh: 0.27 };
+
+    // ---- cabeça: malha única, queixo e boca para a frente, arcada pesada, órbitas fundas; levantada para olhar à frente apesar da curva
+    const { socket } = headMask;
+    const head = headBase({ w: 0.19, h: 0.18, d: 0.2, muzzle: 0.1, muzzleNarrow: 0.2, palate: null, brow: 0.06, socket: 0.045, cheek: 0.025, seg: [18, 13], tint: (n, c) => {
+      c.copy(cSkinD).lerp(cSkin, 0.7 + 0.3 * ss(-0.9, 0.0, n.y)).lerp(cSkinL, ss(0.35, 0.95, n.y) * 0.5); // embaixo só um pouco mais escuro: o rosto não some na câmera alta
+      if (socket(n) > 0.45) c.copy(cSkinD);
+    } });
+    const HX = 0, HY = 0.12, HZ = 0.1, HR = -0.5, HS = 1.3; // a curva do tronco inclina a cabeça; ela volta a olhar para a frente
+    const H = (g: G, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => at(at(g, x, y, z, rx, ry, rz), HX, HY, HZ, HR, 0, 0, HS);
+    b.add("head", H(head, 0, 0, 0));
+    // nariz adunco e queixo
+    b.add("head", H(tubeMesh(7, 8, (k, o) => { o.set(0, 0.03 - 0.1 * k * k, 0.16 + 0.15 * Math.sin(k * 1.4)); }, (k) => 0.055 * (1 - k) + 0.012, (_a, k, c) => { c.copy(cSkin).lerp(cSkinD, k * 0.5); }), 0, 0, 0));
+    // sorriso maldoso: boca em crescente rente ao rosto, com a fileira de dentes de cima à mostra
+    b.flat("head", H(tubeMesh(5, 10, (k, o) => { const x = (k - 0.5) * 0.15; o.set(x, -0.1 + 2.2 * x * x, 0.205 - 2.6 * x * x); }, () => 0.014, (_a, _k, c) => { c.set(0x2a120c); }, new THREE.Vector3(0, 1, 0)), 0, 0, 0));
+    for (let i = -2; i <= 2; i++) { const x = i * 0.024; b.flat("head", H(bx(0.016, 0.018, 0.01, TOOTH), x, -0.092 + 2.2 * x * x, 0.214 - 2.6 * x * x, 0, 0, 0)); }
+    for (const s of [-1, 1]) {
+      // olho amarelo com pupila e sobrancelha de ponta interna baixa (cara de raiva)
+      b.flat("head", H(stud(0.032, EYE, EYE, 1.2, 0.85, 0.5, 0), s * 0.075, 0.05, 0.2), H(stud(0.013, DARK, DARK, 1, 1.2, 0.5, 0), s * 0.07, 0.05, 0.215));
+      b.add("head", H(stud(0.04, SKIN, SKIN_D, 1.5, 0.5, 0.7), s * 0.068, 0.088, 0.19, 0, 0, s * 0.5)); // arcada saliente na cor da pele, ponta de dentro mais baixa
+      // dentes de cima e presinhas de baixo
+      b.flat("head", H(cone(0.012, 0.03, TOOTH, 4), s * 0.075, -0.1, 0.2, 0.15));
+      // orelha longa em folha, para fora e para trás, com a ponta subindo
+      const ear = sculpt(10, 6, (n, p) => {
+        const t = (n.x + 1) / 2;
+        p.set(t * 0.3, n.y * 0.095 * (1 - 0.85 * t) + 0.05 * t * t, n.z * (0.035 - 0.022 * t));
+      }, (n, c) => {
+        const t = (n.x + 1) / 2;
+        c.copy(cSkinD).lerp(cSkin, 0.6 + 0.4 * n.y);
+        if (Math.abs(n.y) < 0.55 && t > 0.08 && t < 0.8) c.lerp(cSkinD, 0.6);
+      });
+      if (s < 0) ear.rotateY(Math.PI);
+      b.add("head", H(ear, s * 0.16, 0.07, -0.04, 0, s * 0.85, s * 0.4));
+    }
+
+    // ---- tronco: colete de couro, magro, ombros caídos; ombreira de couro só de um lado
+    b.add("torso", torsoMesh({ color: VEST, shade: VEST_D, light: PAD, waistW: 0.15, chestW: 0.06, neckW: 0.08, waistD: 0.12, chestD: 0.04, neckD: 0.05, pecs: 0.015, abs: 0, ribs: 0, traps: 0.03, y0: -0.06, height: 0.52, seg: [14, 10] }));
+    b.add("torso", at(cyl(0.065, 0.075, 0.08, SKIN, 8), 0, 0.45, 0.01));
+    b.add("torso", at(cyl(0.013, 0.013, 0.42, VEST_D, 4), 0.02, 0.22, 0.135, 0, 0, 0.75)); // correia diagonal
+    b.add("armL", at(dome(0.115, PAD, VEST_D, VEST_D), -0.01, 0.03, 0, 0, 0, 0.35, 1, 0.45, 1), at(dome(0.1, PAD, VEST_D, VEST_D), -0.04, -0.04, 0, 0, 0, 0.9, 1, 0.45, 1));
+
+    // ---- braços finos e compridos, mãos grandes com punho enfaixado
+    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
+      b.add(arm, at(stud(0.055, SKIN), 0, 0, 0), limb(0.05, 0.04, 0.3, SKIN));
+      b.add(fore, limb(0.056, 0.07, 0.25, SKIN, 0.18), at(cyl(0.055, 0.058, 0.06, VEST_D, 8), 0, -0.22, 0));
+      b.add(fore, ...grp(fist(SKIN, 0.072, s), 0, -HAND, 0.01));
+    }
+
+    // ---- quadril: calça escura, cinto e tanga de couro
+    b.add("hips", at(sph(0.15, PANTS, 1.05, 0.72, 0.88, PANTS_D), 0, 0, 0));
+    b.add("hips", at(cyl(0.155, 0.155, 0.05, VEST_D, 12), 0, 0.07, 0, 0, 0, 0, 1, 1, 0.86));
+    b.add("hips", at(capeMesh({ color: VEST, shade: VEST_D, half: [0.6, 0.45], rTop: 0.15, rHem: 0.18, len: 0.26, folds: 0.05, tatter: 0.05, nu: 6, nt: 3 }), 0, 0.06, 0.13, 0, Math.PI, 0));
+
+    // ---- pernas curtas, panos enrolados na canela, pé grande descalço com unhas
+    for (const [th, sh] of [["thighL", "shinL"], ["thighR", "shinR"]] as const) {
+      b.add(th, limb(0.075, 0.06, 0.27, PANTS));
+      b.add(sh, limb(0.058, 0.048, 0.24, PANTS_D, 0.15), at(cyl(0.062, 0.062, 0.04, VEST, 7), 0, -0.09, 0), at(cyl(0.056, 0.056, 0.04, VEST, 7), 0, -0.17, 0));
+      b.add(sh, at(stud(0.09, SKIN, SKIN_D, 1.0, 0.5, 1.8), 0, -0.27, 0.07));
+      for (let i = -1; i <= 1; i++) b.add(sh, at(cone(0.018, 0.045, TOOTH, 4), i * 0.045, -0.28, 0.23, Math.PI / 2));
+    }
+
+    // ---- clava nodosa: cabo fino que engrossa até a ponta clara, com nós; apontada para a frente e para cima
+    const club: G[] = [
+      lathe([[0, -0.76], [0.08, -0.74], [0.095, -0.66], [0.075, -0.55], [0.045, -0.35], [0.03, -0.1], [0.032, 0.04], [0, 0.05]], CLUB_L, CLUB, 9),
+    ];
+    for (const [y, a] of [[-0.42, 0.3], [-0.55, 2.4], [-0.63, 4.4], [-0.3, 3.7]]) club.push(at(stud(0.035, CLUB, dk(CLUB), 1, 1, 1, 0), Math.sin(a) * (0.03 - y * 0.08), y, Math.cos(a) * (0.03 - y * 0.08)));
+    b.add("foreR", ...grp(club, 0, -HAND, 0.02, -0.65, 0, 0.3, 1.3));
   },
+  // Redesenho a partir do sprite (docs/ref/orc.png): brutamontes verde-oliva corcunda, ombros e braços enormes, cabeça careca baixa e
+  // projetada, arcada pesada, presas subindo da mandíbula; ombreira de placas de ferro sobrepostas num ombro, correias de couro
+  // cruzadas no peito nu, cinto de fivela redonda, tanga de couro, calça escura e pés descalços; machado de duas lâminas segurado
+  // baixo, atravessado na frente do corpo com as duas mãos. Medidas do sprite (altura 60 px): cabeça 12 px, ombros 34 px, braço
+  // até a coxa, pernas curtas e grossas.
   orc: (b) => {
-    body(b, { skin: 0x4d8a3a, top: 0x5b4636, bottom: 0x3f3026, boots: 0x2e241c, sleeve: 0x4d8a3a, bulk: 1.45, eyes: 0xffd34d });
-    b.scale = 1.08; b.poseR = [-0.5, -0.7];
-    for (const s of [-1, 1]) b.add("head", at(cone(0.035, 0.13, 0xf0ead0, 5), s * 0.09, 0.12, 0.2));
-    b.add("head", at(sph(0.2, 0x3f7a30, 1.1, 0.5, 1), 0, 0.09, 0.03));
-    b.add("armL", ...pauldron(IRON, 0.2)).add("hips", ...belt(LEATHER, 1.45, IRON));
-    b.add("torso", at(bx(0.12, 0.7, 0.04, LEATHER), 0.1, 0.3, 0.2, 0, 0, 0.6));
-    b.add("foreR", ...axe(1.05, true));
+    const SKIN = 0x5e7a2a, SKIN_D = 0x2c3a14, SKIN_L = 0x8aa244, IRON_D = 0x34363a, IRON_M = 0x63666c, IRON_L = 0xb4b8be;
+    const HIDE = 0x6e3c1e, HIDE_D = 0x3a1d0e, PANTS = 0x5e3a26, PANTS_D = 0x341f14, TUSK = 0xeee4c6, EYE = 0xe8442a, DARK = 0x160e0c;
+    const col = (h: number) => new THREE.Color(h);
+    const cSkin = col(SKIN), cSkinD = col(SKIN_D), cSkinL = col(SKIN_L), cDark = col(DARK);
+    const HAND = 0.38;
+    b.bulk = 1.45; b.scale = 1.08; b.style = "swing"; b.rough = 0.65; b.glowColor = EYE;
+    b.lean = 0.3; b.crouch = 0.36; b.armOut = 0.14;
+    b.poseR = [-0.6, -0.8]; b.poseL = [-0.55, -0.8];
+    b.dims = { hipY: 0.84, headY: 0.6, shoulderY: 0.52, shoulderX: 0.41, arm: 0.4, hipX: 0.2, thigh: 0.38 };
+
+    // ---- tronco nu: peito largo, barriga, trapézio alto que esconde o pescoço (corcunda)
+    b.add("torso", torsoMesh({ color: SKIN, shade: SKIN_D, light: SKIN_L, waistW: 0.27, chestW: 0.13, neckW: 0.16, waistD: 0.22, chestD: 0.07, neckD: 0.1, pecs: 0.06, abs: 0.014, ribs: 0, traps: 0.04, y0: -0.08, height: 0.74, seg: [16, 12] }));
+    b.add("torso", at(stud(0.22, SKIN, SKIN_D, 1.6, 0.7, 1.0), 0, 0.58, -0.08)); // massa do trapézio
+    // correias cruzadas de couro só na frente, de um lado ao outro, sumindo sob os braços (atrás o trapézio as engolia aos pedaços)
+    for (const s of [-1, 1]) {
+      b.add("torso", tubeMesh(4, 14, (t, o) => {
+        const a = (t - 0.5) * Math.PI * 1.1;
+        o.set(Math.sin(a) * 0.38, 0.33 + s * 0.2 * Math.sin(a), Math.cos(a) * 0.33 + 0.01);
+      }, () => 0.032, (_a, _t, c) => { c.set(HIDE); }));
+    }
+    b.add("torso", at(cyl(0.05, 0.05, 0.03, IRON_L, 10, IRON_M), 0, 0.33, 0.345, Math.PI / 2));
+
+    // ---- cabeça careca, baixa e para a frente: mandíbula larga, arcada pesada, presas, orelhas pontudas pequenas
+    const { muzzle, socket } = headMask;
+    const head = headBase({ w: 0.18, h: 0.165, d: 0.19, muzzle: 0.07, muzzleNarrow: -0.12, palate: null, brow: 0.05, socket: 0.035, cheek: 0.04, seg: [18, 13], tint: (n, c) => {
+      c.copy(cSkinD).lerp(cSkin, ss(-0.9, 0.1, n.y)).lerp(cSkinL, ss(0.4, 0.95, n.y) * 0.45);
+      if (socket(n) > 0.45) c.copy(cSkinD).multiplyScalar(0.6);
+      if (muzzle(n) > 0.35 && Math.abs(n.y + 0.4) < 0.05) c.copy(cDark);
+    } });
+    const H = (g: G, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => at(at(g, x, y, z, rx, ry, rz), 0, 0.06, 0.19, -0.2);
+    b.add("head", H(head, 0, 0, 0));
+    b.add("head", H(stud(0.12, SKIN, SKIN_D, 1.35, 0.5, 1.15), 0, -0.13, 0.08)); // mandíbula de baixo, mais larga
+    b.add("head", H(stud(0.045, SKIN, SKIN_D, 1.6, 0.7, 0.8), 0, 0.0, 0.2)); // nariz largo
+    for (const s of [-1, 1]) {
+      b.lit("head", H(stud(0.03, EYE, EYE, 1.5, 0.75, 0.5, 0), s * 0.062, 0.052, 0.176, 0, 0, s * 0.25));
+      b.flat("head", H(stud(0.045, SKIN_D, 0x1e2a0e, 1.6, 0.45, 0.8), s * 0.06, 0.098, 0.16, 0, 0, s * 0.35)); // arcada pesada, sem contorno (com ele vira pálpebra fechada)
+      b.add("head", H(cone(0.026, 0.1, TUSK, 6, dk(TUSK, 0.8)), s * 0.085, -0.04, 0.18, -0.15, 0, -s * 0.2));
+      const ear = sculpt(10, 6, (n, p) => {
+        const t = (n.x + 1) / 2;
+        p.set(t * 0.2, n.y * 0.06 * (1 - 0.8 * t) + 0.05 * t * t, n.z * 0.022);
+      }, (n, c) => { c.copy(cSkinD).lerp(cSkin, 0.55 + 0.45 * n.y); });
+      if (s < 0) ear.rotateY(Math.PI);
+      b.add("head", H(ear, s * 0.15, 0.03, -0.02, 0, s * 0.45, s * 0.15));
+    }
+
+    // ---- braços enormes: deltoide, bíceps e antebraço grosso, braçadeira de couro; ombreira de placas no ombro esquerdo
+    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
+      b.add(arm, at(stud(0.17, SKIN, SKIN_D, 1.05, 0.95, 1.05), s * 0.02, 0.0, 0), limb(0.15, 0.12, 0.38, SKIN, 0.18));
+      b.add(fore, limb(0.12, 0.125, 0.3, SKIN, 0.22), at(cyl(0.13, 0.14, 0.2, HIDE, 10, HIDE_D), 0, -0.2, 0));
+      b.add(fore, ...grp(fist(SKIN, 0.085, s), 0, -HAND, 0.01));
+    }
+    // ombreira: quatro lâminas em degraus, cada uma mais baixa e menor, presas ao tronco (no braço, girariam quando a mão vai ao cabo)
+    for (let i = 0; i < 4; i++) {
+      const r = 0.2 - i * 0.025;
+      const lam = dome(r, 0x7c7c7a, 0x46474a, DARK);
+      lam.scale(1.1, 0.4, 1.05);
+      b.add("torso", at(lam, -0.43 - i * 0.045, 0.68 - i * 0.08, -0.05, 0, 0, 0.3 + i * 0.28));
+    }
+
+    // ---- quadril: calça escura, cinto largo com fivela redonda, tanga de couro na frente e atrás
+    b.add("hips", at(sph(0.26, PANTS, 1.05, 0.72, 0.86, PANTS_D), 0, 0, 0));
+    b.add("hips", at(cyl(0.29, 0.29, 0.09, HIDE, 14, HIDE_D), 0, 0.09, 0, 0, 0, 0, 1, 1, 0.84), at(cyl(0.06, 0.06, 0.04, IRON_L, 10, IRON_M), 0, 0.09, 0.245, Math.PI / 2));
+    b.add("hips", at(capeMesh({ color: HIDE, shade: HIDE_D, half: [0.6, 0.45], rTop: 0.26, rHem: 0.3, len: 0.4, folds: 0.05, tatter: 0.07, nu: 6, nt: 3 }), 0, 0.05, 0.22, 0, Math.PI, 0));
+    b.add("hips", at(capeMesh({ color: HIDE, shade: HIDE_D, half: [0.7, 0.55], rTop: 0.27, rHem: 0.31, len: 0.34, folds: 0.05, tatter: 0.06, nu: 6, nt: 3 }), 0, 0.05, -0.22));
+
+    // ---- pernas grossas e curtas, faixas na canela, pé descalço largo
+    for (const [th, sh] of [["thighL", "shinL"], ["thighR", "shinR"]] as const) {
+      b.add(th, limb(0.18, 0.145, 0.38, PANTS, 0.06));
+      b.add(sh, limb(0.14, 0.11, 0.34, PANTS, 0.15), at(cyl(0.112, 0.108, 0.05, 0x8a6a48, 8), 0, -0.16, 0), at(cyl(0.104, 0.1, 0.05, 0x8a6a48, 8), 0, -0.25, 0));
+      b.add(sh, at(stud(0.14, SKIN, SKIN_D, 1.0, 0.5, 1.6), 0, -0.37, 0.09));
+      for (let i = -1; i <= 1; i++) b.add(sh, at(cone(0.026, 0.06, TUSK, 4), i * 0.06, -0.38, 0.31, Math.PI / 2));
+    }
+
+    // ---- machado de duas lâminas: atravessado baixo na frente do corpo, cabeça à frente; a mão esquerda segura mais adiante no cabo
+    const R = restArm(b, 1, HAND);
+    const dir = new THREE.Vector3(-0.75, 0.05, 0.66).normalize();
+    const aim = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+    const HEAD = 0.95, BLADE = 1.1;
+    const axeG: G[] = [
+      at(cyl(0.032, 0.036, 1.5, 0x6a4024, 7), 0, 0.4, 0),
+      at(stud(0.05, IRON_M, IRON_D, 1, 1, 1, 0), 0, -0.36, 0),
+      at(cyl(0.04, 0.04, 0.18, HIDE_D, 7), 0, 0.42, 0),
+      at(cyl(0.065, 0.065, 0.28, IRON_D, 8), 0, HEAD, 0),
+      at(cone(0.05, 0.12, IRON_M, 6, IRON_D), 0, HEAD + 0.2, 0),
+      at(cyl(0.05, 0.05, 0.16, DARK, 8), 0, HEAD, 0, 0, 0, Math.PI / 2),
+    ];
+    // lâmina em meia-lua: na forma, x ao longo do cabo e y para fora; o gume (fora) é claro
+    const moon = new THREE.Shape();
+    moon.moveTo(-0.07, 0.03);
+    moon.quadraticCurveTo(-0.2, 0.14, -0.27, 0.32);
+    moon.quadraticCurveTo(0, 0.4, 0.27, 0.32);
+    moon.quadraticCurveTo(0.2, 0.14, 0.07, 0.03);
+    moon.closePath();
+    for (const s of [-1, 1]) {
+      const g = prep(new THREE.ExtrudeGeometry(moon, { depth: 0.035, bevelEnabled: false, curveSegments: 6 }), false);
+      g.translate(0, 0, -0.0175);
+      paint(g, IRON_M, 0xd8dce2, 0.28, 0.4);
+      g.scale(1.05, 1.05, 1);
+      g.rotateZ(Math.PI / 2); // x da forma -> y do cabo; y da forma -> -x
+      g.rotateY(s > 0 ? Math.PI / 2 + BLADE : -Math.PI / 2 + BLADE); // lâminas em pé: para cima e para baixo do cabo
+      axeG.push(at(g, 0, HEAD, 0));
+    }
+    b.add("weapon", ...axeG.map((g) => g.rotateX(Math.PI)));
+    b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.5 };
   },
   swarm: (b) => {
     b.form = "bat"; b.scale = 0.75; b.style = "bite";

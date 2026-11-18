@@ -195,6 +195,12 @@ const CRITIC_POSES: [string, { anim: string; yaw: number; view: string; freeze?:
   ["attack", { anim: "attack", yaw: 35, view: "close", freeze: 0.9 }],
   ["game", { anim: "idle", yaw: 20, view: "game" }],
 ];
+/** altura do rosto: um pouco abaixo do topo do modelo (personagem curvado tem o rosto bem abaixo de 88% da altura nominal) */
+function faceY(a: Actor, h: number): number {
+  a.rig.root.updateMatrixWorld(true);
+  const top = new THREE.Box3().setFromObject(a.rig.root).max.y;
+  return Math.min(h * 0.88, top - h * 0.12);
+}
 async function criticShots(prefix: string): Promise<string[]> {
   const lead = actors[0];
   const h = lead.rig.height ?? 4.8;
@@ -204,7 +210,7 @@ async function criticShots(prefix: string): Promise<string[]> {
     const name = `${prefix}-${pose}`;
     await shot(name, {
       anim: p.anim, yaw: p.yaw, view: p.view, freeze: p.freeze ?? null,
-      dist: p.face ? h * 1.1 : h * 3.2, lookY: p.face ? h * 0.88 : undefined,
+      dist: p.face ? h * 1.1 : h * 3.2, lookY: p.face ? faceY(lead, h) : undefined,
     });
     names.push(name);
   }
