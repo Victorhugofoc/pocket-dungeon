@@ -32,7 +32,7 @@ import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
 import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
-import type { TrailHandle } from "./vfx";
+import type { MoveHandle, TrailHandle } from "./vfx";
 import { LootView } from "./loot";
 import { promisesBank } from "../core/loot";
 import { Input } from "./input";
@@ -58,6 +58,12 @@ const TECH_FX = {
   ice: 0x8fdcff, iceCore: 0xf0fbff, mist: 0xd8f2ff,
   /** Aurelius: arcano e miolo */
   arcane: 0xb07cff, arcaneCore: 0xf2e6ff,
+  /** Zephyr: clarão do cano, miolo e fumaça da pólvora */
+  gun: 0xffb84a, gunCore: 0xfff4d8, gunSmoke: 0x8a8274,
+  /** Seraph: luz sagrada e miolo */
+  holy: 0xffd770, holyCore: 0xfffbea, heal: 0x9cf58a,
+  /** Vesper: veneno, miolo, nuvem e o amarelo das vespas */
+  venom: 0x7be04a, venomCore: 0xeaffb8, venomSmoke: 0x3c5a22, wasp: 0xffc83a,
 } as const;
 
 export interface GameEvents {
@@ -116,6 +122,8 @@ interface Projectile {
   push?: number;
   /** Trick Shot: ricochetes que restam no fim do alcance ou num obstáculo, ganho de dano em cada um e o alcance (s) */
   bounces?: number; bounceGain?: number; span?: number;
+  /** M5-03: rastro do tiro (Fan the Hammer) */
+  fx?: TrailHandle;
 }
 
 /** orbe de cura da onda caído no chão */
@@ -132,9 +140,11 @@ interface Bee {
   big: boolean; dmg: number; every: number; speed: number; poison: StatusSpec;
   /** Broodmother: ao acabar, deixa uma poça de veneno por tantos segundos */
   pool?: number;
+  /** M5-03: rastro amarelo da vespa grande */
+  fx?: TrailHandle;
 }
 /** Broodmother: poça de veneno onde a vespa grande sumiu (techniques.lua `updatePool`) */
-interface VenomPool { x: number; z: number; r: number; until: number; tick: number; dmg: number; poison: StatusSpec; mesh: THREE.Mesh }
+interface VenomPool { x: number; z: number; r: number; born: number; until: number; tick: number; dmg: number; poison: StatusSpec; mesh: THREE.Mesh }
 /** rastro que fere em pulsos ao longo de um segmento (Storm Step) */
 interface Trail { x0: number; z0: number; x1: number; z1: number; hw: number; until: number; tick: number; every: number; dmg: number; color: number; mesh: THREE.Mesh;
   /** Phoenix Rush: rastro de fogo (queima em vez de raio) */
@@ -152,7 +162,7 @@ export interface PlayerState {
   /** Umbra: golpes contam como pelas costas até este instante */
   shadowUntil: number;
   /** Seraph: escudo de luz ativo */
-  aegis: { until: number; block: boolean; damage: number; radius: number; heal: number; mesh: THREE.Mesh; sanctum: number } | null;
+  aegis: { until: number; block: boolean; damage: number; radius: number; heal: number; mesh: THREE.Mesh; sanctum: number; fx: MoveHandle } | null;
   /** Seraph: arremessos do escudo (cura a cada SHIELD_THROW.healEvery) */
   throws: number;
   /** Vesper: tempo até a próxima abelha da Ninhada */
@@ -530,7 +540,10 @@ export class Game {
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
     this.loot.clear();
-    for (const b of this.bees) disposeRig(b.rig);
+    for (const b of this.bees) {
+      b.fx?.kill();
+      disposeRig(b.rig);
+    }
     this.bees.length = 0;
     this.iceWalls.clear();
     this.rifts.clear();
@@ -607,6 +620,8 @@ export class Game {
   private freeProjectile(pr: Projectile): void {
     pr.mesh.removeFromParent();
     this.projPool.push(pr.mesh);
+    pr.fx?.kill();
+    pr.fx = undefined;
   }
 
   spawnEnemyProjectile(x: number, z: number, angle: number, speed: number, dmg: number, color: number, r: number): void {
@@ -654,7 +669,9 @@ export class Game {
     pr.dmg *= 1 + (pr.bounceGain ?? 0.2);
     pr.hit.clear();
     pr.life = pr.span ?? 1;
-    this.fx.burst(pr.x, 1.15, pr.z, 0xffe9b0, 10, 5, 0.1, 0.25, 2);
+    if (pr.fx) {
+      this.fx.lib.burst(pr.x, 1.15, pr.z, { radius: 0.8, color: TECH_FX.gun, core: TECH_FX.gunCore, rays: 4, sparks: 8, light: 0, dur: 0.16, wave: 0 });
+    } else this.fx.burst(pr.x, 1.15, pr.z, 0xffe9b0, 10, 5, 0.1, 0.25, 2);
     return true;
   }
 
@@ -730,6 +747,7 @@ export class Game {
         this.projectiles.splice(i, 1);
       } else {
         pr.mesh.position.set(pr.x, 1.15, pr.z);
+        pr.fx?.push(pr.x, 1.15, pr.z);
         // rastro de cometa
         this.fx.glow(pr.x, 1.15, pr.z, pr.color, pr.r * (pr.friendly ? 5 : 6.5), 0.2, -pr.vx * 0.06, 0, -pr.vz * 0.06);
       }
@@ -1114,8 +1132,17 @@ export class Game {
       p.aegis.block = false;
       p.iframes = 0.2;
       this.fx.text(p.x, 2.6, p.z, "Blocked", "frost");
-      this.fx.burst(p.x, 1.2, p.z, 0xffe9a8, 24, 7, 0.14, 0.4, 2);
-      this.fx.flashLight(p.x, 1.5, p.z, 0xffe9a8, 1.8, 0.2);
+      // M5-03: o escudo brilha forte no golpe e as luzes em órbita perdem força (não bloqueia mais)
+      this.fx.lib.burst(p.x, 1.6, p.z, { radius: 2.4, color: TECH_FX.holy, core: 0xffffff, rays: 9, sparks: 28, light: 2.6, dur: 0.2, wave: 0, curve: "flash" });
+      this.fx.lib.ring(p.x, p.z, { radius: 2.6, color: TECH_FX.holy, core: TECH_FX.holyCore, width: 0.4, from: 0.45, dust: 12, dur: 0.3 });
+      // estilhaços de luz voando para fora: o escudo se gastou
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
+        this.fx.glow(p.x + Math.sin(a) * 1.2, 1.2 + Math.random() * 0.6, p.z + Math.cos(a) * 1.2, TECH_FX.holyCore, 0.35, 0.4,
+          Math.sin(a) * 7, 2 + Math.random() * 2, Math.cos(a) * 7, 8);
+      }
+      this.fx.addShake(0.18);
+      p.aegis.fx.power = 0.45;
       this.audio.play("crit");
       return;
     }
@@ -1729,10 +1756,17 @@ export class Game {
         const spread = T.spread ?? 0.16;
         const rangeMult = Math.max(T.range, a.range * s.range) / (a.range * s.range);
         const fanAuto = { ...a, speed: (a.speed ?? 24) * 1.15 };
+        const lib = this.fx.lib;
+        const mx = p.x + Math.sin(p.facing) * 0.9;
+        const mz = p.z + Math.cos(p.facing) * 0.9;
         for (let k = 1; k <= n; k++) {
-          this.firePlayer(p.facing + (k - (n + 1) / 2) * spread, fanAuto, T.damage, rangeMult);
+          const ang = p.facing + (k - (n + 1) / 2) * spread;
+          this.firePlayer(ang, fanAuto, T.damage, rangeMult);
           const pr = this.projectiles[this.projectiles.length - 1];
           pr.push = 0.85;
+          // M5-03: cada bala deixa um risco dourado; um traço curto de clarão sai do cano na direção dela
+          pr.fx = lib.trail({ color: TECH_FX.gun, core: TECH_FX.gunCore, width: 0.32, life: 0.1, head: 0.35, sheds: 2 });
+          lib.beam(mx, 1.2, mz, mx + Math.sin(ang) * 2.6, 1.2, mz + Math.cos(ang) * 2.6, { color: TECH_FX.gun, core: TECH_FX.gunCore, width: 0.22, dur: 0.09 });
           if (T.bounces) {
             pr.bounces = T.bounces;
             pr.bounceGain = T.bounceDamage ?? 0.2;
@@ -1742,8 +1776,13 @@ export class Game {
         p.attackAnim = 0;
         if (p.rig) nextShot(p.rig);
         this.audio.play("shoot");
-        this.fx.burst(p.x + Math.sin(p.facing) * 0.9, 1.2, p.z + Math.cos(p.facing) * 0.9, 0xffe9b0, 18, 8, 0.12, 0.3, 4);
-        this.fx.flashLight(p.x + Math.sin(p.facing), 1.4, p.z + Math.cos(p.facing), 0xffd080, 1.8, 0.15);
+        lib.burst(mx, 1.2, mz, { radius: 1.3, color: TECH_FX.gun, core: TECH_FX.gunCore, rays: 6, sparks: 16, light: 1.8, dur: 0.16, wave: 0, power: 0.9 });
+        for (let i = 0; i < 3; i++) {
+          const q = 0.6 + i * 0.7;
+          lib.smoke(mx + Math.sin(p.facing) * q, 1.15, mz + Math.cos(p.facing) * q, { radius: 0.6 + i * 0.25, color: TECH_FX.gunSmoke, alpha: 0.32,
+            rise: 0.5, drift: [Math.sin(p.facing) * 1.2, Math.cos(p.facing) * 1.2], dur: 0.6 + i * 0.15 });
+        }
+        lib.ring(p.x, p.z, { radius: 1.6, color: TECH_FX.gun, core: TECH_FX.gunCore, width: 0.25, from: 0.3, dust: 4, dur: 0.22, power: 0.6 });
         this.fx.addShake(0.22);
         break;
       }
@@ -1858,10 +1897,16 @@ export class Game {
         const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), mat);
         mesh.scale.setScalar(1.25);
         this.scene.add(mesh);
-        p.aegis = { until: this.time + (T.duration ?? 3), block: true, damage: T.damage, radius: T.radius ?? 7.5, heal: T.healFraction ?? 0.1, mesh,
-          sanctum: T.sanctumTime ?? 0 };
-        this.fx.burst(p.x, 1.2, p.z, 0xffe9a8, 30, 6, 0.14, 0.5, 2);
-        this.fx.flashLight(p.x, 1.5, p.z, 0xffe9a8, 1.6, 0.3);
+        // M5-03: coluna de luz ao erguer o escudo; três luzes giram em volta dele enquanto dura
+        const lib = this.fx.lib;
+        const dur = T.duration ?? 3;
+        const orbit = lib.orbit(p.x, 1.1, p.z, { radius: 1.45, count: 3, speed: 0.75, tilt: 0.4, size: 0.45, bob: 0.2, color: TECH_FX.holy,
+          core: TECH_FX.holyCore, dur: dur + 0.5 });
+        p.aegis = { until: this.time + dur, block: true, damage: T.damage, radius: T.radius ?? 7.5, heal: T.healFraction ?? 0.1, mesh,
+          sanctum: T.sanctumTime ?? 0, fx: orbit };
+        lib.pillar(p.x, p.z, { radius: 1.2, height: 6, color: TECH_FX.holy, core: TECH_FX.holyCore, dur: 0.5, power: 0.55 });
+        lib.ring(p.x, p.z, { radius: 2.2, color: TECH_FX.holy, core: TECH_FX.holyCore, width: 0.35, from: 0.4, dust: 8, dur: 0.35 });
+        lib.burst(p.x, 2.6, p.z, { radius: 1.2, color: TECH_FX.holy, core: TECH_FX.holyCore, rays: 6, sparks: 14, light: 1.2, dur: 0.26, wave: 0, power: 0.6 });
         break;
       }
       case "leap": {
@@ -1887,8 +1932,15 @@ export class Game {
       case "brood": {
         // Vesper: 2 vespas grandes por 6 s
         const T = this.tech!;
+        // M5-03: nuvem de veneno no chão de onde as vespas saem zumbindo
+        const lib = this.fx.lib;
+        lib.ring(p.x, p.z, { radius: 3.4, color: TECH_FX.venom, core: TECH_FX.venomCore, width: 0.3, from: 0.3, dust: 10, dur: 0.4, power: 0.7 });
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + Math.random();
+          lib.smoke(p.x + Math.sin(a) * 1.1, 0.4, p.z + Math.cos(a) * 1.1, { radius: 1 + Math.random() * 0.4, color: TECH_FX.venomSmoke,
+            core: TECH_FX.venom, alpha: 0.45, rise: 0.5, dur: 0.8 + Math.random() * 0.3 });
+        }
         for (let i = 0; i < (T.spiders ?? 2); i++) this.spawnBee(true, T.duration ?? 6, i * 2.1);
-        this.fx.burst(p.x, 1.2, p.z, 0xffe14a, 20, 5, 0.12, 0.5, 2);
         break;
       }
     }
@@ -1900,15 +1952,25 @@ export class Game {
     const a = p.aegis;
     if (!a) return;
     p.aegis = null;
+    a.fx.kill(burst ? 0 : 0.2);
     a.mesh.removeFromParent();
     a.mesh.geometry.dispose();
     (a.mesh.material as THREE.Material).dispose();
     if (!burst || !this.playerAlive) return;
     this.areaHit(p.x, p.z, a.radius, a.damage);
     this.heal(this.stats.maxHp * a.heal, true);
-    this.fx.shockwave(p.x, p.z, a.radius, 0xffe9a8, 0.5);
-    this.fx.burst(p.x, 1, p.z, 0xffe9a8, 40, 9, 0.16, 0.7, 3);
-    this.fx.flashLight(p.x, 1.5, p.z, 0xffe9a8, 2.4, 0.35);
+    // M5-03: onda de luz até o raio do dano, coluna e clarão no herói
+    const lib = this.fx.lib;
+    lib.ring(p.x, p.z, { radius: a.radius, color: TECH_FX.holy, core: TECH_FX.holyCore, width: 0.6, from: 0.15, fill: 0.25, dust: 18, dur: 0.45 });
+    lib.pillar(p.x, p.z, { radius: 1.5, height: 7, color: TECH_FX.holy, core: TECH_FX.holyCore, dur: 0.55, power: 0.5 });
+    lib.burst(p.x, 2.8, p.z, { radius: 1.6, color: TECH_FX.holy, core: TECH_FX.holyCore, rays: 8, sparks: 22, light: 1.8, dur: 0.3, power: 0.6 });
+    // cura: faíscas verde-douradas subindo do herói
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const q = 0.3 + Math.random() * 0.7;
+      this.fx.glow(p.x + Math.sin(a) * q, 0.4 + Math.random() * 0.8, p.z + Math.cos(a) * q, i % 2 ? TECH_FX.heal : TECH_FX.holy, 0.3, 0.8 + Math.random() * 0.4,
+        0, 2.5 + Math.random() * 1.5, 0);
+    }
     this.fx.addShake(0.3);
     // Sanctum: círculo de cura parado no chão (o Healing Field de lá: tique de 0,75 s, cura 2 = 2% da vida)
     if (a.sanctum > 0) this.spells.sanctumField(p.x, p.z, a.radius, a.sanctum);
@@ -1925,11 +1987,18 @@ export class Game {
     rig.root.scale.setScalar(big ? 1.35 : 0.8);
     this.scene.add(rig.root);
     const a = Math.random() * Math.PI * 2;
+    const x = p.x + Math.cos(a) * 1.5;
+    const z = p.z + Math.sin(a) * 1.5;
+    let fx: TrailHandle | undefined;
+    if (big) {
+      fx = this.fx.lib.trail({ color: TECH_FX.wasp, core: TECH_FX.venomCore, width: 0.22, life: 0.22, head: 0, sheds: 1 });
+      this.fx.lib.burst(x, 1.1, z, { radius: 0.9, color: TECH_FX.wasp, core: TECH_FX.venomCore, rays: 4, sparks: 8, light: 0, dur: 0.2, wave: 0, power: 0.8 });
+    }
     this.bees.push({
-      x: p.x + Math.cos(a) * 1.5, z: p.z + Math.sin(a) * 1.5, life, hitCd: 0, rig, phase, sting: -1,
+      x, z, life, hitCd: 0, rig, phase, sting: -1,
       big, dmg, every: big ? 0.7 : 0.9, speed: big ? 175 / 12 : 150 / 12,
       poison: { kind: "poison", power: poisonDps / dmg, duration: T?.poisonDuration ?? 3, maxStacks: (T?.poisonStacks ?? 3) + 1 },
-      pool: big ? T?.poolTime : undefined,
+      pool: big ? T?.poolTime : undefined, fx,
     });
   }
 
@@ -2098,6 +2167,7 @@ export class Game {
     if (p.aegis) {
       const a = p.aegis;
       a.mesh.position.set(p.x, 1.05, p.z);
+      a.fx.move(p.x, 1.1, p.z);
       a.mesh.rotation.y += dt * 0.8;
       (a.mesh.material as THREE.MeshBasicMaterial).opacity = (a.block ? 0.2 : 0.1) + Math.sin(this.time * 9) * 0.04;
       if (this.time >= a.until) this.endAegis(true);
@@ -2121,6 +2191,8 @@ export class Game {
       b.hitCd -= dt;
       if (b.life <= 0) {
         if (b.pool) this.addPool(b);
+        else if (b.big) this.fx.lib.smoke(b.x, 1, b.z, { radius: 0.8, color: TECH_FX.venomSmoke, core: TECH_FX.venom, alpha: 0.4, rise: 0.4, dur: 0.5 });
+        b.fx?.kill();
         disposeRig(b.rig);
         this.bees.splice(i, 1);
         continue;
@@ -2149,6 +2221,7 @@ export class Game {
         b.hitCd = b.every;
         b.sting = 0;
         this.hitEnemy(target, b.dmg, b.poison);
+        if (b.big) this.fx.lib.burst(target.x, 1, target.z, { radius: 0.7, color: TECH_FX.venom, core: TECH_FX.venomCore, rays: 3, sparks: 6, light: 0, dur: 0.16, wave: 0, power: 0.7 });
       }
       if (b.sting >= 0) {
         b.sting += dt / 0.3;
@@ -2156,6 +2229,7 @@ export class Game {
       }
       // a forma `bat` já voa a meia altura do corpo; aqui só a altura do voo e para onde olha
       b.rig.root.position.set(b.x, (b.big ? 1.1 : 0.8) + Math.sin(this.time * 5 + b.phase) * 0.15, b.z);
+      b.fx?.push(b.x, b.rig.root.position.y, b.z);
       if (d > 0.05) b.rig.root.rotation.y = Math.atan2(tx - b.x, tz - b.z);
       animateRig(b.rig, { t: this.time, move: 1, attack: b.sting, windup: 0, dead: 0 });
     }
@@ -2275,17 +2349,43 @@ export class Game {
   /** Broodmother (techniques.lua): poça de 50 px de raio por 3 s; a cada 0,5 s envenena quem está dentro. */
   private addPool(b: Bee): void {
     const r = TECH_EVO.poolRadius;
-    const m = new THREE.MeshBasicMaterial({ color: 0x5fc23a, transparent: true, opacity: 0.12, depthWrite: false, toneMapped: false });
-    const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 28), m);
+    // M5-03: veneno escuro e translúcido, borda que ondula e brilha fino, bolhas que estouram
+    const m = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false,
+      uniforms: { uA: { value: 0 }, uT: { value: 0 }, uSeed: { value: Math.random() * 20 },
+        uDeep: { value: new THREE.Color(TECH_FX.venomSmoke) }, uRim: { value: new THREE.Color(TECH_FX.venom) } },
+      vertexShader: `varying vec2 vP; void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `varying vec2 vP; uniform float uA, uT, uSeed; uniform vec3 uDeep, uRim;
+        float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        void main() {
+          float a = atan(vP.y, vP.x);
+          float d = length(vP) / (0.9 + 0.05 * sin(a * 5.0 + uSeed + uT * 1.3) + 0.04 * sin(a * 9.0 - uT * 2.1));
+          if (d > 1.0) discard;
+          float rim = smoothstep(0.86, 0.97, d) * (1.0 - smoothstep(0.97, 1.0, d));
+          vec2 c = floor(vP * 5.0 + uSeed);
+          vec2 f = fract(vP * 5.0 + uSeed) - 0.5;
+          float ph = fract(uT * 0.7 + h(c));
+          float bub = h(c + 3.1) > 0.75 ? smoothstep(0.08, 0.0, abs(length(f) - 0.1 - ph * 0.22)) * (1.0 - ph) : 0.0;
+          float body = 0.42 * (1.0 - smoothstep(0.55, 1.0, d) * 0.45);
+          vec3 col = mix(uDeep, uRim, rim * 0.8 + bub * 0.6);
+          gl_FragColor = vec4(col, (body + rim * 0.25 + bub * 0.25) * uA);
+        }`,
+    });
+    const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 40), m);
     mesh.rotation.x = -Math.PI / 2;
-    const rim = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 28), new THREE.MeshBasicMaterial({ color: 0x9cff5a, transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }));
-    rim.position.z = 0.002;
-    mesh.add(rim);
     mesh.position.set(b.x, 0.06, b.z);
-    mesh.scale.setScalar(r);
+    mesh.scale.setScalar(r * 0.2);
     this.scene.add(mesh);
-    this.pools.push({ x: b.x, z: b.z, r, until: this.time + (b.pool ?? 3), tick: 0, dmg: b.dmg, poison: b.poison, mesh });
-    this.fx.burst(b.x, 0.4, b.z, 0x7be04a, 14, 3, 0.12, 0.5, -2);
+    this.pools.push({ x: b.x, z: b.z, r, born: this.time, until: this.time + (b.pool ?? 3), tick: 0, dmg: b.dmg, poison: b.poison, mesh });
+    // M5-03: a vespa estoura numa nuvem verde que assenta e vira a poça
+    const lib = this.fx.lib;
+    lib.burst(b.x, 1, b.z, { radius: 1, color: TECH_FX.venom, core: TECH_FX.venomCore, rays: 4, sparks: 10, light: 0, dur: 0.22, wave: 0, power: 0.8 });
+    lib.ring(b.x, b.z, { radius: r, color: TECH_FX.venom, core: TECH_FX.venomCore, width: 0.3, from: 0.1, dust: 6, dur: 0.4, power: 0.6 });
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + Math.random();
+      lib.smoke(b.x + Math.sin(a) * r * 0.4, 0.3, b.z + Math.cos(a) * r * 0.4, { radius: 0.9 + Math.random() * 0.3, color: TECH_FX.venomSmoke,
+        core: TECH_FX.venom, alpha: 0.4, rise: 0.25, dur: 0.9 + Math.random() * 0.3 });
+    }
   }
 
   private disposePool(v: VenomPool): void {
@@ -2323,8 +2423,12 @@ export class Game {
         }
       }
       const fade = Math.min(1, left / 0.5);
-      (v.mesh.material as THREE.MeshBasicMaterial).opacity = fade * (0.12 + 0.04 * Math.sin(this.time * 6));
-      ((v.mesh.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = fade * 0.5;
+      const u = (v.mesh.material as THREE.ShaderMaterial).uniforms;
+      u.uA.value = fade;
+      u.uT.value = this.time;
+      // cresce do respingo até o raio do dano em 0,3 s
+      const grow = Math.min(1, (this.time - v.born) / 0.3);
+      v.mesh.scale.setScalar(v.r * (0.2 + 0.8 * (1 - (1 - grow) ** 3)));
       if (Math.random() < dt * 6) this.fx.glow(v.x + (Math.random() - 0.5) * v.r, 0.15, v.z + (Math.random() - 0.5) * v.r, 0x9cff5a, 0.3, 0.6, 0, 1.2, 0);
       if (left <= 0) {
         this.disposePool(v);
