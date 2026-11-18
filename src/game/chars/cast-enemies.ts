@@ -1,15 +1,31 @@
 // Inimigos comuns. Goblin e orc refeitos no M3-01 pelo método da seção 4 do roadmap; os outros ainda na versão antiga.
 import * as THREE from "three";
 import { paint, prep } from "../flora";
+import { modelParts } from "./baked";
 import { type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
 
 export const ENEMIES: Record<string, Spec> = {
   // ------------------------------------------------ inimigos
+  // Modelado no Blender (tools/blender/goblin.py, arquivo art/goblin.blend): teste do pipeline na revisão 2 do M3-01, depois que o
+  // rosto por código não convenceu. As malhas vêm por osso de chars/models/goblin.json; aqui ficam só esqueleto e postura, que
+  // têm de bater com os pivôs de tools/blender/goblin_body.py. A versão por código continua como goblin_v1, para comparar.
+  goblin: (b) => {
+    b.scale = 0.7; b.style = "swing"; b.rough = 0.7; b.glowColor = 0xffd23a;
+    b.lean = 0.62; b.crouch = 0.95; b.armOut = 0.22;
+    b.poseR = [-0.9, -0.75]; b.poseL = [-0.3, -0.75];
+    b.dims = { hipY: 0.66, headY: 0.48, shoulderY: 0.4, shoulderX: 0.24, arm: 0.3, hipX: 0.16, thigh: 0.27 };
+    for (const [key, g] of modelParts("goblin")) {
+      const [bone, layer] = key.split("@");
+      if (layer === "lit") b.lit(bone, g);
+      else if (layer === "flat") b.flat(bone, g);
+      else b.add(bone, g);
+    }
+  },
   // Redesenho a partir do sprite (docs/ref/goblin.png): baixinho, muito curvado e agachado, cabeça grande projetada para a frente com
   // orelhas longas para trás, nariz adunco, arcada pesada e boca de dentes; colete de couro com ombreira, calça escura, pés grandes
   // e descalços, clava nodosa de ponta clara apontada para a frente. Medidas do sprite (altura 40 px): cabeça 13 px (um terço),
   // orelha 9 px, braço fino até o joelho, pernas curtas.
-  goblin: (b) => {
+  goblin_v1: (b) => {
     const SKIN = 0x768e36, SKIN_D = 0x3a4a18, SKIN_L = 0x9cae52, VEST = 0x7a4a2a, VEST_D = 0x40240f, PAD = 0x94603a;
     const PANTS = 0x46523e, PANTS_D = 0x2f3b33, CLUB = 0x7a4426, CLUB_L = 0xa86e40, EYE = 0xffd23a, DARK = 0x1c120e, TOOTH = 0xeee2b8;
     const col = (h: number) => new THREE.Color(h);

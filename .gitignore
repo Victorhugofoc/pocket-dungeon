@@ -18,3 +18,7 @@ export_presets.cfg.bak
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Backups automáticos do Blender
+*.blend1
+__pycache__/
