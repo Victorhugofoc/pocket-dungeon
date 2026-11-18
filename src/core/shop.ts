@@ -2,7 +2,8 @@
 // sorteio das ofertas (uma vez por visita), preços, ofertas que ficam inválidas depois de outras compras, compra e
 // troca de ofertas. A tela só mostra as ofertas e repassa a compra (M7-04). Sorteios no fluxo `shop` da seed.
 //
-// Ainda não entram (como no roadmap): a técnica como melhoria (S19, `M7-05`), Hoarder's Crown e Depths
+// A técnica (`run.technique`, o `spells[0]` de lá) também sobe de nível na loja (S19, D-252); nível 5 = evolução.
+// Ainda não entram (como no roadmap): Hoarder's Crown e Depths
 // (`priceMult`, `offerCount`), trocas grátis e a relíquia de encomenda (`M12`, `M13`). A relíquia da 4ª oferta sai
 // por igual da lista que o jogo passa; o sorteio por raridade de `relic_system.lua` chega com as relíquias (`M12`).
 import type { RunState } from "./run";
@@ -113,11 +114,21 @@ export function rerollCost(visit: ShopVisit): number {
 
 const slotIndex = (run: RunState, id: string | undefined) => run.spells.findIndex((s) => s.id === id);
 
+/** `SpellSystem.slotOf`: o espaço da spell, ou a técnica (`spells[0]` de lá, D-252). */
+export function shopSlotOf(run: RunState, id: string | undefined): RunState["technique"] | undefined {
+  const i = slotIndex(run, id);
+  if (i >= 0) return run.spells[i];
+  return run.technique && run.technique.id === id ? run.technique : undefined;
+}
+
 /** `Shop.candidates`: toda oferta válida agora de uma categoria (um modificador uma vez por spell, D-042). */
 export function candidates(run: RunState, category: ShopCategory): Omit<ShopOffer, "bought">[] {
   const list: Omit<ShopOffer, "bought">[] = [];
   if (category === "spell_upgrade") {
     for (const s of run.spells) if (s.level < SPELL_MAX_LEVEL) list.push({ kind: "spell_upgrade", spell: s.id });
+    // 1.9 D-252: a técnica sobe de nível na loja também (Lv5 = a evolução dela)
+    const t = run.technique;
+    if (t && t.level < SPELL_MAX_LEVEL) list.push({ kind: "spell_upgrade", spell: t.id });
   } else if (category === "spell_modifier") {
     for (const s of run.spells) {
       const def = SPELLS[s.id as SpellId];
@@ -205,7 +216,7 @@ export function evaluateOffer(run: RunState, visit: ShopVisit, o: ShopOffer): Of
     return { cost, valid: true };
   }
   if (o.kind === "spell_upgrade") {
-    const slot = run.spells[slotIndex(run, o.spell)];
+    const slot = shopSlotOf(run, o.spell);
     if (!slot) return { cost: null, valid: false, reason: R.notEquipped };
     const cost = spellCost(shop, slot.level, L);
     if (slot.level >= SPELL_MAX_LEVEL) return { cost, valid: false, reason: R.maxLevel };
@@ -250,7 +261,9 @@ export function buyOffer(run: RunState, visit: ShopVisit, index: number, hooks: 
   } else if (o.kind === "new_spell") {
     addSpell(run.spells, o.spell!, newSpellSlot);
   } else if (o.kind === "spell_upgrade") {
-    levelUpSpell(run.spells, slotIndex(run, o.spell));
+    const i = slotIndex(run, o.spell);
+    if (i >= 0) levelUpSpell(run.spells, i);
+    else run.technique.level++; // evaluateOffer já garantiu que é a técnica, abaixo do máximo
   } else if (o.kind === "spell_modifier") {
     addModifier(run.spells, slotIndex(run, o.spell), o.modifier!);
     shop.modifierPurchases++;

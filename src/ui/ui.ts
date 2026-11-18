@@ -12,7 +12,7 @@ import {
 } from "../data/spells";
 import { wantedRelics } from "../core/evolution";
 import { effectsFor, rerollCost as levelRerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
-import { evaluateOffer, rerollCost, type ShopOffer } from "../core/shop";
+import { evaluateOffer, rerollCost, shopSlotOf, type ShopOffer } from "../core/shop";
 import { SHOP_ITEMS } from "../data/shop";
 import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
 import { BOSSES } from "../data/enemies";
@@ -1123,7 +1123,18 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
   const ev = evaluateOffer(g.run, g.shopVisit!, o);
   const slot = g.run.spells.find((s) => s.id === o.spell);
   let meta = "", name = "", body = "", color = "#ffd34d";
-  if (o.kind === "spell_upgrade") {
+  const tech = o.kind === "spell_upgrade" && o.spell === g.run.technique.id ? TECHNIQUES[o.spell] : undefined;
+  if (tech) {
+    // S19 (D-252): a técnica sobe de nível na loja; no nível 5 vira a evolução
+    const lv = g.run.technique.level;
+    meta = "Technique upgrade";
+    name = tech.name;
+    body = `<p>Lv ${lv} → ${Math.min(lv + 1, TECH_MAX_LEVEL)}</p>`;
+    const ms = tech.milestones.find((m) => m.level === lv + 1);
+    if (lv + 1 === TECH_MAX_LEVEL) body += `<p class="evo">EVOLVES ${tech.evolution.name}: ${tech.evolution.text}</p>`;
+    else if (ms) body += `<p class="evo">Lv${ms.level} ${ms.id}: ${ms.text}</p>`;
+    color = "#7ad94a";
+  } else if (o.kind === "spell_upgrade") {
     meta = "Spell upgrade";
     name = spellName(o.spell!);
     body = slot ? `<p>Lv ${slot.level} → ${Math.min(slot.level + 1, SPELL_MAX_LEVEL)}</p>` : "";
@@ -1166,6 +1177,13 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
 /** Dica da oferta: a ficha da spell equipada (M6-08), ou os números da spell nova no nível 1. */
 function shopOfferTip(g: Game, o: ShopOffer): string {
   if (!o.spell) return "";
+  const t = TECHNIQUES[o.spell];
+  if (t && shopSlotOf(g.run, o.spell) === g.run.technique) {
+    const lv = g.run.technique.level;
+    const L = [`<div>${t.text}</div>`, `<div>Cooldown ${t.cooldown.toFixed(2)}s · School ${t.school}</div>`];
+    for (const m of t.milestones) L.push(`<div class="${lv >= m.level ? "good" : ""}">Lv${m.level} ${m.id}: ${m.text}</div>`);
+    return `<h4>${t.name}  Lv ${lv}</h4><div class="spell-tip">${L.join("")}</div>`;
+  }
   const i = g.run.spells.findIndex((s) => s.id === o.spell);
   if (i >= 0) return spellTipHtml(g, i);
   if (!isSpellKey(o.spell)) return "";

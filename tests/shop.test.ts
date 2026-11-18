@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { newRun, RunRng } from "../src/core/run";
-import { buyOffer, evaluateOffer, rerollCost, rerollShop, rollShop, shopStats, type ShopVisit } from "../src/core/shop";
+import { buyOffer, candidates, evaluateOffer, rerollCost, rerollShop, rollShop, shopStats, type ShopVisit } from "../src/core/shop";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { SHOP_REASONS } from "../src/data/shop";
 
@@ -121,5 +121,28 @@ describe("Magic Shop (M7-03)", () => {
     expect(run.shop.visits).toBe(1);
     run.gold = 100;
     expect(rerollShop(run, v, rng, ["blood_pact"])).toEqual({ ok: false, reason: SHOP_REASONS.noGold });
+  });
+
+  it("técnica (M7-05, S19): entra como melhoria, sobe até o 5 (evolução) e sai das ofertas", () => {
+    const run = run0();
+    const tid = run.technique.id;
+    expect(candidates(run, "spell_upgrade").some((o) => o.spell === tid)).toBe(true);
+    const v = visit(1, [{ kind: "spell_upgrade", spell: tid, bought: false }]);
+    const before = evaluateOffer(run, v, v.offers[0]);
+    expect(before.valid).toBe(true);
+    expect(before.cost).toBeGreaterThan(0);
+    for (let lv = 1; lv < 5; lv++) {
+      v.offers[0].bought = false;
+      const r = buyOffer(run, v, 0);
+      expect(r.ok).toBe(true);
+      expect(run.technique.level).toBe(lv + 1);
+    }
+    expect(run.shop.spellPurchases).toBe(4);
+    expect(run.spells[0].level).toBe(1);
+    v.offers[0].bought = false;
+    expect(evaluateOffer(run, v, v.offers[0])).toMatchObject({ valid: false, reason: SHOP_REASONS.maxLevel });
+    expect(candidates(run, "spell_upgrade").some((o) => o.spell === tid)).toBe(false);
+    // nunca vira oferta de modificador (lá o laço é ipairs, que pula o spells[0])
+    expect(candidates(run, "spell_modifier").some((o) => o.spell === tid)).toBe(false);
   });
 });
