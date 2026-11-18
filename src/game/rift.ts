@@ -8,6 +8,8 @@ export interface Rift {
   slow: number; damage: number; perEnemy: number; maxMult: number; stun: number;
   group: THREE.Group;
   disk: THREE.Mesh; rings: THREE.Mesh[];
+  /** efeito que acompanha a fenda (game.ts), encerrado junto */
+  fx?: { kill(): void };
 }
 
 const COLOR = 0xc28cff;
@@ -83,7 +85,8 @@ export class Rifts {
       r.rings[2].scale.setScalar(Math.max(0.05, close * 0.62));
       r.rings[1].rotation.z += dt * 1.4;
       r.rings[2].rotation.z -= dt * 2.3;
-      (r.disk.material as THREE.MeshBasicMaterial).opacity = 0.05 + Math.sin(r.age * 7) * 0.02 + (1 - close) * 0.15;
+      // o disco se apaga enquanto os anéis se fecham: tudo é puxado para o centro (com bloom, clarear virava placa)
+      (r.disk.material as THREE.MeshBasicMaterial).opacity = (0.05 + Math.sin(r.age * 7) * 0.02) * close;
       if (r.age >= r.dur) {
         onImplode(r);
         this.dispose(r);
@@ -93,6 +96,7 @@ export class Rifts {
   }
 
   private dispose(r: Rift): void {
+    r.fx?.kill();
     this.scene.remove(r.group);
     (r.disk.material as THREE.Material).dispose();
     for (const m of r.rings) (m.material as THREE.Material).dispose();
