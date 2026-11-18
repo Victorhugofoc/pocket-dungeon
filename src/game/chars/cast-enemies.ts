@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { paint, prep } from "../flora";
 import { modelParts } from "./baked";
-import { type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
+import { type Builder, type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
 
 export const ENEMIES: Record<string, Spec> = {
   // ------------------------------------------------ inimigos
@@ -137,7 +137,23 @@ export const ENEMIES: Record<string, Spec> = {
   // cruzadas no peito nu, cinto de fivela redonda, tanga de couro, calça escura e pés descalços; machado de duas lâminas segurado
   // baixo, atravessado na frente do corpo com as duas mãos. Medidas do sprite (altura 60 px): cabeça 12 px, ombros 34 px, braço
   // até a coxa, pernas curtas e grossas.
+  // Modelado no Blender (tools/blender/orc.py, arquivo art/orc.blend; D16). As malhas vêm por osso de chars/models/orc.json; aqui
+  // ficam esqueleto, postura e o machado (osso "weapon", pegada de duas mãos), que continua por código. A versão inteira por código
+  // fica como orc_v1, para comparar.
   orc: (b) => {
+    b.bulk = 1.45; b.scale = 1.08; b.style = "swing"; b.rough = 0.65; b.glowColor = 0xe8442a;
+    b.lean = 0.3; b.crouch = 0.36; b.armOut = 0.14;
+    b.poseR = [-0.6, -0.8]; b.poseL = [-0.55, -0.8];
+    b.dims = { hipY: 0.84, headY: 0.6, shoulderY: 0.52, shoulderX: 0.41, arm: 0.4, hipX: 0.2, thigh: 0.38 };
+    for (const [key, g] of modelParts("orc")) {
+      const [bone, layer] = key.split("@");
+      if (layer === "lit") b.lit(bone, g);
+      else if (layer === "flat") b.flat(bone, g);
+      else b.add(bone, g);
+    }
+    orcAxe(b);
+  },
+  orc_v1: (b) => {
     const SKIN = 0x5e7a2a, SKIN_D = 0x2c3a14, SKIN_L = 0x8aa244, IRON_D = 0x34363a, IRON_M = 0x63666c, IRON_L = 0xb4b8be;
     const HIDE = 0x6e3c1e, HIDE_D = 0x3a1d0e, PANTS = 0x5e3a26, PANTS_D = 0x341f14, TUSK = 0xeee4c6, EYE = 0xe8442a, DARK = 0x160e0c;
     const col = (h: number) => new THREE.Color(h);
@@ -211,37 +227,7 @@ export const ENEMIES: Record<string, Spec> = {
       for (let i = -1; i <= 1; i++) b.add(sh, at(cone(0.026, 0.06, TUSK, 4), i * 0.06, -0.38, 0.31, Math.PI / 2));
     }
 
-    // ---- machado de duas lâminas: atravessado baixo na frente do corpo, cabeça à frente; a mão esquerda segura mais adiante no cabo
-    const R = restArm(b, 1, HAND);
-    const dir = new THREE.Vector3(-0.75, 0.05, 0.66).normalize();
-    const aim = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
-    const HEAD = 0.95, BLADE = 1.1;
-    const axeG: G[] = [
-      at(cyl(0.032, 0.036, 1.5, 0x6a4024, 7), 0, 0.4, 0),
-      at(stud(0.05, IRON_M, IRON_D, 1, 1, 1, 0), 0, -0.36, 0),
-      at(cyl(0.04, 0.04, 0.18, HIDE_D, 7), 0, 0.42, 0),
-      at(cyl(0.065, 0.065, 0.28, IRON_D, 8), 0, HEAD, 0),
-      at(cone(0.05, 0.12, IRON_M, 6, IRON_D), 0, HEAD + 0.2, 0),
-      at(cyl(0.05, 0.05, 0.16, DARK, 8), 0, HEAD, 0, 0, 0, Math.PI / 2),
-    ];
-    // lâmina em meia-lua: na forma, x ao longo do cabo e y para fora; o gume (fora) é claro
-    const moon = new THREE.Shape();
-    moon.moveTo(-0.07, 0.03);
-    moon.quadraticCurveTo(-0.2, 0.14, -0.27, 0.32);
-    moon.quadraticCurveTo(0, 0.4, 0.27, 0.32);
-    moon.quadraticCurveTo(0.2, 0.14, 0.07, 0.03);
-    moon.closePath();
-    for (const s of [-1, 1]) {
-      const g = prep(new THREE.ExtrudeGeometry(moon, { depth: 0.035, bevelEnabled: false, curveSegments: 6 }), false);
-      g.translate(0, 0, -0.0175);
-      paint(g, IRON_M, 0xd8dce2, 0.28, 0.4);
-      g.scale(1.05, 1.05, 1);
-      g.rotateZ(Math.PI / 2); // x da forma -> y do cabo; y da forma -> -x
-      g.rotateY(s > 0 ? Math.PI / 2 + BLADE : -Math.PI / 2 + BLADE); // lâminas em pé: para cima e para baixo do cabo
-      axeG.push(at(g, 0, HEAD, 0));
-    }
-    b.add("weapon", ...axeG.map((g) => g.rotateX(Math.PI)));
-    b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.5 };
+    orcAxe(b);
   },
   swarm: (b) => {
     b.form = "bat"; b.scale = 0.75; b.style = "bite";
@@ -325,3 +311,38 @@ export const ENEMIES: Record<string, Spec> = {
     b.add("hips", at(bx(0.3, 0.06, 0.06, BONE), -0.3, 0.5, 0.3, 0.5, 0.7, 0.4), at(sph(0.07, BONE), 0.36, 0.3, 0.25), at(bx(0.2, 0.05, 0.05, BONE), 0.2, 0.75, -0.2, 0.2, 0.3, 1.0));
   },
 };
+
+/** machado de duas lâminas do orc: atravessado baixo na frente do corpo, cabeça à frente; a mão esquerda segura mais adiante no cabo */
+function orcAxe(b: Builder): void {
+  const IRON_D = 0x34363a, IRON_M = 0x63666c, HIDE_D = 0x3a1d0e, DARK = 0x160e0c, HAND = 0.38;
+  const R = restArm(b, 1, HAND);
+  const dir = new THREE.Vector3(-0.75, 0.05, 0.66).normalize();
+  const aim = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+  const HEAD = 0.95, BLADE = 1.1;
+  const axeG: G[] = [
+    at(cyl(0.032, 0.036, 1.5, 0x6a4024, 7), 0, 0.4, 0),
+    at(stud(0.05, IRON_M, IRON_D, 1, 1, 1, 0), 0, -0.36, 0),
+    at(cyl(0.04, 0.04, 0.18, HIDE_D, 7), 0, 0.42, 0),
+    at(cyl(0.065, 0.065, 0.28, IRON_D, 8), 0, HEAD, 0),
+    at(cone(0.05, 0.12, IRON_M, 6, IRON_D), 0, HEAD + 0.2, 0),
+    at(cyl(0.05, 0.05, 0.16, DARK, 8), 0, HEAD, 0, 0, 0, Math.PI / 2),
+  ];
+  // lâmina em meia-lua: na forma, x ao longo do cabo e y para fora; o gume (fora) é claro
+  const moon = new THREE.Shape();
+  moon.moveTo(-0.07, 0.03);
+  moon.quadraticCurveTo(-0.2, 0.14, -0.27, 0.32);
+  moon.quadraticCurveTo(0, 0.4, 0.27, 0.32);
+  moon.quadraticCurveTo(0.2, 0.14, 0.07, 0.03);
+  moon.closePath();
+  for (const s of [-1, 1]) {
+    const g = prep(new THREE.ExtrudeGeometry(moon, { depth: 0.035, bevelEnabled: false, curveSegments: 6 }), false);
+    g.translate(0, 0, -0.0175);
+    paint(g, IRON_M, 0xd8dce2, 0.28, 0.4);
+    g.scale(1.05, 1.05, 1);
+    g.rotateZ(Math.PI / 2); // x da forma -> y do cabo; y da forma -> -x
+    g.rotateY(s > 0 ? Math.PI / 2 + BLADE : -Math.PI / 2 + BLADE); // lâminas em pé: para cima e para baixo do cabo
+    axeG.push(at(g, 0, HEAD, 0));
+  }
+  b.add("weapon", ...axeG.map((g) => g.rotateX(Math.PI)));
+  b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.5 };
+}

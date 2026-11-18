@@ -1,4 +1,4 @@
-# Modelos no Blender (teste, M3-01 revisão 2)
+# Modelos no Blender (D16)
 
 Personagens modelados por script Python no Blender, em segundo plano, sem abrir a janela. Cada script grava:
 - `art/<id>.blend`: para abrir e ajustar à mão;
@@ -10,7 +10,9 @@ Personagens modelados por script Python no Blender, em segundo plano, sem abrir 
 "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" -b --factory-startup --python tools/blender/goblin.py -- review
 ```
 
-Com `review`, também grava capturas do Blender em `.shots/bl-head-*.png` e `.shots/bl-body-*.png`. Leva uns 10 s.
+Com `review`, também grava capturas do Blender em `.shots/bl-head-*.png` e `.shots/bl-body-*.png` (orc: `bl-orc-*`). Leva uns 10 s.
+
+Modelos prontos: `goblin.py` (+ `goblin_body.py`), `orc.py` (cabeça e corpo num arquivo só; o machado continua por código em `cast-enemies.ts`, porque a pegada de duas mãos vive no osso `weapon`).
 
 ## Como funciona
 
