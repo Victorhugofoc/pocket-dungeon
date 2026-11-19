@@ -32,7 +32,7 @@ Estilo `thrust`, base baixa (`crouch` alto). O cachecol balança sozinho pela f�
 - "Pose bem feia" e "corpo genérico": corpo de manequim (tubos lisos e iguais) e postura de pé em A. Precisa de corpo de lutador: ombros e peito mais fortes, braços e coxas com volume (antebraço, panturrilha), cintura marcada, roupa com caimento (mangas, calça).
 - "Corpo muito fino" e "pose não é de lutador": base de luta, baixa e larga, joelhos dobrados, um pé à frente, tronco inclinado, braços armados com as adagas (uma à frente, outra recuada), como no sprite. Avaliar se a postura de repouso precisa de ajuste no `animate.ts` (estilo `thrust`) e não só no modelo.
 
-## 7. Revisão 2 (2026-11-18), para o usuário ver
+## 7. Revisão 2 (2026-11-18), aprovada pelo usuário
 - Base de luta pela animação, não pelo modelo: `b.stance` (pernas abertas 0,6 rad, pé esquerdo à frente, quadril girado 0,55), agachamento 1,05 e tronco inclinado. A mão da frente estende a adaga; a de trás guarda na altura do quadril.
 - No golpe (`thrust`, só para quem tem `stance`), o braço desfaz a abertura de repouso e mira reto à frente contra o giro do quadril e do tronco. Os heróis de `thrust` não mudaram.
 - Corpo de lutador: peito e dorsais em V, cintura marcada, deltoide, bíceps e antebraço. Jaqueta cinza escura com gola em V vermelha e peito aberto, aba sobre o quadril e mangas com boca larga e barra vermelha. Calça bufante como uma forma só, da coxa ao joelho, afunilando até a faixa.
