@@ -1,6 +1,6 @@
 # Brief do berserker (M3-05)
 
-Modelo: `tools/blender/berserker.py` (base dos anões em `tools/blender/dwarf.py`, sobre `humanoid.py`). Os dois machados continuam por código (`berserkerAxe` em `cast-enemies.ts`), um em cada mão, caídos ao lado do corpo.
+Modelo: `tools/blender/berserker.py` (base dos anões em `tools/blender/dwarf.py`, sobre `humanoid.py`). Os dois machados continuam por código (`berserkerAxe` em `cast-enemies.ts`), um em cada mão, empunhados para cima em guarda.
 
 ## 1. Fontes
 | Fonte | Manda em |
@@ -35,3 +35,7 @@ Estilo `swing` com as duas mãos juntas (pose igual nos dois braços): os dois m
 - Oscilou e ficou no meio: tamanho dos chifres, tamanho das lâminas, comprimento do manto e da barba.
 - Médios que restaram: tatuagem do peito em traços soltos (o sprite tem padrão tribal denso), manto ainda liso de costas, silhueta em ferradura marrom na câmera do jogo.
 - ~6,3 mil triângulos.
+
+## 7. Revisão do usuário (2026-11-19)
+- Bombardier aprovado. Berserker recusado: segurava os machados "invertidos", caídos ao lado das pernas com a lâmina para baixo. Pedido: machados empunhados para cima, em posição de ataque.
+- Feito: o cabo sai do punho para cima (pomo embaixo da mão), a lâmina fica no alto com o fio para a frente e para fora, o topo aberto para o lado e um pouco para trás; antebraços erguidos à frente (`poseR`/`poseL` = [-0,35, -1,45]), punhos na altura do peito.

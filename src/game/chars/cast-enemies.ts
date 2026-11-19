@@ -284,10 +284,10 @@ export const ENEMIES: Record<string, Spec> = {
   },
   berserker: (b) => {
     // anão de elmo com chifres, peito nu tatuado e manto de pele, modelado no Blender (tools/blender/berserker.py, brief em
-    // docs/briefs/berserker.md); os dois machados ficam por código, caídos ao lado das pernas, e sobem juntos no golpe (poses iguais)
+    // docs/briefs/berserker.md); os dois machados ficam por código, empunhados para cima em guarda, e sobem juntos no golpe (poses iguais)
     b.scale = 1.12; b.style = "swing"; b.rough = 0.7;
     b.lean = 0.42; b.crouch = 0.35; b.armOut = 0.42;
-    b.poseR = [-0.4, -0.95]; b.poseL = [-0.4, -0.95]; // cotovelos dobrados, machados à frente e para fora
+    b.poseR = [-0.35, -1.45]; b.poseL = [-0.35, -1.45]; // antebraços erguidos à frente, punhos na altura do peito
     b.dims = { ...DWARF, shoulderX: 0.42 };
     addModel(b, "berserker");
     berserkerAxe(b, -1);
@@ -313,27 +313,31 @@ function bombardierBomb(b: Builder): void {
     ...[0, 1, 2, 3, 4, 5].map((i) => at(cone(0.011, 0.05 + 0.03 * (i % 2), i % 2 ? 0xff8a1e : 0xffd23a, 3), 0.035, 0.415, 0.03, 0, i * 0.5, (i * Math.PI) / 3 + 0.3))], L.inv, DWARF_HAND)); // faísca em estrela
 }
 
-/** Machado de barba do berserker, caído da mão com a cabeça perto do joelho e o fio para fora. Modelado na vertical do mundo com a
- * origem na mão: o cabo passa um pouco acima do punho, a lâmina chata fica no plano do cabo e do lado de fora (`side`). */
+/** Machado de barba do berserker, empunhado para cima em guarda (pedido do usuário em 2026-11-19: nada de machado caído com a lâmina
+ * para baixo): o cabo sai do punho para cima, a lâmina fica no alto com o fio para a frente e para fora, o topo um pouco aberto e para
+ * trás. Modelado na vertical do mundo com a origem na mão e pendurado no antebraço com `hang`. */
 function berserkerAxe(b: Builder, side: number): void {
   const L = restArm(b, side, DWARF_HAND);
   const sh = new THREE.Shape();
   const X = (x: number) => side * x; // espelhada na forma (escala negativa viraria as faces para dentro)
-  sh.moveTo(0, -0.22);
-  sh.quadraticCurveTo(X(0.1), -0.2, X(0.21), -0.07);    // ponta de cima, em crescente
-  sh.quadraticCurveTo(X(0.31), -0.28, X(0.21), -0.5);   // fio curvo, largo
-  sh.quadraticCurveTo(X(0.1), -0.4, 0, -0.4);           // barba
+  sh.moveTo(0, 0.3);
+  sh.quadraticCurveTo(X(0.1), 0.28, X(0.2), 0.17);     // barba, a ponta de baixo
+  sh.quadraticCurveTo(X(0.31), 0.4, X(0.21), 0.63);    // fio curvo, largo
+  sh.quadraticCurveTo(X(0.1), 0.5, 0, 0.5);            // ponta de cima
   sh.closePath();
   const blade = prep(new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.014, bevelSize: 0.008, bevelSegments: 1, curveSegments: 6 }), true);
   blade.translate(0, 0, -0.025);
-  paint(blade, 0x4a505c, 0xe8eef6, -0.42, -0.1);
+  paint(blade, 0x4a505c, 0xe8eef6, 0.2, 0.6);
   const g: G[] = [
     blade,
-    at(cyl(0.04, 0.044, 0.56, 0xa8743e, 7, 0x5a3a1e), 0, -0.2, 0),             // cabo, terminando dentro da empunhadura             // cabo
-    at(cyl(0.048, 0.048, 0.2, 0x6a7280, 8, 0x3a404a), 0, -0.31, 0),               // alvado de ferro
-    at(cone(0.035, 0.08, 0x8a929e, 4), -side * 0.06, -0.3, 0, 0, 0, side * Math.PI / 2), // esporão de trás
-    at(cyl(0.05, 0.05, 0.09, 0x4a2e18, 6, 0x2a180c), 0, 0.06, 0),                       // empunhadura enfaixada
+    at(cyl(0.04, 0.044, 0.72, 0xa8743e, 7, 0x5a3a1e), 0, 0.24, 0),                         // cabo
+    at(cyl(0.048, 0.048, 0.22, 0x6a7280, 8, 0x3a404a), 0, 0.4, 0),                          // alvado de ferro
+    at(cone(0.035, 0.09, 0x8a929e, 4), -side * 0.065, 0.42, 0, 0, 0, side * Math.PI / 2),   // esporão de trás
+    at(cyl(0.05, 0.05, 0.1, 0x4a2e18, 6, 0x2a180c), 0, 0.0, 0),                            // empunhadura enfaixada, no punho
+    at(sph(0.055, 0x6a7280, 1, 0.8, 1, 0x3a404a), 0, -0.12, 0),                             // pomo
   ];
+  // fio para a frente e para fora; topo aberto para o lado e um pouco para trás
+  for (const x of g) x.rotateY(-side * 1.0).rotateZ(-side * 0.3).rotateX(-0.25);
   b.add(side > 0 ? "foreR" : "foreL", ...hang(g, L.inv, DWARF_HAND));
 }
 
