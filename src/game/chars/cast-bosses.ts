@@ -163,8 +163,19 @@ export const BOSSES: Record<string, Spec> = {
   // Redesenho a partir do sprite (docs/ref/gravekeeper.png): coveiro encapuzado sem rosto, pá apoiada no chão e lanterna erguida.
   // Medidas do sprite (altura 115 px): capuz 28 px, ombros com a pelerine 55 px, cinto a 53% da altura, barra a 11% do chão.
   gravekeeper: (b) => {
+    // coveiro encapuzado modelado no Blender (tools/blender/gravekeeper.py, brief em docs/briefs/gravekeeper.md); pá e lanterna por
+    // código (gravekeeperShovel, gravekeeperLantern). A versão por código continua como gravekeeper_v1, para comparar.
+    b.bulk = 1.15; b.scale = 2.1; b.style = "swing"; b.rough = 0.86; b.glowByVertex = true;
+    b.lean = 0.18; b.crouch = 0.1; b.armOut = 0.5;
+    b.poseR = [-0.3, -0.6]; b.poseL = [-0.35, -1.9]; // mão da pá mais baixa que na v1: de perfil o antebraço esticado virava um tubo
+    b.dims = { hipY: 1.0, headY: 0.5, shoulderY: 0.5, shoulderX: 0.36, arm: 0.36, hipX: 0.17, thigh: 0.46 };
+    addModel(b, "gravekeeper");
+    gravekeeperShovel(b);
+    gravekeeperLantern(b);
+  },
+  gravekeeper_v1: (b) => {
     const ROBE = 0x4c514e, ROBE_D = 0x262a29, MANTLE = 0x62675f, MANTLE_D = 0x3a3e3a, TRIM = 0x83846f, VOID = 0x070909;
-    const EYE = 0x7dffc0, PALE = 0xd9c9a6, PALE_D = 0x9c8c6c, HIDE = 0x7a4a26, RUST = 0x9a5426, RUST_D = 0x5e3216, BLADE = 0x9aa1a8, AMBER = 0xffb347, SHOE = 0x17181a;
+    const EYE = 0x7dffc0, PALE = 0xd9c9a6, PALE_D = 0x9c8c6c, HIDE = 0x7a4a26, SHOE = 0x17181a;
     const HAND = 0.41;
     b.bulk = 1.15; b.scale = 2.1; b.style = "swing"; b.rough = 0.86; b.glowByVertex = true;
     b.lean = 0.12; b.crouch = 0.1; b.armOut = 0.5;
@@ -215,10 +226,8 @@ export const BOSSES: Record<string, Spec> = {
       b.add(sh, limb(0.08, 0.065, 0.38, ROBE_D), at(sph(0.1, SHOE, 1.05, 0.65, 1.9), 0, -0.43, 0.08));
     }
 
-    // Pá e lanterna ficam na vertical do mundo na pose de descanso.
-    const R = restArm(b, 1, HAND), Lq = restArm(b, -1, HAND);
-
     // ---- braços: manga larga com a sobra de pano caída, boca da manga escura e mão pálida
+    const R = restArm(b, 1, HAND), Lq = restArm(b, -1, HAND);
     for (const [arm, fore, inv] of [["armL", "foreL", Lq.inv], ["armR", "foreR", R.inv]] as const) {
       b.add(arm, sph(0.13, ROBE, 1, 1, 1, ROBE_D), lathe([[0, -0.42], [0.1, -0.4], [0.12, -0.25], [0.125, -0.05], [0.09, 0.06], [0, 0.1]], ROBE, ROBE_D, 12));
       b.add(fore, lathe([[0.13, -0.34], [0.135, -0.3], [0.11, -0.12], [0.095, 0], [0, 0.07]], ROBE, ROBE_D, 14));
@@ -227,30 +236,8 @@ export const BOSSES: Record<string, Spec> = {
       drape.scale(1, 1, 0.5);
       b.add(fore, drape.applyQuaternion(inv).translate(0, -0.26, 0));
     }
-
-    // ---- pá: punho em D, cabo cor de ferrugem, lâmina com ponta apoiada no chão
-    const L = R.y + 0.04;
-    const tip = cone(0.212, 0.16, BLADE, 4, 0x7a5a48);
-    tip.rotateY(Math.PI / 4).scale(1, 1, 0.12);
-    const shovel = [
-      at(cyl(0.03, 0.03, 0.17, RUST, 7, RUST_D), 0, 0, 0, 0, 0, Math.PI / 2),
-      at(cyl(0.018, 0.018, 0.16, RUST, 5, RUST_D), -0.045, -0.07, 0, 0, 0, -0.52), at(cyl(0.018, 0.018, 0.16, RUST, 5, RUST_D), 0.045, -0.07, 0, 0, 0, 0.52),
-      at(cyl(0.028, 0.028, L - 0.58, RUST, 7, RUST_D), 0, -0.14 - (L - 0.58) / 2, 0),
-      at(cyl(0.042, 0.042, 0.09, 0x3a3d42, 8), 0, -(L - 0.46), 0),
-      at(bx(0.3, 0.3, 0.036, BLADE, 0x7a5a48), 0, -(L - 0.3), 0), at(tip, 0, -(L - 0.07), 0, Math.PI),
-    ];
-    b.add("foreR", ...hang(shovel, R.inv, HAND));
-
-    // ---- lanterna pendurada na mão esquerda, com luz âmbar que chega ao chão
-    const lantern = [
-      at(torus(0.07, 0.012, 0x3a3d42), 0, -0.07, 0, Math.PI / 2),
-      at(cone(0.1, 0.09, RUST, 8, RUST_D), 0, -0.175, 0), at(cyl(0.1, 0.1, 0.05, RUST, 8, RUST_D), 0, -0.445, 0),
-    ];
-    for (let i = 0; i < 4; i++) lantern.push(at(bx(0.022, 0.22, 0.022, RUST, RUST_D), Math.cos(i * 1.571 + 0.785) * 0.085, -0.32, Math.sin(i * 1.571 + 0.785) * 0.085));
-    b.add("foreL", ...hang(lantern, Lq.inv, HAND));
-    b.lit("foreL", ...hang([at(cyl(0.072, 0.072, 0.2, AMBER, 8, AMBER), 0, -0.32, 0)], Lq.inv, HAND));
-    const lp = new THREE.Vector3(0, -0.32, 0).applyQuaternion(Lq.inv);
-    b.lights.push({ bone: "foreL", x: lp.x, y: lp.y - HAND, z: lp.z, color: 0xffa64a, intensity: 9, distance: 12 });
+    gravekeeperShovel(b);
+    gravekeeperLantern(b);
   },
   // Redesenho a partir do sprite (docs/ref/ember_matriarch.png): torso esguio de mulher sobre corpo de aranha, casca preta rachada de lava.
   // Medidas do sprite (altura 120 px): abdômen 60 px de diâmetro atrás do corpo, cefalotórax 25 px, cintura a 35% e ombros a 67% da altura,
@@ -428,6 +415,37 @@ export const BOSSES: Record<string, Spec> = {
 };
 
 /** facão do Bloodfang: dorso reto, barriga curva, ponta virada e fio serrilhado, na mão direita */
+const GK_HAND = 0.41, GK_RUST = 0x9a5426, GK_RUST_D = 0x5e3216;
+/** Pá do Gravekeeper na mão direita: punho em D, cabo cor de ferrugem, lâmina com a ponta apoiada no chão (na vertical do mundo em repouso). */
+function gravekeeperShovel(b: Builder): void {
+  const BLADE = 0x9aa1a8;
+  const R = restArm(b, 1, GK_HAND);
+  const L = R.y + 0.04;
+  const tip = cone(0.212, 0.16, BLADE, 4, 0x7a5a48);
+  tip.rotateY(Math.PI / 4).scale(1, 1, 0.12);
+  const shovel = [
+    at(cyl(0.03, 0.03, 0.17, GK_RUST, 7, GK_RUST_D), 0, 0, 0, 0, 0, Math.PI / 2),
+    at(cyl(0.018, 0.018, 0.16, GK_RUST, 5, GK_RUST_D), -0.045, -0.07, 0, 0, 0, -0.52), at(cyl(0.018, 0.018, 0.16, GK_RUST, 5, GK_RUST_D), 0.045, -0.07, 0, 0, 0, 0.52),
+    at(cyl(0.028, 0.028, L - 0.58, GK_RUST, 7, GK_RUST_D), 0, -0.14 - (L - 0.58) / 2, 0),
+    at(cyl(0.042, 0.042, 0.09, 0x3a3d42, 8), 0, -(L - 0.46), 0),
+    at(bx(0.3, 0.3, 0.036, BLADE, 0x7a5a48), 0, -(L - 0.3), 0), at(tip, 0, -(L - 0.07), 0, Math.PI),
+  ];
+  b.add("foreR", ...hang(shovel, R.inv, GK_HAND));
+}
+/** Lanterna do Gravekeeper pendurada na mão esquerda, com luz âmbar que chega ao chão. */
+function gravekeeperLantern(b: Builder): void {
+  const Lq = restArm(b, -1, GK_HAND);
+  const lantern = [
+    at(torus(0.07, 0.012, 0x3a3d42), 0, -0.07, 0, Math.PI / 2),
+    at(cone(0.1, 0.09, GK_RUST, 8, GK_RUST_D), 0, -0.175, 0), at(cyl(0.1, 0.1, 0.05, GK_RUST, 8, GK_RUST_D), 0, -0.445, 0),
+  ];
+  for (let i = 0; i < 4; i++) lantern.push(at(bx(0.022, 0.22, 0.022, GK_RUST, GK_RUST_D), Math.cos(i * 1.571 + 0.785) * 0.085, -0.32, Math.sin(i * 1.571 + 0.785) * 0.085));
+  b.add("foreL", ...hang(lantern, Lq.inv, GK_HAND));
+  b.lit("foreL", ...hang([at(cyl(0.072, 0.072, 0.2, 0xffb347, 8, 0xffb347), 0, -0.32, 0)], Lq.inv, GK_HAND));
+  const lp = new THREE.Vector3(0, -0.32, 0).applyQuaternion(Lq.inv);
+  b.lights.push({ bone: "foreL", x: lp.x, y: lp.y - GK_HAND, z: lp.z, color: 0xffa64a, intensity: 9, distance: 12 });
+}
+
 function bloodfangKnife(b: Builder): void {
   const HIDE = 0x5e3a22;
     const L = 1.25;
