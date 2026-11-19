@@ -264,13 +264,14 @@ export const ENEMIES: Record<string, Spec> = {
     addModel(b, "spellcaster");
   },
   bombardier: (b) => {
-    body(b, { skin: 0xd9a070, top: 0x7a4a2a, bottom: 0x4a3020, boots: 0x2e1e14, bulk: 1.4 });
-    b.scale = 0.8; b.style = "throw"; b.poseR = [-0.9, -0.9];
-    b.add("head", at(sph(0.24, 0x5a4a3a, 1, 0.7, 1), 0, 0.3, 0), ...beard(0xc8501e, 0.4), at(sph(0.16, 0xc8501e, 1.3, 0.6, 0.8), 0, 0.1, 0.1));
-    b.add("torso", at(cone(0.13, 0.7, 0xd9b27a, 9), -0.26, 0.62, -0.12, -1.2, 0, 0.3));
-    b.add("hips", ...belt(LEATHER, 1.4));
-    b.add("foreR", at(sph(0.17, 0x1c1c1c), 0, -0.44, 0));
-    b.lit("foreR", at(cyl(0.015, 0.015, 0.12, 0xff9a3c, 4), 0.03, -0.28, 0), at(sph(0.035, 0xffe14a), 0.04, -0.21, 0));
+    // anão de óculos com canhão no ombro, modelado no Blender (tools/blender/bombardier.py, brief em docs/briefs/bombardier.md); a bomba
+    // fica por código, erguida na mão esquerda: o arremesso é com a esquerda, como no sprite
+    b.scale = 1.0; b.style = "throwL"; b.rough = 0.7; b.glowColor = 0xffb02a;
+    b.lean = 0.12; b.crouch = 0.2; b.armOut = 0.22;
+    b.poseL = [-0.45, -1.55, 0.95, 0]; b.poseR = [-0.15, -0.45]; // bomba aberta para o lado, na altura do ombro
+    b.dims = DWARF;
+    addModel(b, "bombardier");
+    bombardierBomb(b);
   },
   summoner: (b) => {
     // bruxa de cabelo branco com livro modelada no Blender (tools/blender/summoner.py, brief em docs/briefs/summoner.md); flutua de
@@ -282,12 +283,15 @@ export const ENEMIES: Record<string, Spec> = {
     addModel(b, "summoner");
   },
   berserker: (b) => {
-    body(b, { skin: 0xc89a7a, top: 0xc89a7a, bottom: 0x5a4636, boots: 0x3a2e24, bulk: 1.4 });
-    b.scale = 1.02; b.style = "swing"; b.poseR = [-0.5, -0.9]; b.poseL = [-0.5, -0.9];
-    b.add("head", ...hornHelm(IRON, BONE), ...beard(0xd9641e, 0.42));
-    b.add("torso", at(bx(0.5, 0.06, 0.03, 0x4a8fd6), 0, 0.42, 0.2), at(bx(0.06, 0.3, 0.03, 0x4a8fd6), 0.12, 0.28, 0.21, 0, 0, 0.4));
-    b.add("hips", at(lathe([[0.36, -0.3], [0.3, 0], [0.26, 0.08]], 0x8a7a66), 0, 0, 0), ...belt(LEATHER, 1.4, IRON));
-    b.add("foreR", ...axe(0.7)).add("foreL", ...axe(0.7));
+    // anão de elmo com chifres, peito nu tatuado e manto de pele, modelado no Blender (tools/blender/berserker.py, brief em
+    // docs/briefs/berserker.md); os dois machados ficam por código, empunhados para cima em guarda, e sobem juntos no golpe (poses iguais)
+    b.scale = 1.12; b.style = "swing"; b.rough = 0.7;
+    b.lean = 0.42; b.crouch = 0.35; b.armOut = 0.42;
+    b.poseR = [-0.35, -1.45]; b.poseL = [-0.35, -1.45]; // antebraços erguidos à frente, punhos na altura do peito
+    b.dims = { ...DWARF, shoulderX: 0.42 };
+    addModel(b, "berserker");
+    berserkerAxe(b, -1);
+    berserkerAxe(b, 1);
   },
   splitter: (b) => {
     // gosma rosa com ossos dentro, modelada no Blender (tools/blender/splitter.py, brief em docs/briefs/splitter.md)
@@ -296,6 +300,46 @@ export const ENEMIES: Record<string, Spec> = {
   },
 
 };
+
+/** Pivôs dos anões, iguais ao RIG de tools/blender/dwarf.py */
+const DWARF = { hipY: 0.6, headY: 0.5, shoulderY: 0.4, shoulderX: 0.34, arm: 0.27, hipX: 0.15, thigh: 0.28 };
+const DWARF_HAND = 0.24;
+
+/** Bomba preta do bombardier, pousada na mão esquerda erguida, com o pavio aceso para cima */
+function bombardierBomb(b: Builder): void {
+  const L = restArm(b, -1, DWARF_HAND);
+  b.add("foreL", ...hang([at(sph(0.155, 0x3a3c44, 1, 1, 1, 0x0c0c0e), 0, 0.17, 0.03), at(cyl(0.04, 0.045, 0.05, 0x5a5048, 8), 0, 0.32, 0.03)], L.inv, DWARF_HAND));
+  b.lit("foreL", ...hang([at(cyl(0.012, 0.012, 0.08, 0xff9a3c, 4), 0.015, 0.37, 0.03, 0, 0, -0.4), at(sph(0.022, 0xfff0a0), 0.035, 0.415, 0.03),
+    ...[0, 1, 2, 3, 4, 5].map((i) => at(cone(0.011, 0.05 + 0.03 * (i % 2), i % 2 ? 0xff8a1e : 0xffd23a, 3), 0.035, 0.415, 0.03, 0, i * 0.5, (i * Math.PI) / 3 + 0.3))], L.inv, DWARF_HAND)); // faísca em estrela
+}
+
+/** Machado de barba do berserker, empunhado para cima em guarda (pedido do usuário em 2026-11-19: nada de machado caído com a lâmina
+ * para baixo): o cabo sai do punho para cima, a lâmina fica no alto com o fio para a frente e para fora, o topo um pouco aberto e para
+ * trás. Modelado na vertical do mundo com a origem na mão e pendurado no antebraço com `hang`. */
+function berserkerAxe(b: Builder, side: number): void {
+  const L = restArm(b, side, DWARF_HAND);
+  const sh = new THREE.Shape();
+  const X = (x: number) => side * x; // espelhada na forma (escala negativa viraria as faces para dentro)
+  sh.moveTo(0, 0.3);
+  sh.quadraticCurveTo(X(0.1), 0.28, X(0.2), 0.17);     // barba, a ponta de baixo
+  sh.quadraticCurveTo(X(0.31), 0.4, X(0.21), 0.63);    // fio curvo, largo
+  sh.quadraticCurveTo(X(0.1), 0.5, 0, 0.5);            // ponta de cima
+  sh.closePath();
+  const blade = prep(new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.014, bevelSize: 0.008, bevelSegments: 1, curveSegments: 6 }), true);
+  blade.translate(0, 0, -0.025);
+  paint(blade, 0x4a505c, 0xe8eef6, 0.2, 0.6);
+  const g: G[] = [
+    blade,
+    at(cyl(0.04, 0.044, 0.72, 0xa8743e, 7, 0x5a3a1e), 0, 0.24, 0),                         // cabo
+    at(cyl(0.048, 0.048, 0.22, 0x6a7280, 8, 0x3a404a), 0, 0.4, 0),                          // alvado de ferro
+    at(cone(0.035, 0.09, 0x8a929e, 4), -side * 0.065, 0.42, 0, 0, 0, side * Math.PI / 2),   // esporão de trás
+    at(cyl(0.05, 0.05, 0.1, 0x4a2e18, 6, 0x2a180c), 0, 0.0, 0),                            // empunhadura enfaixada, no punho
+    at(sph(0.055, 0x6a7280, 1, 0.8, 1, 0x3a404a), 0, -0.12, 0),                             // pomo
+  ];
+  // fio para a frente e para fora; topo aberto para o lado e um pouco para trás
+  for (const x of g) x.rotateY(-side * 1.0).rotateZ(-side * 0.3).rotateX(-0.25);
+  b.add(side > 0 ? "foreR" : "foreL", ...hang(g, L.inv, DWARF_HAND));
+}
 
 /** Arco longo do archer, puxado: em pé no plano do tiro, com o punho dentro da mão esquerda fechada e a corda em V até a mão direita,
  * junto ao rosto, com uma flecha armada. O plano do arco passa pelas duas mãos, então o antebraço do arco fica de fora da corda. */
