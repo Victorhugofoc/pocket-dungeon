@@ -198,6 +198,7 @@ const CRITIC_POSES: [string, { anim: string; yaw: number; view: string; freeze?:
 /** altura do rosto: um pouco abaixo do topo do modelo (personagem curvado tem o rosto bem abaixo de 88% da altura nominal) */
 function faceY(a: Actor, h: number): number {
   a.rig.root.updateMatrixWorld(true);
+  if (a.rig.char?.form === "slime") return h * 0.55; // rosto da gosma fica no meio da altura, não no topo
   const top = new THREE.Box3().setFromObject(a.rig.root).max.y;
   return Math.min(h * 0.88, top - h * 0.12);
 }
@@ -210,7 +211,7 @@ async function criticShots(prefix: string): Promise<string[]> {
     const name = `${prefix}-${pose}`;
     await shot(name, {
       anim: p.anim, yaw: p.yaw, view: p.view, freeze: p.freeze ?? null,
-      dist: p.face ? h * 1.1 : h * 3.2, lookY: p.face ? faceY(lead, h) : undefined,
+      dist: p.face ? h * (lead.rig.char?.form === "slime" ? 2.4 : 1.1) : h * 3.2, lookY: p.face ? faceY(lead, h) : undefined,
     });
     names.push(name);
   }

@@ -95,8 +95,12 @@ export class Builder {
   /** proporções do esqueleto; shoulderX e hipX em 0 = calculados pelo `bulk` */
   dims = { hipY: HIP_Y, headY: HEAD_Y, shoulderY: SHOULDER_Y, shoulderX: 0, arm: 0.34, hipX: 0, thigh: 0.42 };
   style: Style = "swing";
-  poseR: [number, number] = [0.1, -0.3];
-  poseL: [number, number] = [0.1, -0.3];
+  /** pose de descanso de cada braço: [ombro x, cotovelo x, abdução extra, giro extra para fora]; os dois últimos são opcionais */
+  poseR: Pose = [0.1, -0.3];
+  poseL: Pose = [0.1, -0.3];
+  /** base de luta dos bípedes: pernas abertas (`spread`, rad), pé esquerdo à frente (`stagger`, rad; negativo = o direito), quadril
+   * girado (`turn`, rad); cabeça e braços compensam o giro para continuar mirando à frente. Some ao andar. */
+  stance = { spread: 0, stagger: 0, turn: 0 };
   form: Form = "biped";
   bulk = 1;
   scale = 1;
@@ -502,15 +506,34 @@ export function robeMesh(o: RobeOpts): G {
   });
 }
 
+export type Pose = [number, number, number?, number?];
+
 /** Pose de descanso de um braço (`side`: 1 = direito, -1 = esquerdo): rotação que desfaz tronco, ombro e cotovelo, e altura da mão
  * (a `hand` do cotovelo). Serve para deixar na vertical do mundo o que a mão segura. Chamar depois de definir pose, `dims` e `form`. */
 export function restArm(b: Builder, side: number, hand: number): { inv: THREE.Quaternion; y: number } {
   const pose = side > 0 ? b.poseR : b.poseL;
-  const armQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(b.lean, 0, 0)).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose[0], 0, side * b.armOut)));
+  // quadril girado (stance.turn), tronco inclinado e braço em ordem YXZ, como em animate.ts
+  const turn = b.stance.turn;
+  const armQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, turn, 0)).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(b.lean, 0, 0)))
+    .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose[0], side * (pose[3] ?? 0) - turn, side * (b.armOut + (pose[2] ?? 0)), "YXZ")));
   const q = armQ.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose[1], 0, 0)));
   const p = new THREE.Vector3(0, -hand, 0).applyQuaternion(q).add(new THREE.Vector3(0, -b.dims.arm, 0).applyQuaternion(armQ));
   const hip = b.form === "robed" ? b.dims.hipY + 0.06 : b.dims.hipY - b.crouch * 0.1;
   return { inv: q.invert(), y: hip + TORSO_Y + b.dims.shoulderY * Math.cos(b.lean) + p.y };
+}
+/** Posição da mão em repouso (a `hand` do cotovelo) no espaço do personagem, a partir do quadril; serve para ligar as duas mãos (corda do
+ * arco puxada até a mão do rosto). Mesma cadeia de `restArm`: quadril girado, tronco inclinado, ombro em YXZ, cotovelo. */
+export function restHand(b: Builder, side: number, hand: number): THREE.Vector3 {
+  const pose = side > 0 ? b.poseR : b.poseL;
+  const hipQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, b.stance.turn, 0));
+  const torsoQ = hipQ.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(b.lean, 0, 0)));
+  const armQ = torsoQ.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose[0], side * (pose[3] ?? 0) - b.stance.turn, side * (b.armOut + (pose[2] ?? 0)), "YXZ")));
+  const foreQ = armQ.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pose[1], 0, 0)));
+  const sx = b.dims.shoulderX || 0.27 * b.bulk + 0.07;
+  return new THREE.Vector3(0, TORSO_Y, 0).applyQuaternion(hipQ)
+    .add(new THREE.Vector3(side * sx, b.dims.shoulderY, 0).applyQuaternion(torsoQ))
+    .add(new THREE.Vector3(0, -b.dims.arm, 0).applyQuaternion(armQ))
+    .add(new THREE.Vector3(0, -hand, 0).applyQuaternion(foreQ));
 }
 /** pendura na mão peças modeladas na vertical do mundo, com a origem na mão */
 export const hang = (list: G[], inv: THREE.Quaternion, hand: number): G[] => list.map((g) => g.applyQuaternion(inv).translate(0, -hand, 0));

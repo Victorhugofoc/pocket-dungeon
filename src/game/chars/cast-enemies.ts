@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { paint, prep } from "../flora";
 import { modelParts } from "./baked";
-import { type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
+import { type Builder, type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, restHand, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
 
 export const ENEMIES: Record<string, Spec> = {
   // ------------------------------------------------ inimigos
@@ -14,12 +14,7 @@ export const ENEMIES: Record<string, Spec> = {
     b.lean = 0.62; b.crouch = 0.95; b.armOut = 0.22;
     b.poseR = [-0.9, -0.75]; b.poseL = [-0.3, -0.75];
     b.dims = { hipY: 0.66, headY: 0.48, shoulderY: 0.4, shoulderX: 0.24, arm: 0.3, hipX: 0.16, thigh: 0.27 };
-    for (const [key, g] of modelParts("goblin")) {
-      const [bone, layer] = key.split("@");
-      if (layer === "lit") b.lit(bone, g);
-      else if (layer === "flat") b.flat(bone, g);
-      else b.add(bone, g);
-    }
+    addModel(b, "goblin");
   },
   // Redesenho a partir do sprite (docs/ref/goblin.png): baixinho, muito curvado e agachado, cabeça grande projetada para a frente com
   // orelhas longas para trás, nariz adunco, arcada pesada e boca de dentes; colete de couro com ombreira, calça escura, pés grandes
@@ -137,7 +132,19 @@ export const ENEMIES: Record<string, Spec> = {
   // cruzadas no peito nu, cinto de fivela redonda, tanga de couro, calça escura e pés descalços; machado de duas lâminas segurado
   // baixo, atravessado na frente do corpo com as duas mãos. Medidas do sprite (altura 60 px): cabeça 12 px, ombros 34 px, braço
   // até a coxa, pernas curtas e grossas.
+  // Modelado no Blender (tools/blender/orc.py, arquivo art/orc.blend; D16). As malhas vêm por osso de chars/models/orc.json; aqui
+  // ficam esqueleto, postura e o machado (osso "weapon", pegada de duas mãos), que continua por código. A versão inteira por código
+  // fica como orc_v1, para comparar.
   orc: (b) => {
+    // bruto ereto, peito em V e braços enormes caídos ao lado (referências 3D do usuário, 2026-11-18)
+    b.bulk = 1.45; b.scale = 1.3; b.style = "swing"; b.rough = 0.65; b.glowColor = 0xe8442a;
+    b.lean = 0.1; b.crouch = 0.16; b.armOut = 0.2;
+    b.poseR = [-0.2, -0.45]; b.poseL = [-0.05, -0.25];
+    b.dims = { hipY: 0.84, headY: 0.6, shoulderY: 0.52, shoulderX: 0.45, arm: 0.4, hipX: 0.2, thigh: 0.38 };
+    addModel(b, "orc");
+    orcAxe(b);
+  },
+  orc_v1: (b) => {
     const SKIN = 0x5e7a2a, SKIN_D = 0x2c3a14, SKIN_L = 0x8aa244, IRON_D = 0x34363a, IRON_M = 0x63666c, IRON_L = 0xb4b8be;
     const HIDE = 0x6e3c1e, HIDE_D = 0x3a1d0e, PANTS = 0x5e3a26, PANTS_D = 0x341f14, TUSK = 0xeee4c6, EYE = 0xe8442a, DARK = 0x160e0c;
     const col = (h: number) => new THREE.Color(h);
@@ -211,69 +218,42 @@ export const ENEMIES: Record<string, Spec> = {
       for (let i = -1; i <= 1; i++) b.add(sh, at(cone(0.026, 0.06, TUSK, 4), i * 0.06, -0.38, 0.31, Math.PI / 2));
     }
 
-    // ---- machado de duas lâminas: atravessado baixo na frente do corpo, cabeça à frente; a mão esquerda segura mais adiante no cabo
-    const R = restArm(b, 1, HAND);
-    const dir = new THREE.Vector3(-0.75, 0.05, 0.66).normalize();
-    const aim = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
-    const HEAD = 0.95, BLADE = 1.1;
-    const axeG: G[] = [
-      at(cyl(0.032, 0.036, 1.5, 0x6a4024, 7), 0, 0.4, 0),
-      at(stud(0.05, IRON_M, IRON_D, 1, 1, 1, 0), 0, -0.36, 0),
-      at(cyl(0.04, 0.04, 0.18, HIDE_D, 7), 0, 0.42, 0),
-      at(cyl(0.065, 0.065, 0.28, IRON_D, 8), 0, HEAD, 0),
-      at(cone(0.05, 0.12, IRON_M, 6, IRON_D), 0, HEAD + 0.2, 0),
-      at(cyl(0.05, 0.05, 0.16, DARK, 8), 0, HEAD, 0, 0, 0, Math.PI / 2),
-    ];
-    // lâmina em meia-lua: na forma, x ao longo do cabo e y para fora; o gume (fora) é claro
-    const moon = new THREE.Shape();
-    moon.moveTo(-0.07, 0.03);
-    moon.quadraticCurveTo(-0.2, 0.14, -0.27, 0.32);
-    moon.quadraticCurveTo(0, 0.4, 0.27, 0.32);
-    moon.quadraticCurveTo(0.2, 0.14, 0.07, 0.03);
-    moon.closePath();
-    for (const s of [-1, 1]) {
-      const g = prep(new THREE.ExtrudeGeometry(moon, { depth: 0.035, bevelEnabled: false, curveSegments: 6 }), false);
-      g.translate(0, 0, -0.0175);
-      paint(g, IRON_M, 0xd8dce2, 0.28, 0.4);
-      g.scale(1.05, 1.05, 1);
-      g.rotateZ(Math.PI / 2); // x da forma -> y do cabo; y da forma -> -x
-      g.rotateY(s > 0 ? Math.PI / 2 + BLADE : -Math.PI / 2 + BLADE); // lâminas em pé: para cima e para baixo do cabo
-      axeG.push(at(g, 0, HEAD, 0));
-    }
-    b.add("weapon", ...axeG.map((g) => g.rotateX(Math.PI)));
-    b.weapon = { hand: HAND, carry: R.inv.clone().multiply(aim), grip: 0.5 };
+    orcAxe(b);
   },
   swarm: (b) => {
-    b.form = "bat"; b.scale = 0.75; b.style = "bite";
-    b.add("hips", sph(0.22, 0x6a3fb0, 1, 0.95, 1.1), at(sph(0.2, 0x7a4fc0), 0, 0.02, 0.2));
-    for (const s of [-1, 1]) {
-      b.add("hips", at(cone(0.07, 0.22, 0x6a3fb0, 5), s * 0.12, 0.22, 0.2, 0, 0, -s * 0.3));
-      b.lit("hips", at(sph(0.04, 0xffd34d), s * 0.08, 0.06, 0.38));
-      b.add("hips", at(cone(0.02, 0.07, 0xffffff, 4), s * 0.05, -0.06, 0.38, Math.PI));
-      const w = prep(new THREE.CircleGeometry(0.55, 5, 0, Math.PI * 0.75), false);
-      paint(w, 0x3a1f66, 0x5a3f9a, -0.5, 0.5);
-      b.add(s < 0 ? "wingL" : "wingR", at(w, 0, 0, 0, -Math.PI / 2, 0, s < 0 ? Math.PI * 0.62 : -Math.PI * 0.38 + Math.PI * 0.75 - Math.PI * 0.75));
-    }
+    // diabinho-morcego roxo modelado no Blender (tools/blender/swarm.py, brief em docs/briefs/swarm.md)
+    b.form = "bat"; b.scale = 1.35; b.style = "bite"; b.glowColor = 0xffb52a;
+    addModel(b, "swarm");
   },
   assassin: (b) => {
-    body(b, { skin: 0xf2f2f2, top: 0x8a8f99, bottom: 0x6a6f7a, boots: 0x2a2a30, eyes: 0x1c1c22 });
-    b.scale = 0.92; b.style = "thrust"; b.poseR = [-0.6, -1.1]; b.poseL = [-0.3, -1.2];
-    b.add("head", ...hairCap(0x2a2a30), at(cyl(0.035, 0.02, 0.5, 0x2a2a30, 6), 0, 0.3, -0.34, 1.9));
-    for (const s of [-1, 1]) {
-      b.add("head", at(cone(0.06, 0.16, 0xf2f2f2, 4), s * 0.12, 0.44, 0.08));
-      b.add("head", at(bx(0.03, 0.09, 0.02, 0xc8281e), s * 0.11, 0.14, 0.2));
-    }
-    b.add("hips", ...belt(0xc8281e, 1, 0xc8281e)).add("torso", at(torus(0.18, 0.05, 0xc8281e), 0, 0.52, 0));
-    b.add("foreR", ...dagger()).add("foreL", ...dagger());
+    // ninja de máscara de raposa modelado no Blender (tools/blender/assassin.py, brief em docs/briefs/assassin.md); adagas por código.
+    // Base de luta do sprite: baixa e larga, pé esquerdo à frente, quadril girado; a mão da frente estende a adaga, a de trás guarda
+    // o peito com a outra
+    b.scale = 1.02; b.style = "thrust"; b.rough = 0.75;
+    b.lean = 0.26; b.crouch = 1.05; b.armOut = 0.2;
+    b.stance = { spread: 0.6, stagger: 0.38, turn: 0.55 };
+    b.poseL = [-1.55, -0.35, 0.05, 0.25]; b.poseR = [-0.35, -1.25, 0.3, -0.25];
+    b.dims = { hipY: 0.92, headY: 0.58, shoulderY: 0.46, shoulderX: 0.3, arm: 0.32, hipX: 0.14, thigh: 0.42 };
+    addModel(b, "assassin");
+    // cachecol preto comprido, solto para trás pela física de fita
+    b.ribbons.push({ bone: "torso", at: [0.03, 0.56, -0.08], len: 1.0, seg: 10, width: [0.11, 0.07], color: 0x1e1e24, tip: 0x34343e });
+    fighterDagger(b, -1, false);
+    fighterDagger(b, 1, false);
   },
+
   archer: (b) => {
-    body(b, { skin: BONE, top: 0x5a2a30, bottom: 0xd9cdb0, boots: BONE, sleeve: BONE, bulk: 0.8, eyes: 0x1c1c22 });
-    b.scale = 0.95; b.style = "shoot"; b.poseL = [-1.35, -0.1]; b.poseR = [-0.6, -1.3];
-    b.add("head", ...hood(0x4a2228));
-    b.add("cape", ...cape(0x4a2228, 0.26, 0.8));
-    b.add("torso", at(bx(0.2, 0.05, 0.03, BONE), 0, 0.36, 0.2), at(bx(0.2, 0.05, 0.03, BONE), 0, 0.27, 0.2), at(bx(0.2, 0.05, 0.03, BONE), 0, 0.18, 0.2));
-    b.add("foreL", ...bow());
+    // esqueleto arqueiro modelado no Blender (tools/blender/archer.py, brief em docs/briefs/archer.md); o arco fica por código
+    b.scale = 0.95; b.style = "shoot"; b.rough = 0.7; b.glowColor = 0xff4a2a;
+    // postura de tiro do sprite: de lado para o alvo, base aberta com o pé esquerdo à frente, tronco curvado; braço do arco esticado
+    // à frente e o da corda aberto, com a mão junto ao rosto
+    b.lean = 0.22; b.crouch = 0.4; b.armOut = 0.14;
+    b.stance = { spread: 0.24, stagger: 0.36, turn: 1.2 };
+    b.poseL = [-1.55, -0.05, 0, -0.6]; b.poseR = [-0.1, -2.1, 1.5, -0.4];
+    b.dims = { hipY: 0.92, headY: 0.6, shoulderY: 0.46, shoulderX: 0.27, arm: 0.34, hipX: 0.12, thigh: 0.42 };
+    addModel(b, "archer");
+    archerBow(b);
   },
+
   spellcaster: (b) => {
     body(b, { skin: 0x4a7ad9, top: 0x1f5a66, sleeve: 0x1f5a66, robe: { color: 0x1a4a55, hem: 0x5a2a6a }, eyes: 0xffe14a, eyeGlow: true });
     b.glowColor = 0xe84ad9; b.scale = 0.95;
@@ -310,18 +290,116 @@ export const ENEMIES: Record<string, Spec> = {
     b.add("foreR", ...axe(0.7)).add("foreL", ...axe(0.7));
   },
   splitter: (b) => {
-    b.form = "slime"; b.style = "bite"; b.rough = 0.25; b.glowColor = 0xfff2f8;
-    const blob = prep(new THREE.SphereGeometry(0.75, 16, 10), true);
-    const p = blob.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const y = p.getY(i);
-      const flat = y < 0 ? 1 + -y * 0.5 : 1;
-      p.setXYZ(i, p.getX(i) * flat * (1 + 0.08 * Math.sin(p.getZ(i) * 9)), Math.max(y, -0.38) * (y > 0 ? 0.95 : 1), p.getZ(i) * flat);
-    }
-    blob.computeVertexNormals();
-    b.add("hips", at(paint(blob, 0xc83a8a, 0xff8ac8, -0.4, 0.75), 0, 0.4, 0));
-    for (const s of [-1, 1]) b.add("hips", at(sph(0.1, 0x3a1228, 0.9, 1.2, 0.5), s * 0.22, 0.68, 0.62));
-    b.add("hips", at(sph(0.2, 0x3a1228, 1.3, 0.45, 0.5), 0, 0.4, 0.7));
-    b.add("hips", at(bx(0.3, 0.06, 0.06, BONE), -0.3, 0.5, 0.3, 0.5, 0.7, 0.4), at(sph(0.07, BONE), 0.36, 0.3, 0.25), at(bx(0.2, 0.05, 0.05, BONE), 0.2, 0.75, -0.2, 0.2, 0.3, 1.0));
+    // gosma rosa com ossos dentro, modelada no Blender (tools/blender/splitter.py, brief em docs/briefs/splitter.md)
+    b.form = "slime"; b.style = "bite"; b.rough = 0.2; b.glowColor = 0xfff2f8;
+    addModel(b, "splitter");
   },
+
 };
+
+/** Arco longo do archer, puxado: em pé no plano do tiro, com o punho dentro da mão esquerda fechada e a corda em V até a mão direita,
+ * junto ao rosto, com uma flecha armada. O plano do arco passa pelas duas mãos, então o antebraço do arco fica de fora da corda. */
+function archerBow(b: Builder): void {
+  const HAND = 0.3, R = 0.62, ARC = Math.PI * 0.7, WOOD = 0x8a5228, WOOD_L = 0xd09a58, CORD = 0xe8e0d0, CANT = 0.3;
+  const L = restArm(b, -1, HAND);
+  const d = restHand(b, 1, HAND).sub(restHand(b, -1, HAND)); // da mão do arco até a mão da corda, no espaço do personagem
+  const back = Math.hypot(d.x, d.z); // a corda puxada recua isto atrás do punho
+  // modelado com o tiro em +z e a origem no punho; depois gira para a direção do tiro (da mão da corda para a do arco)
+  const arc = prep(new THREE.TorusGeometry(R, 0.046, 6, 20, ARC), true);
+  paint(arc, WOOD, WOOD_L, -0.5, 0.5);
+  arc.rotateZ(-ARC / 2).translate(-R, 0, 0).rotateY(-Math.PI / 2); // meio do arco no punho, barriga para +z, pontas para trás
+  const tipZ = -(R - R * Math.cos(ARC / 2)), tipY = R * Math.sin(ARC / 2);
+  const g: G[] = [arc, at(cyl(0.055, 0.055, 0.16, 0x2e1a0e, 7), 0, 0, 0)];
+  const nock = new THREE.Vector3(0, d.y, -back);
+  // haste reta entre dois pontos (cilindro deitado ao longo de a→b)
+  const rod = (a: THREE.Vector3, c: THREE.Vector3, r: number, color: number): G => {
+    const m = cyl(r, r, a.distanceTo(c), color, 4).rotateX(Math.PI / 2);
+    m.lookAt(new THREE.Vector3().subVectors(c, a));
+    return m.translate((a.x + c.x) / 2, (a.y + c.y) / 2, (a.z + c.z) / 2);
+  };
+  for (const s of [1, -1]) g.push(rod(new THREE.Vector3(0, s * tipY, tipZ), nock, 0.007, CORD));
+  // flecha armada: da corda até passar o punho, apoiada sobre a mão
+  const rest = new THREE.Vector3(0, 0.045, 0.06), head = new THREE.Vector3(0, 0.05, 0.2);
+  g.push(rod(nock, head, 0.012, 0x8a6038));
+  g.push(at(cone(0.028, 0.08, 0x9aa0a8, 4), 0, head.y, head.z + 0.03, Math.PI / 2));
+  const fl = nock.clone().lerp(rest, 0.12);
+  for (const s of [1, -1]) g.push(at(bx(0.006, 0.045, 0.1, CORD), s * 0.014, fl.y, fl.z, 0, 0, s * 0.5));
+  // arco inclinado para fora (a ponta de cima longe do capuz, e o arco aparece visto de cima), depois na direção do tiro
+  const yaw = Math.atan2(-d.x, -d.z);
+  for (const x of g) x.rotateZ(-CANT).rotateY(yaw);
+  b.add("foreL", ...hang(g, L.inv, HAND));
+}
+
+/** Adaga do assassin presa ao antebraço: lâmina chata e larga (a face larga para cima com o braço esticado, para ler vista de cima),
+ * guarda vermelha e cabo preto enfaixado. `reverse`: pegada invertida, a lâmina deitada por fora do antebraço, apontando para o
+ * cotovelo. */
+function fighterDagger(b: Builder, side: number, reverse: boolean): void {
+  const HAND = 0.3, L = 0.27, W = 0.06;
+  const blade = new THREE.Shape();
+  blade.moveTo(-W, 0);
+  blade.lineTo(W, 0);
+  blade.quadraticCurveTo(W * 1.25, L * 0.55, 0, L); // folha: alarga no meio e fecha na ponta
+  blade.quadraticCurveTo(-W * 1.25, L * 0.55, -W, 0);
+  const geo = prep(new THREE.ExtrudeGeometry(blade, { depth: 0.014, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 1, curveSegments: 5 }), true);
+  geo.translate(0, 0, -0.009);
+  paint(geo, 0x7a808c, 0xe8ecf2, -W, W); // fio claro de um lado, aço escuro do outro
+  // modelada com a lâmina em +y a partir da guarda; vira para -y (continua o antebraço) ou +y (invertida)
+  const g: G[] = [
+    geo.translate(0, 0.07, 0),
+    at(bx(0.13, 0.03, 0.04, 0xc8281e, 0x6a1010), 0, 0.06, 0),
+    at(cyl(0.022, 0.022, 0.1, 0x1e1e24, 6), 0, 0.0, 0),
+    at(cyl(0.025, 0.025, 0.025, 0xc8281e, 6), 0, 0.02, 0),
+  ];
+  for (const x of g) {
+    if (reverse) x.translate(0, -0.03, 0).applyMatrix4(new THREE.Matrix4().makeTranslation(side * 0.055, -HAND + 0.02, 0.02));
+    else x.rotateZ(Math.PI).translate(0, -HAND - 0.02, 0).rotateX(-0.3);
+  }
+  b.add(side > 0 ? "foreR" : "foreL", ...g);
+}
+
+/** malhas do Blender (chars/models/<id>.json) nos ossos: "osso" com contorno, "osso@flat" sem contorno, "osso@lit" acesas */
+function addModel(b: Builder, id: string): void {
+  for (const [key, g] of modelParts(id)) {
+    const [bone, layer] = key.split("@");
+    if (layer === "lit") b.lit(bone, g);
+    else if (layer === "flat") b.flat(bone, g);
+    else b.add(bone, g);
+  }
+}
+
+/** machado de duas lâminas do orc: atravessado baixo na frente do corpo, cabeça à frente; a mão esquerda segura mais adiante no cabo */
+function orcAxe(b: Builder): void {
+  const IRON_D = 0x34363a, IRON_M = 0x63666c, HIDE_D = 0x3a1d0e, DARK = 0x160e0c, HAND = 0.38;
+  const R = restArm(b, 1, HAND);
+  // machado de duas lâminas numa mão só, cabo apontando para a frente e para baixo, cabeça à frente da perna e longe do chão
+  // (docs/briefs/orc.md, seção 4); modelado na vertical do mundo com a origem na mão
+  const HEAD = 0.56, TILT = 1.0;
+  const axeG: G[] = [
+    at(cyl(0.03, 0.034, 0.88, 0x6a4024, 7), 0, 0.26, 0),
+    at(stud(0.048, IRON_M, IRON_D, 1, 1, 1, 0), 0, -0.2, 0),
+    at(cyl(0.038, 0.038, 0.16, HIDE_D, 7), 0, 0.0, 0),
+    at(cyl(0.062, 0.062, 0.26, IRON_D, 8), 0, HEAD, 0),
+    at(cone(0.045, 0.11, IRON_M, 6, IRON_D), 0, HEAD + 0.19, 0),
+    cyl(0.058, 0.058, 0.2, DARK, 8).rotateZ(Math.PI / 2).translate(0, HEAD, 0),
+  ];
+  // lâmina em meia-lua: na forma, x ao longo do cabo e y para fora; o gume (fora) é claro. As lâminas abrem para os lados, de
+  // frente para a câmera alta; o cabo pende para fora para a lâmina de dentro não entrar na perna
+  const moon = new THREE.Shape();
+  moon.moveTo(-0.07, 0.03);
+  moon.quadraticCurveTo(-0.2, 0.14, -0.27, 0.32);
+  moon.quadraticCurveTo(0, 0.4, 0.27, 0.32);
+  moon.quadraticCurveTo(0.2, 0.14, 0.07, 0.03);
+  moon.closePath();
+  for (const s of [-1, 1]) {
+    const g = prep(new THREE.ExtrudeGeometry(moon, { depth: 0.035, bevelEnabled: false, curveSegments: 6 }), false);
+    g.translate(0, 0, -0.0175);
+    paint(g, IRON_M, 0xd8dce2, 0.28, 0.4);
+    g.scale(0.85, 0.85, 1);
+    g.rotateZ(Math.PI / 2);
+    if (s < 0) g.rotateY(Math.PI);
+    axeG.push(at(g, 0, HEAD, 0));
+  }
+  // cabeça para baixo e girada uns 57° para a frente: o cabo fica a ~33° abaixo da horizontal
+  for (const g of axeG) g.rotateX(Math.PI).rotateX(-TILT).rotateZ(0.15);
+  b.add("foreR", ...hang(axeG, R.inv, HAND));
+}

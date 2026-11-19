@@ -20,7 +20,27 @@ function fuse(list: G[]): G {
   for (let i = 0; i < n.count; i++) {
     if (Math.hypot(n.getX(i), n.getY(i), n.getZ(i)) < 1e-6) n.setXYZ(i, 0, 1, 0);
   }
+  geo.setAttribute("outlineNormal", outlineNormals(geo));
   return geo;
+}
+
+/** Normal só do contorno: média das normais de todos os vértices na mesma posição. Em aresta dura (face plana, chapa fina,
+ * borda de asa) cada face tem a sua normal, e a casca empurrada por ela se abre na aresta: o contorno some na borda. */
+function outlineNormals(geo: G): THREE.BufferAttribute {
+  const p = geo.attributes.position, n = geo.attributes.normal;
+  const sum = new Map<string, [number, number, number]>();
+  const key = (i: number) => `${Math.round(p.getX(i) * 1e4)},${Math.round(p.getY(i) * 1e4)},${Math.round(p.getZ(i) * 1e4)}`;
+  for (let i = 0; i < p.count; i++) {
+    const k = key(i), s = sum.get(k);
+    if (s) { s[0] += n.getX(i); s[1] += n.getY(i); s[2] += n.getZ(i); } else sum.set(k, [n.getX(i), n.getY(i), n.getZ(i)]);
+  }
+  const out = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const [x, y, z] = sum.get(key(i))!, l = Math.hypot(x, y, z);
+    if (l > 1e-4) out.set([x / l, y / l, z / l], i * 3);
+    else out.set([n.getX(i), n.getY(i), n.getZ(i)], i * 3); // faces opostas se anulam (chapa sem espessura): fica a normal da face
+  }
+  return new THREE.BufferAttribute(out, 3);
 }
 
 export function hasChar(id: string): boolean {
@@ -33,7 +53,9 @@ export const castIds = (): string[] => Object.keys(CAST);
 /** contorno escuro (casca invertida) e luz de recorte: tiram o aspecto de plástico liso */
 const OUTLINE = new THREE.MeshBasicMaterial({ color: 0x17121c, side: THREE.BackSide });
 OUTLINE.onBeforeCompile = (shader) => {
-  shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed += normalize(normal) * 0.02;");
+  // empurra pela normal do contorno (fuse); malha sem ela (fitas refeitas a cada quadro) lê zero e usa a normal comum
+  shader.vertexShader = "attribute vec3 outlineNormal;\n" + shader.vertexShader.replace("#include <begin_vertex>",
+    "#include <begin_vertex>\nvec3 on = dot(outlineNormal, outlineNormal) > 1e-6 ? outlineNormal : normal;\ntransformed += normalize(on) * 0.02;");
 };
 OUTLINE.customProgramCacheKey = () => "outline";
 
@@ -209,6 +231,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     const hx = b.dims.hipX || 0.13 * k;
     mk("foreL", mk("armL", torso, -sx, b.dims.shoulderY, 0), 0, -b.dims.arm, 0);
     mk("foreR", mk("armR", torso, sx, b.dims.shoulderY, 0), 0, -b.dims.arm, 0);
+    bones.armL!.rotation.order = bones.armR!.rotation.order = "YXZ"; // o giro do ombro (y) vem por último: mira o braço no chão
     if (b.weapon) mk("weapon", bones.foreR!, 0, -b.weapon.hand, 0);
     mk("cape", torso, 0, 0.52, -0.2 * k);
     mk("tail", hips, 0, 0, -0.16 * k);
@@ -304,7 +327,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     root, inner, body: inner, head: inner, armL: null, armR: null, legL: null, legR: null, wings: [],
     mats, baseEmissive: mats.map((m) => m.emissive.clone()), kind: "humanoid", height, phase: Math.random() * 10,
     char: { bones, legs, style: b.style, poseR: b.poseR, poseL: b.poseL, form: b.form, shot: 0,
-      lean: b.lean, crouch: b.crouch, armOut: b.armOut, weight, hipY: b.dims.hipY, weapon: b.weapon, ribbons, phys: newPhys() },
+      lean: b.lean, crouch: b.crouch, stance: b.stance, armOut: b.armOut, weight, hipY: b.dims.hipY, weapon: b.weapon, ribbons, phys: newPhys() },
   };
 }
 
