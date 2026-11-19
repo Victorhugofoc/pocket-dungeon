@@ -15,6 +15,7 @@ RIG = Rig(hipY=0.8, headY=0.7, shoulderY=0.56, shoulderX=0.56, arm=0.42, hipX=0.
 RIG.p3["tail"] = (0, 0.8, -0.16 * BULK)
 RIG.piv["tail"] = B(RIG.p3["tail"])
 
+FOOT_TILT, FOOT_LIFT = 0.2, 0.06
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 
 RED, RED_D, RED_L = hexc(0xd8301e), hexc(0x7e1412), hexc(0xee5a3c)
@@ -96,16 +97,19 @@ def bone_piece(name, a, b, r):
 def head():
     parts = {"solid": [], "flat": [], "lit": []}
     h = meta("head", [
-        EL((0, 0.02, 0.03), (0.21, 0.2, 0.18)),                     # crânio largo
-        EL((0, -0.08, 0.1), (0.15, 0.12, 0.08)),                    # testa
-        EL((0, -0.22, -0.02), (0.13, 0.13, 0.085)),                 # focinho (maxila)
-        EL((0, -0.32, 0.0), (0.075, 0.06, 0.06)),                   # ponte do nariz
-        EL((-0.15, -0.1, -0.06), (0.1, 0.1, 0.1)),                  # bochechas largas
-        EL((0.15, -0.1, -0.06), (0.1, 0.1, 0.1)),
-        CAP((-0.15, -0.17, 0.1), (-0.03, -0.24, 0.07), 0.04, stiff=1.6),   # arcada franzida em V
-        CAP((0.15, -0.17, 0.1), (0.03, -0.24, 0.07), 0.04, stiff=1.6),
-        EL((-0.085, -0.22, 0.05), (0.045, 0.04, 0.03), neg=True),          # órbitas
-        EL((0.085, -0.22, 0.05), (0.045, 0.04, 0.03), neg=True),
+        # cabeça estreita e comprida, em cunha (a 1ª versão, redonda e de bochechas grandes, parecia um lobinho amigável)
+        EL((0, 0.03, 0.03), (0.18, 0.2, 0.17)),                     # crânio
+        EL((0, -0.1, 0.09), (0.14, 0.13, 0.08)),                    # testa baixa
+        EL((0, -0.25, -0.02), (0.105, 0.16, 0.08)),                 # focinho longo
+        EL((0, -0.36, 0.0), (0.065, 0.06, 0.055)),                  # ponte do nariz
+        EL((-0.13, -0.1, -0.06), (0.075, 0.09, 0.085)),             # maçãs magras
+        EL((0.13, -0.1, -0.06), (0.075, 0.09, 0.085)),
+        CAP((-0.16, -0.15, 0.11), (-0.02, -0.27, 0.045), 0.045, stiff=1.6),   # arcada pesada em V, baixa sobre os olhos
+        CAP((0.16, -0.15, 0.11), (0.02, -0.27, 0.045), 0.045, stiff=1.6),
+        CAP((-0.035, -0.3, 0.06), (-0.03, -0.38, 0.03), 0.02, stiff=1.6),     # rugas do rosnado no focinho
+        CAP((0.035, -0.3, 0.06), (0.03, -0.38, 0.03), 0.02, stiff=1.6),
+        EL((-0.085, -0.22, 0.03), (0.05, 0.04, 0.03), neg=True),           # órbitas fundas
+        EL((0.085, -0.22, 0.03), (0.05, 0.04, 0.03), neg=True),
         EL((0, -0.24, -0.12), (0.11, 0.12, 0.05), neg=True),               # boca aberta: céu da boca reto
     ], res=0.0075)
     smooth(h, iters=2, factor=0.5, target=1100)
@@ -113,15 +117,19 @@ def head():
     def tint(co, n):
         ax = abs(co.x)
         c = mix(RED_D, RED, 0.45 + 0.55 * ss(-0.6, 0.5, n.z))
-        cream = (co.y < -0.2 and co.z < -0.03) or (ax > 0.14 and co.z < -0.04 and co.y < 0.0) or (co.z < -0.1 and co.y < 0.0)
+        cream = (co.y < -0.22 and co.z < -0.04) or (ax > 0.12 and co.z < -0.06 and co.y < 0.0) or (co.z < -0.11 and co.y < 0.0)
         if cream:
             c = mix(CREAM_D, CREAM, 0.5 + 0.5 * ss(-0.6, 0.6, n.z))
-        if co.y < -0.34 and co.z > -0.02 and ax < 0.05 - 0.4 * max(0.0, 0.03 - co.z) and n.y < -0.2:
+        if co.y < -0.38 and co.z > -0.03 and ax < 0.045 - 0.4 * max(0.0, 0.02 - co.z) and n.y < -0.2:
             c = DARK   # nariz em triângulo
-        if co.y < -0.3 and co.z > 0.02 and ax < 0.02:
-            c = mix(RED_D, RED, 0.6)   # ponte do nariz vermelha
-        if co.y < -0.2 and -0.08 < co.z < 0.0 and 0.04 < ax < 0.13:
+        if co.y < -0.2 and -0.09 < co.z < -0.02 and 0.035 < ax < 0.1:
             c = mix(CREAM, CREAM_D, 0.25)   # almofada dos bigodes
+        # máscara escura em volta dos olhos, puxada para trás em ponta: olhar de predador
+        dx, dz = ax - 0.09, co.z - 0.035
+        if co.y < -0.12 and (dx / 0.075) ** 2 + (dz / 0.04) ** 2 < 1.0 and n.y < -0.1:
+            c = DARK
+        if co.y < -0.08 and 0.1 < ax < 0.19 and abs(co.z - 0.05 - (ax - 0.1) * 0.6) < 0.018:
+            c = DARK
         return c
     paint(h, tint)
     parts["solid"].append(h)
@@ -151,12 +159,10 @@ def head():
             paint(t, lambda co, n: CREAM)
             parts["flat"].append(t)
         # olho amarelo aceso, fendido e inclinado (carranca)
-        e = ball("eye", (s * 0.085, -0.245, 0.05), (0.04, 0.012, 0.022), rot=(0, s * 0.35, s * 0.25), seg=(10, 6))
+        # olho aceso em fenda, sem pupila, inclinado para dentro e para baixo, fundo sob a arcada
+        e = ball("eye", (s * 0.085, -0.25, 0.032), (0.046, 0.012, 0.016), rot=(0, -s * 0.4, 0), seg=(10, 6))
         paint(e, lambda co, n: EYE)
         parts["lit"].append(e)
-        p = ball("pupil", (s * 0.08, -0.257, 0.05), (0.008, 0.004, 0.018), seg=(6, 4))
-        paint(p, lambda co, n: DARK)
-        parts["flat"].append(p)
         # orelha redonda, para trás
         ear = meta("ear", [EL((s * 0.15, 0.07, 0.18), (0.055, 0.024, 0.045), rot=(0.5, 0, -s * 0.55)),
                            EL((s * 0.165, 0.08, 0.225), (0.032, 0.02, 0.035), rot=(0.5, 0, -s * 0.55))], res=0.006)
@@ -177,11 +183,12 @@ def head():
             parts["solid"].append(tuft)
     # listras pretas: testa, lados do rosto, em volta dos olhos
     C = (0, 0.0, 0.02)
-    lines = [arc(-0.14, -0.1, 1.05, 0.62, 5), arc(0.14, 0.1, 1.05, 0.62, 5), arc(0.0, 0.0, 1.15, 0.72, 5),
-             arc(-0.3, -0.24, 0.95, 0.68, 4), arc(0.3, 0.24, 0.95, 0.68, 4)]
+    # testa: listras em leque descendo para o meio dos olhos; lados: listras grossas saindo dos olhos para trás
+    lines = [arc(0.0, 0.0, 1.2, 0.55, 6), arc(-0.12, -0.06, 1.1, 0.55, 5), arc(0.12, 0.06, 1.1, 0.55, 5),
+             arc(-0.26, -0.18, 1.0, 0.6, 5), arc(0.26, 0.18, 1.0, 0.6, 5)]
     for s in (-1, 1):
-        lines += [arc(s * 0.9, s * 1.2, 0.55, 0.15, 5), arc(s * 1.15, s * 1.5, 0.45, 0.0, 5), arc(s * 1.5, s * 1.85, 0.4, -0.05, 5),
-                  arc(s * 2.0, s * 2.3, 0.7, 0.2, 5), arc(s * 0.55, s * 0.75, 0.75, 0.45, 4)]
+        lines += [arc(s * 0.75, s * 1.25, 0.35, 0.3, 5), arc(s * 0.85, s * 1.45, 0.2, 0.05, 5), arc(s * 1.05, s * 1.7, 0.05, -0.15, 5),
+                  arc(s * 1.5, s * 2.0, 0.55, 0.25, 5), arc(s * 2.0, s * 2.4, 0.75, 0.3, 5), arc(s * 0.5, s * 0.75, 0.8, 0.5, 4)]
     for pts in lines:
         st = stripe("hstripe", h, C, pts, 0.026)
         if st:
@@ -413,12 +420,15 @@ def limbs():
             if st:
                 tflat.append(st)
         kx, _, kz = RIG.P("shin" + side)
-        sh = meta("shin" + side, [CAP((kx, 0, kz), (kx, 0.01, 0.1), 0.12),
-                                  EL((kx, 0.04, kz - 0.12), (0.15, 0.15, 0.15)),
-                                  EL((kx, -0.08, 0.055), (0.14, 0.2, 0.07))], res=0.01)
-        smooth(sh, iters=1, target=300)
+        sh = meta("shin" + side, [CAP((kx, 0, kz), (kx, 0.01, 0.2), 0.12),
+                                  EL((kx, 0.04, kz - 0.12), (0.15, 0.15, 0.15))], res=0.01)
+        smooth(sh, iters=1, target=240)
         paint(sh, red)
+        paw = meta("paw", [EL((kx, -0.08, 0.06), (0.14, 0.19, 0.07)), EL((kx, 0.0, 0.11), (0.11, 0.1, 0.06))], res=0.01)
+        smooth(paw, iters=1, target=120)
+        paint(paw, red)
         ssolid, sflat = [sh], []
+        foot = [paw]
         st = stripe("lstripe", sh, (kx, 0.0, kz - 0.1), arc(s * 0.4, s * 2.7, 0.2, -0.2, 9), 0.03)
         if st:
             sflat.append(st)
@@ -430,7 +440,14 @@ def limbs():
             paint(toe, red)
             c = cone("claw", (x, -0.305, 0.045), (x, -0.38, 0.0), 0.026, seg=5)
             paint(c, lambda co, n: mix(CREAM_D, CLAW, 0.5 + 0.5 * n.z))
-            ssolid += [toe, c]
+            foot += [toe, c]
+        # pata com a ponta erguida e a sola acima do chão: o agachamento (crouch) inclina a canela e baixaria os dedos para
+        # dentro do terreno (M1-06, revisão do usuário)
+        m = Matrix.Translation((0, 0, FOOT_LIFT)) @ Matrix.Translation((kx, 0, 0.1)) @ Matrix.Rotation(-FOOT_TILT, 4, "X") @ Matrix.Translation((-kx, 0, -0.1))
+        for o in foot:
+            o.data.transform(m)
+            o.data.update()
+        ssolid += foot
         out = merge(out, {"thigh" + side: [th], "thigh" + side + "@flat": tflat, "shin" + side: ssolid, "shin" + side + "@flat": sflat})
     return out
 
@@ -462,5 +479,5 @@ def tail():
 
 if __name__ == "__main__":
     reset()
-    parts = merge(place_head(RIG, head(), lift=-0.1, fwd=0.26, tilt=0.0, scale=1.15), torso(), hips(), limbs(), tail())
+    parts = merge(place_head(RIG, head(), lift=-0.1, fwd=0.26, tilt=0.12, scale=1.15), torso(), hips(), limbs(), tail())
     finish("bloodfang", RIG, parts, ARGS, body_center=(0, 0, 0.9), body_dist=4.6, head_dist=1.6)

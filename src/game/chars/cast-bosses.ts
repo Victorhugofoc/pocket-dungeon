@@ -15,6 +15,7 @@ export const BOSSES: Record<string, Spec> = {
     b.lean = 0.3; b.crouch = 0.34; b.armOut = 0.3;
     b.poseR = [-0.2, -0.95]; b.poseL = [-0.65, -0.7];
     b.dims = { hipY: 0.8, headY: 0.7, shoulderY: 0.56, shoulderX: 0.56, arm: 0.42, hipX: 0.2, thigh: 0.36 };
+    b.swingHit = [-0.3, -1.6]; // o facão termina o golpe à frente, acima do chão
     addModel(b, "bloodfang");
     bloodfangKnife(b);
   },

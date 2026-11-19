@@ -37,3 +37,5 @@ Igual à v1: `swing`, `lean` 0,3, agachado (`crouch` 0,34), cauda no osso `tail`
 
 ## 7. Revisão do usuário (2026-11-19)
 - Facão estava invertido (fio serrilhado para cima). Corrigido em `bloodfangKnife`: dentes para baixo, dorso reto em cima e ponta virando para cima, como no sprite (vale também para a v1).
+- Revisão 2: pé entrava no terreno ao andar (a cápsula da canela descia abaixo do chão e o agachamento baixava os dedos): pata separada, erguida 0,06 e com a ponta virada 0,2 rad para cima (`FOOT_LIFT`, `FOOT_TILT`). Facão atravessava o terreno no golpe: no 1º quadro do preparo o braço saía da pose esticado (bug do estilo `swing` de uma mão em `animate.ts`, corrigido para todos) e o golpe terminava com o antebraço reto; agora `b.swingHit = [-0,3; -1,6]` (campo novo do Builder) dobra o cotovelo no fim. Medido: nada abaixo do chão em parado, andando e no golpe; na morte o facão ainda entra no chão.
+- Rosto 'lobinho amigável': cabeça mais estreita e longa, em cunha, inclinada para baixo; arcada pesada em V baixa sobre olhos acesos em fenda, sem pupila; máscara escura em volta dos olhos; rugas de rosnado no focinho; listras da testa em leque.
