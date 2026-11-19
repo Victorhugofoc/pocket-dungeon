@@ -1,7 +1,7 @@
 // Inimigos comuns. Goblin e orc refeitos no M3-01 pelo método da seção 4 do roadmap; os outros ainda na versão antiga.
 import * as THREE from "three";
 import { paint, prep } from "../flora";
-import { modelParts } from "./baked";
+import { addModel } from "./baked";
 import { type Builder, type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, restHand, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
 
 export const ENEMIES: Record<string, Spec> = {
@@ -402,15 +402,6 @@ function fighterDagger(b: Builder, side: number, reverse: boolean): void {
 }
 
 /** malhas do Blender (chars/models/<id>.json) nos ossos: "osso" com contorno, "osso@flat" sem contorno, "osso@lit" acesas */
-function addModel(b: Builder, id: string): void {
-  for (const [key, g] of modelParts(id)) {
-    const [bone, layer] = key.split("@");
-    if (layer === "lit") b.lit(bone, g);
-    else if (layer === "flat") b.flat(bone, g);
-    else b.add(bone, g);
-  }
-}
-
 /** machado de duas lâminas do orc: atravessado baixo na frente do corpo, cabeça à frente; a mão esquerda segura mais adiante no cabo */
 function orcAxe(b: Builder): void {
   const IRON_D = 0x34363a, IRON_M = 0x63666c, HIDE_D = 0x3a1d0e, DARK = 0x160e0c, HAND = 0.38;

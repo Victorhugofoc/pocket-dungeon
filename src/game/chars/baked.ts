@@ -1,5 +1,6 @@
 // Malhas modeladas no Blender (tools/blender), gravadas em ./models/<id>.json por osso. Teste do pipeline no M3-01 (revisão 2).
 import * as THREE from "three";
+import type { Builder } from "./kit";
 
 interface Packed { n: number; position: string; normal: string; color: string }
 type File = { q: number } & Record<string, Packed | number>;
@@ -41,4 +42,14 @@ export function modelParts(id: string): Map<string, THREE.BufferGeometry> {
     out.set(key, g);
   }
   return out;
+}
+
+/** põe no Builder as malhas do modelo, cada uma no osso e na camada da chave */
+export function addModel(b: Builder, id: string): void {
+  for (const [key, g] of modelParts(id)) {
+    const [bone, layer] = key.split("@");
+    if (layer === "lit") b.lit(bone, g);
+    else if (layer === "flat") b.flat(bone, g);
+    else b.add(bone, g);
+  }
 }

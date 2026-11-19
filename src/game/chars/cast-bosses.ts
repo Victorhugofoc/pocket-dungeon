@@ -1,13 +1,24 @@
 // Chefes. Método de modelagem: seção 4 de docs/roadmap.md; conferir em /preview.html com o sprite ao lado.
 import * as THREE from "three";
+import { addModel } from "./baked";
 import { displace, paint, prep } from "../flora";
-import { type G, type Spec, at, bell, belt, body, bx, cap, cape, cone, cyl, dk, grp, hairLong, headBase, headMask, lathe, limb, muscleArm, muscleLeg, hang, restArm, robeMesh, sculpt, sph, ss, staff, stud, torsoMesh, torus, BONE, GOLD, IRON, LEATHER } from "./kit";
+import { type Builder, type G, type Spec, at, bell, belt, body, bx, cap, cape, cone, cyl, dk, grp, hairLong, headBase, headMask, lathe, limb, muscleArm, muscleLeg, hang, restArm, robeMesh, sculpt, sph, ss, staff, stud, torsoMesh, torus, BONE, GOLD, IRON, LEATHER } from "./kit";
 
 export const BOSSES: Record<string, Spec> = {
   // ------------------------------------------------ chefes
   // Redesenho a partir do sprite do Dungeon Reign (docs/ref/bloodfang.png); conferir em preview.html.
   // Anatomia do sprite: tronco e cabeça esculpidos como malha única, membros com perfil de músculo, esqueleto próprio.
   bloodfang: (b) => {
+    // tigre vermelho com caveira no ombro, modelado no Blender (tools/blender/bloodfang.py, brief em docs/briefs/bloodfang.md);
+    // o facão fica por código (bloodfangKnife). A versão por código continua como bloodfang_v1, para comparar.
+    b.bulk = 1.6; b.scale = 2.3; b.style = "swing"; b.glowColor = 0xffd23a; b.rough = 0.7;
+    b.lean = 0.3; b.crouch = 0.34; b.armOut = 0.3;
+    b.poseR = [-0.2, -0.95]; b.poseL = [-0.65, -0.7];
+    b.dims = { hipY: 0.8, headY: 0.7, shoulderY: 0.56, shoulderX: 0.56, arm: 0.42, hipX: 0.2, thigh: 0.36 };
+    addModel(b, "bloodfang");
+    bloodfangKnife(b);
+  },
+  bloodfang_v1: (b) => {
     const RED = 0xd8301e, RED_D = 0x7e1412, RED_L = 0xee5a3c, CREAM = 0xf6ecd8, CREAM_D = 0xbfa888, DARK = 0x160b0d, MOUTH = 0x4e0a12;
     const COWL = 0x5a6884, COWL_D = 0x2a3448, HIDE = 0x5e3a22, CLAW = 0xf0e6d0, EYE = 0xffd23a, FANG = 0xfffaf0, BONE_D = 0x9c8862;
     const col = (hex: number) => new THREE.Color(hex);
@@ -146,28 +157,7 @@ export const BOSSES: Record<string, Spec> = {
     tube.setAttribute("color", new THREE.BufferAttribute(tc, 3));
     b.add("tail", prep(tube, true), at(stud(0.058, DARK), 0, -0.1, -1.05));
 
-    // ---- facão: dorso reto, barriga curva, ponta virada e fio serrilhado
-    const L = 1.25;
-    const sh = new THREE.Shape();
-    sh.moveTo(-0.07, 0);
-    sh.lineTo(-0.09, -L * 0.7);
-    sh.quadraticCurveTo(-0.1, -L * 0.9, -0.2, -L);
-    sh.quadraticCurveTo(0.12, -L * 0.97, 0.24, -L * 0.78);
-    const teeth = 9;
-    for (let i = 0; i < teeth; i++) {
-      const v1 = -L * 0.78 + ((i + 1) / teeth) * L * 0.72;
-      const w = 0.24 - (i / teeth) * 0.1;
-      sh.lineTo(w - 0.045, v1 - 0.03);
-      sh.lineTo(w - 0.01, v1);
-    }
-    sh.lineTo(0.12, 0);
-    sh.closePath();
-    const blade = prep(new THREE.ExtrudeGeometry(sh, { depth: 0.045, bevelEnabled: false, curveSegments: 8 }), false);
-    blade.translate(0, 0, -0.022);
-    blade.rotateY(-Math.PI / 2);
-    paint(blade, 0xb9c3d6, 0xf6f8fc, -L, 0);
-    const knife = [blade, at(cyl(0.04, 0.04, 0.3, HIDE, 8), 0, 0.14, 0.02), at(bx(0.09, 0.05, 0.3, IRON), 0, 0, 0.03), at(sph(0.05, IRON), 0, 0.31, 0.02)];
-    b.add("foreR", ...grp(knife, 0, -0.62, 0.02, -0.35));
+    bloodfangKnife(b);
   },
   // Redesenho a partir do sprite (docs/ref/gravekeeper.png): coveiro encapuzado sem rosto, pá apoiada no chão e lanterna erguida.
   // Medidas do sprite (altura 115 px): capuz 28 px, ombros com a pelerine 55 px, cinto a 53% da altura, barra a 11% do chão.
@@ -435,3 +425,29 @@ export const BOSSES: Record<string, Spec> = {
     b.lit("foreL", ...hang([at(sph(0.055, SOUL, 1, 1.2, 1, SOUL), 0, 0.16, 0.04), at(cone(0.04, 0.16, SOUL, 6, SOUL), 0, 0.28, 0.04)], Lq.inv, HAND));
   },
 };
+
+/** facão do Bloodfang: dorso reto, barriga curva, ponta virada e fio serrilhado, na mão direita */
+function bloodfangKnife(b: Builder): void {
+  const HIDE = 0x5e3a22;
+    const L = 1.25;
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.07, 0);
+    sh.lineTo(-0.09, -L * 0.7);
+    sh.quadraticCurveTo(-0.1, -L * 0.9, -0.2, -L);
+    sh.quadraticCurveTo(0.12, -L * 0.97, 0.24, -L * 0.78);
+    const teeth = 9;
+    for (let i = 0; i < teeth; i++) {
+      const v1 = -L * 0.78 + ((i + 1) / teeth) * L * 0.72;
+      const w = 0.24 - (i / teeth) * 0.1;
+      sh.lineTo(w - 0.045, v1 - 0.03);
+      sh.lineTo(w - 0.01, v1);
+    }
+    sh.lineTo(0.12, 0);
+    sh.closePath();
+    const blade = prep(new THREE.ExtrudeGeometry(sh, { depth: 0.045, bevelEnabled: false, curveSegments: 8 }), false);
+    blade.translate(0, 0, -0.022);
+    blade.rotateY(-Math.PI / 2);
+    paint(blade, 0xb9c3d6, 0xf6f8fc, -L, 0);
+    const knife = [blade, at(cyl(0.04, 0.04, 0.3, HIDE, 8), 0, 0.14, 0.02), at(bx(0.09, 0.05, 0.3, IRON), 0, 0, 0.03), at(sph(0.05, IRON), 0, 0.31, 0.02)];
+    b.add("foreR", ...grp(knife, 0, -0.62, 0.02, -0.35));
+}
