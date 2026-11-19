@@ -14,12 +14,7 @@ export const ENEMIES: Record<string, Spec> = {
     b.lean = 0.62; b.crouch = 0.95; b.armOut = 0.22;
     b.poseR = [-0.9, -0.75]; b.poseL = [-0.3, -0.75];
     b.dims = { hipY: 0.66, headY: 0.48, shoulderY: 0.4, shoulderX: 0.24, arm: 0.3, hipX: 0.16, thigh: 0.27 };
-    for (const [key, g] of modelParts("goblin")) {
-      const [bone, layer] = key.split("@");
-      if (layer === "lit") b.lit(bone, g);
-      else if (layer === "flat") b.flat(bone, g);
-      else b.add(bone, g);
-    }
+    addModel(b, "goblin");
   },
   // Redesenho a partir do sprite (docs/ref/goblin.png): baixinho, muito curvado e agachado, cabeça grande projetada para a frente com
   // orelhas longas para trás, nariz adunco, arcada pesada e boca de dentes; colete de couro com ombreira, calça escura, pés grandes
@@ -146,12 +141,7 @@ export const ENEMIES: Record<string, Spec> = {
     b.lean = 0.1; b.crouch = 0.16; b.armOut = 0.2;
     b.poseR = [-0.2, -0.45]; b.poseL = [-0.05, -0.25];
     b.dims = { hipY: 0.84, headY: 0.6, shoulderY: 0.52, shoulderX: 0.45, arm: 0.4, hipX: 0.2, thigh: 0.38 };
-    for (const [key, g] of modelParts("orc")) {
-      const [bone, layer] = key.split("@");
-      if (layer === "lit") b.lit(bone, g);
-      else if (layer === "flat") b.flat(bone, g);
-      else b.add(bone, g);
-    }
+    addModel(b, "orc");
     orcAxe(b);
   },
   orc_v1: (b) => {
@@ -231,16 +221,9 @@ export const ENEMIES: Record<string, Spec> = {
     orcAxe(b);
   },
   swarm: (b) => {
-    b.form = "bat"; b.scale = 0.75; b.style = "bite";
-    b.add("hips", sph(0.22, 0x6a3fb0, 1, 0.95, 1.1), at(sph(0.2, 0x7a4fc0), 0, 0.02, 0.2));
-    for (const s of [-1, 1]) {
-      b.add("hips", at(cone(0.07, 0.22, 0x6a3fb0, 5), s * 0.12, 0.22, 0.2, 0, 0, -s * 0.3));
-      b.lit("hips", at(sph(0.04, 0xffd34d), s * 0.08, 0.06, 0.38));
-      b.add("hips", at(cone(0.02, 0.07, 0xffffff, 4), s * 0.05, -0.06, 0.38, Math.PI));
-      const w = prep(new THREE.CircleGeometry(0.55, 5, 0, Math.PI * 0.75), false);
-      paint(w, 0x3a1f66, 0x5a3f9a, -0.5, 0.5);
-      b.add(s < 0 ? "wingL" : "wingR", at(w, 0, 0, 0, -Math.PI / 2, 0, s < 0 ? Math.PI * 0.62 : -Math.PI * 0.38 + Math.PI * 0.75 - Math.PI * 0.75));
-    }
+    // diabinho-morcego roxo modelado no Blender (tools/blender/swarm.py, brief em docs/briefs/swarm.md)
+    b.form = "bat"; b.scale = 1.35; b.style = "bite"; b.glowColor = 0xffb52a;
+    addModel(b, "swarm");
   },
   assassin: (b) => {
     body(b, { skin: 0xf2f2f2, top: 0x8a8f99, bottom: 0x6a6f7a, boots: 0x2a2a30, eyes: 0x1c1c22 });
@@ -297,21 +280,22 @@ export const ENEMIES: Record<string, Spec> = {
     b.add("foreR", ...axe(0.7)).add("foreL", ...axe(0.7));
   },
   splitter: (b) => {
-    b.form = "slime"; b.style = "bite"; b.rough = 0.25; b.glowColor = 0xfff2f8;
-    const blob = prep(new THREE.SphereGeometry(0.75, 16, 10), true);
-    const p = blob.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const y = p.getY(i);
-      const flat = y < 0 ? 1 + -y * 0.5 : 1;
-      p.setXYZ(i, p.getX(i) * flat * (1 + 0.08 * Math.sin(p.getZ(i) * 9)), Math.max(y, -0.38) * (y > 0 ? 0.95 : 1), p.getZ(i) * flat);
-    }
-    blob.computeVertexNormals();
-    b.add("hips", at(paint(blob, 0xc83a8a, 0xff8ac8, -0.4, 0.75), 0, 0.4, 0));
-    for (const s of [-1, 1]) b.add("hips", at(sph(0.1, 0x3a1228, 0.9, 1.2, 0.5), s * 0.22, 0.68, 0.62));
-    b.add("hips", at(sph(0.2, 0x3a1228, 1.3, 0.45, 0.5), 0, 0.4, 0.7));
-    b.add("hips", at(bx(0.3, 0.06, 0.06, BONE), -0.3, 0.5, 0.3, 0.5, 0.7, 0.4), at(sph(0.07, BONE), 0.36, 0.3, 0.25), at(bx(0.2, 0.05, 0.05, BONE), 0.2, 0.75, -0.2, 0.2, 0.3, 1.0));
+    // gosma rosa com ossos dentro, modelada no Blender (tools/blender/splitter.py, brief em docs/briefs/splitter.md)
+    b.form = "slime"; b.style = "bite"; b.rough = 0.2; b.glowColor = 0xfff2f8;
+    addModel(b, "splitter");
   },
+
 };
+
+/** malhas do Blender (chars/models/<id>.json) nos ossos: "osso" com contorno, "osso@flat" sem contorno, "osso@lit" acesas */
+function addModel(b: Builder, id: string): void {
+  for (const [key, g] of modelParts(id)) {
+    const [bone, layer] = key.split("@");
+    if (layer === "lit") b.lit(bone, g);
+    else if (layer === "flat") b.flat(bone, g);
+    else b.add(bone, g);
+  }
+}
 
 /** machado de duas lâminas do orc: atravessado baixo na frente do corpo, cabeça à frente; a mão esquerda segura mais adiante no cabo */
 function orcAxe(b: Builder): void {

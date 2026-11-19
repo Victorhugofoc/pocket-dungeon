@@ -148,7 +148,7 @@ export function animateChar(rig: Rig, a: AnimState): void {
   inner.scale.set(1 - bounce * 0.35, 1 + bounce * 0.7, 1 - bounce * 0.35);
 
   if (c.form === "bat") {
-    const flap = Math.sin(t * 26) * 0.9;
+    const flap = Math.sin(t * 22) * 0.65; // amplitude menor: as asas passam menos tempo de pé, de perfil para a câmera alta
     B.wingL!.rotation.z = flap;
     B.wingR!.rotation.z = -flap;
     const h = B.hips!;
