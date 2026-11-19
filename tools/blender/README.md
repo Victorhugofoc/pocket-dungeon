@@ -12,7 +12,7 @@ Personagens modelados por script Python no Blender, em segundo plano, sem abrir 
 
 Com `review`, também grava capturas do Blender em `.shots/bl-head-*.png` e `.shots/bl-body-*.png` (orc: `bl-orc-*`). Leva uns 10 s.
 
-Modelos prontos: `goblin.py` (+ `goblin_body.py`), `orc.py`, `swarm.py` (asas nos ossos `wingL`/`wingR`), `splitter.py` (ossos colocados por raio na malha da gosma) (cabeça e corpo num arquivo só; o machado continua por código em `cast-enemies.ts`, porque a pegada de duas mãos vive no osso `weapon`).
+Modelos prontos: `goblin.py` (+ `goblin_body.py`), `orc.py`, `swarm.py` (asas nos ossos `wingL`/`wingR`), `splitter.py` (só a gosma, sem peças saindo do corpo) (cabeça e corpo num arquivo só; o machado continua por código em `cast-enemies.ts`, porque a pegada de duas mãos vive no osso `weapon`).
 
 ## Como funciona
 

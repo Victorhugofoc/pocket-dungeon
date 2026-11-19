@@ -1,4 +1,4 @@
-# Splitter (gosma rosa com ossos dentro) modelado no Blender (M3-02). Brief: docs/briefs/splitter.md. Rodar: ver tools/blender/README.md.
+# Splitter (gosma rosa de borda irregular, sem peças saindo do corpo: decisão do usuário, 2026-11-18) modelado no Blender (M3-02). Brief: docs/briefs/splitter.md. Rodar: ver tools/blender/README.md.
 # Grava art/splitter.blend e src/game/chars/models/splitter.json. Blender: z para cima, frente em -y.
 # Um osso só (build.ts, forma "slime"): hips com pivô no chão; a animação achata e estica a gosma inteira.
 import os
@@ -12,42 +12,13 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 
 PIV = {"hips": (0, 0, 0)}
 PINK, PINK_L, SHEEN, PINK_D, DEEP = hexc(0xcc3879), hexc(0xfa74b8), hexc(0xffdcf6), hexc(0x691340), hexc(0x440624)
-BONE, BONE_D, GLINT, TOOTH = hexc(0xf6c4cc), hexc(0xb06a80), hexc(0xfff2f8), hexc(0xfff0f4)
-
-# ossos dentro da gosma, deitados na metade de cima da cúpula: (direção do centro, giro da tangente, comprimento)
-BONE_SPEC = [((-0.7, -0.35, 0.55), 0.9, 0.36), ((0.75, -0.2, 0.45), -0.6, 0.32), ((0.35, 0.35, 0.85), 0.3, 0.36),
-             ((-0.5, 0.6, 0.6), 1.4, 0.34)]
-SKULL_U = (-0.45, -0.55, 0.75)
-BONES, SKULL, SKULL_N = [], (0, 0, -9), (0, 0, 1)  # preenchidos em place() a partir da malha da gosma
-
-
-def on_surface(obj, u, sink):
-    """raio de fora para dentro até a superfície da gosma na direção u (a partir do meio do pudim); devolve ponto afundado e normal"""
-    c, u = Vector((0, 0, 0.5)), Vector(u).normalized()
-    ok, hit, n, _ = obj.ray_cast(c + u * 3, -u)
-    return hit - n * sink, n
-
-
-def place(obj):
-    global SKULL, SKULL_N
-    for u, rot, ln in BONE_SPEC:
-        p, n = on_surface(obj, u, 0.012)
-        t = n.cross(Vector((0, 0, 1))).normalized()
-        t = (t * math.cos(rot) + n.cross(t) * math.sin(rot)).normalized()
-        BONES.append((tuple(p), tuple(t), ln))
-    sp, SKULL_N = on_surface(obj, SKULL_U, -0.01)
-    SKULL = tuple(sp)
-
+GLINT, TOOTH = hexc(0xfff2f8), hexc(0xfff0f4)
 
 def slime_tint(co, n):
     c = mix(PINK_D, PINK, ss(-0.6, 0.2, n.z) * (0.4 + 0.6 * ss(0.0, 0.35, co.z)))
     c = mix(c, PINK_L, 0.7 * ss(0.25, 0.9, n.z))
     # reflexo úmido: mancha clara no alto à frente-esquerda e linha na curva da frente
     c = mix(c, SHEEN, 0.85 * ss(0.82, 0.97, Vector(n).dot(Vector((-0.35, -0.45, 0.82)).normalized())))
-    # osso visto pela gosma: mancha escura em volta de cada osso e da caveira
-    for p, _, ln in BONES + [(SKULL, None, 0.3)]:
-        d = (Vector(co) - Vector(p)).length
-        c = mix(c, PINK_D, 0.6 * (1 - ss(ln * 0.4, ln * 0.8, d)))
     return c
 
 
@@ -72,52 +43,14 @@ def blob():
     for v in b.data.vertices:
         if v.co.z < 0.004:
             v.co.z = 0.004
-    smooth(b, iters=2, factor=0.4, target=900)
+    smooth(b, iters=2, factor=0.4, target=1600)
     paint(b, slime_tint)
     return b
 
 
-def bone(p, d, ln):
-    p, d = Vector(p), Vector(d).normalized()
-    a, c = p - d * ln / 2, p + d * ln / 2
-    side = d.cross(Vector((0, 0, 1))).normalized() * 0.035
-    side = side * 1.5
-    objs = [tube("shaft", [a, c], [0.048, 0.048], seg=6)]
-    for e in (a, c):  # cabeça do fêmur em duas bolas
-        objs += [ball("knob", e + side, (0.066, 0.066, 0.066), seg=(8, 5)), ball("knob", e - side, (0.066, 0.066, 0.066), seg=(8, 5))]
-    for o in objs:
-        paint(o, lambda co, n: mix(BONE_D, BONE, 0.45 + 0.55 * ss(-0.4, 0.8, n.z)))
-    return objs
-
-
 def build():
     solid, flat, lit = [blob()], [], []
-    place(solid[0])
-    paint(solid[0], slime_tint)  # de novo, agora com a mancha escura em volta dos ossos
-    for p, d, ln in BONES:
-        solid += bone(p, d, ln)
-    # caveira afundada pela metade na cúpula, à frente e à esquerda: crânio largo, maxilar estreito, órbitas grandes
-    nrm = Vector(SKULL_N)
-    up = (Vector((0, 0, 1)) - nrm * nrm.z).normalized()
-    sk = ball("skull", SKULL, (0.16, 0.15, 0.14), seg=(14, 10))
-    jaw = ball("jaw", tuple(Vector(SKULL) - up * 0.1 + nrm * 0.01), (0.08, 0.07, 0.06), seg=(10, 6))
-    for o in (sk, jaw):
-        smooth(o)
-        paint(o, lambda co, n: mix(BONE_D, BONE, 0.5 + 0.5 * n.z))
-        solid.append(o)
-    side = nrm.cross(up).normalized()
     for s in (-1, 1):
-        h = ball("sk_eye", tuple(Vector(SKULL) + nrm * 0.115 + side * s * 0.055 + up * 0.03), (0.05, 0.05, 0.05), seg=(8, 5))
-        paint(h, lambda co, n: DEEP)
-        flat.append(h)
-        if s > 0:  # nariz em triângulo e fileira de dentes no maxilar: caveira, não globo ocular
-            nose = cone("sk_nose", tuple(Vector(SKULL) + nrm * 0.135 - up * 0.04), tuple(Vector(SKULL) + nrm * 0.135 - up * 0.0), 0.024, seg=3)
-            paint(nose, lambda co, n: DEEP)
-            flat.append(nose)
-            for k in (-1.5, -0.5, 0.5, 1.5):
-                tt = ball("sk_tooth", tuple(Vector(SKULL) - up * 0.11 + nrm * 0.085 + side * k * 0.026), (0.012, 0.012, 0.018), seg=(5, 3))
-                paint(tt, lambda co, n: DEEP)
-                flat.append(tt)
         # olho: fundo escuro na órbita, com um brilho
         e = ball("eye", (s * 0.17, -0.585, 0.655), (0.08, 0.03, 0.05), rot=(0, -s * 0.35, 0), seg=(10, 6))
         paint(e, lambda co, n: DEEP)
