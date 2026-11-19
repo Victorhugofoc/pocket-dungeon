@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { paint, prep } from "../flora";
 import { modelParts } from "./baked";
-import { type Builder, type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
+import { type Builder, type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, restHand, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
 
 export const ENEMIES: Record<string, Spec> = {
   // ------------------------------------------------ inimigos
@@ -226,23 +226,30 @@ export const ENEMIES: Record<string, Spec> = {
     addModel(b, "swarm");
   },
   assassin: (b) => {
-    // ninja de máscara de raposa modelado no Blender (tools/blender/assassin.py, brief em docs/briefs/assassin.md); adagas por código
-    b.scale = 0.92; b.style = "thrust"; b.rough = 0.75;
-    b.lean = 0.25; b.crouch = 0.6; b.armOut = 0.26;
-    b.poseR = [-0.6, -1.1]; b.poseL = [-0.3, -1.2];
-    b.dims = { hipY: 0.92, headY: 0.56, shoulderY: 0.46, shoulderX: 0.27, arm: 0.32, hipX: 0.13, thigh: 0.42 };
+    // ninja de máscara de raposa modelado no Blender (tools/blender/assassin.py, brief em docs/briefs/assassin.md); adagas por código.
+    // Base de luta do sprite: baixa e larga, pé esquerdo à frente, quadril girado; a mão da frente estende a adaga, a de trás guarda
+    // o peito com a outra
+    b.scale = 1.02; b.style = "thrust"; b.rough = 0.75;
+    b.lean = 0.26; b.crouch = 1.05; b.armOut = 0.2;
+    b.stance = { spread: 0.6, stagger: 0.38, turn: 0.55 };
+    b.poseL = [-1.55, -0.35, 0.05, 0.25]; b.poseR = [-0.35, -1.25, 0.3, -0.25];
+    b.dims = { hipY: 0.92, headY: 0.58, shoulderY: 0.46, shoulderX: 0.3, arm: 0.32, hipX: 0.14, thigh: 0.42 };
     addModel(b, "assassin");
     // cachecol preto comprido, solto para trás pela física de fita
-    b.ribbons.push({ bone: "torso", at: [0.03, 0.54, -0.08], len: 1.0, seg: 10, width: [0.14, 0.09], color: 0x1e1e24, tip: 0x34343e });
-    b.add("foreR", ...dagger()).add("foreL", ...dagger());
+    b.ribbons.push({ bone: "torso", at: [0.03, 0.56, -0.08], len: 1.0, seg: 10, width: [0.11, 0.07], color: 0x1e1e24, tip: 0x34343e });
+    fighterDagger(b, -1, false);
+    fighterDagger(b, 1, false);
   },
 
   archer: (b) => {
     // esqueleto arqueiro modelado no Blender (tools/blender/archer.py, brief em docs/briefs/archer.md); o arco fica por código
-    b.bulk = 0.8; b.scale = 0.95; b.style = "shoot"; b.rough = 0.7; b.glowColor = 0xff4a2a;
-    b.lean = 0.15; b.crouch = 0.3; b.armOut = 0.14;
-    b.poseL = [-1.35, -0.1]; b.poseR = [-0.6, -1.3];
-    b.dims = { hipY: 0.92, headY: 0.58, shoulderY: 0.46, shoulderX: 0.25, arm: 0.34, hipX: 0.11, thigh: 0.42 };
+    b.scale = 0.95; b.style = "shoot"; b.rough = 0.7; b.glowColor = 0xff4a2a;
+    // postura de tiro do sprite: de lado para o alvo, base aberta com o pé esquerdo à frente, tronco curvado; braço do arco esticado
+    // à frente e o da corda aberto, com a mão junto ao rosto
+    b.lean = 0.22; b.crouch = 0.4; b.armOut = 0.14;
+    b.stance = { spread: 0.24, stagger: 0.36, turn: 1.2 };
+    b.poseL = [-1.55, -0.05, 0, -0.6]; b.poseR = [-0.1, -2.1, 1.5, -0.4];
+    b.dims = { hipY: 0.92, headY: 0.6, shoulderY: 0.46, shoulderX: 0.27, arm: 0.34, hipX: 0.12, thigh: 0.42 };
     addModel(b, "archer");
     archerBow(b);
   },
@@ -290,19 +297,64 @@ export const ENEMIES: Record<string, Spec> = {
 
 };
 
-/** arco longo do archer, em pé no plano do tiro, preso pelo meio na mão esquerda; corda reta entre as pontas */
+/** Arco longo do archer, puxado: em pé no plano do tiro, com o punho dentro da mão esquerda fechada e a corda em V até a mão direita,
+ * junto ao rosto, com uma flecha armada. O plano do arco passa pelas duas mãos, então o antebraço do arco fica de fora da corda. */
 function archerBow(b: Builder): void {
-  const HAND = 0.3, R = 0.5, ARC = Math.PI * 0.8, WOOD = 0x7a4a26, WOOD_L = 0xb07a44;
+  const HAND = 0.3, R = 0.62, ARC = Math.PI * 0.7, WOOD = 0x8a5228, WOOD_L = 0xd09a58, CORD = 0xe8e0d0, CANT = 0.3;
   const L = restArm(b, -1, HAND);
-  const arc = prep(new THREE.TorusGeometry(R, 0.035, 6, 16, ARC), true);
+  const d = restHand(b, 1, HAND).sub(restHand(b, -1, HAND)); // da mão do arco até a mão da corda, no espaço do personagem
+  const back = Math.hypot(d.x, d.z); // a corda puxada recua isto atrás do punho
+  // modelado com o tiro em +z e a origem no punho; depois gira para a direção do tiro (da mão da corda para a do arco)
+  const arc = prep(new THREE.TorusGeometry(R, 0.046, 6, 20, ARC), true);
   paint(arc, WOOD, WOOD_L, -0.5, 0.5);
-  arc.rotateZ(-ARC / 2).translate(-R, 0, 0); // meio do arco na origem (a mão), barriga para +x
-  const tipX = R * Math.cos(ARC / 2) - R, tipY = R * Math.sin(ARC / 2);
-  const string = cyl(0.008, 0.008, tipY * 2, 0xe8e0d0, 4).translate(tipX, 0, 0);
-  const grip = cyl(0.045, 0.045, 0.14, 0x3a2414, 7);
-  // barriga do arco para a frente (+z do three); o plano do arco fica na vertical, contendo a direção do tiro
-  const g = [arc, string, grip].map((x) => x.rotateY(-Math.PI / 2));
+  arc.rotateZ(-ARC / 2).translate(-R, 0, 0).rotateY(-Math.PI / 2); // meio do arco no punho, barriga para +z, pontas para trás
+  const tipZ = -(R - R * Math.cos(ARC / 2)), tipY = R * Math.sin(ARC / 2);
+  const g: G[] = [arc, at(cyl(0.055, 0.055, 0.16, 0x2e1a0e, 7), 0, 0, 0)];
+  const nock = new THREE.Vector3(0, d.y, -back);
+  // haste reta entre dois pontos (cilindro deitado ao longo de a→b)
+  const rod = (a: THREE.Vector3, c: THREE.Vector3, r: number, color: number): G => {
+    const m = cyl(r, r, a.distanceTo(c), color, 4).rotateX(Math.PI / 2);
+    m.lookAt(new THREE.Vector3().subVectors(c, a));
+    return m.translate((a.x + c.x) / 2, (a.y + c.y) / 2, (a.z + c.z) / 2);
+  };
+  for (const s of [1, -1]) g.push(rod(new THREE.Vector3(0, s * tipY, tipZ), nock, 0.007, CORD));
+  // flecha armada: da corda até passar o punho, apoiada sobre a mão
+  const rest = new THREE.Vector3(0, 0.045, 0.06), head = new THREE.Vector3(0, 0.05, 0.2);
+  g.push(rod(nock, head, 0.012, 0x8a6038));
+  g.push(at(cone(0.028, 0.08, 0x9aa0a8, 4), 0, head.y, head.z + 0.03, Math.PI / 2));
+  const fl = nock.clone().lerp(rest, 0.12);
+  for (const s of [1, -1]) g.push(at(bx(0.006, 0.045, 0.1, CORD), s * 0.014, fl.y, fl.z, 0, 0, s * 0.5));
+  // arco inclinado para fora (a ponta de cima longe do capuz, e o arco aparece visto de cima), depois na direção do tiro
+  const yaw = Math.atan2(-d.x, -d.z);
+  for (const x of g) x.rotateZ(-CANT).rotateY(yaw);
   b.add("foreL", ...hang(g, L.inv, HAND));
+}
+
+/** Adaga do assassin presa ao antebraço: lâmina chata e larga (a face larga para cima com o braço esticado, para ler vista de cima),
+ * guarda vermelha e cabo preto enfaixado. `reverse`: pegada invertida, a lâmina deitada por fora do antebraço, apontando para o
+ * cotovelo. */
+function fighterDagger(b: Builder, side: number, reverse: boolean): void {
+  const HAND = 0.3, L = 0.27, W = 0.06;
+  const blade = new THREE.Shape();
+  blade.moveTo(-W, 0);
+  blade.lineTo(W, 0);
+  blade.quadraticCurveTo(W * 1.25, L * 0.55, 0, L); // folha: alarga no meio e fecha na ponta
+  blade.quadraticCurveTo(-W * 1.25, L * 0.55, -W, 0);
+  const geo = prep(new THREE.ExtrudeGeometry(blade, { depth: 0.014, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 1, curveSegments: 5 }), true);
+  geo.translate(0, 0, -0.009);
+  paint(geo, 0x7a808c, 0xe8ecf2, -W, W); // fio claro de um lado, aço escuro do outro
+  // modelada com a lâmina em +y a partir da guarda; vira para -y (continua o antebraço) ou +y (invertida)
+  const g: G[] = [
+    geo.translate(0, 0.07, 0),
+    at(bx(0.13, 0.03, 0.04, 0xc8281e, 0x6a1010), 0, 0.06, 0),
+    at(cyl(0.022, 0.022, 0.1, 0x1e1e24, 6), 0, 0.0, 0),
+    at(cyl(0.025, 0.025, 0.025, 0xc8281e, 6), 0, 0.02, 0),
+  ];
+  for (const x of g) {
+    if (reverse) x.translate(0, -0.03, 0).applyMatrix4(new THREE.Matrix4().makeTranslation(side * 0.055, -HAND + 0.02, 0.02));
+    else x.rotateZ(Math.PI).translate(0, -HAND - 0.02, 0).rotateX(-0.3);
+  }
+  b.add(side > 0 ? "foreR" : "foreL", ...g);
 }
 
 /** malhas do Blender (chars/models/<id>.json) nos ossos: "osso" com contorno, "osso@flat" sem contorno, "osso@lit" acesas */

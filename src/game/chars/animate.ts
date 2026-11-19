@@ -1,7 +1,7 @@
 // Animação procedural por molas: locomoção, ataque por estilo, reação a empurrão e morte.
 import * as THREE from "three";
 import type { AnimState, Rig } from "../models";
-import type { Bone, Form, Style } from "./kit";
+import type { Bone, Form, Pose, Style } from "./kit";
 
 export interface CharState {
   bones: Partial<Record<Bone, THREE.Group>>;
@@ -9,13 +9,15 @@ export interface CharState {
   legs: IkLeg[];
   style: Style;
   /** pose de descanso dos braços: [ombro x, cotovelo x] */
-  poseR: [number, number];
-  poseL: [number, number];
+  poseR: Pose;
+  poseL: Pose;
   form: Form;
   shot: number;
   /** postura: inclinação do tronco, joelhos dobrados e braços afastados */
   lean: number;
   crouch: number;
+  /** base de luta: ver `Builder.stance` */
+  stance: { spread: number; stagger: number; turn: number };
   armOut: number;
   weight: number;
   /** altura do quadril em repouso */
@@ -209,8 +211,13 @@ export function animateChar(rig: Rig, a: AnimState): void {
   const freeR = c.poseR[0] > -0.8 && !c.weapon ? 1 : 0.18;
   const freeL = c.poseL[0] > -0.8 ? 1 : 0.18;
   const out = c.armOut + rage * (0.1 + breathe * 0.04);
-  armR.rotation.set(c.poseR[0] - sw * 0.55 * amp * freeR * fN - secF * 0.12 * freeR, 0, out + Math.abs(sw) * 0.06);
-  armL.rotation.set(c.poseL[0] + sw * 0.55 * amp * freeL * fN - secF * 0.12 * freeL, 0, -out - Math.abs(sw) * 0.06);
+  // base de luta: o quadril gira e as pernas abrem; parado inteira, andando quase some
+  const hold = 1 - 0.8 * move;
+  const turn = c.stance.turn * (1 - 0.5 * move);
+  hips.rotation.y += turn;
+  head.rotation.y -= turn * 0.85;
+  armR.rotation.set(c.poseR[0] - sw * 0.55 * amp * freeR * fN - secF * 0.12 * freeR, (c.poseR[3] ?? 0) - turn, out + (c.poseR[2] ?? 0) + Math.abs(sw) * 0.06);
+  armL.rotation.set(c.poseL[0] + sw * 0.55 * amp * freeL * fN - secF * 0.12 * freeL, -(c.poseL[3] ?? 0) - turn, -out - (c.poseL[2] ?? 0) - Math.abs(sw) * 0.06);
   foreR.rotation.set(c.poseR[1] - (0.25 * move + Math.max(0, -armLag) * 0.45) * freeR - run * 0.4 * freeR, 0, 0);
   foreL.rotation.set(c.poseL[1] - (0.25 * move + Math.max(0, armLag) * 0.45) * freeL - run * 0.4 * freeL, 0, 0);
 
@@ -219,10 +226,22 @@ export function animateChar(rig: Rig, a: AnimState): void {
     const tl = sw * amp, tr = -sw * amp;
     const kneeL = Math.max(0, -cw) * (0.9 + 0.5 * run) * move;
     const kneeR = Math.max(0, cw) * (0.9 + 0.5 * run) * move;
-    B.thighL!.rotation.set(-crouch * 0.6 + tl * fN - kneeL * 0.25, 0, -0.06 - tl * sN * 0.7);
-    B.thighR!.rotation.set(-crouch * 0.6 + tr * fN - kneeR * 0.25, 0, 0.06 - tr * sN * 0.7);
-    B.shinL!.rotation.x = crouch * 1.1 + kneeL;
-    B.shinR!.rotation.x = crouch * 1.1 + kneeR;
+    const sg = c.stance.stagger * hold, sp = c.stance.spread * hold;
+    // pé da frente: coxa à frente e joelho mais dobrado; pé de trás: perna mais esticada para trás
+    const fwdL = Math.max(0, sg), fwdR = Math.max(0, -sg);
+    const aL = -crouch * 0.6 + tl * fN - kneeL * 0.25 - sg, aR = -crouch * 0.6 + tr * fN - kneeR * 0.25 + sg;
+    const bL = crouch * 1.1 + kneeL + 0.5 * fwdL - 0.35 * fwdR, bR = crouch * 1.1 + kneeR + 0.5 * fwdR - 0.35 * fwdL;
+    B.thighL!.rotation.set(aL, 0, -0.06 - sp - tl * sN * 0.7);
+    B.thighR!.rotation.set(aR, 0, 0.06 + sp - tr * sN * 0.7);
+    B.shinL!.rotation.x = bL;
+    B.shinR!.rotation.x = bR;
+    if (sg || sp) {
+      // a perna aberta encurta na vertical: o quadril desce até o pé mais baixo voltar ao chão
+      const L = -B.shinL!.position.y;
+      const reach = (a: number, b: number, z: number) => Math.cos(z) * L * (Math.cos(a) + Math.cos(a + b));
+      const a0 = -crouch * 0.6, b0 = crouch * 1.1;
+      hips.position.y -= reach(a0, b0, 0.06) - Math.max(reach(aL, bL, 0.06 + sp), reach(aR, bR, 0.06 + sp));
+    }
   }
   if (B.skirt) B.skirt.rotation.set(-secF * 0.22 + kf * 0.3, 0, secS * 0.22);
   if (c.form === "spider") {
@@ -292,8 +311,14 @@ export function animateChar(rig: Rig, a: AnimState): void {
         const arm = right ? armR : armL, fore = right ? foreR : foreL;
         arm.rotation.x = -0.4 * prep01 - 1.6 * hit + (right ? c.poseR[0] : c.poseL[0]) * back;
         fore.rotation.x = -1.7 * prep01 - 0.05 * hit + (right ? c.poseR[1] : c.poseL[1]) * back;
-        torso.rotation.y += (right ? -1 : 1) * (0.6 * hit - 0.35 * prep01);
+        const tw = (right ? -1 : 1) * (0.6 * hit - 0.35 * prep01);
+        torso.rotation.y += tw;
         torso.rotation.x += 0.26 * hit;
+        // com base de luta, no golpe o braço desfaz a abertura e o giro de repouso e mira reto à frente, contra o giro do quadril e
+        // do tronco (os heróis de `thrust` sem base ficam como estavam)
+        const aim = c.stance.spread > 0 ? ease(clamp(hit, 0, 1)) : 0;
+        arm.rotation.y += (-turn - tw - arm.rotation.y) * aim;
+        arm.rotation.z += ((right ? 0.08 : -0.08) - arm.rotation.z) * aim;
         break;
       }
       case "shoot":
@@ -306,7 +331,11 @@ export function animateChar(rig: Rig, a: AnimState): void {
         torso.rotation.x -= 0.1 * kick;
         torso.rotation.y += (right ? 1 : -1) * 0.12 * kick;
         inner.position.z -= kick * 0.12 + hit * 0.22;
-        if (c.style === "shoot" && !right) {
+        if (c.style === "shoot" && !right && c.poseR[2]) {
+          // mão da corda já armada junto ao rosto (braço aberto): no preparo o cotovelo recua, na soltura a mão salta para trás
+          armR.rotation.y += 0.3 * prep01 + 0.2 * kick;
+          foreR.rotation.x = c.poseR[1] - 0.3 * prep01 + 0.8 * kick;
+        } else if (c.style === "shoot" && !right) {
           armR.rotation.x = -1.2;
           foreR.rotation.x = -1.4 * (prep01 + back * 0.5);
         }
