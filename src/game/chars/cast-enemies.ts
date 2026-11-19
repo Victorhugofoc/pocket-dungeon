@@ -255,13 +255,13 @@ export const ENEMIES: Record<string, Spec> = {
   },
 
   spellcaster: (b) => {
-    body(b, { skin: 0x4a7ad9, top: 0x1f5a66, sleeve: 0x1f5a66, robe: { color: 0x1a4a55, hem: 0x5a2a6a }, eyes: 0xffe14a, eyeGlow: true });
-    b.glowColor = 0xe84ad9; b.scale = 0.95;
-    b.style = "cast"; b.poseR = [-0.6, -1.0];
-    for (let i = 0; i < 3; i++) b.lit("head", at(cone(0.05, i === 1 ? 0.34 : 0.24, 0xe84ad9, 5), (i - 1) * 0.11, 0.5 - Math.abs(i - 1) * 0.04, 0, 0, 0, -(i - 1) * 0.3));
-    b.add("torso", at(lathe([[0.36, 0], [0.3, 0.1], [0.14, 0.14]], 0x5a2a6a), 0, 0.46, 0));
-    b.add("foreR", ...staff(0x3a2a4a, 1.6));
-    b.lit("foreR", at(cone(0.08, 0.3, 0xe84ad9, 5), 0, -0.31, 1.15, Math.PI / 2));
+    // feiticeiro de coroa de cristais modelado no Blender (tools/blender/spellcaster.py, brief em docs/briefs/spellcaster.md); flutua
+    // de manto, sem pernas. Pose do sprite: braço do cetro aberto com o antebraço em pé, o outro pendendo (a mesma de POSE_R/POSE_L)
+    b.form = "robed"; b.scale = 0.95; b.style = "cast"; b.rough = 0.75; b.glowColor = 0xe84ad9;
+    b.lean = 0.2; b.armOut = 0.05;
+    b.poseR = [-0.75, -2.15, 0.1, 0.9]; b.poseL = [0.1, -0.55];
+    b.dims = { hipY: 0.86, headY: 0.6, shoulderY: 0.46, shoulderX: 0.25, arm: 0.32, hipX: 0.12, thigh: 0.42 };
+    addModel(b, "spellcaster");
   },
   bombardier: (b) => {
     body(b, { skin: 0xd9a070, top: 0x7a4a2a, bottom: 0x4a3020, boots: 0x2e1e14, bulk: 1.4 });
@@ -273,13 +273,13 @@ export const ENEMIES: Record<string, Spec> = {
     b.lit("foreR", at(cyl(0.015, 0.015, 0.12, 0xff9a3c, 4), 0.03, -0.28, 0), at(sph(0.035, 0xffe14a), 0.04, -0.21, 0));
   },
   summoner: (b) => {
-    body(b, { skin: 0xd9cfe0, top: 0x3a2a55, sleeve: 0x3a2a55, robe: { color: 0x2f2248, hem: 0x7affc8 }, eyes: 0x7affc8, eyeGlow: true });
-    b.glowColor = 0x7affc8;
-    b.style = "cast"; b.poseL = [-0.9, -1.0]; b.poseR = [-0.4, -0.9];
-    b.add("head", ...hairLong(0xe8e8f0, 0.7));
-    b.add("torso", at(lathe([[0.34, 0], [0.26, 0.12], [0.13, 0.16]], 0x4a3a6a), 0, 0.44, 0));
-    b.add("foreL", at(bx(0.3, 0.05, 0.22, 0x7a5230), 0, -0.36, 0.06));
-    b.lit("foreL", at(bx(0.26, 0.02, 0.18, 0xbfffe6), 0, -0.325, 0.06));
+    // bruxa de cabelo branco com livro modelada no Blender (tools/blender/summoner.py, brief em docs/briefs/summoner.md); flutua de
+    // vestido, sem pernas. Pose do sprite: mão direita erguida em garra, livro aberto sobre o antebraço esquerdo (POSE_R/POSE_L)
+    b.form = "robed"; b.scale = 1; b.style = "cast"; b.rough = 0.75; b.glowColor = 0x7affc8;
+    b.lean = 0.06; b.armOut = 0.14;
+    b.poseR = [-0.7, -2.2, 0.1, 0.9]; b.poseL = [-0.05, -0.95];
+    b.dims = { hipY: 0.88, headY: 0.58, shoulderY: 0.45, shoulderX: 0.22, arm: 0.32, hipX: 0.12, thigh: 0.42 };
+    addModel(b, "summoner");
   },
   berserker: (b) => {
     body(b, { skin: 0xc89a7a, top: 0xc89a7a, bottom: 0x5a4636, boots: 0x3a2e24, bulk: 1.4 });

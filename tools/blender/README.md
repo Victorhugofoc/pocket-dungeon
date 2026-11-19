@@ -12,7 +12,7 @@ Personagens modelados por script Python no Blender, em segundo plano, sem abrir 
 
 Com `review`, também grava capturas do Blender em `.shots/bl-head-*.png` e `.shots/bl-body-*.png` (orc: `bl-orc-*`). Leva uns 10 s.
 
-Modelos prontos: `goblin.py` (+ `goblin_body.py`), `orc.py`, `swarm.py` (asas nos ossos `wingL`/`wingR`), `splitter.py` (só a gosma, sem peças saindo do corpo) (cabeça e corpo num arquivo só; o machado continua por código em `cast-enemies.ts`, porque a pegada de duas mãos vive no osso `weapon`). Bípedes novos (desde o M3-03): `humanoid.py` (pivôs a partir de `b.dims`, cabeça no osso, `finish` com oclusão, exportação e capturas; `o["no_ao"]` tira uma peça da oclusão), usado por `archer.py` e `assassin.py`.
+Modelos prontos: `goblin.py` (+ `goblin_body.py`), `orc.py`, `swarm.py` (asas nos ossos `wingL`/`wingR`), `splitter.py` (só a gosma, sem peças saindo do corpo) (cabeça e corpo num arquivo só; o machado continua por código em `cast-enemies.ts`, porque a pegada de duas mãos vive no osso `weapon`). Bípedes novos (desde o M3-03): `humanoid.py` (pivôs a partir de `b.dims`, cabeça no osso, `finish` com oclusão, exportação e capturas; `o["no_ao"]` tira uma peça da oclusão), usado por `archer.py` e `assassin.py`. De manto (forma `robed`, desde o M3-04): `robed.py` (pano em anéis com pregas, mangas em sino que caem para baixo do mundo na pose da receita, `fore_rot`/`local_dir` para pôr na vertical do mundo o que a mão segura), usado por `spellcaster.py` (cetro no `foreR`) e `summoner.py` (livro no `foreL`).
 
 ## Como funciona
 
