@@ -26,3 +26,8 @@ Estilo `thrust`, base baixa (`crouch` alto). O cachecol balança sozinho pela f�
 2. A máscara é de raposa (focinho e orelhas), não um rosto humano branco.
 3. Contorno preto contínuo em todas as bordas.
 4. Até cerca de 3.800 triângulos.
+
+## 6. Já recusado pelo usuário (revisão 1, 2026-11-18)
+- Aprovado: o conceito, a máscara e o cabelo de trás.
+- "Pose bem feia" e "corpo genérico": corpo de manequim (tubos lisos e iguais) e postura de pé em A. Precisa de corpo de lutador: ombros e peito mais fortes, braços e coxas com volume (antebraço, panturrilha), cintura marcada, roupa com caimento (mangas, calça).
+- "Corpo muito fino" e "pose não é de lutador": base de luta, baixa e larga, joelhos dobrados, um pé à frente, tronco inclinado, braços armados com as adagas (uma à frente, outra recuada), como no sprite. Avaliar se a postura de repouso precisa de ajuste no `animate.ts` (estilo `thrust`) e não só no modelo.

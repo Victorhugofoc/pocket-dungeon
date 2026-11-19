@@ -28,3 +28,9 @@ Estilo `shoot`: braço esquerdo estica o arco, o direito puxa a corda. O manto b
 3. O rosto de caveira aparece de frente e de 3/4 dentro do capuz.
 4. Contorno preto contínuo em todas as bordas, inclusive na barra do manto e nas costelas.
 5. Até cerca de 4.200 triângulos (o esqueleto é feito de muitas peças soltas; o arco é à parte).
+
+## 6. Já recusado pelo usuário (revisão 1, 2026-11-18)
+- "Muito magrinho": o esqueleto de palitos não tem corpo. Precisa de massa de silhueta (ossos bem mais robustos, tórax mais largo, ombros e bacia maiores, pose em base aberta e curvada como o sprite), sem perder a leitura de esqueleto.
+- "A capa parece um capacete": o capuz (esfera oca) fica redondo e rígido sobre a cabeça. Deve cair em pano, com ponta e caimento sobre os ombros, ligado ao manto, como no sprite.
+- "O arco parece atravessar o osso": a mão esquerda não fecha em volta do cabo; o arco cruza o antebraço. A mão precisa segurar o punho do arco, com o arco à frente dos dedos.
+- No geral, "em relação à referência, não está legal": seguir o sprite de perto (postura de tiro curvada, manto e capuz como uma peça só, aljava visível sobre o ombro).
