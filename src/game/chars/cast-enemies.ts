@@ -226,24 +226,27 @@ export const ENEMIES: Record<string, Spec> = {
     addModel(b, "swarm");
   },
   assassin: (b) => {
-    body(b, { skin: 0xf2f2f2, top: 0x8a8f99, bottom: 0x6a6f7a, boots: 0x2a2a30, eyes: 0x1c1c22 });
-    b.scale = 0.92; b.style = "thrust"; b.poseR = [-0.6, -1.1]; b.poseL = [-0.3, -1.2];
-    b.add("head", ...hairCap(0x2a2a30), at(cyl(0.035, 0.02, 0.5, 0x2a2a30, 6), 0, 0.3, -0.34, 1.9));
-    for (const s of [-1, 1]) {
-      b.add("head", at(cone(0.06, 0.16, 0xf2f2f2, 4), s * 0.12, 0.44, 0.08));
-      b.add("head", at(bx(0.03, 0.09, 0.02, 0xc8281e), s * 0.11, 0.14, 0.2));
-    }
-    b.add("hips", ...belt(0xc8281e, 1, 0xc8281e)).add("torso", at(torus(0.18, 0.05, 0xc8281e), 0, 0.52, 0));
+    // ninja de máscara de raposa modelado no Blender (tools/blender/assassin.py, brief em docs/briefs/assassin.md); adagas por código
+    b.scale = 0.92; b.style = "thrust"; b.rough = 0.75;
+    b.lean = 0.25; b.crouch = 0.6; b.armOut = 0.26;
+    b.poseR = [-0.6, -1.1]; b.poseL = [-0.3, -1.2];
+    b.dims = { hipY: 0.92, headY: 0.56, shoulderY: 0.46, shoulderX: 0.27, arm: 0.32, hipX: 0.13, thigh: 0.42 };
+    addModel(b, "assassin");
+    // cachecol preto comprido, solto para trás pela física de fita
+    b.ribbons.push({ bone: "torso", at: [0.03, 0.54, -0.08], len: 1.0, seg: 10, width: [0.14, 0.09], color: 0x1e1e24, tip: 0x34343e });
     b.add("foreR", ...dagger()).add("foreL", ...dagger());
   },
+
   archer: (b) => {
-    body(b, { skin: BONE, top: 0x5a2a30, bottom: 0xd9cdb0, boots: BONE, sleeve: BONE, bulk: 0.8, eyes: 0x1c1c22 });
-    b.scale = 0.95; b.style = "shoot"; b.poseL = [-1.35, -0.1]; b.poseR = [-0.6, -1.3];
-    b.add("head", ...hood(0x4a2228));
-    b.add("cape", ...cape(0x4a2228, 0.26, 0.8));
-    b.add("torso", at(bx(0.2, 0.05, 0.03, BONE), 0, 0.36, 0.2), at(bx(0.2, 0.05, 0.03, BONE), 0, 0.27, 0.2), at(bx(0.2, 0.05, 0.03, BONE), 0, 0.18, 0.2));
-    b.add("foreL", ...bow());
+    // esqueleto arqueiro modelado no Blender (tools/blender/archer.py, brief em docs/briefs/archer.md); o arco fica por código
+    b.bulk = 0.8; b.scale = 0.95; b.style = "shoot"; b.rough = 0.7; b.glowColor = 0xff4a2a;
+    b.lean = 0.15; b.crouch = 0.3; b.armOut = 0.14;
+    b.poseL = [-1.35, -0.1]; b.poseR = [-0.6, -1.3];
+    b.dims = { hipY: 0.92, headY: 0.58, shoulderY: 0.46, shoulderX: 0.25, arm: 0.34, hipX: 0.11, thigh: 0.42 };
+    addModel(b, "archer");
+    archerBow(b);
   },
+
   spellcaster: (b) => {
     body(b, { skin: 0x4a7ad9, top: 0x1f5a66, sleeve: 0x1f5a66, robe: { color: 0x1a4a55, hem: 0x5a2a6a }, eyes: 0xffe14a, eyeGlow: true });
     b.glowColor = 0xe84ad9; b.scale = 0.95;
@@ -286,6 +289,21 @@ export const ENEMIES: Record<string, Spec> = {
   },
 
 };
+
+/** arco longo do archer, em pé no plano do tiro, preso pelo meio na mão esquerda; corda reta entre as pontas */
+function archerBow(b: Builder): void {
+  const HAND = 0.3, R = 0.5, ARC = Math.PI * 0.8, WOOD = 0x7a4a26, WOOD_L = 0xb07a44;
+  const L = restArm(b, -1, HAND);
+  const arc = prep(new THREE.TorusGeometry(R, 0.035, 6, 16, ARC), true);
+  paint(arc, WOOD, WOOD_L, -0.5, 0.5);
+  arc.rotateZ(-ARC / 2).translate(-R, 0, 0); // meio do arco na origem (a mão), barriga para +x
+  const tipX = R * Math.cos(ARC / 2) - R, tipY = R * Math.sin(ARC / 2);
+  const string = cyl(0.008, 0.008, tipY * 2, 0xe8e0d0, 4).translate(tipX, 0, 0);
+  const grip = cyl(0.045, 0.045, 0.14, 0x3a2414, 7);
+  // barriga do arco para a frente (+z do three); o plano do arco fica na vertical, contendo a direção do tiro
+  const g = [arc, string, grip].map((x) => x.rotateY(-Math.PI / 2));
+  b.add("foreL", ...hang(g, L.inv, HAND));
+}
 
 /** malhas do Blender (chars/models/<id>.json) nos ossos: "osso" com contorno, "osso@flat" sem contorno, "osso@lit" acesas */
 function addModel(b: Builder, id: string): void {
