@@ -8,7 +8,7 @@ import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/
 import type { StatusKind } from "../data/heroes";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
-import { type BossRing, makeBossRing } from "./fx";
+import { type BossRing, type ChampionAura, makeBossRing, makeChampionAura } from "./fx";
 import type { Game } from "./game";
 
 export interface Dot {
@@ -95,6 +95,7 @@ export class Enemy {
   ambush = false;
   private emberT = 0;
   private ring: BossRing | null = null;
+  private aura: ChampionAura | null = null;
 
   constructor(game: Game, def: EnemyDef | BossDef, wave: number, x: number, z: number,
     opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean; ambush?: { hp: number; damage: number } | null } = {}) {
@@ -127,6 +128,10 @@ export class Enemy {
       this.ring = makeBossRing(game.scene, this.boss.glow);
       this.ring.update(x, z, this.radius * 1.9, 0, 0, 0.45);
     }
+    if (this.champion && !this.boss) {
+      this.aura = makeChampionAura(game.scene);
+      this.aura.update(x, z, this.radius, 0, 1);
+    }
   }
 
   /** tira da cena tudo o que é deste inimigo */
@@ -134,10 +139,13 @@ export class Enemy {
     disposeRig(this.rig);
     this.ring?.dispose();
     this.ring = null;
+    this.aura?.dispose();
+    this.aura = null;
   }
 
   private makeRig(): Rig {
-    return characterRig(this.boss ? this.boss.id : this.def!.id, this.boss ? "boss" : "enemy", this.champion);
+    const variant = this.champion ? "champion" : this.summoned ? "summoned" : null;
+    return characterRig(this.boss ? this.boss.id : this.def!.id, this.boss ? "boss" : "enemy", variant);
   }
 
   /** troca o modelo quando o modo visual muda */
@@ -186,6 +194,7 @@ export class Enemy {
       rig.root.position.set(this.x, 0, this.z);
       animateRig(rig, { t: now, move: 0, attack: -1, windup: 0, dead: this.deadT, bossDeath: this.isBoss });
       if (this.boss) this.dissolve(game, dt);
+      this.aura?.update(this.x, this.z, this.radius, now, Math.max(0, 1 - this.deadT * 1.6));
       if (this.deadT >= 1.25) this.remove = true;
       return;
     }
@@ -283,6 +292,7 @@ export class Enemy {
       windup: this.windupT >= 0 ? this.windupT / this.windupDur : this.casting > 0 ? 0.6 + Math.sin(now * 20) * 0.1 : 0, dead: 0,
       rage: this.rage, roar: this.roarT,
     });
+    this.aura?.update(this.x, this.z, this.radius, now + this.rig.phase, 1);
     if (this.boss) {
       this.rage += ((this.enraged ? 1 : 0) - this.rage) * Math.min(1, dt * 3);
       this.ring?.update(this.x, this.z, this.radius * 1.9, now, this.rage, this.aggro ? 1 : 0.45);
