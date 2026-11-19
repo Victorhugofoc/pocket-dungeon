@@ -18,6 +18,8 @@ export interface CharState {
   crouch: number;
   /** base de luta: ver `Builder.stance` */
   stance: { spread: number; stagger: number; turn: number };
+  /** fim do golpe "swing" de uma mão: ver `Builder.swingHit` */
+  swingHit: [number, number];
   armOut: number;
   weight: number;
   /** altura do quadril em repouso */
@@ -295,9 +297,13 @@ export function animateChar(rig: Rig, a: AnimState): void {
           torso.rotation.y += 0.25 * prep01 - 0.2 * hit;
           break;
         }
-        armR.rotation.x = c.poseR[0] * back - 2.8 * prep01 + 0.55 * hit;
-        armR.rotation.z = c.armOut + 0.55 * prep01 - 0.35 * hit;
-        foreR.rotation.x = c.poseR[1] * back - 0.7 * prep01 - 0.05 * hit;
+        {
+          // no preparo o braço sai da pose de descanso (antes caía esticado no primeiro quadro e a arma longa entrava no chão)
+          const rest = p >= 0 ? back : 1 - prep01;
+          armR.rotation.x = c.poseR[0] * rest - 2.8 * prep01 + c.swingHit[0] * hit;
+          armR.rotation.z = c.armOut + 0.55 * prep01 - 0.35 * hit;
+          foreR.rotation.x = c.poseR[1] * rest - 0.7 * prep01 + c.swingHit[1] * hit;
+        }
         torso.rotation.y += 0.7 * prep01 - 0.85 * hit;
         torso.rotation.x += -0.2 * prep01 + 0.38 * hit;
         hips.rotation.y += 0.25 * prep01 - 0.3 * hit;

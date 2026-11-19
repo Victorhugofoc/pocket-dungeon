@@ -101,6 +101,8 @@ export class Builder {
   /** base de luta dos bípedes: pernas abertas (`spread`, rad), pé esquerdo à frente (`stagger`, rad; negativo = o direito), quadril
    * girado (`turn`, rad); cabeça e braços compensam o giro para continuar mirando à frente. Some ao andar. */
   stance = { spread: 0, stagger: 0, turn: 0 };
+  /** golpe "swing" de uma mão: [ombro x, cotovelo x] no fim do golpe. Arma longa usa o cotovelo dobrado para a lâmina parar acima do chão. */
+  swingHit: [number, number] = [0.55, -0.05];
   form: Form = "biped";
   bulk = 1;
   scale = 1;
