@@ -446,7 +446,7 @@ function bloodfangKnife(b: Builder): void {
     sh.closePath();
     const blade = prep(new THREE.ExtrudeGeometry(sh, { depth: 0.045, bevelEnabled: false, curveSegments: 8 }), false);
     blade.translate(0, 0, -0.022);
-    blade.rotateY(-Math.PI / 2);
+    blade.rotateY(Math.PI / 2); // fio serrilhado para baixo e dorso reto em cima, como no sprite
     paint(blade, 0xb9c3d6, 0xf6f8fc, -L, 0);
     const knife = [blade, at(cyl(0.04, 0.04, 0.3, HIDE, 8), 0, 0.14, 0.02), at(bx(0.09, 0.05, 0.3, IRON), 0, 0, 0.03), at(sph(0.05, IRON), 0, 0.31, 0.02)];
     b.add("foreR", ...grp(knife, 0, -0.62, 0.02, -0.35));

@@ -34,3 +34,6 @@ Igual à v1: `swing`, `lean` 0,3, agachado (`crouch` 0,34), cauda no osso `tail`
 - Rodada 2 (médio): testa branca "de palhaço", orelhas como argolas, cabeça pequena. Corrigido depois: testa vermelha (creme só no focinho, bochechas e queixo), orelhas em triângulo arredondado, cabeça 15% maior e mais à frente, caveira bege.
 - Médios que restaram (gosto, para o usuário decidir): antebraços lisos, sem botas escuras nas pernas (o sprite tem faixa cinza no tornozelo, que ficou), estrela na tanga (vem da v1).
 - ~14,1 mil triângulos (acima dos 10 mil do brief; listras são ~2,4 mil).
+
+## 7. Revisão do usuário (2026-11-19)
+- Facão estava invertido (fio serrilhado para cima). Corrigido em `bloodfangKnife`: dentes para baixo, dorso reto em cima e ponta virando para cima, como no sprite (vale também para a v1).
