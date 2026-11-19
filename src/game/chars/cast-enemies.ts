@@ -317,9 +317,9 @@ export const ENEMIES: Record<string, Spec> = {
 function orcAxe(b: Builder): void {
   const IRON_D = 0x34363a, IRON_M = 0x63666c, HIDE_D = 0x3a1d0e, DARK = 0x160e0c, HAND = 0.38;
   const R = restArm(b, 1, HAND);
-  // machado de duas lâminas numa mão só, caído ao lado da perna com a cabeça à frente do pé (como as lâminas da referência 2D);
-  // modelado na vertical do mundo com a origem na mão: o cabo desce, o pomo fica logo acima do punho
-  const HEAD = 0.56, TILT = 0.45;
+  // machado de duas lâminas numa mão só, cabo apontando para a frente e para baixo, cabeça à frente da perna e longe do chão
+  // (docs/briefs/orc.md, seção 4); modelado na vertical do mundo com a origem na mão
+  const HEAD = 0.56, TILT = 1.0;
   const axeG: G[] = [
     at(cyl(0.03, 0.034, 0.88, 0x6a4024, 7), 0, 0.26, 0),
     at(stud(0.048, IRON_M, IRON_D, 1, 1, 1, 0), 0, -0.2, 0),
@@ -345,7 +345,7 @@ function orcAxe(b: Builder): void {
     if (s < 0) g.rotateY(Math.PI);
     axeG.push(at(g, 0, HEAD, 0));
   }
-  // cabeça para baixo, inclinada para a frente e para fora
-  for (const g of axeG) g.rotateX(Math.PI).rotateX(-TILT).rotateZ(0.3);
+  // cabeça para baixo e girada uns 57° para a frente: o cabo fica a ~33° abaixo da horizontal
+  for (const g of axeG) g.rotateX(Math.PI).rotateX(-TILT).rotateZ(0.15);
   b.add("foreR", ...hang(axeG, R.inv, HAND));
 }

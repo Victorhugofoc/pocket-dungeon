@@ -51,8 +51,8 @@ def head():
         EL((0, 0.04, 0.04), (0.12, 0.14, 0.11)),                  # crânio careca, baixo e estreito
         EL((0, 0.03, 0.12), (0.075, 0.1, 0.05)),                  # topo afunilado
         EL((0, -0.06, -0.01), (0.135, 0.12, 0.11)),               # massa do rosto
-        CAP((-0.135, -0.12, 0.085), (-0.02, -0.19, 0.012), 0.042, stiff=1.6),  # arcada pesada em V fechado, carrancuda no meio
-        CAP((0.135, -0.12, 0.085), (0.02, -0.19, 0.012), 0.042, stiff=1.6),
+        CAP((-0.135, -0.13, 0.075), (-0.018, -0.185, 0.02), 0.04, stiff=1.6),  # arcada pesada em V, carrancuda no meio
+        CAP((0.135, -0.13, 0.075), (0.018, -0.185, 0.02), 0.04, stiff=1.6),
         EL((-0.11, -0.13, -0.03), (0.05, 0.045, 0.04)),           # maçãs
         EL((0.11, -0.13, -0.03), (0.05, 0.045, 0.04)),
         EL((0, -0.08, -0.1), (0.17, 0.13, 0.08)),                 # mandíbula mais larga que o crânio
@@ -60,17 +60,14 @@ def head():
         EL((0, -0.2, -0.015), (0.05, 0.045, 0.035)),              # nariz largo e chato
         EL((-0.066, -0.2, -0.004), (0.04, 0.045, 0.022), neg=True),  # órbitas fundas sob a arcada
         EL((0.066, -0.2, -0.004), (0.04, 0.045, 0.022), neg=True),
-        EL((0, -0.235, -0.068), (0.06, 0.05, 0.018), neg=True),   # boca em esgar: meio alto, cantos caídos
-        EL((-0.06, -0.225, -0.085), (0.04, 0.05, 0.016), neg=True),
-        EL((0.06, -0.225, -0.085), (0.04, 0.05, 0.016), neg=True),
-        EL((0, -0.215, 0.045), (0.022, 0.02, 0.03), neg=True),    # vinco de carranca entre as sobrancelhas
+        EL((0, -0.235, -0.072), (0.095, 0.05, 0.016), neg=True),  # boca: fenda larga entre lábio e mandíbula
     ])
     smooth(h, iters=4, factor=0.5, target=950)
     paint(h, skin)
     parts["solid"].append(h)
     for s in (-1, 1):
         # olho em fenda, inclinado para dentro e para baixo (carranca), fundo na órbita
-        eye = ball("eye", (s * 0.064, -0.192, -0.01), (0.025, 0.01, 0.007), rot=(0, -s * 0.55, 0), seg=(8, 5))
+        eye = ball("eye", (s * 0.066, -0.192, -0.006), (0.026, 0.01, 0.0075), rot=(0, -s * 0.42, 0), seg=(8, 5))
         paint(eye, lambda co, n: EYE)
         parts["lit"].append(eye)
         # orelha pequena e pontuda, para o lado e um pouco para trás
@@ -79,11 +76,10 @@ def head():
         smooth(ear)
         paint(ear, lambda co, n: mix(SKIN_D, SKIN, 0.55 + 0.45 * n.z))
         parts["solid"].append(ear)
-        # presa cônica subindo do lábio de baixo, rente à boca e aberta para fora; a ponta fica abaixo e por fora do olho
-        tusk = tube("tusk", [(s * 0.082, -0.238, -0.11), (s * 0.095, -0.25, -0.085), (s * 0.11, -0.254, -0.06), (s * 0.125, -0.25, -0.04)],
-                    [0.027, 0.021, 0.012, 0.002], seg=8)
+        # presa grossa e reta subindo da mandíbula, por fora do lábio; a ponta fica abaixo e por fora do olho (brief, seção 3)
+        tusk = cone("tusk", (s * 0.078, -0.25, -0.1), (s * 0.1, -0.27, -0.02), 0.024, seg=7)
         smooth(tusk)
-        paint(tusk, lambda co, n: mix(hexc(0x9a8a62), TUSK, ss(-0.1, -0.06, co.z)))
+        paint(tusk, lambda co, n: mix(hexc(0xa89a78), TUSK, ss(-0.1, -0.02, co.z)))
         parts["solid"].append(tusk)
         nost = ball("nostril", (s * 0.022, -0.238, -0.03), (0.012, 0.008, 0.008), seg=(6, 4))
         paint(nost, lambda co, n: DARK)
@@ -97,13 +93,12 @@ def head():
     band = tube("band", [(0, 0.07, 0.175), (0, 0.085, 0.205)], [0.04, 0.04], seg=10)
     paint(band, lambda co, n: mix(BONE_D, BONE, 0.5 + 0.5 * n.z))
     parts["solid"].append(band)
-    m = ball("mouth", (0, -0.212, -0.076), (0.085, 0.03, 0.016), seg=(12, 6))
+    m = ball("mouth", (0, -0.21, -0.072), (0.09, 0.03, 0.014), seg=(12, 6))
     paint(m, lambda co, n: MOUTH)
     parts["flat"].append(m)
-    # poucos dentes de baixo, tortos e amarelados, de tamanhos diferentes (nada de fileira certinha)
-    for x, ln, lean in ((-0.035, 0.022, 0.15), (0.0, 0.016, -0.1), (0.032, 0.026, -0.2)):
-        t = cone("tooth", (x, -0.245, -0.092), (x + lean * 0.05, -0.25, -0.092 + ln), 0.012, seg=4)
-        paint(t, lambda co, n: mix(hexc(0x9a8a62), TUSK, 0.6))
+    for x in (-0.045, -0.015, 0.015, 0.045):  # dentes de baixo, curtos
+        t = cone("tooth", (x, -0.238 + abs(x) * 0.3, -0.085), (x, -0.24 + abs(x) * 0.3, -0.06), 0.011, seg=4)
+        paint(t, lambda co, n: TUSK)
         parts["flat"].append(t)
     return parts
 
