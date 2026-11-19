@@ -518,7 +518,7 @@ export class Game {
     // M16-01: compila os shaders da zona e dos efeitos agora, no carregamento, e não no primeiro golpe
     // (e os modelos dos inimigos da zona e dos chefes: esculpidos uma vez, ver `chars/build.ts`)
     this.fx.lib.warm(this.layout.spawn.x, this.layout.spawn.z);
-    const warmRigs = [...zone.enemies.map(([id]) => characterRig(id, "enemy")), characterRig(zone.enemies[0][0], "enemy", true),
+    const warmRigs = [...zone.enemies.map(([id]) => characterRig(id, "enemy")), characterRig(zone.enemies[0][0], "enemy", "champion"), characterRig(zone.enemies[0][0], "enemy", "summoned"),
       ...Object.keys(BOSSES).map((id) => characterRig(id, "boss"))];
     for (const r of warmRigs) {
       r.root.position.set(this.layout.spawn.x, 0, this.layout.spawn.z);

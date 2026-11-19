@@ -1,10 +1,13 @@
 // Character preview (dev only, not part of the game build): one or two characters, a hero for scale and the reference sprite.
 // Open with `npm run dev` at /preview.html. URL params: ?view=close|game&anim=idle|walk|attack&yaw=<deg>&dist=<n>&a=<id>&b=<id to compare>&freeze=<s>&ref=0
+// An id may carry a variant: `goblin:champion` (gold outline and crown aura) or `goblin:summoned` (spectral tone).
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TUNING } from "./data/tuning";
+import { ENEMIES } from "./data/enemies";
 import { ZONES } from "./data/zones";
 import { hasChar } from "./game/chars";
+import { type ChampionAura, makeChampionAura } from "./game/fx";
 import { animateRig, type Rig } from "./game/models";
 import { Pipeline } from "./game/render";
 import { characterRig } from "./game/rigs";
@@ -15,7 +18,13 @@ const state = {
   anim: q.get("anim") ?? "idle",
   yaw: (Number(q.get("yaw") ?? 0) * Math.PI) / 180,
 };
-const ids = [q.get("a") ?? "bloodfang", q.get("b") ?? ""].filter(hasChar);
+type Variant = "champion" | "summoned" | null;
+const parse = (s: string): { id: string; variant: Variant } => {
+  const [id, v] = s.split(":");
+  return { id, variant: v === "champion" || v === "summoned" ? v : null };
+};
+const picks = [q.get("a") ?? "bloodfang", q.get("b") ?? ""].map(parse).filter((p) => hasChar(p.id));
+const ids = picks.map((p) => p.id);
 const zone = ZONES.bosque;
 
 const canvas = document.getElementById("view") as HTMLCanvasElement;
@@ -46,13 +55,15 @@ const ground = new THREE.Mesh(
 ground.receiveShadow = true;
 scene.add(ground);
 
-interface Actor { rig: Rig; home: number; label: string }
+interface Actor { rig: Rig; home: number; label: string; aura?: ChampionAura; radius?: number }
 const spacing = 6;
-const actors: Actor[] = ids.map((id, i) => {
-  const rig = characterRig(id, "boss");
+const actors: Actor[] = picks.map(({ id, variant }, i) => {
+  const rig = characterRig(id, "boss", variant);
   const home = (i - (ids.length - 1) / 2) * spacing;
   scene.add(rig.root);
-  return { rig, home, label: id };
+  const def = ENEMIES[id];
+  const aura = variant === "champion" ? makeChampionAura(scene) : undefined;
+  return { rig, home, label: variant ? `${id} (${variant})` : id, aura, radius: def ? def.radius * 1.2 : 1 };
 });
 // a hero for scale
 if (hasChar("varok") && !ids.includes("varok")) {
@@ -146,6 +157,7 @@ function tick(now: number): void {
     if (lead && state.anim === "roar") roar = Math.min(1, (hold ?? t % 2.6) / TUNING.boss.roarTime);
     if (lead && state.anim === "death") dead = Math.min(1.25, ((hold ?? t % 4) / TUNING.boss.deathTime) * 1.25);
     if (roar >= 1) roar = -1;
+    a.aura?.update(r.position.x, r.position.z, a.radius ?? 1, t, 1);
     animateRig(a.rig, { t, move: state.anim === "walk" ? 1 : 0, attack, windup, dead, roar, rage: lead && state.anim === "rage" ? 1 : 0, bossDeath: true });
   }
   controls.update();

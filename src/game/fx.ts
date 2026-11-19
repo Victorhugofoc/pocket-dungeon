@@ -1,5 +1,6 @@
 // Efeitos: partículas instanciadas, telegrafias no chão, ondas de choque, arcos de golpe e números flutuantes.
 import * as THREE from "three";
+import { TUNING } from "../data/tuning";
 import { Vfx } from "./vfx";
 
 interface Particle {
@@ -93,6 +94,85 @@ export function makeBossRing(scene: THREE.Scene, color: number): BossRing {
       mesh.removeFromParent();
       mesh.geometry.dispose();
       mat.dispose();
+    },
+  };
+}
+
+/** Marca do campeão (M3-06), do Dungeon Reign (`WF.championAura`): elipse dourada no chão com aro, uma coroa de
+ * espetos dourados girando em volta dos pés e faíscas douradas subindo. */
+export interface ChampionAura {
+  group: THREE.Group;
+  /** `radius` = raio do inimigo; `fade` 1 = visível, 0 = sumiu */
+  update(x: number, z: number, radius: number, time: number, fade: number): void;
+  dispose(): void;
+}
+
+const AURA_SPIKE = new THREE.ConeGeometry(0.1, 0.42, 4).translate(0, 0.21, 0);
+const AURA_MOTE = new THREE.OctahedronGeometry(0.07);
+const AURA_DISC = new THREE.CircleGeometry(1, 48);
+
+export function makeChampionAura(scene: THREE.Scene): ChampionAura {
+  const A = TUNING.enemy.champion.aura;
+  const gold = new THREE.Color(TUNING.enemy.champion.outline);
+  const discMat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: gold }, uFade: { value: 1 } },
+    vertexShader: "varying vec2 vP; void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: `varying vec2 vP; uniform vec3 uColor; uniform float uFade;
+      void main() {
+        float r = length(vP);
+        float fill = (1.0 - smoothstep(0.9, 0.94, r)) * 0.22;
+        float rim = smoothstep(0.9, 0.94, r) * (1.0 - smoothstep(0.97, 1.0, r)) * 0.8;
+        float k = (fill + rim) * uFade;
+        gl_FragColor = vec4(uColor * k * 1.4, k);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+  });
+  const disc = new THREE.Mesh(AURA_DISC, discMat);
+  disc.rotation.x = -Math.PI / 2;
+  disc.position.y = 0.06;
+  disc.renderOrder = 1;
+  const goldMat = new THREE.MeshBasicMaterial({ color: gold.clone().multiplyScalar(1.25), transparent: true, toneMapped: false });
+  const spikes = new THREE.InstancedMesh(AURA_SPIKE, goldMat, A.spikes);
+  const motes = new THREE.InstancedMesh(AURA_MOTE, goldMat, A.motes);
+  spikes.frustumCulled = motes.frustumCulled = false;
+  const group = new THREE.Group();
+  group.add(disc, spikes, motes);
+  scene.add(group);
+  return {
+    group,
+    update(x, z, radius, time, fade) {
+      const R = radius * A.radius;
+      group.position.set(x, 0, z);
+      group.visible = fade > 0.01;
+      disc.scale.setScalar(R);
+      discMat.uniforms.uFade.value = fade;
+      goldMat.opacity = fade;
+      for (let i = 0; i < A.spikes; i++) {
+        const a = (i / A.spikes) * Math.PI * 2 + time * A.spin;
+        tmpObj.position.set(Math.cos(a) * R, 0.04, Math.sin(a) * R);
+        tmpObj.rotation.set(0, -a, 0);
+        tmpObj.scale.setScalar(Math.max(0.6, R / 1.2));
+        tmpObj.updateMatrix();
+        spikes.setMatrixAt(i, tmpObj.matrix);
+      }
+      spikes.instanceMatrix.needsUpdate = true;
+      for (let i = 0; i < A.motes; i++) {
+        const q = (time * 0.7 + (i + 1) / A.motes) % 1;
+        const a = i * 2.39996 + Math.floor(time * 0.7 + (i + 1) / A.motes) * 1.7; // cada volta nasce num ponto novo
+        tmpObj.position.set(Math.cos(a) * R * 0.7, 0.2 + q * radius * 3, Math.sin(a) * R * 0.7);
+        tmpObj.rotation.set(0, time * 3, 0);
+        tmpObj.scale.setScalar(Math.sin(q * Math.PI) + 1e-3);
+        tmpObj.updateMatrix();
+        motes.setMatrixAt(i, tmpObj.matrix);
+      }
+      motes.instanceMatrix.needsUpdate = true;
+    },
+    dispose() {
+      group.removeFromParent();
+      spikes.dispose();
+      motes.dispose();
+      discMat.dispose();
+      goldMat.dispose();
     },
   };
 }

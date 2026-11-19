@@ -1,5 +1,6 @@
 // Montagem: transforma a receita de um personagem (Builder) em ossos, malhas e materiais.
 import * as THREE from "three";
+import { TUNING } from "../../data/tuning";
 import { merge } from "../flora";
 import type { Rig } from "../models";
 import { applyAtmosphere, U } from "../shared";
@@ -8,7 +9,7 @@ import { type IkLeg, type Ribbon, newPhys } from "./animate";
 import { BOSSES } from "./cast-bosses";
 import { ENEMIES } from "./cast-enemies";
 import { HEROES } from "./cast-heroes";
-import { type Bone, type G, type Spec, Builder, TORSO_Y, at, cone, cyl, sph, torus } from "./kit";
+import { type Bone, type G, type Spec, Builder, TORSO_Y } from "./kit";
 
 const CAST: Record<string, Spec> = { ...HEROES, ...ENEMIES, ...BOSSES };
 
@@ -50,14 +51,24 @@ export function hasChar(id: string): boolean {
 export const castIds = (): string[] => Object.keys(CAST);
 
 // ---------------------------------------------------------------- montagem
-/** contorno escuro (casca invertida) e luz de recorte: tiram o aspecto de plástico liso */
-const OUTLINE = new THREE.MeshBasicMaterial({ color: 0x17121c, side: THREE.BackSide });
-OUTLINE.onBeforeCompile = (shader) => {
-  // empurra pela normal do contorno (fuse); malha sem ela (fitas refeitas a cada quadro) lê zero e usa a normal comum
-  shader.vertexShader = "attribute vec3 outlineNormal;\n" + shader.vertexShader.replace("#include <begin_vertex>",
-    "#include <begin_vertex>\nvec3 on = dot(outlineNormal, outlineNormal) > 1e-6 ? outlineNormal : normal;\ntransformed += normalize(on) * 0.02;");
-};
-OUTLINE.customProgramCacheKey = () => "outline";
+/** Contorno escuro por casca invertida (com a luz de recorte, tira o aspecto de plástico liso). O campeão usa um dourado mais grosso (Dungeon Reign: contorno dourado em volta do
+ * sprite); o invocado, um roxo escuro meio transparente, junto com o corpo. */
+function outlineMaterial(color: number, width: number, opacity = 1, lit = false): THREE.MeshBasicMaterial {
+  // `lit`: fora do tone mapping, para o dourado brilhar um pouco no bloom
+  const m = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide, transparent: opacity < 1, opacity, toneMapped: !lit });
+  m.onBeforeCompile = (shader) => {
+    // empurra pela normal do contorno (fuse); malha sem ela (fitas refeitas a cada quadro) lê zero e usa a normal comum
+    shader.vertexShader = "attribute vec3 outlineNormal;\n" + shader.vertexShader.replace("#include <begin_vertex>",
+      `#include <begin_vertex>
+      vec3 on = dot(outlineNormal, outlineNormal) > 1e-6 ? outlineNormal : normal;
+      transformed += normalize(on) * ${width.toFixed(3)};`);
+  };
+  m.customProgramCacheKey = () => "outline" + width;
+  return m;
+}
+const OUTLINE = outlineMaterial(0x17121c, 0.02);
+const OUTLINE_CHAMPION = outlineMaterial(TUNING.enemy.champion.outline, 0.03, 1, true);
+const OUTLINE_SUMMONED = outlineMaterial(0x1e1638, 0.02, TUNING.enemy.summoned.opacity);
 
 function rimLight<T extends THREE.MeshStandardMaterial>(mat: T, strength: number): T {
   mat.onBeforeCompile = (shader) => {
@@ -178,30 +189,24 @@ interface Prepared {
  * se montam ossos, malhas e materiais. As geometrias do cache nunca são descartadas. */
 const PREPARED = new Map<string, Prepared>();
 
-function prepare(id: string, champion: boolean): Prepared {
-  const key = id + (champion ? "|champ" : "");
-  const hit = PREPARED.get(key);
+function prepare(id: string): Prepared {
+  const hit = PREPARED.get(id);
   if (hit) return hit;
   const b = new Builder();
   CAST[id](b);
-  if (champion) {
-    // coroa dourada flutuando sobre a cabeça
-    const target = b.form === "bat" || b.form === "slime" ? "hips" : "head";
-    const y = b.form === "slime" ? 1.35 : b.form === "bat" ? 0.5 : 0.8;
-    b.lit(target, at(torus(0.17, 0.03, 0xffc83d), 0, y, 0));
-    for (let i = 0; i < 5; i++) b.lit(target, at(cone(0.035, 0.12, 0xffc83d, 4), Math.cos(i * 1.257) * 0.17, y + 0.08, Math.sin(i * 1.257) * 0.17));
-  }
   const fuseAll = (m: Map<Bone | string, G[]>) => new Map([...m].map(([k, list]) => [k, fuse(list)] as const));
   const p: Prepared = {
     b, solid: fuseAll(b.solid), detail: fuseAll(b.detail), glow: fuseAll(b.glow), pelt: fuseAll(b.pelt),
     legs: b.ikLegs.map((spec) => ({ femur: fuse(spec.femur), tibia: fuse(spec.tibia) })),
   };
-  PREPARED.set(key, p);
+  PREPARED.set(id, p);
   return p;
 }
 
-export function buildChar(id: string, scaleMult: number, champion: boolean): Rig {
-  const P = prepare(id, champion);
+/** `variant`: o campeão ganha contorno dourado (a coroa no chão fica em `fx.ts`); o invocado (e o filho do splitter)
+ * sai em tom espectral, como no Dungeon Reign: cor × (0,8; 0,75; 0,95) e opacidade 0,85. */
+export function buildChar(id: string, scaleMult: number, variant: "champion" | "summoned" | null = null): Rig {
+  const P = prepare(id);
   const b = P.b;
   const root = new THREE.Group();
   const inner = new THREE.Group();
@@ -214,6 +219,17 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     };
     glow.customProgramCacheKey = () => "glowVertex";
   }
+  const outline = variant === "champion" ? OUTLINE_CHAMPION : variant === "summoned" ? OUTLINE_SUMMONED : OUTLINE;
+  const spectral = (m: THREE.MeshStandardMaterial): void => {
+    if (variant !== "summoned") return;
+    const t = TUNING.enemy.summoned;
+    m.color.setRGB(t.tint[0], t.tint[1], t.tint[2]);
+    m.transparent = true;
+    m.opacity = t.opacity;
+    if (m !== glow) m.emissive.set(t.emissive);
+  };
+  spectral(main);
+  spectral(glow);
   const k = b.bulk;
   const bones: Partial<Record<Bone, THREE.Group>> = {};
   const mk = (name: Bone, parent: THREE.Object3D, x: number, y: number, z: number): THREE.Group => {
@@ -249,6 +265,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
   let legMat = main;
   if (P.pelt.size) {
     const fur = b.surface === "lava" ? lavaMaterial(b.lava, b.rough) : furMaterial(b.stripe, b.rough);
+    spectral(fur);
     mats.push(fur);
     layers.push([P.pelt, fur]);
     legMat = fur;
@@ -263,7 +280,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     for (const [bone, geo] of [[femur, P.legs[i].femur], [tibia, P.legs[i].tibia]] as const) {
       const mesh = new THREE.Mesh(geo, legMat);
       mesh.castShadow = true;
-      bone.add(mesh, new THREE.Mesh(geo, OUTLINE));
+      bone.add(mesh, new THREE.Mesh(geo, outline));
     }
     const side = spec.attach[0] < 0 ? 0 : 1;
     return {
@@ -278,7 +295,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
       const mesh = new THREE.Mesh(geo, material);
       mesh.castShadow = material !== glow;
       parent.add(mesh);
-      if (material !== glow && map !== P.detail) parent.add(new THREE.Mesh(geo, OUTLINE));
+      if (material !== glow && map !== P.detail) parent.add(new THREE.Mesh(geo, outline));
     }
   }
   // fitas com física: malha em anel de 4 vértices por gomo (esquerda, cima, direita, baixo), no espaço de `root`, refeita em animate
@@ -304,7 +321,7 @@ export function buildChar(id: string, scaleMult: number, champion: boolean): Rig
     geo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(rings * 12), 3));
     geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
     geo.setIndex(index);
-    const mesh = new THREE.Mesh(geo, main), line = new THREE.Mesh(geo, OUTLINE);
+    const mesh = new THREE.Mesh(geo, main), line = new THREE.Mesh(geo, outline);
     mesh.castShadow = true;
     mesh.frustumCulled = line.frustumCulled = false;
     root.add(mesh, line);

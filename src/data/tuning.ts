@@ -30,7 +30,11 @@ export const TUNING = {
     activeRadius: 70,
     /** velocidade (unidades/s) do empurrão de um golpe de força 1 */
     knockback: 8,
-    champion: { hp: 4.2, damage: 1.5, speed: 1.1, scale: 1.35, xp: 4.5 },
+    champion: { hp: 4.2, damage: 1.5, speed: 1.1, scale: 1.35, xp: 4.5,
+      /** M3-06, visual do Dungeon Reign (affix_auras.lua, entity_renderer.lua): contorno dourado e coroa de espetos no chão */
+      outline: 0xf2b21c, aura: { radius: 1.75, spikes: 8, spin: 0.6, motes: 4 } },
+    /** invocados e filhos do splitter: tom espectral do Dungeon Reign (cor × tint, alfa 0,85) */
+    summoned: { tint: [0.8, 0.75, 0.95] as const, opacity: 0.85, emissive: 0x30265e },
     /** distância (px do Dungeon Idle) -> unidades do mundo */
     pxToUnit: 1 / 16,
   },
