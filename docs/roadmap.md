@@ -59,6 +59,34 @@ Um RPG de ação de 8 a 12 horas na primeira passada, com rejogabilidade por dif
 
 ## 3. Ordem dos marcos
 
+### 3.0 Ordem atual (D17, decidida pelo usuário em 2026-11-19)
+**Primeiro a jogabilidade inteira do Dungeon Reign, depois o acabamento de VFX, SFX e arte.** Toda regra, sistema e conteúdo jogável do original entra antes de fechar efeitos, som e modelos. Nesta fase:
+- Inimigos e chefes novos entram com **corpo provisório por código** (simples, legível na câmera, com a silhueta certa); a modelagem no Blender fica para a fase 2.
+- Efeito visual e som entram só no mínimo para o jogador ler a mecânica (telegrafia simples, cor do estado, som existente); o efeito próprio fica para a fase 2.
+- A régua é o `docs/paridade.md`: a fase acaba quando não sobra linha em "falta" nem "a decidir", e cada "adaptado" está aceito.
+
+**Fase 1 — Paridade de jogo**, nesta ordem:
+
+| Ordem | Tarefa | O quê |
+|---|---|---|
+| 1 | `M20-10` | Varredura de paridade: inventário de tudo que falta, linhas velhas corrigidas, tarefas novas registradas |
+| 2 | `M20-09` | Saco de chefes |
+| 3 | `M19-08` | Modo Boss Killer do Varok (`runMods`, H9) |
+| 4 | `M12-01` a `M12-07` | Motor de relíquias, as 94 relíquias (com as de spell, a premium e a de risco), sinergias |
+| 5 | `M9-06`, `M9-01` a `M9-05`, `M9-07` | Afixos de elite, os 5 inimigos que faltam (corpo provisório), composição |
+| 6 | `M10-10`, depois `M10-01` a `M10-09` | Mecânica dos 4 chefes atuais; depois só a sessão **luta** de cada chefe novo, com corpo provisório; cada um entra no saco |
+| 7 | `M11-08`, `M13-03` | Eventos e pactos (ligam as cartas de evento e pacto do mapa, R20) |
+| 8 | `M13-01`, `M13-02`, `M13-04` | Dificuldades, Depths, conquistas que faltarem |
+| 9 | `M17-01` | Bot que joga partidas, para medir o balanceamento com o jogo completo |
+
+O que a `M20-10` achar entra nesta tabela, no ponto em que fizer sentido.
+
+**Fase 2 — VFX, SFX e arte**, depois da fase 1: `M1-06` (ember_matriarch e hollow_king no Blender), modelos dos inimigos e chefes novos no Blender (sessão **modelo** do `M10`, modelo do `M9`), `M4` (animação, com `M4-08`), o resto do `M5` (`M5-01`, `M5-04`, `M5-06`, `M5-07`), `M15` (áudio), `M11` (relevo, água, biomas, clima), `M14` (interface), `M16` e `M17-02` em diante. Ordem dentro da fase a combinar com o usuário quando chegar lá.
+
+Validações que o usuário ainda deve (seção 9, "falta validar") continuam valendo; não travam a fase 1.
+
+### 3.1 Ordem original (até 2026-11-19, substituída pela 3.0)
+
 | Ordem | Marco | Por quê nesta posição |
 |---|---|---|
 | 1 | M0 Fundação e ferramentas | Barateia todo o resto (prévia, kit de modelagem, medição) |
@@ -245,6 +273,10 @@ Regras do marco:
 **M19-07 · Evolução das técnicas** · M [decisão D3]
 - Passos: os marcos de nível 2 a 5 e a evolução (Permafrost Bastion, Tempest Step, Stasis Field, Trick Shot, Kingslayer, Phoenix Rush, Eclipse, Sanctum, Broodmother). Depende de como se sobe de nível (`M6-06`/`M7`).
 
+**M19-08 · Modo Boss Killer do Varok** · P
+- Registrado em 2026-11-19 (paridade H9). Porta de `characters.lua` `runMods` (D-207): menos inimigos (`enemyCount`), chefes mais fortes (`bossHp`), recompensa por inimigo menor e por chefe maior (`killReward`, `bossReward`) e o que mais a linha trouxer. Agem na partida como sala ou pacto.
+- Pronto quando: os números batem com o `.lua` no `tests/parity.test.ts` e a partida do Varok mostra menos inimigos e chefes mais fortes.
+
 ### M20 — Partida como no Dungeon Reign [decisão D13]
 
 Pedido do usuário em 2026-11-15: a estrutura de jogo é a do Dungeon Reign. Uma partida tem seed própria, herói, dificuldade e spell inicial; 20 ondas em 4 zonas de mapa aberto (cada zona = 5 ondas, chefe nas ondas 5, 10, 15 e 20); melhorias de nível com 3 escolhas; mapa da partida entre ondas; loja; relíquias; morte encerra. Sem equipamento. O save guarda a partida em andamento (checkpoint antes de cada onda, como no original). Fontes em `dungeon-idle`: `src/run/` (`run_controller.lua`, `run_save.lua`, `wave_system.lua`, `run_map*.lua`, `run_intermission.lua`), `src/data/waves.lua`, `run_map.lua`, `upgrades.lua`, `difficulties.lua`, `src/progression/`, `src/core/game_state.lua`, `save.lua`, `unlocks.lua`.
@@ -285,6 +317,10 @@ Pedido do usuário em 2026-11-15: a estrutura de jogo é a do Dungeon Reign. Uma
 - Porta de `bosses/boss_bag.lua`: os chefes num saco embaralhado pela seed (fluxo próprio no `RunRng`), sem repetir até esvaziar; o chefe das ondas 5, 10, 15 e 20 e o da emboscada saem do saco. O bioma segue em ordem fixa (Bosque, Cripta, Vulcão, Vazio) e não precisa combinar com o chefe. Onda 20: o "Crowned King" (`B.CROWN`), com todos os ataques desde a fase 1 e um emprestado de outro chefe (`WaveSystem.crownAttack`).
 - Até o `M10`, o saco tem só os chefes modelados (hoje 4). Teste em `core`: mesma seed, mesma ordem; sem repetição dentro do saco; checkpoint guarda o saco.
 - Pronto quando: `zones.ts` não amarra mais o chefe ao bioma, e duas seeds diferentes dão chefes em ordens diferentes.
+
+**M20-10 · Varredura de paridade** · M [D17, 2026-11-19]
+- Primeira tarefa da fase 1 (seção 3.0). Passar por todos os sistemas do original (`dungeon-idle/src/`: `run/`, `combat/`, `player/`, `enemies/`, `bosses/`, `spells/`, `shop/`, `progression/`, `data/*.lua`) e conferir contra o `docs/paridade.md`. Corrigir as linhas velhas (S8, S10, S22, S24 a S27 ainda dizem "falta" do que já foi feito); abrir linha para cada regra do original que ainda não tem; cada "falta" aponta para uma tarefa, criando a tarefa quando não houver (por exemplo, as melhorias de nível que o R18 deixa de fora, o veneno da Vesper no S23, o ataque emprestado do rei coroado no R11, o dano por fonte do R23). Listar à parte o que é "adaptado" e ainda não foi aceito, para o usuário decidir.
+- Pronto quando: toda regra jogável do original tem linha na paridade, toda linha "falta" tem tarefa, e a tabela da seção 3.0 está atualizada.
 
 ### M3 — Inimigos atuais [validar em lote de 2 ou 3]
 
@@ -466,7 +502,7 @@ Fica para outros marcos: Hoarder's Crown (`shopPriceMult`), trocas grátis, rel�
 
 ### M10 — Chefes novos [validar cada um]
 
-Uma tarefa `G` por chefe, dividida em duas sessões: **modelo** e **luta** (mecânica, padrões, efeitos). Cada chefe traz a mecânica própria do Dungeon Reign.
+Uma tarefa `G` por chefe, dividida em duas sessões: **modelo** e **luta** (mecânica, padrões, efeitos). Cada chefe traz a mecânica própria do Dungeon Reign. **Pela D17 (2026-11-19), a sessão luta vem primeiro, na fase 1, com corpo provisório por código; a sessão modelo fica para a fase 2.**
 
 | ID | Chefe | Mecânica (`bosses.lua`) | Bioma (M11) | Corpo |
 |---|---|---|---|---|
@@ -749,6 +785,7 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 | D13 | Save contínuo ou partidas? | **Decidido em 2026-11-15: partidas como no Dungeon Reign.** Seed por partida, continuar no meio, morte encerra; sem equipamento; cada zona = 5 ondas, chefe nas ondas 5, 10, 15 e 20 | M20 |
 | D11 | Bosque Sombrio: deixar sombrio (fim de tarde, verdes fechados, luz fria, fogueira e cogumelos como contraste quente) ou manter ensolarado? | **Decidido em 2026-11-14: sombrio** | M18-07 |
 | D15 | Spell na tecla sai sem inimigo no alcance? | **Decidido em 2026-11-16: sai sempre e gasta a recarga**, acerte ou não (no original não saía sem alvo). Paridade S13 adaptada | M6 |
+| D17 | Ordem do trabalho daqui em diante | **Decidido pelo usuário em 2026-11-19:** toda a jogabilidade do Dungeon Reign antes de terminar VFX, SFX e arte (seção 3.0). Inimigos e chefes novos com corpo provisório por código até a fase 2. O `M1-06` pausa com bloodfang e gravekeeper aprovados | Seção 3 |
 | D14 | Atributos do herói contra os do Dungeon Reign: entra o poder de magia? "Efeitos" continua um atributo só (queimadura, veneno, lentidão)? Recarga e área globais entram no mesmo pool das spells, como lá? | **Decidido em 2026-11-16:** poder de magia **entra**; recarga global **entra**, no mesmo pool das spells; "efeitos" **se separa**. Proposta para a separação, como no original: dano por escola (`firePct`, `icePct`, `lightningPct`, `arcanePct`), queimadura (`burnPct`), lentidão (`slowPct`, `slowDurationPct`) e veneno (`poisonMult`). Lista confirmada pelo usuário em 2026-11-16 | M6-08, `core/stats.ts` |
 
 ---
@@ -852,6 +889,7 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`. **
 | M3-04 | feita, PR mergeada pelo usuário em 2026-11-19 | 2026-11-18 | Spellcaster e summoner modelados no Blender, forma `robed` (flutuam, manto no osso `skirt`), com base nova `tools/blender/robed.py` (pano em anéis com pregas, mangas em sino que caem para baixo do mundo na pose da receita, `fore_rot`/`local_dir` para pôr na vertical do mundo o que a mão segura). **Spellcaster**: rosto azul chupado de arcada em V, coroa de 6 cristais grossos, gola em funil baixo atrás com forro magenta, manto verde-azulado com fenda e barra roxa, cetro longo roxo com cacho de 4 cristais acesos numa garra; ~4,2 mil triângulos; crítico em 4 rodadas, de grave para médio (sobram cor da gola, forma da coroa e postura, que oscilaram). **Summoner**: rosto pálido e sereno, cabelo creme em calota com mechas largas nas costas, corpete claro com costelas de osso, cinto com fivela e bolsa, mangas em sino com friso dourado, livro grosso entreaberto e inclinado sobre a mão, mão erguida em garra, vestido fechado até o pescoço; ~5,9 mil triângulos; crítico em 6 rodadas, sempre com um grave novo e pequeno (decote manchado, mecha saindo no ataque), todos corrigidos; oscilaram: tom do roxo, livro, mechas do cabelo, fundo do corpete. Lições: caixa com base canhota vira as faces para dentro (`recalc_face_normals`); peças fechadas entre si saem pretas na oclusão (`no_ao`); peças finas com contorno viram riscos (camada `@flat`); material aceso usa a `glowColor`, não a cor por vértice. |
 | M3-05 | feita, aprovada pelo usuário (berserker na revisão 2: machados para cima) | 2026-11-19 | Bombardier e berserker modelados no Blender sobre base nova `tools/blender/dwarf.py` (pivôs baixos, `DWARF` em `cast-enemies.ts`; rosto com nariz redondo, barba farta com `beard_len`, sobrancelha em V com `angry`, olho claro com pupila com `whites`; braço com `k`/`fist`; perna curta com bota larga; `strip` para faixas na frente). **Bombardier**: gorro castanho com abas e óculos de latão na testa, casaco cinza-azulado com colete de couro, bandoleira com bolsas, canhão de latão com cintas de ferro e boca em sino apoiado no ombro direito; bomba por código na mão esquerda (`bombardierBomb`, estilo `throwL`) com faísca em estrela; ~5,7 mil triângulos; crítico em 4 rodadas, de grave para médio. **Berserker**: ombros mais largos (`shoulderX` 0,42), curvado (`lean` 0,42), elmo com chifres, placas de bochecha e protetor de nariz, peito e barriga nus com tatuagem azul sem contorno (`torso@flat`), manto de pele até o quadril; dois machados de barba por código (`berserkerAxe`), cabo de madeira clara, empunhados para cima em guarda depois da recusa do usuário (estavam caídos, lâmina para baixo); ~6,3 mil triângulos; crítico em 5 rodadas. Oscilaram entre rodadas (ficaram no meio): cor e ângulo do canhão, tamanho dos chifres e das lâminas, comprimento do manto e da barba. Lições: peça fina com contorno no rosto (borda de gorro, rebite) vira faixa preta ou "olho de desenho"; tatuagem com contorno vira fita colada; cabeça de personagem inclinado precisa de `tilt` negativo no `place_head` para o rosto aparecer na câmera alta. Pendente: o arremesso (`throwL`) lê como soco, animação comum a outros personagens. |
 | M3-06 | feita, aprovada pelo usuário | 2026-11-19 | Campeões e invocados pelo visual do Dungeon Reign (`affix_auras.lua`, `entity_renderer.lua`). **Campeão**: contorno dourado (`OUTLINE_CHAMPION` em `build.ts`, 0,03 de espessura, fora do tone mapping) no lugar da coroa flutuante; no chão, elipse dourada com aro, 8 espetos dourados girando e 4 faíscas subindo (`makeChampionAura` em `fx.ts`, apaga junto com a morte). **Invocado** (e filho do splitter): cor × (0,8; 0,75; 0,95), alfa 0,85, brilho roxo, contorno roxo escuro meio transparente. `buildChar` recebe `variant` em vez de `champion`; a geometria fica uma só por receita no cache. Prévia aceita `id:champion` e `id:summoned`. Registradas no mesmo dia, a pedido do usuário: `M1-06` (chefes no Blender) e `M4-08` (golpes dos inimigos e chefes). Crítico não rodado (variação de material sobre modelos aprovados). |
-| M1-06 | partes 1 (bloodfang, aprovada) e 2 (gravekeeper) feitas; gravekeeper falta validar | 2026-11-19 | Bloodfang no Blender (`tools/blender/bloodfang.py`, brief `docs/briefs/bloodfang.md`); facão por código (`bloodfangKnife`, também usado pela `bloodfang_v1`); `addModel` passou para `baked.ts`. ~14,1 mil triângulos. **Gravekeeper** (2026-11-19): `tools/blender/gravekeeper.py`, brief `docs/briefs/gravekeeper.md`; pá e lanterna por código (`gravekeeperShovel`, `gravekeeperLantern`, também na `gravekeeper_v1`); mão da pá mais baixa e tronco mais inclinado que na v1. Crítico em 4 rodadas, de grave para médio. ~6,4 mil triângulos. Prévia `/preview.html?a=gravekeeper&b=gravekeeper_v1`. Faltam ember_matriarch e hollow_king, um por sessão. |
+| M1-06 | partes 1 e 2 (bloodfang e gravekeeper) aprovadas; resto adiado para a fase 2 (D17) | 2026-11-19 | Bloodfang no Blender (`tools/blender/bloodfang.py`, brief `docs/briefs/bloodfang.md`); facão por código (`bloodfangKnife`, também usado pela `bloodfang_v1`); `addModel` passou para `baked.ts`. ~14,1 mil triângulos. **Gravekeeper** (2026-11-19): `tools/blender/gravekeeper.py`, brief `docs/briefs/gravekeeper.md`; pá e lanterna por código (`gravekeeperShovel`, `gravekeeperLantern`, também na `gravekeeper_v1`); mão da pá mais baixa e tronco mais inclinado que na v1. Crítico em 4 rodadas, de grave para médio. ~6,4 mil triângulos. Prévia `/preview.html?a=gravekeeper&b=gravekeeper_v1`. Gravekeeper aprovado pelo usuário em 2026-11-19 (com as mãos apoiadas na pá e na lanterna). Ember_matriarch e hollow_king ficam para a fase 2 (D17), um por sessão. |
+| D17 | decidido | 2026-11-19 | Roadmap reordenado a pedido do usuário: fase 1 de paridade de jogo (seção 3.0, começa pela `M20-10`) antes de VFX, SFX e arte. Tarefas novas: `M20-10` (varredura de paridade) e `M19-08` (Boss Killer do Varok). |
 
 O M1 está completo, faltando só a validação da `M1-05`. No M2, os nove heróis estão refeitos: oito aprovados e Vesper (com as abelhas) esperando validação. Próxima sessão, sugestão: `M2-10`. `M0-03` (prévia com seletor, lineup e contagem) continua pendente.
