@@ -47,7 +47,9 @@ if (q.get("haze") === "0") U.uFog.value.set(1e4, 0, 0, 1);
 
 const hero = characterRig(q.get("hero") ?? "varok", "hero");
 scene.add(hero.root);
-const boss = characterRig(zone.boss, "boss");
+// o chefe não é mais da zona (saco de chefes, M20-09); a prévia põe um para dar escala (`?boss=<id>` troca)
+const PREVIEW_BOSS: Record<string, string> = { bosque: "bloodfang", cripta: "gravekeeper", vulcao: "ember_matriarch", vazio: "hollow_king" };
+const boss = characterRig(q.get("boss") ?? PREVIEW_BOSS[zone.id] ?? "bloodfang", "boss");
 boss.root.position.set(layout.boss.x, 0, layout.boss.z - 4);
 scene.add(boss.root);
 

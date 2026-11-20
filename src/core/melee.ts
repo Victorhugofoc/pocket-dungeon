@@ -1,4 +1,4 @@
-// Golpe corpo a corpo com direção (M21-01, D17): o arco travado no preparo decide quem leva o golpe.
+// Golpe corpo a corpo com direção (M21-01, D18): o arco travado no preparo decide quem leva o golpe.
 // Ângulos no padrão do jogo: atan2(dx, dz).
 
 /** Diferença de ângulo em [-π, π]. */

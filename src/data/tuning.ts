@@ -38,7 +38,7 @@ export const TUNING = {
     /** distância (px do Dungeon Idle) -> unidades do mundo */
     pxToUnit: 1 / 16,
     /**
-     * M21-01 (D17): telegrafia do golpe corpo a corpo. No preparo a direção trava e o arco aparece no chão;
+     * M21-01 (D18): telegrafia do golpe corpo a corpo. No preparo a direção trava e o arco aparece no chão;
      * o golpe só acerta quem está dentro dele quando fecha. Antes acertava em volta toda, até alcance + 1,1.
      */
     telegraph: {
@@ -55,8 +55,6 @@ export const TUNING = {
     },
   },
   boss: {
-    /** multiplicador global da vida dos chefes (0.55 depois do 1º playtest: "o boss tem muita vida") */
-    hpMult: 0.55,
     enrageAt: 0.3,
     enrageCooldownMult: 0.65,
     /** segundos em que o chefe ruge sem atacar: ao entrar na luta e ao enfurecer */

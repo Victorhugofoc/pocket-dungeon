@@ -160,6 +160,9 @@ export const BOSS = {
 } as const;
 
 /** tuning.lua: regras gerais de combate da partida. */
+/** status.lua: queimadura num efeito só por inimigo; cada acúmulo extra soma 50% do maior dano (D-161), até 8 contados. */
+export const BURN = { tick: 0.5, stackBonus: 0.5, stackCap: 8 } as const;
+
 export const RUN_TUNING = {
   introTime: 1.8,
   clearedTime: 2.6,
@@ -203,9 +206,9 @@ export const CHILD_SCALE = { hp: 0.72, damage: 0.78, speed: 1.18 } as const;
 export const SURVIVOR_FACTOR = 0.35;
 
 /** bosses.lua `builds[id].mults`: só dos 4 chefes que existem aqui (M10 traz os outros). */
-export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: number }> = {
-  bloodfang: { hp: 1.12, damage: 1.18, speed: 1.12 },
-  gravekeeper: { hp: 1.10, damage: 1.00, speed: 0.88 },
-  ember_matriarch: { hp: 1.04, damage: 1.08, speed: 0.94 },
-  hollow_king: { hp: 1.12, damage: 1.14, speed: 0.92 },
+export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: number; projectileSpeed: number }> = {
+  bloodfang: { hp: 1.12, damage: 1.18, speed: 1.12, projectileSpeed: 0.90 },
+  gravekeeper: { hp: 1.10, damage: 1.00, speed: 0.88, projectileSpeed: 0.90 },
+  ember_matriarch: { hp: 1.04, damage: 1.08, speed: 0.94, projectileSpeed: 0.90 },
+  hollow_king: { hp: 1.12, damage: 1.14, speed: 0.92, projectileSpeed: 1.00 },
 };

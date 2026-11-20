@@ -1,15 +1,15 @@
 # Dungeon Reign RPG — design
 
 ## Visão
-Roguelite de ação para PC, em partidas de 30 a 40 minutos. Cada partida é uma run do Dungeon Reign jogada em mapas abertos 3D: um herói, uma spell inicial, 20 ondas em 4 zonas procedurais, melhorias a cada nível, loja, relíquias e um chefe a cada 5 ondas até o chefe final. O **conteúdo e a estrutura** vêm do Dungeon Reign; as **regras de combate e o ritmo** são de jogo de ação e se ajustam jogando (D17). O que muda está escrito em `docs/paridade.md`, com o motivo.
+Roguelite de ação para PC, em partidas de 30 a 40 minutos. Cada partida é uma run do Dungeon Reign jogada em mapas abertos 3D: um herói, uma spell inicial, 20 ondas em 4 zonas procedurais, melhorias a cada nível, loja, relíquias e um chefe a cada 5 ondas até o chefe final. O **conteúdo e a estrutura** vêm do Dungeon Reign; as **regras de combate e o ritmo** são de jogo de ação e se ajustam jogando (D18). O que muda está escrito em `docs/paridade.md`, com o motivo.
 
 ## Decisões do usuário
 - Plataforma: PC (teclado e mouse).
 - **Partidas como no Dungeon Reign** (decisão D13, 2026-11-15; substitui "progressão persistente, não runs"). Cada partida tem uma seed gerada no início. O save guarda a partida em andamento, e quem parar no meio continua de onde estava, no mesmo mapa.
 - **Sem equipamento** (D13): como no original, o poder vem das melhorias de nível, da loja e das relíquias.
 - **Zona = 5 ondas** (D13): cada zona é um mapa aberto em 5 trechos; limpar um trecho é uma onda; o chefe fecha a zona nas ondas 5, 10, 15 e 20.
-- Spells como no original, em teclas (D2, D12), divididas em ativas e auras (D17).
-- **Paridade de conteúdo, não de regra de combate** (decisão D17, 2026-11-20). Ficam iguais ao original: nomes, identidades dos heróis, spells e técnicas, receitas de evolução, relíquias, salas, pactos, eventos e a estrutura de 20 ondas. Os números de combate e de ritmo (contagem e vida dos inimigos, duração da onda, cura, tamanho das áreas) são "adaptado" por padrão: o original foi calibrado para spells que saem sozinhas, e aqui o jogador mira e esquiva. `tests/parity.test.ts` continua como régua de referência, e o ajuste mora numa camada própria em `src/data`. Antes de seguir com arte e paridade, o loop de jogo é ajustado jogando (marco M21).
+- Spells como no original, em teclas (D2, D12), divididas em ativas e auras (D18).
+- **Paridade de conteúdo, não de regra de combate** (decisão D18, 2026-11-20). Ficam iguais ao original: nomes, identidades dos heróis, spells e técnicas, receitas de evolução, relíquias, salas, pactos, eventos e a estrutura de 20 ondas. Os números de combate e de ritmo (contagem e vida dos inimigos, duração da onda, cura, tamanho das áreas) são "adaptado" por padrão: o original foi calibrado para spells que saem sozinhas, e aqui o jogador mira e esquiva. `tests/parity.test.ts` continua como régua de referência, e o ajuste mora numa camada própria em `src/data`. Antes de seguir com arte e paridade, o loop de jogo é ajustado jogando (marco M21).
 - Tecnologia: three.js no navegador. Toda a arte é gerada por código, em 3D estilizado; os sprites do Dungeon Reign são só referência de design.
 - **Personagens no Blender** (decisão D16, 2026-11-18): os modelos de personagem passam a ser feitos no Blender por script Python (`tools/blender/`), com o `.blend` em `art/` para ajuste à mão, e exportados por osso para o jogo (`src/game/chars/models/*.json`). Esqueleto, animação, contorno e materiais continuam no código. Motivo: o rosto do goblin por primitivas de código não ficou ameaçador depois de várias rodadas; o do Blender ficou muito melhor. Cenário, efeitos e sons seguem por código.
 - Conteúdo: heróis, inimigos, chefes, relíquias, spells, eventos e pactos do Dungeon Reign.
@@ -26,9 +26,9 @@ Roguelite de ação para PC, em partidas de 30 a 40 minutos. Cada partida é uma
 
 ## Combate
 - **Esquiva é o centro**: todo golpe de inimigo e de chefe tem telegrafia legível (preparo, área no chão, som), e a esquiva dá invulnerabilidade curta.
-- **Cura no risco** (D17; substitui a poção, Q3): não há poção. A cura cai no chão (campeão, reação de estado, poça de sala) e some em poucos segundos; curar exige ir buscar.
-- **Reações de estado** (D17): os estados se combinam. Congelado + raio = Estilhaço (dano em área); queimando + veneno = Praga (explosão que espalha os dois); tornado + elemento = tornado daquele elemento; atordoado + golpe pelas costas = execução. As sinergias do original continuam nas relíquias; as reações são a sinergia da mão.
-- **Spells ativas e auras** (D17): as ativas (Fireball, Iceball, Lightning, Arcane Bolt, Cyclone, Quake Totem...) saem na tecla, com mira. As auras (Blade Orbit, Healing Field, Rune Traps, Venom Nova) saem sozinhas como no original, e a tecla dá um pico que gasta a recarga (a Orbit lança as lâminas, o Field estoura a cura).
+- **Cura no risco** (D18; substitui a poção, Q3): não há poção. A cura cai no chão (campeão, reação de estado, poça de sala) e some em poucos segundos; curar exige ir buscar.
+- **Reações de estado** (D18): os estados se combinam. Congelado + raio = Estilhaço (dano em área); queimando + veneno = Praga (explosão que espalha os dois); tornado + elemento = tornado daquele elemento; atordoado + golpe pelas costas = execução. As sinergias do original continuam nas relíquias; as reações são a sinergia da mão.
+- **Spells ativas e auras** (D18): as ativas (Fireball, Iceball, Lightning, Arcane Bolt, Cyclone, Quake Totem...) saem na tecla, com mira. As auras (Blade Orbit, Healing Field, Rune Traps, Venom Nova) saem sozinhas como no original, e a tecla dá um pico que gasta a recarga (a Orbit lança as lâminas, o Field estoura a cura).
 - **Terreno na luta**: gargalos, barris explosivos e beiradas onde o empurrão mata.
 
 ## Controles

@@ -30,7 +30,11 @@ export type StatKey =
   | "rangePct"
   | "xpPct"
   | "goldPct"
-  | "lifeOnKill";
+  | "lifeOnKill"
+  | "healPct" // cura recebida (lá, `healPct`; Seraph)
+  | "bossDamagePct" // dano em chefe (lá, `bossDamagePct`; Smite do Seraph)
+  | "burnStacks" // acúmulos extras de queimadura (lá, `burnStacks`; Ignis)
+  | "poisonStacks"; // acúmulos extras de veneno (lá, `poisonStacks`; Vesper)
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -38,7 +42,7 @@ export const STAT_KEYS: StatKey[] = [
   "damage", "damagePct", "autoDamagePct", "spellPower", "spellDamagePct", "firePct", "icePct", "lightningPct",
   "arcanePct", "burnPct", "slowPct", "slowDurationPct", "poisonPct", "maxHp", "maxHpPct", "attackSpeedPct", "moveSpeedPct", "critChance",
   "critDamagePct", "armor", "regen", "dodge", "cdrPct", "areaPct", "rangePct",
-  "xpPct", "goldPct", "lifeOnKill",
+  "xpPct", "goldPct", "lifeOnKill", "healPct", "bossDamagePct", "burnStacks", "poisonStacks",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -70,9 +74,13 @@ export const STAT_LABEL: Record<StatKey, string> = {
   xpPct: "XP earned",
   goldPct: "Gold earned",
   lifeOnKill: "HP per kill",
+  healPct: "Healing",
+  bossDamagePct: "Boss Damage",
+  burnStacks: "Burn Stacks",
+  poisonStacks: "Poison Stacks",
 };
 
-const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true };
+const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true };
 
 export function isFlat(k: StatKey): boolean {
   return FLAT[k] === true;
@@ -124,6 +132,14 @@ export interface FinalStats {
   xp: number;
   gold: number;
   lifeOnKill: number;
+  /** multiplicador da cura recebida: armadura (modifiers.lua `healingMultiplier`) × `healPct` */
+  healing: number;
+  /** multiplicador do dano em chefe */
+  bossDamage: number;
+  /** máximo de acúmulos de queimadura (1 + `burnStacks`) */
+  burnStacks: number;
+  /** acúmulos de veneno a mais por aplicação de veneno do ataque */
+  poisonStacks: number;
 }
 
 /** Escolas cujo dano tem bônus próprio (D14). As outras spells (cura, lâmina, veneno, vento...) usam 1. */
@@ -177,5 +193,9 @@ export function computeStats(sources: StatBlock[]): FinalStats {
     xp: Math.max(0.1, 1 + g("xpPct")),
     gold: Math.max(0.1, 1 + g("goldPct")),
     lifeOnKill: g("lifeOnKill"),
+    healing: (armor > 0 ? 1 + armor / (armor + 60) : 1) * Math.max(0.1, 1 + g("healPct")),
+    bossDamage: Math.max(0.1, 1 + g("bossDamagePct")),
+    burnStacks: 1 + Math.max(0, g("burnStacks")),
+    poisonStacks: Math.max(0, g("poisonStacks")),
   };
 }

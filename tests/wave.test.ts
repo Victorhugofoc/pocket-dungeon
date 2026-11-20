@@ -101,3 +101,15 @@ describe("ciclo da onda", () => {
     expect(survivorReward({ gold: 10, xp: 20 }, true, mods)).toEqual({ gold: 15, xp: 31 });
   });
 });
+
+describe("velocidade dos projéteis (enemy.lua e boss.lua `projectileSpeedMult`)", () => {
+  it("inimigo leva a da dificuldade e da sala; chefe leva também a dele", async () => {
+    const { enemyStats, bossStats } = await import("../src/core/wave");
+    const { ROOMS } = await import("../src/data/rooms");
+    const room = ROOMS.find((r) => r.id === "arrow_hall")!;
+    const mods = waveMods(3, "hard", room);
+    expect(enemyStats(ENEMIES.archer, 3, mods).projectileSpeed).toBeCloseTo(1.12 * 1.18, 10);
+    expect(bossStats("bloodfang", 5, waveMods(5, "normal")).projectileSpeed).toBeCloseTo(0.9, 10);
+    expect(bossStats("hollow_king", 5, waveMods(5, "easy")).projectileSpeed).toBeCloseTo(0.9, 10);
+  });
+});

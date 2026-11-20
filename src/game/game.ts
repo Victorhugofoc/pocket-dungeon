@@ -18,7 +18,8 @@ import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/ru
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
-import { BOSSES, ENEMIES } from "../data/enemies";
+import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, type BossPattern } from "../data/enemies";
+import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
@@ -122,7 +123,7 @@ interface Projectile {
   ice?: boolean; icicle?: boolean;
   /** empurrão extra no acerto, em fração de TUNING.enemy.knockback (Fan the Hammer) */
   push?: number;
-  /** Trick Shot: ricochetes que restam no fim do alcance ou num obstáculo, ganho de dano em cada um e o alcance (s) */
+  /** Trick Shot: ricochetes que restam na borda da clareira da onda, ganho de dano em cada um e o alcance (s) */
   bounces?: number; bounceGain?: number; span?: number;
   /** M5-03: rastro do tiro (Fan the Hammer) */
   fx?: TrailHandle;
@@ -214,6 +215,9 @@ export class Game {
   nearPortal = false;
   /** a onda em andamento (core/wave.ts) e os modificadores dela; null entre as ondas */
   wave: WaveState | null = null;
+  /** chefe da onda de chefe atual (saco de chefes) e o ataque emprestado do rei coroado */
+  waveBoss: string | null = null;
+  crown: BossPattern | null = null;
   mods: WaveMods = waveMods(1, "normal");
   phase: WavePhase = "walk";
   private phaseT = 0;
@@ -666,24 +670,22 @@ export class Game {
   }
 
   /**
-   * Trick Shot (auto_attack.lua): lá a bala bate na borda da arena e volta, +20% de dano, com a lista de acertos limpa.
-   * Adaptado ao mapa aberto: ricocheteia no fim do alcance ou num obstáculo, rumo ao inimigo mais perto dentro do
-   * alcance, ou de volta pelo mesmo caminho se não houver nenhum.
+   * Trick Shot (auto_attack.lua): a bala bate na borda da arena e volta, +20% de dano, com a lista de acertos e o
+   * alcance zerados. Aqui a borda é a da clareira da onda (o herói não sai dela durante a luta, S30); a bala reflete
+   * no círculo como lá reflete na parede. Fora da luta não há borda, e a bala some no fim do alcance como as outras.
    */
-  private trickShot(pr: Projectile): boolean {
-    const sp = Math.hypot(pr.vx, pr.vz) || 1;
-    const reach = sp * (pr.span ?? 1);
-    const next = this.nearestEnemy(pr.x, pr.z, reach);
-    if (next) {
-      const a = Math.atan2(next.x - pr.x, next.z - pr.z);
-      pr.vx = Math.sin(a) * sp;
-      pr.vz = Math.cos(a) * sp;
-    } else {
-      pr.vx = -pr.vx;
-      pr.vz = -pr.vz;
-    }
-    pr.x += (pr.vx / sp) * 0.3;
-    pr.z += (pr.vz / sp) * 0.3;
+  private trickShot(pr: Projectile): void {
+    if (this.phase !== "intro" && this.phase !== "fight") return;
+    const sg = this.segment;
+    const dx = pr.x - sg.x, dz = pr.z - sg.z, d = Math.hypot(dx, dz);
+    if (d <= sg.r || d === 0) return;
+    const nx = dx / d, nz = dz / d;
+    const dot = pr.vx * nx + pr.vz * nz;
+    if (dot <= 0) return;
+    pr.vx -= 2 * dot * nx;
+    pr.vz -= 2 * dot * nz;
+    pr.x = sg.x + nx * sg.r;
+    pr.z = sg.z + nz * sg.r;
     pr.bounces = (pr.bounces ?? 1) - 1;
     pr.dmg *= 1 + (pr.bounceGain ?? 0.2);
     pr.hit.clear();
@@ -691,7 +693,6 @@ export class Game {
     if (pr.fx) {
       this.fx.lib.burst(pr.x, 1.15, pr.z, { radius: 0.8, color: TECH_FX.gun, core: TECH_FX.gunCore, rays: 4, sparks: 8, light: 0, dur: 0.16, wave: 0 });
     } else this.fx.burst(pr.x, 1.15, pr.z, 0xffe9b0, 10, 5, 0.1, 0.25, 2);
-    return true;
   }
 
   private updateProjectiles(dt: number): void {
@@ -705,8 +706,8 @@ export class Game {
         pr.x += pr.vx * dt;
         pr.z += pr.vz * dt;
       }
+      if (pr.friendly && pr.bounces && pr.bounces > 0) this.trickShot(pr);
       let dead = pr.life <= 0 || this.grid.hits(pr.x, pr.z, pr.r * 0.5);
-      if (dead && pr.friendly && pr.bounces && pr.bounces > 0) dead = !this.trickShot(pr);
       // Rune Traps (D-575): o tiro do ataque básico estoura a runa armada que cruza
       if (!dead && pr.friendly && pr.source === "auto" && this.spells.hasRunes) {
         this.spells.shootRunes((x, z, trig) => (x - pr.x) ** 2 + (z - pr.z) ** 2 <= (pr.r + trig) ** 2);
@@ -847,19 +848,19 @@ export class Game {
     } else if (st.kind === "stun") {
       e.stunUntil = Math.max(e.stunUntil, now + st.duration * (e.isBoss ? 0.3 : 1));
       e.windupT = -1;
+    } else if (st.kind === "poison") {
+      // S23: um veneno só por inimigo, dividido com a Venom Nova (status.lua `applyPoison`)
+      // auto_attack.lua: máximo = o do tiro + `poisonStacks` do herói (Vesper +1)
+      e.applyPoison(now, hitDamage * st.power * potency, st.duration, (st.maxStacks ?? 1) + this.stats.poisonStacks, undefined, "auto");
     } else {
-      const max = st.maxStacks ?? 1;
-      const dot = { kind: st.kind, dps: hitDamage * st.power * potency, until: now + st.duration };
-      const same = e.dots.filter((d) => d.kind === st.kind && !d.spell);
-      if (same.length >= max) {
-        same.sort((a, b) => a.until - b.until);
-        Object.assign(same[0], dot);
-      } else e.dots.push(dot);
+      // S23/status.lua: uma queimadura só por inimigo, dividida com o Fireball
+      e.applyBurn(now, hitDamage * st.power * potency, st.duration);
     }
   }
 
   damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean } = {}): void {
     if (e.dead) return;
+    if (e.isBoss) amount *= this.stats.bossDamage; // damage.lua: Smite do Seraph (D-317)
     amount = Math.max(1, Math.round(amount));
     this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
     e.hp -= amount;
@@ -1041,6 +1042,7 @@ export class Game {
   heal(amount: number, show: boolean, full = false): void {
     const p = this.player;
     const before = p.hp;
+    if (!full) amount *= this.stats.healing; // damage.lua `healPlayer`: armadura e `healPct`
     if (this.inCombat && !full) amount *= RUN_TUNING.combatHealMult;
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
     this.run.statistics.healed += p.hp - before;
@@ -1317,8 +1319,11 @@ export class Game {
     this.phaseT = 0;
     this.showRing(true);
     const boss = this.wave.isBossWave;
+    // D6/M20-09: o chefe sai do saco (boss_bag.lua) ao começar a onda; continuar do checkpoint tira o mesmo
+    this.waveBoss = boss ? drawBoss(this.run, this.rng.get("bosses"), Game.BOSS_POOL) : null;
+    this.crown = boss && n === BOSS.final.wave ? this.crownPattern(this.waveBoss!) : null;
     const room = this.mods.room;
-    const sub = boss ? `${BOSSES[this.zone.boss].name} approaches` : room ? `${room.name}` : this.zone.name;
+    const sub = this.waveBoss ? `${n === BOSS.final.wave ? CROWN_TITLE : BOSSES[this.waveBoss].name} approaches` : room ? `${room.name}` : this.zone.name;
     this.events.banner(`Wave ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, sub);
     this.audio.play(boss ? "boss" : "level");
   }
@@ -1370,17 +1375,28 @@ export class Game {
     return { x: sg.x + (dx / d) * r, z: sg.z + (dz / d) * r };
   }
 
-  private queueBoss(): void {
-    this.queueSpawn({ id: this.zone.boss, champion: false }, true);
+  /** Chefes que podem sair do saco: os de `bosses.lua` que já têm luta aqui (hoje os 4; os do `M10` entram depois). */
+  static readonly BOSS_POOL: readonly string[] = BOSS_ORDER.filter((id) => id in BOSSES);
+
+  /** `WaveSystem.crownAttack`: o padrão de outro chefe, de um tipo que o rei não tem (D-640). */
+  private crownPattern(id: string): BossPattern | null {
+    const own = BOSSES[id].patterns.map((p) => p.kind);
+    const kind = crownAttack(own, CROWN_BORROW, this.rng.get("bosses"));
+    if (!kind) return null;
+    for (const other of Game.BOSS_POOL) {
+      const pt = BOSSES[other].patterns.find((p) => p.kind === kind);
+      if (pt) return pt;
+    }
+    return null;
   }
 
-  /**
-   * §7.9 Emboscada: um chefe enfraquecido entra na onda normal. Lá ele sai do saco dos 13; aqui, de um dos 4 chefes
-   * que não é o da zona (o da zona fica para a arena), no fluxo `bosses`.
-   */
+  private queueBoss(): void {
+    this.queueSpawn({ id: this.waveBoss ?? Game.BOSS_POOL[0], champion: false }, true);
+  }
+
+  /** §7.9/§70 Emboscada: um chefe enfraquecido entra na onda normal; sai do mesmo saco das ondas de chefe. */
   private queueAmbush(): void {
-    const pool = ZONE_ORDER.map((z) => ZONES[z].boss).filter((b) => b !== this.zone.boss && BOSSES[b]);
-    const id = this.rng.get("bosses").pick(pool);
+    const id = drawBoss(this.run, this.rng.get("bosses"), Game.BOSS_POOL);
     this.queueSpawn({ id, champion: false }, true);
     this.events.toast(`Boss Ambush: ${BOSSES[id].name}!`, "#ff7a5a");
   }
@@ -1401,7 +1417,7 @@ export class Game {
       if (m.boss) {
         const ambush = this.wave?.ambush ?? null;
         const final = !ambush && this.run.wave === BOSS.final.wave;
-        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush });
+        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush, crownAttack: final ? this.crown : null });
         this.ach.bossSpawned(e, this.run.statistics.elapsed);
         e.hunter = true;
         this.boss = e;
