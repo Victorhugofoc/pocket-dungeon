@@ -264,6 +264,8 @@ export interface FoeStats {
   damage: number;
   /** multiplicador da velocidade do dado */
   speed: number;
+  /** multiplicador da velocidade dos projéteis (enemy.lua e boss.lua `projectileSpeedMult`) */
+  projectileSpeed: number;
 }
 
 /** enemy.lua `create` (com os pesados do Iron Pack), e `makeChampion` quando é campeão. */
@@ -281,13 +283,13 @@ export function enemyStats(def: { id?: string; hp: number; damage: number }, wav
     damage *= CHAMPION.damageMult;
     speed *= CHAMPION.speedMult;
   }
-  return { hp, damage, speed };
+  return { hp, damage, speed, projectileSpeed: mods.projectileSpeed };
 }
 
 /** boss.lua `stats`. `final` = a onda 20, o rei coroado; `ambush` = o corte do chefe da emboscada. */
 export function bossStats(bossId: string, wave: number, mods: WaveMods, final = wave === BOSS.final.wave,
   ambush: { hp: number; damage: number } | null = null): FoeStats {
-  const m = BOSS_MULTS[bossId] ?? { hp: 1, damage: 1, speed: 1 };
+  const m = BOSS_MULTS[bossId] ?? { hp: 1, damage: 1, speed: 1, projectileSpeed: 1 };
   const up = bossTier(wave) - 1;
   const b = BOSS.base;
   let hp = (b.hpBase + wave * b.hpPerWave) * m.hp * (1 + BOSS.tier.hp * up) * mods.bossHp;
@@ -309,7 +311,7 @@ export function bossStats(bossId: string, wave: number, mods: WaveMods, final = 
     hp *= ambush.hp;
     damage *= ambush.damage;
   }
-  return { hp, damage, speed };
+  return { hp, damage, speed, projectileSpeed: mods.projectileSpeed * m.projectileSpeed };
 }
 
 // ---------------------------------------------------------------- recompensas (rewards.lua)

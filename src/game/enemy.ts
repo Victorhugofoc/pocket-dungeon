@@ -1,7 +1,7 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
 import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
-import { CHILD_SCALE, MINION_SCALE } from "../data/run";
+import { CHILD_SCALE, MINION_SCALE, RUN_TUNING } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
 import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
@@ -18,7 +18,7 @@ export interface Dot {
   /** spell que aplicou (Fireball: o Volátil olha isto) e o espaço dela */
   spell?: string;
   slot?: number;
-  /** Venom Nova: um efeito só com contador de acúmulos (status.lua `applyPoison`); o dano por segundo vale por acúmulo */
+  /** veneno: um efeito só por inimigo com contador de acúmulos (status.lua `applyPoison`); o dano por segundo vale por acúmulo */
   stacks?: number;
   maxStacks?: number;
   /** Plague Bloom: duração de cada aplicação e o contágio na morte (status.lua `po.spread`) */
@@ -76,10 +76,31 @@ export class Enemy {
   /** estado do gelo da Frostine (src/core/frost.ts) */
   frost: FrostTarget;
   dots: Dot[] = [];
+
+  /**
+   * status.lua `applyPoison`: um veneno só por inimigo, de qualquer fonte (tiro da Vesper, Venom Nova, Ninhada,
+   * Plague Bloom); cada aplicação soma um acúmulo (até o maior máximo visto) e renova a duração; fica o maior dano
+   * por segundo; o contágio e a fonte ficam os da primeira aplicação que os trouxe.
+   */
+  applyPoison(now: number, dps: number, duration: number, maxStacks: number, spread?: Dot["spread"], source?: string): void {
+    const until = now + duration;
+    const cur = this.dots.find((d) => d.kind === "poison");
+    if (cur) {
+      cur.dps = Math.max(cur.dps, dps);
+      cur.until = Math.max(cur.until, until);
+      cur.duration = Math.max(cur.duration ?? 0, duration);
+      cur.maxStacks = Math.max(cur.maxStacks ?? 1, maxStacks);
+      cur.stacks = Math.min(cur.maxStacks, (cur.stacks ?? 1) + 1);
+      cur.spread ??= spread;
+      cur.spell ??= source;
+    } else this.dots.push({ kind: "poison", dps, until, duration, spell: source, stacks: 1, maxStacks, spread });
+  }
   dotTick = 0;
   strafe = Math.random() < 0.5 ? -1 : 1;
   summonCd = 3;
   chargeCd = 2.5;
+  /** velocidade dos projéteis: dificuldade, sala e, no chefe, o dele */
+  projK = 1;
   charging: { t: number; dur: number; dx: number; dz: number; speed: number; dmg: number; hit: boolean } | null = null;
   casting = 0;
   patternCd = 3;
@@ -113,8 +134,8 @@ export class Enemy {
     this.ambush = isBoss && !!opts.ambush;
     const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final, opts.ambush ?? null) : enemyStats(def, wave, game.mods, this.champion);
     const derived = opts.child ? CHILD_SCALE : this.summoned ? MINION_SCALE : null;
-    const hpK = isBoss ? TUNING.boss.hpMult : 1;
-    this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1) * hpK);
+    this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1));
+    this.projK = st.projectileSpeed;
     this.dmg = st.damage * (derived ? derived.damage : 1);
     this.speed = def.speed * st.speed * (derived ? derived.speed : 1);
     this.radius = def.radius * (this.champion ? 1.2 : 1);
@@ -219,10 +240,12 @@ export class Enemy {
     const vx0 = this.x;
     const vz0 = this.z;
     this.moveAmt = 0;
-    this.cd -= dt;
+    // ai.lua D-196: onda apressada acelera movimento e ritmo de ataque dos inimigos, menos os chefes
+    const haste = !this.boss && game.wave?.hastened ? RUN_TUNING.hasten.enemySpeed : 1;
+    this.cd -= dt * haste;
     const stunned = now < this.stunUntil;
     const slow = now < this.slowUntil ? 1 - this.slowPower : 1;
-    const speed = this.speed * slow * (this.enraged ? 1.15 : 1);
+    const speed = this.speed * slow * haste * (this.enraged ? 1.15 : 1);
     const dxp = p.x - this.x;
     const dzp = p.z - this.z;
     const dist = Math.hypot(dxp, dzp);
@@ -428,7 +451,7 @@ export class Enemy {
   private shoot(game: Game, color: number, speedP: number, spreadErr = 0.06): void {
     const p = game.player;
     const a = Math.atan2(p.x - this.x, p.z - this.z) + (Math.random() - 0.5) * spreadErr;
-    game.spawnEnemyProjectile(this.x + Math.sin(a) * this.radius, this.z + Math.cos(a) * this.radius, a, speedP, this.dmg, color, 0.26);
+    game.spawnEnemyProjectile(this.x + Math.sin(a) * this.radius, this.z + Math.cos(a) * this.radius, a, speedP * this.projK, this.dmg, color, 0.26);
     this.attackAnim = 0;
   }
 
@@ -525,7 +548,7 @@ export class Enemy {
         s.left--;
         s.angle += 0.52;
         for (let arm = 0; arm < 3; arm++) {
-          game.spawnEnemyProjectile(this.x, this.z, s.angle + (arm * Math.PI * 2) / 3, s.p.speed ?? 10, this.dmg * s.p.damage, b.projectileColor, 0.3);
+          game.spawnEnemyProjectile(this.x, this.z, s.angle + (arm * Math.PI * 2) / 3, (s.p.speed ?? 10) * this.projK, this.dmg * s.p.damage, b.projectileColor, 0.3);
         }
       }
       if (s.left <= 0) this.spiral = null;
@@ -585,7 +608,7 @@ export class Enemy {
           if (!ok()) return;
           const off = Math.random() * Math.PI;
           for (let i = 0; i < n; i++) {
-            game.spawnEnemyProjectile(this.x, this.z, off + (i / n) * Math.PI * 2, pt.speed ?? 10, this.dmg * pt.damage, b.projectileColor, 0.32);
+            game.spawnEnemyProjectile(this.x, this.z, off + (i / n) * Math.PI * 2, (pt.speed ?? 10) * this.projK, this.dmg * pt.damage, b.projectileColor, 0.32);
           }
           fx.shockwave(this.x, this.z, 4, b.glow);
         });
@@ -599,7 +622,7 @@ export class Enemy {
           const a = Math.atan2(p.x - this.x, p.z - this.z);
           this.attackAnim = 0;
           for (let i = 0; i < n; i++) {
-            game.spawnEnemyProjectile(this.x, this.z, a - spread / 2 + (spread * i) / (n - 1), pt.speed ?? 13, this.dmg * pt.damage, b.projectileColor, 0.34);
+            game.spawnEnemyProjectile(this.x, this.z, a - spread / 2 + (spread * i) / (n - 1), (pt.speed ?? 13) * this.projK, this.dmg * pt.damage, b.projectileColor, 0.34);
           }
         });
         break;

@@ -1028,20 +1028,10 @@ export class SpellCaster {
   }
 
   /**
-   * status.lua `applyPoison`: um efeito só por inimigo; cada aplicação soma um acúmulo (até o máximo) e renova a duração;
-   * fica o maior dano por segundo. Vive à parte do veneno do tiro da Vesper (que aqui é um efeito por acúmulo).
+   * status.lua `applyPoison`: o mesmo veneno do tiro da Vesper (S23, um efeito só por inimigo; `Enemy.applyPoison`).
    */
   private applyPoison(e: Enemy, dps: number, duration: number, maxStacks: number, spread?: Dot["spread"]): void {
-    const until = this.game.time + duration;
-    const cur = e.dots.find((d) => d.kind === "poison" && d.spell === "venom_nova");
-    if (cur) {
-      cur.dps = Math.max(cur.dps, dps);
-      cur.until = Math.max(cur.until, until);
-      cur.duration = Math.max(cur.duration ?? 0, duration);
-      cur.maxStacks = Math.max(cur.maxStacks ?? 1, maxStacks);
-      cur.stacks = Math.min(cur.maxStacks, (cur.stacks ?? 1) + 1);
-      cur.spread ??= spread;
-    } else e.dots.push({ kind: "poison", dps, until, duration, spell: "venom_nova", stacks: 1, maxStacks, spread });
+    e.applyPoison(this.game.time, dps, duration, maxStacks, spread, "venom_nova");
   }
 
   /**
@@ -1050,7 +1040,7 @@ export class SpellCaster {
    */
   private plagueSpread(e: Enemy): void {
     const g = this.game;
-    const po = e.dots.find((d) => d.spell === "venom_nova" && d.spread && d.until > g.time);
+    const po = e.dots.find((d) => d.kind === "poison" && d.spread && d.until > g.time);
     if (!po?.spread) return;
     const { radius, stacks } = po.spread;
     const targets = this.inArea(e.x, e.z, radius).filter((o) => o !== e);

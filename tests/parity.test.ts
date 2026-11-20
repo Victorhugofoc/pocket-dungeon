@@ -804,7 +804,7 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     expect(SPAWN).toEqual({ telegraph: C.SPAWN_TELEGRAPH, bossTelegraph: TU.BOSS_TELEGRAPH, minDistancePx: C.SPAWN_MIN_DISTANCE });
     for (const [id, m] of Object.entries(BOSS_MULTS)) {
       const b = BS.builds[id].mults;
-      expect(m, id).toEqual({ hp: b.hp, damage: b.damage, speed: b.speed });
+      expect(m, id).toEqual({ hp: b.hp, damage: b.damage, speed: b.speed, projectileSpeed: b.projectileSpeed });
     }
   });
 

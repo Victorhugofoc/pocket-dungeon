@@ -122,7 +122,7 @@ interface Projectile {
   ice?: boolean; icicle?: boolean;
   /** empurrão extra no acerto, em fração de TUNING.enemy.knockback (Fan the Hammer) */
   push?: number;
-  /** Trick Shot: ricochetes que restam no fim do alcance ou num obstáculo, ganho de dano em cada um e o alcance (s) */
+  /** Trick Shot: ricochetes que restam na borda da clareira da onda, ganho de dano em cada um e o alcance (s) */
   bounces?: number; bounceGain?: number; span?: number;
   /** M5-03: rastro do tiro (Fan the Hammer) */
   fx?: TrailHandle;
@@ -666,24 +666,22 @@ export class Game {
   }
 
   /**
-   * Trick Shot (auto_attack.lua): lá a bala bate na borda da arena e volta, +20% de dano, com a lista de acertos limpa.
-   * Adaptado ao mapa aberto: ricocheteia no fim do alcance ou num obstáculo, rumo ao inimigo mais perto dentro do
-   * alcance, ou de volta pelo mesmo caminho se não houver nenhum.
+   * Trick Shot (auto_attack.lua): a bala bate na borda da arena e volta, +20% de dano, com a lista de acertos e o
+   * alcance zerados. Aqui a borda é a da clareira da onda (o herói não sai dela durante a luta, S30); a bala reflete
+   * no círculo como lá reflete na parede. Fora da luta não há borda, e a bala some no fim do alcance como as outras.
    */
-  private trickShot(pr: Projectile): boolean {
-    const sp = Math.hypot(pr.vx, pr.vz) || 1;
-    const reach = sp * (pr.span ?? 1);
-    const next = this.nearestEnemy(pr.x, pr.z, reach);
-    if (next) {
-      const a = Math.atan2(next.x - pr.x, next.z - pr.z);
-      pr.vx = Math.sin(a) * sp;
-      pr.vz = Math.cos(a) * sp;
-    } else {
-      pr.vx = -pr.vx;
-      pr.vz = -pr.vz;
-    }
-    pr.x += (pr.vx / sp) * 0.3;
-    pr.z += (pr.vz / sp) * 0.3;
+  private trickShot(pr: Projectile): void {
+    if (this.phase !== "intro" && this.phase !== "fight") return;
+    const sg = this.segment;
+    const dx = pr.x - sg.x, dz = pr.z - sg.z, d = Math.hypot(dx, dz);
+    if (d <= sg.r || d === 0) return;
+    const nx = dx / d, nz = dz / d;
+    const dot = pr.vx * nx + pr.vz * nz;
+    if (dot <= 0) return;
+    pr.vx -= 2 * dot * nx;
+    pr.vz -= 2 * dot * nz;
+    pr.x = sg.x + nx * sg.r;
+    pr.z = sg.z + nz * sg.r;
     pr.bounces = (pr.bounces ?? 1) - 1;
     pr.dmg *= 1 + (pr.bounceGain ?? 0.2);
     pr.hit.clear();
@@ -691,7 +689,6 @@ export class Game {
     if (pr.fx) {
       this.fx.lib.burst(pr.x, 1.15, pr.z, { radius: 0.8, color: TECH_FX.gun, core: TECH_FX.gunCore, rays: 4, sparks: 8, light: 0, dur: 0.16, wave: 0 });
     } else this.fx.burst(pr.x, 1.15, pr.z, 0xffe9b0, 10, 5, 0.1, 0.25, 2);
-    return true;
   }
 
   private updateProjectiles(dt: number): void {
@@ -705,8 +702,8 @@ export class Game {
         pr.x += pr.vx * dt;
         pr.z += pr.vz * dt;
       }
+      if (pr.friendly && pr.bounces && pr.bounces > 0) this.trickShot(pr);
       let dead = pr.life <= 0 || this.grid.hits(pr.x, pr.z, pr.r * 0.5);
-      if (dead && pr.friendly && pr.bounces && pr.bounces > 0) dead = !this.trickShot(pr);
       // Rune Traps (D-575): o tiro do ataque básico estoura a runa armada que cruza
       if (!dead && pr.friendly && pr.source === "auto" && this.spells.hasRunes) {
         this.spells.shootRunes((x, z, trig) => (x - pr.x) ** 2 + (z - pr.z) ** 2 <= (pr.r + trig) ** 2);
@@ -847,6 +844,9 @@ export class Game {
     } else if (st.kind === "stun") {
       e.stunUntil = Math.max(e.stunUntil, now + st.duration * (e.isBoss ? 0.3 : 1));
       e.windupT = -1;
+    } else if (st.kind === "poison") {
+      // S23: um veneno só por inimigo, dividido com a Venom Nova (status.lua `applyPoison`)
+      e.applyPoison(now, hitDamage * st.power * potency, st.duration, st.maxStacks ?? 1, undefined, "auto");
     } else {
       const max = st.maxStacks ?? 1;
       const dot = { kind: st.kind, dps: hitDamage * st.power * potency, until: now + st.duration };
