@@ -16,8 +16,6 @@ export const TUNING = {
     dashTime: 0.2,
     dashCooldown: 1.1,
     dashIFrames: 0.28,
-    potionHealPct: 0.45,
-    potionCooldown: 18,
     pickupRadius: 1.6,
     baseCritChance: 0.05,
     baseCritDamage: 1.5,

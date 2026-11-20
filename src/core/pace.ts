@@ -26,3 +26,19 @@ export function pacedFoe<T extends { hp: number; damage: number }>(st: T): T {
 export function pacedClearing(radius: number): number {
   return radius * PACE.clearingMult;
 }
+
+/**
+ * Orbe de cura com ritmo (M21-03): chance de um inimigo morto deixar o orbe e se ele conta no teto da onda.
+ * Chefe e invocado nunca deixam; o campeão sempre deixa (`chance.champion`) e fica fora do teto.
+ * `dropped` = orbes que já contaram nesta onda.
+ */
+export function pacedHealOrb(
+  e: { id: string; category: string; champion: boolean; boss: boolean; summoned: boolean }, dropped: number,
+): { chance: number; counts: boolean } {
+  const O = PACE.healOrb;
+  if (e.boss || e.summoned) return { chance: 0, counts: false };
+  if (e.champion) return { chance: O.chance.champion, counts: false };
+  if (dropped >= O.maxPerWave) return { chance: 0, counts: true };
+  const c = e.id === "swarm" ? O.chance.swarm : e.category === "elite" ? O.chance.elite : O.chance.normal;
+  return { chance: c, counts: true };
+}

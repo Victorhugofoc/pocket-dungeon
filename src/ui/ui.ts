@@ -436,7 +436,6 @@ export class Ui {
           ${[0, 1].map((i) => `<div class="skill-wrap"><div class="skill spell" data-r="spBox${i}"><kbd>${i + 1}</kbd><span data-r="spIcon${i}"></span><div class="cd" data-r="spCd${i}"></div><div class="cdn" data-r="spN${i}"></div></div>
             <small class="skill-name" data-r="spName${i}"></small></div>`).join("")}
           <div class="skill"><kbd>SPACE</kbd>💨<div class="cd" data-r="dashCd"></div></div>
-          <div class="skill"><kbd>F</kbd>🧪<div class="cd" data-r="potCd"></div><div class="cdn" data-r="potN"></div></div>
         </div>
         <div class="bar"><i data-r="hpFill"></i><span data-r="hpText"></span></div>
         <div class="bar xp"><i data-r="xpFill"></i></div>
@@ -501,9 +500,6 @@ export class Ui {
     }
     this.updateSpellHud();
     r.dashCd.style.height = `${(Math.max(0, p.dashCd) / TUNING.hero.dashCooldown) * 100}%`;
-    const pc = Math.max(0, p.potionCd);
-    r.potCd.style.height = `${(pc / TUNING.hero.potionCooldown) * 100}%`;
-    r.potN.textContent = pc > 0 ? String(Math.ceil(pc)) : "";
     const pend = g.run.pendingLevelUps;
     r.points.classList.toggle("hidden", pend <= 0);
     r.points.textContent = `+${pend} upgrade${pend > 1 ? "s" : ""} at the end of the wave`;
@@ -978,7 +974,6 @@ export class Ui {
         <kbd>Left click</kbd><span>Attack (hold)</span>
         <kbd>Right click / Q</kbd><span>Hero technique: ${g.hero.technique.name}</span>
         <kbd>Space</kbd><span>Dodge (invulnerable for an instant)</span>
-        <kbd>F</kbd><span>Healing potion</span>
         <kbd>H</kbd><span>Hasten the wave (after 5 s; more reward, faster enemies)</span>
         <kbd>E</kbd><span>Enter the portal (after the zone boss)</span>
         <kbd>I / Tab</kbd><span>Run status</span>

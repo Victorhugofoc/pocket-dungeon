@@ -22,4 +22,19 @@ export const PACE = {
   spellAreaMult: 1,
   /** cura e regeneração durante a onda (original: 0,35, `RUN_TUNING.combatHealMult`) */
   combatHealMult: RUN_TUNING.combatHealMult as number,
+  /**
+   * Orbe de cura (M21-03, cura no risco; a poção saiu). O original fica em `RUN_TUNING.healOrb` para a paridade:
+   * cura 8%, 8 s, até 2 por onda, chance 2% comum, 4% elite, 10% campeão, 0 swarm; atração fixa de 5 u a 12 u/s.
+   */
+  healOrb: {
+    /** fração da vida máxima, sem o corte de cura do combate */
+    heal: 0.15,
+    /** s até sumir; pisca nos últimos `blink` s, `blinkHz` vezes por segundo */
+    life: 4, blink: 1, blinkHz: 5,
+    /** teto por onda dos orbes de inimigos comuns (o do campeão fica fora) */
+    maxPerWave: 3,
+    chance: { normal: 0.04, elite: 0.06, champion: 1, swarm: 0.01 },
+    /** raio em que o orbe vem até o herói ferido, e a velocidade dele */
+    magnet: 5, pullSpeed: 12,
+  },
 };

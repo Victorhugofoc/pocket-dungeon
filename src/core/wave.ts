@@ -377,12 +377,3 @@ export function survivorReward(def: { gold: number; xp: number }, champion: bool
   }
   return { gold: Math.floor(g * SURVIVOR_FACTOR * mods.reward * goldMult), xp: Math.floor(x * SURVIVOR_FACTOR * mods.reward) };
 }
-
-/** heal_orbs.lua `chance`. */
-export function healOrbChance(e: { id: string; category: string; champion: boolean; boss: boolean; summoned: boolean }): number {
-  const C = RUN_TUNING.healOrb.chance;
-  if (e.boss || e.summoned) return 0;
-  if (e.champion) return C.champion;
-  if (e.id === "swarm") return C.swarm;
-  return e.category === "elite" ? C.elite : C.normal;
-}

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/core/rng";
-import { pacedCount, pacedFoe } from "../src/core/pace";
+import { pacedCount, pacedFoe, pacedHealOrb } from "../src/core/pace";
 import { enemyStats, startWave, targetCount, waveMods } from "../src/core/wave";
 import { baseDuration } from "../src/core/waves";
 import { generateZone } from "../src/core/worldgen";
@@ -45,5 +45,18 @@ describe("camada de ritmo (M21-02)", () => {
     const segs = z.segments.slice(0, -1);
     for (const s of segs) expect(s.r).toBeCloseTo(TUNING.world.segmentRadius * PACE.clearingMult, 12);
     expect(z.segments[z.segments.length - 1].r).toBe(TUNING.world.bossArenaRadius);
+  });
+
+  it("orbe de cura (M21-03): campeão sempre deixa e fica fora do teto; chefe e invocado nunca; comuns até o teto", () => {
+    const foe = (o: Partial<{ id: string; category: string; champion: boolean; boss: boolean; summoned: boolean }>) =>
+      ({ id: "goblin", category: "basic", champion: false, boss: false, summoned: false, ...o });
+    expect(pacedHealOrb(foe({ champion: true }), 99)).toEqual({ chance: PACE.healOrb.chance.champion, counts: false });
+    expect(PACE.healOrb.chance.champion).toBe(1);
+    expect(pacedHealOrb(foe({ boss: true }), 0).chance).toBe(0);
+    expect(pacedHealOrb(foe({ summoned: true }), 0).chance).toBe(0);
+    expect(pacedHealOrb(foe({}), 0)).toEqual({ chance: PACE.healOrb.chance.normal, counts: true });
+    expect(pacedHealOrb(foe({ category: "elite" }), 0).chance).toBe(PACE.healOrb.chance.elite);
+    expect(pacedHealOrb(foe({ id: "swarm" }), 0).chance).toBe(PACE.healOrb.chance.swarm);
+    expect(pacedHealOrb(foe({}), PACE.healOrb.maxPerWave).chance).toBe(0);
   });
 });
