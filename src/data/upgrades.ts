@@ -5,6 +5,7 @@
 // Os efeitos usam os atributos de lá (`DrStat`). `UPGRADE_STAT` diz como cada um vira atributo daqui; uma melhoria
 // só é oferecida quando todos os efeitos dela já existem no jogo (`upgradeLive` em core/levelup.ts).
 import type { StatKey } from "../core/stats";
+import { BEHAVIOR_EPICS } from "./epics";
 
 export interface UpgradeEffect {
   stat: string;
@@ -40,6 +41,8 @@ export interface UpgradeDef {
   excludes?: string;
   /** cura a vida toda ao pegar */
   fullHeal?: boolean;
+  /** épica de comportamento (M21-07, data/epics.ts): sem atributo, raridade épica fixa */
+  behavior?: boolean;
 }
 
 const U: UpgradeDef[] = [];
@@ -138,7 +141,8 @@ up("champions_bounty", "CHAMPION'S BOUNTY", [["championXpPct", 0.25], ["champion
 up("survivors_grace", "SURVIVOR'S GRACE", [["survivorRewardPct", 0.15]]);
 
 export const UPGRADES: readonly UpgradeDef[] = U;
-export const UPGRADE_BY_ID: Readonly<Record<string, UpgradeDef>> = Object.fromEntries(U.map((u) => [u.id, u]));
+/** As melhorias do original e as épicas de comportamento (M21-07), por id. */
+export const UPGRADE_BY_ID: Readonly<Record<string, UpgradeDef>> = Object.fromEntries([...U, ...BEHAVIOR_EPICS].map((u) => [u.id, u]));
 
 /** constants.lua `CAPS`: teto das contagens; uma melhoria que passaria do teto não é oferecida. */
 export const UPGRADE_CAPS: Readonly<Record<string, number>> = { pierce: 3, doubleShot: 4, coneShot: 4, healingFields: 4 };

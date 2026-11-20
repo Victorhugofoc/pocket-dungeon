@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
 import { applyEvolution, declineEvolutions, pendingEvolutionOffer, type EvolutionOption } from "../core/evolution";
-import { addXp, applyUpgrade, draft, draftTiers, rerollCost, rerollsLeft, upgradeStats, type UpgradeTier } from "../core/levelup";
+import { addXp, applyUpgrade, draftLevelUp, draftTiers, rerollCost, rerollsLeft, upgradeStats, type UpgradeTier } from "../core/levelup";
 import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
 import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, safeStorage } from "../core/save";
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
@@ -50,6 +50,7 @@ import { U } from "./shared";
 import { SUN_OFFSET, stepMotes } from "./air";
 import { buildWorld, driftSun, fireFlicker, setZoneAtmosphere, type WorldView } from "./world";
 import { FrameProbe } from "./perf";
+import { EpicRuntime, type AutoMod } from "./epics";
 import { initLamps, updateLamps } from "./lamps";
 
 /** Cores dos efeitos das técnicas (M5-03): só visual, sem número de jogo */
@@ -126,6 +127,8 @@ interface Projectile {
   status?: StatusSpec; mesh: THREE.Mesh; hit: Set<Enemy>; color: number; source: string;
   /** gelo da Frostine; `icicle` = o tiro é pingente */
   ice?: boolean; icicle?: boolean;
+  /** M21-07: crítico garantido (Third Strike) e empurrão extra (Charged Step) */
+  crit?: boolean; knock?: number;
   /** empurrão extra no acerto, em fração de TUNING.enemy.knockback (Fan the Hammer) */
   push?: number;
   /** Trick Shot: ricochetes que restam na borda da clareira da onda, ganho de dano em cada um e o alcance (s) */
@@ -256,6 +259,8 @@ export class Game {
   started = false;
   paused = false;
   private hitstop = 0;
+  /** épicas de comportamento (M21-07) */
+  readonly epics = new EpicRuntime(this);
   /** recompensa do chefe, entregue quando o corpo dele some */
   private bossReward: (() => void) | null = null;
   /** escolha de melhoria aberta; o jogo fica pausado pela tela */
@@ -291,6 +296,8 @@ export class Game {
     { heroes: HERO_ORDER, bosses: Object.keys(BOSSES), enemies: Object.keys(ENEMIES), relics: RELIC_IDS }, loadRecords(this.storage).kills);
   /** de onde veio o golpe em curso (o "ataque básico" de quick_trigger) */
   private hitSource: KillSource = "other";
+  /** o ataque básico que está saindo agora (M21-07) */
+  private autoMod: AutoMod | null = null;
   /** elemento do golpe em andamento quando quem bate não passa um (técnica: a escola dela), para as reações (M21-05) */
   private hitElement: string | null = null;
   /** elementos da build (refeito no `recompute`) */
@@ -423,6 +430,7 @@ export class Game {
     sources.push(upgradeStats(this.run));
     sources.push(shopStats(this.run.shop));
     this.stats = computeStats(sources);
+    this.epics.refresh(this.run.upgradesTaken);
     this.elements = this.buildElements();
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
@@ -557,6 +565,7 @@ export class Game {
     p.shadowUntil = 0;
     p.dashT = 0;
     this.playerAlive = true;
+    this.epics.reset();
     this.camTarget.set(p.x, 0, p.z);
   }
 
@@ -623,7 +632,10 @@ export class Game {
       }
       if (o.xp > 0) this.gainXp(o.xp);
     }
-    if (got.length) this.audio.play("coin");
+    if (got.length) {
+      this.audio.play("coin");
+      this.epics.onOrbs(got.length);
+    }
   }
 
   countSummons(): number {
@@ -676,6 +688,7 @@ export class Game {
       r: 0.24 * (auto.size ?? 1) * (icicle ? 1.9 : 1) * (charged ? ARCANE_CHARGED.size : 1), dmg: mult * (icicle ? FROST.icicleMult : 1), life: range / speed, friendly: true,
       pierce: auto.pierce ?? 0, ricochet: auto.ricochet ?? 0, ricochetDamage: auto.ricochetDamage ?? 1,
       status: auto.status, color: icicle ? 0xf2fbff : charged ? ARCANE_CHARGED.color : auto.color, source: "auto", ice, icicle,
+      crit: this.autoMod?.crit || undefined, knock: this.autoMod?.knock || undefined,
     });
   }
 
@@ -737,7 +750,8 @@ export class Game {
             }
           }
           this.hitSource = pr.source === "auto" ? "auto" : "other";
-          this.hitEnemy(e, pr.dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined });
+          this.hitEnemy(e, pr.dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined, crit: pr.crit && first ? true : undefined });
+          if (pr.knock && first) this.epics.knock(e, pr.knock);
           this.hitSource = "other";
           if (pr.source === "auto") this.spells.onAutoHit(e);
           if (pr.push && !e.isBoss && !e.dead) {
@@ -879,6 +893,7 @@ export class Game {
   damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId } = {}): void {
     if (e.dead) return;
     if (e.isBoss) amount *= this.stats.bossDamage; // damage.lua: Smite do Seraph (D-317)
+    amount *= this.epics.damageMult();
     amount = Math.max(1, Math.round(amount));
     this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
     e.hp -= amount;
@@ -912,13 +927,17 @@ export class Game {
         this.fx.addShake(0.12);
       }
     }
-    if (e.hp <= 0) this.killEnemy(e, opts.dot ? "dot" : this.hitSource);
+    if (e.hp <= 0) {
+      if (opts.reaction) this.epics.onReactionKill(e, opts.reaction);
+      this.killEnemy(e, opts.dot ? "dot" : this.hitSource);
+    }
   }
 
   private killEnemy(e: Enemy, source: KillSource = "other"): void {
     e.dead = true;
     e.hp = 0;
     this.spells.onKill(e);
+    this.epics.onKill();
     this.ach.enemyKilled({ key: e, id: e.boss?.id ?? e.def!.id, boss: e.isBoss, champion: e.champion, source,
       elapsed: this.run.statistics.elapsed, noReward: e.summoned });
     const color = e.boss?.color ?? e.def!.color;
@@ -996,6 +1015,7 @@ export class Game {
       if (p.hp >= this.stats.maxHp) continue;
       this.heal(this.stats.maxHp * PACE.healOrb.heal, true, true);
       this.audio.play("heal");
+      this.epics.onOrbs(1);
       d.mesh.removeFromParent();
       this.drops.splice(i, 1);
     }
@@ -1093,7 +1113,7 @@ export class Game {
   private openLevelUp(): void {
     const run = this.run;
     const rng = this.rng.get("levelup");
-    const ids = draft(run, rng);
+    const ids = draftLevelUp(run, rng);
     if (ids.length === 0) {
       run.pendingLevelUps = 0;
       return;
@@ -1115,7 +1135,7 @@ export class Game {
     this.run.gold -= cost;
     this.run.statistics.goldSpent += cost;
     const rng = this.rng.get("levelup");
-    L.ids = draft(this.run, rng);
+    L.ids = draftLevelUp(this.run, rng);
     L.tiers = draftTiers(this.run, rng, L.ids);
     L.rerolls++;
     this.audio.play("pickup");
@@ -1164,7 +1184,11 @@ export class Game {
   hurtPlayer(amount: number, source: string): void {
     void source;
     const p = this.player;
-    if (!this.playerAlive || p.iframes > 0) return;
+    if (!this.playerAlive) return;
+    if (p.iframes > 0) {
+      if (p.dashT > 0) this.epics.onAvoided();
+      return;
+    }
     if (Math.random() < this.stats.dodge) {
       this.fx.text(p.x, 2.6, p.z, "Dodge", "dodge");
       p.iframes = 0.15;
@@ -1191,6 +1215,7 @@ export class Game {
       return;
     }
     amount *= this.stats.damageTaken;
+    amount = this.epics.incoming(amount);
     if (this.hero.maxHitFraction) amount = Math.min(amount, this.stats.maxHp * this.hero.maxHitFraction);
     amount = Math.max(1, Math.round(amount));
     this.run.statistics.damageTaken += Math.min(amount, p.hp);
@@ -1660,7 +1685,9 @@ export class Game {
   buildElements(): Set<string> {
     const schools = this.run.spells.map((sp) => SPELL_SCHOOL[sp.id as SpellId]).filter(Boolean);
     const t = this.hero.technique.school;
-    return buildElements(schools, t === "auto" ? null : t, this.hero.auto.status?.kind ?? null, this.hero.frost === true);
+    const els = buildElements(schools, t === "auto" ? null : t, this.hero.auto.status?.kind ?? null, this.hero.frost === true);
+    for (const el of this.epics.elements()) els.add(el);
+    return els;
   }
 
   /** Reações prontas de um inimigo para a build atual. */
@@ -1702,7 +1729,8 @@ export class Game {
     for (const o of this.enemies) {
       if (o.dead || (o.x - e.x) ** 2 + (o.z - e.z) ** 2 > (def.radius + o.radius) ** 2) continue;
       if (id === "plague" && o !== e) {
-        o.reactUntil = Math.max(o.reactUntil, now + R.cooldown);
+        // Chain Reaction (M21-07): sem a recarga, o vizinho pode reagir de novo
+        if (!this.epics.plagueChains()) o.reactUntil = Math.max(o.reactUntil, now + R.cooldown);
         o.applyBurn(now, s.damage * P.burnDps * s.burn, P.burnDuration);
         o.applyPoison(now, s.damage * P.poisonDps * s.poison, P.poisonDuration, 1, undefined, "plague");
       }
@@ -1715,6 +1743,21 @@ export class Game {
     this.fx.addShake(0.16);
     this.hitstop = Math.max(this.hitstop, 0.04);
     this.audio.play("crit");
+  }
+
+  /** Roda `fn` com os golpes levando o elemento (reações, M21-05). */
+  withElement(element: string, fn: () => void): void {
+    const prev = this.hitElement;
+    this.hitElement = element;
+    try {
+      fn();
+    } finally {
+      this.hitElement = prev;
+    }
+  }
+
+  hitstopFor(t: number): void {
+    this.hitstop = Math.max(this.hitstop, t);
   }
 
   aimPoint(maxRange: number): { x: number; z: number } {
@@ -1758,17 +1801,30 @@ export class Game {
   private autoAttack(): void {
     const p = this.player;
     const a = this.hero.auto;
-    p.attackCd = 1 / (a.rate * this.stats.attackSpeed);
+    p.attackCd = 1 / (a.rate * this.stats.attackSpeed * this.epics.attackSpeedMult());
     p.attackAnim = 0;
     if (p.rig) nextShot(p.rig);
+    // M21-07: Third Strike e Charged Step mudam este golpe; Kinetic solta o raio depois
+    this.autoMod = this.epics.onAutoAttack();
+    try {
+      this.swingAuto(a, a.damage * this.autoMod.mult);
+    } finally {
+      this.autoMod = null;
+    }
+    this.epics.afterAutoAttack();
+  }
+
+  /** O ataque básico em si (tiro, leque ou corte); `dmg` já leva as épicas. */
+  private swingAuto(a: AutoAttack, dmg: number): void {
+    const p = this.player;
     if (a.kind === "projectile") {
-      this.firePlayer(p.facing, a, a.damage);
+      this.firePlayer(p.facing, a, dmg);
       this.audio.play("shoot");
       if (this.hero.shieldHeal && ++p.throws % SHIELD_THROW.healEvery === 0) this.heal(this.stats.maxHp * SHIELD_THROW.heal, true);
     } else if (a.kind === "fan") {
       const n = a.count ?? 5;
       const spread = ((a.spreadDeg ?? 40) * Math.PI) / 180;
-      for (let i = 0; i < n; i++) this.firePlayer(p.facing - spread / 2 + (spread * i) / (n - 1), a, a.damage);
+      for (let i = 0; i < n; i++) this.firePlayer(p.facing - spread / 2 + (spread * i) / (n - 1), a, dmg);
       this.audio.play("swing");
     } else {
       const range = a.range * (1 + (this.stats.range - 1) * 0.5) * (1 + (this.stats.area - 1) * 0.5);
@@ -1785,8 +1841,9 @@ export class Game {
         while (da < -Math.PI) da += Math.PI * 2;
         if (Math.abs(da) > arc && d > e.radius + 0.8) continue;
         this.hitSource = "auto";
-        this.hitEnemy(e, a.damage, a.status);
+        this.hitEnemy(e, dmg, a.status, this.autoMod?.crit ? { crit: true } : undefined);
         this.hitSource = "other";
+        if (this.autoMod?.knock) this.epics.knock(e, this.autoMod.knock);
         this.spells.onAutoHit(e);
         hits++;
       }
@@ -1812,6 +1869,7 @@ export class Game {
     } finally {
       this.hitElement = null;
     }
+    if (this.player.techCd > 0) this.epics.onTechnique();
   }
 
   private castTechnique(): void {
@@ -2143,6 +2201,7 @@ export class Game {
     p.techCd -= dt;
     p.dashCd -= dt;
     p.iframes -= dt;
+    if (this.playerAlive) this.epics.update(dt);
     p.hurtT = Math.max(0, p.hurtT - dt * 2.5);
     p.moveAmt = 0;
 
@@ -2229,6 +2288,7 @@ export class Game {
           p.dashCd = T.dashCooldown;
           p.iframes = Math.max(p.iframes, T.dashIFrames);
           this.audio.play("dash");
+          this.epics.onDash(p.x, p.z);
         }
       }
       if (this.hero.technique.kind === "icewall" && this.tech) {

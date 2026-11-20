@@ -10,6 +10,7 @@ import {
   type UpgradeDef, type UpgradeEffect,
 } from "../data/upgrades";
 import { SPELL_SCHOOL } from "../data/spells";
+import { BEHAVIOR_EPICS, EPIC_ODDS } from "../data/epics";
 import { TECHNIQUES } from "../data/techniques";
 
 export type UpgradeTier = keyof typeof UPGRADE_TIERS;
@@ -115,6 +116,33 @@ export function draft(run: RunState, rng: Rng, n: number = LEVEL_UP_CHOICES, liv
   return ids;
 }
 
+/** Épicas de comportamento (M21-07) que podem sair agora (onda mínima, uma vez cada). */
+export function availableEpics(run: RunState): UpgradeDef[] {
+  return BEHAVIOR_EPICS.filter((u) => isAvailable(run, u));
+}
+
+/** Chance de a tela de nível trazer uma épica de comportamento: sobe a cada tela sem ela (`run.epicPity`). */
+export function epicChance(run: RunState): number {
+  return Math.min(1, EPIC_ODDS.base + EPIC_ODDS.step * (run.epicPity ?? 0));
+}
+
+/**
+ * O sorteio do jogo: as 3 cartas do original (`draft`) e, com a chance de `epicChance`, a última vira uma épica de
+ * comportamento. Só conta (e só zera) quando há épica disponível. O teste de paridade usa `draft` puro.
+ */
+export function draftLevelUp(run: RunState, rng: Rng, n: number = LEVEL_UP_CHOICES): string[] {
+  const ids = draft(run, rng, n);
+  const epics = availableEpics(run);
+  if (epics.length === 0 || ids.length === 0) return ids;
+  if (rng.next() < epicChance(run)) {
+    ids[ids.length - 1] = rng.pick(epics).id;
+    run.epicPity = 0;
+  } else {
+    run.epicPity = (run.epicPity ?? 0) + 1;
+  }
+  return ids;
+}
+
 /** level_up.lua `canTier`: muda de raridade se tiver uma parte positiva que não seja contagem. */
 export function canTier(u: UpgradeDef): boolean {
   if (u.noTier) return false;
@@ -131,6 +159,7 @@ export function tierWeights(level: number, minTier?: "rare"): [UpgradeTier, numb
 
 /** level_up.lua `rollTier`. */
 export function rollTier(run: RunState, rng: Rng, u: UpgradeDef): UpgradeTier {
+  if (u.behavior) return "epic";
   if (!canTier(u)) return "common";
   return rng.weighted(tierWeights(run.level, u.minTier));
 }
@@ -166,7 +195,7 @@ export function applyUpgrade(run: RunState, id: string, tier: UpgradeTier): Upgr
   const u = UPGRADE_BY_ID[id];
   if (!u) throw new Error(`unknown upgrade: ${id}`);
   if (!isAvailable(run, u)) throw new Error(`unavailable upgrade: ${id}`);
-  const t = canTier(u) ? tier : "common";
+  const t = u.behavior ? "epic" : canTier(u) ? tier : "common";
   run.upgradesTaken.push(id);
   run.upgradeTiers.push(t);
   for (const tag of u.tags) run.tags[tag] = (run.tags[tag] ?? 0) + 1;
