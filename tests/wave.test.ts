@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/core/rng";
 import { canHasten, hasten, startWave, stepWave, survivorReward, targetCount, waveMods, waveReward, type WaveState } from "../src/core/wave";
 import { WAVES } from "../src/data/run";
+import { pacedCount } from "../src/core/pace";
 import { ENEMIES } from "../src/data/enemies";
 
 const known = (id: string) => id in ENEMIES;
@@ -32,7 +33,7 @@ describe("ciclo da onda", () => {
     for (const wave of [1, 4, 7, 13]) {
       const w = startWave(wave, new Rng(wave), known);
       const { spawns } = run(w);
-      expect(spawns.length).toBe(targetCount(wave));
+      expect(spawns.length).toBe(pacedCount(targetCount(wave), wave));
       expect(spawns[0].t).toBeGreaterThanOrEqual(WAVES.firstSpawnDelay);
       expect(spawns[spawns.length - 1].t).toBeLessThanOrEqual(w.duration * WAVES.spawnWindow + WAVES.firstSpawnDelay + 0.05);
       expect(w.complete).toBe(true);

@@ -10,9 +10,10 @@ import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
 import { chooseCard, expireWaveScope, generateMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
-  canHasten, hasten, healOrbChance, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
+  canHasten, hasten, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
   type WaveMods, type WaveSpawn, type WaveState,
 } from "../core/wave";
+import { pacedHealOrb } from "../core/pace";
 import { hasMapBefore, isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
@@ -24,6 +25,7 @@ import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } fr
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
 import { TUNING } from "../data/tuning";
+import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
 import { Audio } from "./audio";
 import { Enemy, enemyDef } from "./enemy";
@@ -161,7 +163,7 @@ export interface PlayerState {
   moveAmt: number; attackAnim: number; attackCd: number;
   techCd: number; techMax: number;
   dashCd: number; dashT: number; dashDx: number; dashDz: number;
-  iframes: number; potionCd: number;
+  iframes: number;
   /** Umbra: golpes contam como pelas costas até este instante */
   shadowUntil: number;
   /** Seraph: escudo de luz ativo */
@@ -202,7 +204,7 @@ export class Game {
 
   player: PlayerState = {
     x: 0, z: 0, facing: 0, hp: 1, rig: null, moveAmt: 0, attackAnim: -1, attackCd: 0, techCd: 0, techMax: 1,
-    dashCd: 0, dashT: 0, dashDx: 0, dashDz: 0, iframes: 0, potionCd: 0, shadowUntil: 0, aegis: null, throws: 0, nestT: VENOM.broodEvery,
+    dashCd: 0, dashT: 0, dashDx: 0, dashDz: 0, iframes: 0, shadowUntil: 0, aegis: null, throws: 0, nestT: VENOM.broodEvery,
     flash: 0, hurtT: 0, leap: null, rush: null,
   };
   playerAlive = true;
@@ -923,18 +925,16 @@ export class Game {
     if (e.isBoss) this.onBossKilled(e);
   }
 
-  /** Orbe de cura da onda (wave_system.lua): chance por tipo de inimigo, com teto por onda. */
+  /** Orbe de cura (M21-03, cura no risco): chance por tipo de inimigo com ritmo (`PACE.healOrb`), teto por onda; o campeão sempre deixa. */
   private rollHealOrb(e: Enemy): void {
     const w = this.wave;
-    const O = RUN_TUNING.healOrb;
-    if (w && !w.complete && w.healOrbs < O.maxPerWave && e.def) {
-      const c = healOrbChance({ id: e.def.id, category: e.def.category, champion: e.champion, boss: e.isBoss, summoned: e.summoned });
-      if (c > 0 && Math.random() < c) {
-        w.healOrbs++;
-        this.addDrop({ x: e.x, z: e.z, t: 0, life: O.life });
-      }
-    }
+    if (!w || w.complete || !e.def) return;
+    const o = pacedHealOrb({ id: e.def.id, category: e.def.category, champion: e.champion, boss: e.isBoss, summoned: e.summoned }, w.healOrbs);
+    if (o.chance <= 0 || Math.random() >= o.chance) return;
+    if (o.counts) w.healOrbs++;
+    this.addDrop({ x: e.x, z: e.z, t: 0, life: PACE.healOrb.life });
   }
+
 
   private addDrop(d: Omit<Drop, "mesh">): void {
     const g = new THREE.Group();
@@ -960,19 +960,23 @@ export class Game {
         continue;
       }
       const core = d.mesh.children[0];
+      // pisca no fim da vida (M21-03)
+      const left = d.life - d.t;
+      core.visible = left > PACE.healOrb.blink || Math.sin(left * Math.PI * 2 * PACE.healOrb.blinkHz) > -0.2;
       core.rotation.y += dt * 2.2;
       core.position.y = Math.sin(d.t * 3) * 0.12 + Math.max(0, 1 - d.t * 3) * 1.2;
       if (d.t < 0.35 || !this.playerAlive) continue;
       const dist = Math.hypot(p.x - d.x, p.z - d.z);
-      if (dist < 5 && p.hp < this.stats.maxHp) {
+      if (dist < PACE.healOrb.magnet && p.hp < this.stats.maxHp) {
         // orbes de cura são atraídos
-        d.x += ((p.x - d.x) / dist) * 12 * dt;
-        d.z += ((p.z - d.z) / dist) * 12 * dt;
+        d.x += ((p.x - d.x) / dist) * PACE.healOrb.pullSpeed * dt;
+        d.z += ((p.z - d.z) / dist) * PACE.healOrb.pullSpeed * dt;
         d.mesh.position.set(d.x, 0.6, d.z);
       }
       if (dist > TUNING.hero.pickupRadius) continue;
       if (p.hp >= this.stats.maxHp) continue;
-      this.heal(this.stats.maxHp * RUN_TUNING.healOrb.heal, true, true);
+      this.heal(this.stats.maxHp * PACE.healOrb.heal, true, true);
+      this.audio.play("heal");
       d.mesh.removeFromParent();
       this.drops.splice(i, 1);
     }
@@ -989,7 +993,7 @@ export class Game {
     this.events.statusChanged();
   }
 
-  /** O combate da onda está correndo: cura e regeneração valem `RUN_TUNING.combatHealMult` (damage.lua). */
+  /** O combate da onda está correndo: cura e regeneração valem `PACE.combatHealMult` (damage.lua). */
   get inCombat(): boolean {
     return !!this.wave && this.wave.started && !this.wave.complete;
   }
@@ -1043,7 +1047,7 @@ export class Game {
     const p = this.player;
     const before = p.hp;
     if (!full) amount *= this.stats.healing; // damage.lua `healPlayer`: armadura e `healPct`
-    if (this.inCombat && !full) amount *= RUN_TUNING.combatHealMult;
+    if (this.inCombat && !full) amount *= PACE.combatHealMult;
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
     this.run.statistics.healed += p.hp - before;
     this.ach.healed(this.run.statistics.healed);
@@ -2048,7 +2052,6 @@ export class Game {
     p.attackCd -= dt;
     p.techCd -= dt;
     p.dashCd -= dt;
-    p.potionCd -= dt;
     p.iframes -= dt;
     p.hurtT = Math.max(0, p.hurtT - dt * 2.5);
     p.moveAmt = 0;
@@ -2059,7 +2062,7 @@ export class Game {
     }
     if (s.regen > 0 && p.hp < s.maxHp) {
       const before = p.hp;
-      p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? RUN_TUNING.combatHealMult : 1));
+      p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? PACE.combatHealMult : 1));
       this.run.statistics.healed += p.hp - before;
       this.ach.healed(this.run.statistics.healed);
     }
@@ -2145,11 +2148,6 @@ export class Game {
       }
       if ((input.rmbPressed || input.wasPressed("KeyQ")) && p.techCd <= 0) this.useTechnique();
       else if (input.lmb && p.attackCd <= 0) this.autoAttack();
-      if (input.wasPressed("KeyF") && p.potionCd <= 0 && p.hp < s.maxHp) {
-        p.potionCd = T.potionCooldown;
-        this.heal(s.maxHp * T.potionHealPct, true);
-        this.audio.play("potion");
-      }
     }
 
 

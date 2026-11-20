@@ -1,6 +1,7 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
 import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
+import { pacedFoe } from "../core/pace";
 import { circleInArc } from "../core/melee";
 import { BURN, CHILD_SCALE, MINION_SCALE, RUN_TUNING } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
@@ -9,8 +10,13 @@ import { CROWN_TITLE, ENEMIES, type BossDef, type BossPattern, type EnemyDef } f
 import type { StatusKind } from "../data/heroes";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
+import * as THREE from "three";
 import { type BossRing, type ChampionAura, type GroundArc, makeBossRing, makeChampionAura } from "./fx";
 import type { Game } from "./game";
+
+/** cor do aviso do golpe, a mesma da marca no chão */
+const WARN_COLOR = 0xff5a4a;
+const WP = new THREE.Vector3();
 
 export interface Dot {
   kind: StatusKind;
@@ -65,6 +71,8 @@ export class Enemy {
   /** direção travada do golpe em preparo e a marca dele no chão (M21-01) */
   swingAngle = 0;
   private swingMark: GroundArc | null = null;
+  /** mira do tiro comum (M21-01 parte 2): -1 parado; senão segundos de mira */
+  aimT = -1;
   attackAnim = -1;
   moveAmt = 0;
   flash = 0;
@@ -162,7 +170,7 @@ export class Enemy {
     if (isBoss) this.patterns = opts.crownAttack ? [...(def as BossDef).patterns, opts.crownAttack] : (def as BossDef).patterns;
     // vida, dano e velocidade como no Dungeon Reign (enemy.lua, boss.lua): pela onda e pela dificuldade
     this.ambush = isBoss && !!opts.ambush;
-    const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final, opts.ambush ?? null) : enemyStats(def, wave, game.mods, this.champion);
+    const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final, opts.ambush ?? null) : pacedFoe(enemyStats(def, wave, game.mods, this.champion));
     const derived = opts.child ? CHILD_SCALE : this.summoned ? MINION_SCALE : null;
     this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1));
     this.projK = st.projectileSpeed;
@@ -237,6 +245,7 @@ export class Enemy {
 
     if (this.dead) {
       if (this.windupT >= 0) this.endSwing();
+      this.aimT = -1;
       this.deadT += this.boss ? (dt * 1.25) / TUNING.boss.deathTime : dt * 2.0;
       // o corpo ainda desliza com o último empurrão
       this.x += this.kx * dt;
@@ -278,7 +287,10 @@ export class Enemy {
     const haste = !this.boss && game.wave?.hastened ? RUN_TUNING.hasten.enemySpeed : 1;
     this.cd -= dt * haste;
     const stunned = now < this.stunUntil;
-    if (stunned && this.windupT >= 0 && TUNING.enemy.telegraph.stunInterrupts) this.endSwing();
+    if (stunned && TUNING.enemy.telegraph.stunInterrupts) {
+      if (this.windupT >= 0) this.endSwing();
+      this.aimT = -1;
+    }
     const slow = now < this.slowUntil ? 1 - this.slowPower : 1;
     const speed = this.speed * slow * haste * (this.enraged ? 1.15 : 1);
     const dxp = p.x - this.x;
@@ -347,7 +359,7 @@ export class Enemy {
     }
     animateRig(rig, {
       t: now, move: stunned ? 0 : this.moveAmt, attack: this.attackAnim,
-      windup: this.windupT >= 0 ? this.windupT / this.windupDur : this.casting > 0 ? 0.6 + Math.sin(now * 20) * 0.1 : 0, dead: 0,
+      windup: this.windupT >= 0 ? this.windupT / this.windupDur : this.aimT >= 0 ? this.aimT / TUNING.enemy.telegraph.shotWindup : this.casting > 0 ? 0.6 + Math.sin(now * 20) * 0.1 : 0, dead: 0,
       rage: this.rage, roar: this.roarT,
     });
     this.aura?.update(this.x, this.z, this.radius, now + this.rig.phase, 1);
@@ -396,6 +408,7 @@ export class Enemy {
   private reset(game: Game): void {
     this.aggro = false;
     this.endSwing();
+    this.aimT = -1;
     this.casting = 0;
     this.charging = null;
     this.spiral = null;
@@ -479,6 +492,7 @@ export class Enemy {
     if (this.windupT >= 0) {
       this.windupT += dt;
       this.swingMark?.set(this.x, this.z, this.windupT / this.windupDur);
+      this.glowWeapon(game, this.windupT / this.windupDur, WARN_COLOR);
       if (this.windupT >= this.windupDur) {
         this.endSwing();
         this.attackAnim = 0;
@@ -502,6 +516,28 @@ export class Enemy {
     this.face(p.x, p.z);
     if (dist > range) this.moveToward(game, p.x, p.z, speed, dt);
     else if (this.cd <= 0) this.startSwing(game, p.x, p.z, range);
+  }
+
+  /** Ponto da arma (osso `weapon`, senão a mão direita; sem braço, a frente do corpo), no mundo. */
+  private weaponPoint(): THREE.Vector3 {
+    const B = this.rig.char?.bones;
+    const bone = B?.weapon ?? B?.foreR;
+    if (bone) return WP.set(0, B?.weapon ? -0.35 : -0.3, 0).applyMatrix4(bone.matrixWorld);
+    return WP.set(this.x + Math.sin(this.facing) * this.radius, this.rig.height * 0.55, this.z + Math.cos(this.facing) * this.radius);
+  }
+
+  /** Boca do tiro: à frente do corpo, na altura do peito, onde o projétil nasce. */
+  private muzzlePoint(): THREE.Vector3 {
+    const r = this.radius + TUNING.enemy.telegraph.muzzleReach;
+    return WP.set(this.x + Math.sin(this.facing) * r, this.rig.height * 0.5, this.z + Math.cos(this.facing) * r);
+  }
+
+  /** Brilho que cresce na arma durante o preparo ou a mira (k de 0 a 1). Um ponto por quadro, de vida curta. */
+  private glowWeapon(game: Game, k: number, color: number, muzzle = false): void {
+    const [s0, s1] = TUNING.enemy.telegraph.glowSize;
+    const w = muzzle ? this.muzzlePoint() : this.weaponPoint();
+    const kk = Math.min(1, Math.max(0, k));
+    game.fx.glow(w.x, w.y, w.z, color, (s0 + (s1 - s0) * kk * kk) * (0.9 + Math.random() * 0.2), 0.06);
   }
 
   private shoot(game: Game, color: number, speedP: number, spreadErr = 0.06): void {
@@ -577,7 +613,17 @@ export class Enemy {
             const dmg = this.dmg;
             this.attackAnim = 0;
             game.fx.telegraphCircle(tx, tz, r, d.mortar.warning, () => game.explode(tx, tz, r, dmg, d.projectileColor ?? 0xff9a3c, this.name));
-          } else this.shoot(game, d.projectileColor ?? 0xffffff, d.projectileSpeed ?? 12);
+          } else this.aimT = 0;
+        }
+        // M21-01 parte 2: o tiro comum mira antes de sair; a boca brilha e o tiro vai onde o herói estiver no fim
+        if (this.aimT >= 0) {
+          this.aimT += dt;
+          const k = this.aimT / TUNING.enemy.telegraph.shotWindup;
+          this.glowWeapon(game, k, d.projectileColor ?? 0xffffff, true);
+          if (k >= 1) {
+            this.aimT = -1;
+            this.shoot(game, d.projectileColor ?? 0xffffff, d.projectileSpeed ?? 12);
+          }
         }
         break;
       }
