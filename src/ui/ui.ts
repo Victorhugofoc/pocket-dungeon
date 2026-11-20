@@ -1,4 +1,5 @@
 // Interface em DOM: título, HUD, status da partida, relíquias, melhorias, pausa.
+import { MAP_NODE } from "../data/map-nodes";
 import { canHasten, hastenBonus } from "../core/wave";
 import { DIFFICULTIES, DIFFICULTY_ORDER, DIFFICULTY_TEXT, TOTAL_WAVES, type DifficultyId } from "../data/run";
 import { clearRun, discardLegacySave, loadRecords, loadRun, safeStorage, writeRecords } from "../core/save";
@@ -20,7 +21,7 @@ import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
 import { TECHNIQUES, TECH_MAX_LEVEL } from "../data/techniques";
 import { RELICS, RELIC_IDS } from "../data/relics";
 import { ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
-import type { MapCard, MapNodeId } from "../core/runmap";
+import type { MapCard } from "../core/runmap";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game } from "../game/game";
@@ -48,16 +49,6 @@ const UPGRADE_LABEL: Record<string, string> = {
   doubleShot: "shot in a row", coneShot: "projectile in a cone", pierce: "Pierce",
 };
 /** Nome e texto de cada carta do mapa, como em data/run_map.lua (o nome fica em inglês, igual ao de lá). */
-const MAP_NODE: Record<MapNodeId, { name: string; text: string; color: string }> = {
-  combat_room: { name: "Combat Room", text: "A room with a modifier on the next wave", color: "#e0a050" },
-  cursed_room: { name: "Cursed Room", text: "A curse for 2 waves in a row, no map between them; after the 1st, a cursed relic", color: "#b36bff" },
-  pact: { name: "Risk Pact", text: "A pact for the rest of the run + a pact relic (1 every 5 waves)", color: "#ff5a5a" },
-  event: { name: "Event", text: "Choose 1 of 3 events", color: "#5fd3c8" },
-  shop: { name: "Shop", text: "Buy permanent power", color: "#ffd34d" },
-  elite: { name: "Champion", text: "Face a Champion with 2 affixes: risk relic and shop after the wave", color: "#ffc83d" },
-  relic_shrine: { name: "Relic Shrine", text: "A relic with no extra fight", color: "#4fa3ff" },
-  boss_ambush: { name: "Boss Ambush", text: "A weakened boss joins the wave: a risk relic", color: "#ff7a5a" },
-};
 /** Linhas da sala na carta; na recompensa, mais é bom; no resto, mais é ruim. */
 const ROOM_MOD_LABEL: [keyof RoomMods, string][] = [
   ["reward", "reward"], ["enemyHp", "enemy HP"], ["enemyDamage", "enemy damage"],
@@ -135,7 +126,6 @@ export class Ui {
     game.events = {
       toast: (m, c) => this.toast(m, c),
       relicChoice: (ids, pick, title) => this.showRelicChoice(ids, pick, title),
-      mapOpen: () => this.showMap(),
       levelUp: () => this.showLevelUp(),
       evolution: () => this.showEvolution(),
       shop: () => this.showShop(),
@@ -425,6 +415,7 @@ export class Ui {
       <div class="hud-help">1 and 2 spells · H hasten the wave · I status · Esc pause<br>F3 performance${TUNING.devTools ? " · F1 DEV grimoire" : ""}</div>
       <div id="bossbar" class="hidden" data-r="boss"><h3 data-r="bossName"></h3><div class="bar"><i data-r="bossFill"></i><span data-r="bossText"></span></div></div>
       <div id="hint" class="hidden" data-r="hint"></div>
+      <div id="gatecard" class="hidden" data-r="gateCard"></div>
       <div id="perf" class="hidden" data-r="perf"></div>
       <div id="toasts"></div>
       <div class="hud-bottom">
@@ -521,7 +512,7 @@ export class Ui {
     r.waveN.textContent = `Wave ${n}${total}`;
     const w = g.wave;
     let t = "";
-    if (g.phase === "walk") t = "go to the circle";
+    if (g.phase === "walk") t = g.mapCards ? "choose a gate" : "go to the circle";
     else if (g.phase === "intro") t = "get ready";
     else if (g.phase === "fight" && w) {
       const left = Math.ceil(g.waveTimeLeft);
@@ -539,9 +530,19 @@ export class Ui {
     r.bank.classList.toggle("hidden", banked <= 0);
     if (banked > 0) r.bank.textContent = `2x ×${banked}`;
     r.boss.style.top = "64px";
-    const hint = g.nearPortal ? "E — go on to the next zone" : g.phase === "walk" && g.playerAlive ? `Step into the circle to start wave ${n}` : "";
+    const cards = g.mapCards;
+    const hint = g.nearPortal ? "E — go on to the next zone"
+      : g.phase === "walk" && g.playerAlive ? (cards ? `Walk through a gate to choose wave ${n}` : `Step into the circle to start wave ${n}`) : "";
     if (r.hint.textContent !== hint) r.hint.textContent = hint;
     r.hint.classList.toggle("hidden", !hint || !!this.overlay);
+    // M21-08: a carta do portão mais perto (o mapa de consulta)
+    const gi = cards && g.phase === "walk" ? g.nearGate : -1;
+    const key = gi >= 0 ? `${g.run.wave}:${gi}` : "";
+    if (r.gateCard.dataset.key !== key) {
+      r.gateCard.dataset.key = key;
+      r.gateCard.innerHTML = gi >= 0 ? mapCardHtml(cards![gi], gi) : "";
+    }
+    r.gateCard.classList.toggle("hidden", !key || !!this.overlay);
     if (this.frameN % 15 === 0 && !r.perf.classList.contains("hidden")) {
       r.perf.textContent = `${Math.round(g.fps)} fps · GPU ${g.pipeline.gpuMs < 0 ? "?" : g.pipeline.gpuMs.toFixed(1) + " ms"} · quality ${QUALITY[g.quality]} · ${g.pipeline.bufferSize.x}×${g.pipeline.bufferSize.y} (${Math.round(g.resScale * 100)}%)`;
       const rep = g.probe.report();
@@ -836,24 +837,6 @@ export class Ui {
       if (!id) return;
       this.close();
       pick(id);
-    };
-  }
-
-  /** O mapa da partida (run_map.lua): 3 cartas para a próxima onda, com a sala já sorteada à mostra (D-083). */
-  private showMap(): void {
-    const g = this.game;
-    const cards = g.mapCards;
-    if (!cards) return;
-    const panel = this.open("map", "map");
-    panel.style.width = "min(860px, 96vw)";
-    const next = g.run.wave + 1;
-    panel.innerHTML = `<h2>Run map</h2><p class="sub">Choose the path for wave ${next}.</p>
-      <div class="cards">${cards.map((c, i) => mapCardHtml(c, i)).join("")}</div>`;
-    panel.onclick = (ev) => {
-      const el = (ev.target as HTMLElement).closest<HTMLElement>("[data-card]");
-      if (!el) return;
-      this.close();
-      g.chooseMapCard(Number(el.dataset.card));
     };
   }
 
