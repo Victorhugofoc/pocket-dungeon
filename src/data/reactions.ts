@@ -19,4 +19,21 @@ export const REACTIONS = {
     poisonDuration: 4,
     color: 0x9fe04a,
   },
+  /** Atordoado + golpe pelas costas: comum abaixo de `threshold` da vida morre; senão leva `damage` (sobre o dano do herói) */
+  execution: {
+    damage: 2,
+    threshold: 0.4,
+    /** metade do ângulo do cone atrás do inimigo, em graus */
+    backCone: 70,
+    radius: 0,
+    color: 0xff4a6a,
+  },
+  /** Cyclone + elemento: o tornado leva o elemento até acabar; números de cada tique sobre o dano do herói */
+  tornado: {
+    fire: { color: 0xff7a1a, burnDps: 0.2, burnDuration: 2 },
+    ice: { color: 0x9fdcff, slow: 0.35, slowDuration: 1.2 },
+    /** choque: fração do dano do tique, como golpe de raio (pode estilhaçar) */
+    lightning: { color: 0xfff29a, shock: 0.5 },
+    poison: { color: 0x7be04a, poisonDps: 0.12, poisonDuration: 3, maxStacks: 3 },
+  },
 } as const;

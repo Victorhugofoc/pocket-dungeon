@@ -28,7 +28,11 @@ export function enemyStatuses(e: Enemy, ctx: StatusContext): StatusBadge[] {
   const out: StatusBadge[] = [];
   const now = ctx.now;
   // M21-05: reação pronta vai na frente, é o convite para fechar o combo
-  for (const r of ctx.primed?.(e) ?? []) out.push(r === "shatter" ? { kind: "shatterReady", until: e.chillUntil } : { kind: "plagueReady" });
+  for (const r of ctx.primed?.(e) ?? []) {
+    if (r === "shatter") out.push({ kind: "shatterReady", until: e.chillUntil });
+    else if (r === "plague") out.push({ kind: "plagueReady" });
+    // execução: o ícone do atordoamento já é o aviso (qualquer build bate pelas costas)
+  }
   const dots = e.dots.filter((d) => d.until > now);
   const burns = dots.filter((d) => d.kind === "burn");
   const last = (ds: typeof dots) => ds.reduce((m, d) => Math.max(m, d.until), 0);

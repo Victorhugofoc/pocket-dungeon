@@ -18,7 +18,7 @@ import { hasMapBefore, isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
-import { buildElements, primedReactions, reactionFor, type ReactionId } from "../core/reactions";
+import { buildElements, executes, isBehind, primedReactions, reactionFor, type ReactionId } from "../core/reactions";
 import { REACTIONS } from "../data/reactions";
 import { SPELL_SCHOOL, type SpellId } from "../data/spells";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
@@ -805,7 +805,9 @@ export class Game {
     const now = this.time;
     // M21-05: a reação olha o estado de antes do golpe
     const element = hit?.element ?? this.hitElement ?? (hit?.ice ? "ice" : null);
-    const reaction = reactionFor(e.reactState(now), { kind: "hit", element }, now);
+    const behind = isBehind(e.facing, e.x, e.z, this.player.x, this.player.z, REACTIONS.execution.backCone);
+    const reaction = reactionFor(e.reactState(now), { kind: "hit", element, behind }, now);
+    if (element) this.spells.infuse(e, element);
     const crit = hit?.crit === true || Math.random() < s.critChance;
     // ataque básico e técnicas levam o dano do ataque (autoDamagePct); as spells, não (D14)
     let amount = s.damage * s.autoDamage * mult * (0.9 + Math.random() * 0.2);
@@ -884,7 +886,7 @@ export class Game {
     const top = e.rig.height + 0.3;
     if (opts.reaction) {
       e.flash = 1;
-      this.fx.text(e.x, top, e.z, String(amount), opts.reaction === "shatter" ? "frost" : "poison");
+      this.fx.text(e.x, top, e.z, String(amount), opts.reaction === "shatter" ? "frost" : opts.reaction === "plague" ? "poison" : "crit");
     } else if (opts.dot) {
       this.fx.text(e.x, top, e.z, String(amount), opts.dot === "poison" ? "poison" : "burn");
     } else {
@@ -1675,6 +1677,20 @@ export class Game {
     const now = this.time;
     const s = this.stats;
     e.reactUntil = now + R.cooldown;
+    if (id === "execution") {
+      // Execução: o atordoamento acaba; comum abaixo do limiar morre, o resto leva o dano extra
+      const X = R.execution;
+      e.stunUntil = 0;
+      e.windupT = -1;
+      this.damageEnemy(e, s.damage * X.damage * (e.isBoss ? R.bossMult : 1), { reaction: id });
+      if (!e.dead && executes(e.hp, e.maxHp, X.threshold, e.isBoss, e.champion)) this.damageEnemy(e, e.hp + 1, { reaction: id });
+      this.fx.text(e.x, e.rig.height + 0.9, e.z, "Execute", "crit react");
+      this.fx.burst(e.x, 1, e.z, X.color, 30, 9, 0.16, 0.55, 2);
+      this.fx.addShake(0.2);
+      this.hitstop = Math.max(this.hitstop, 0.06);
+      this.audio.play("crit");
+      return;
+    }
     const def = R[id];
     if (id === "shatter") {
       e.chillUntil = 0;
@@ -2736,7 +2752,8 @@ export class Game {
   private frame(t: number): void {
     requestAnimationFrame((n) => this.frame(n));
     const real = (t - this.lastFrame) / 1000 || 0.016;
-    const raw = Math.min(0.05, real);
+    // relógio fora de ordem (quadros dados pelo console junto com os do navegador) não anda para trás
+    const raw = Math.max(0, Math.min(0.05, real));
     this.lastFrame = t;
     this.fps += (1 / Math.max(real, 0.001) - this.fps) * 0.05;
     this.probe.begin();

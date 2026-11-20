@@ -7,6 +7,8 @@
 import * as THREE from "three";
 import { isSpellId, spellContext, spellStats, type SpellStats } from "../core/spells";
 import { MAX_SPELLS, SPELL_CAST, SPELL_SCHOOL } from "../data/spells";
+import { REACTIONS } from "../data/reactions";
+import { tornadoInfusion, type TornadoElement } from "../core/reactions";
 import { DR_BASE_HP, FROST, TECH_EVO } from "../data/techniques";
 import { KNOCK_DECAY, type Dot, type Enemy } from "./enemy";
 import type { Game } from "./game";
@@ -131,6 +133,8 @@ interface Vortex {
   /** correntes de vento em volta (pé e meio do funil) e a área no chão */
   winds: MoveHandle[];
   area?: VfxHandle;
+  /** M21-05: elemento que o tornado absorveu (o primeiro fica até ele acabar) */
+  element: TornadoElement | null;
 }
 
 /** Quake Totem em pé (techniques.lua `world.totems`): bate no chão a cada tique. */
@@ -1097,11 +1101,45 @@ export class SpellCaster {
     // a área que fere, parada no chão (o Maelstrom anda, então fica sem)
     const area = st.followSpeed ? undefined
       : lib.ring(a.x, a.z, { radius: st.radius, color: tint, core: WIND_CORE, width: 0.22, from: 1, fill: 0.12, dust: 0, dur: Infinity, power: 0.45 });
-    this.vortices.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 0.5, group, cones, winds, area });
+    this.vortices.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 0.5, group, cones, winds, area, element: null });
     lib.ring(a.x, a.z, { radius: reach, color: tint, core: WIND_CORE, width: 0.35, from: 0.2, dust: 10, dur: 0.4 });
     lib.burst(a.x, 0.8, a.z, { radius: 1.2, color: tint, core: WIND_CORE, rays: 0, sparks: 8, light: 0.8, dur: 0.25, wave: 0 });
     g.audio.play("tech");
     return true;
+  }
+
+  /** M21-05: golpe de fogo, gelo, raio ou veneno em quem está no funil dá o elemento ao tornado. */
+  infuse(e: Enemy, element: string): void {
+    const g = this.game;
+    for (const v of this.vortices) {
+      if (v.element) continue;
+      const reach = v.st.radius * SPELL_CAST.vortexReach;
+      if ((e.x - v.x) ** 2 + (e.z - v.z) ** 2 > (reach + e.radius) ** 2) continue;
+      const el = tornadoInfusion(null, element);
+      if (!el) return;
+      v.element = el;
+      const color = REACTIONS.tornado[el].color;
+      for (const m of v.cones) (m.material as THREE.MeshBasicMaterial).color.setHex(color);
+      const name = el === "fire" ? "Fire" : el === "ice" ? "Ice" : el === "lightning" ? "Storm" : "Venom";
+      g.fx.text(v.x, 3.6, v.z, `${name} Tornado`, "react");
+      g.fx.lib.ring(v.x, v.z, { radius: reach, color, core: 0xffffff, width: 0.4, from: 0.2, dust: 10, dur: 0.4 });
+      g.fx.lib.burst(v.x, 1.4, v.z, { radius: 1.6, color, core: 0xffffff, rays: 4, sparks: 16, light: 1, dur: 0.3, wave: 0 });
+      g.audio.play("tech");
+    }
+  }
+
+  /** Tique de um tornado com elemento em quem está dentro: queima, gela, dá choque de raio ou envenena. */
+  private tornadoTick(v: Vortex, e: Enemy): void {
+    const g = this.game;
+    const T = REACTIONS.tornado;
+    const now = g.time;
+    const s = g.stats;
+    if (v.element === "fire") e.applyBurn(now, s.damage * T.fire.burnDps * s.burn, T.fire.burnDuration);
+    else if (v.element === "ice") this.applySlow(e, T.ice.slow, T.ice.slowDuration, true);
+    else if (v.element === "lightning") {
+      g.spellHit(e, v.st.damage * T.lightning.shock, true, "lightning");
+      if (Math.random() < 0.5) g.fx.spark(e.x, 1.2, e.z, T.lightning.color, 0.14, 0.3, 1);
+    } else if (v.element === "poison") e.applyPoison(now, s.damage * T.poison.poisonDps * s.poison, T.poison.poisonDuration, T.poison.maxStacks, undefined, "tornado");
   }
 
   /** techniques.lua `updateVortex`: puxa todos no alcance do funil para o olho (chefes, `bossPull`) e fere os de dentro. */
@@ -1146,6 +1184,7 @@ export class SpellCaster {
           if (e.dead) continue;
           if ((e.x - v.x) ** 2 + (e.z - v.z) ** 2 > (st.radius + e.radius) ** 2) continue;
           g.spellHit(e, st.damage, true, schoolOf(st));
+          if (v.element && !e.dead) this.tornadoTick(v, e);
         }
       }
       if (v.time <= 0) {

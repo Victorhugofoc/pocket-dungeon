@@ -102,7 +102,7 @@ export class Enemy {
       if (d.kind === "burn") burning = true;
       else if (d.kind === "poison") poisoned = true;
     }
-    return { chillUntil: this.chillUntil, burning, poisoned, reactUntil: this.reactUntil };
+    return { chillUntil: this.chillUntil, burning, poisoned, stunned: now < this.stunUntil, reactUntil: this.reactUntil };
   }
 
   /** Praga: o estado que chega olha o de antes; a reação sai no próximo quadro (`update`), fora da pilha de quem aplicou. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildElements, primedReactions, reactionFor, type ReactState } from "../src/core/reactions";
+import { buildElements, executes, isBehind, primedReactions, reactionFor, tornadoInfusion, type ReactState } from "../src/core/reactions";
 
 const base = (o: Partial<ReactState> = {}): ReactState => ({ chillUntil: 0, burning: false, poisoned: false, reactUntil: 0, ...o });
 
@@ -39,5 +39,34 @@ describe("reações de estado (M21-05)", () => {
     const e = buildElements(["fire", "lightning"], "lightning", "poison", true);
     expect([...e].sort()).toEqual(["fire", "ice", "lightning", "poison"]);
     expect([...buildElements([], null, "burn", false)]).toEqual(["fire"]);
+  });
+
+  it("Execução: atordoado e golpe pelas costas; de frente ou sem atordoar, não", () => {
+    const s = base({ stunned: true });
+    expect(reactionFor(s, { kind: "hit", element: null, behind: true }, 1)).toBe("execution");
+    expect(reactionFor(s, { kind: "hit", element: null, behind: false }, 1)).toBeNull();
+    expect(reactionFor(base(), { kind: "hit", element: null, behind: true }, 1)).toBeNull();
+  });
+
+  it("costas: cone atrás de quem olha para +z", () => {
+    expect(isBehind(0, 0, 0, 0, -3, 70)).toBe(true);
+    expect(isBehind(0, 0, 0, 0, 3, 70)).toBe(false);
+    expect(isBehind(0, 0, 0, 3, 0, 70)).toBe(false);
+    expect(isBehind(0, 0, 0, 1, -3, 70)).toBe(true);
+    expect(isBehind(Math.PI, 0, 0, 0, 3, 70)).toBe(true);
+  });
+
+  it("Execução mata só o comum abaixo do limiar", () => {
+    expect(executes(30, 100, 0.4, false, false)).toBe(true);
+    expect(executes(50, 100, 0.4, false, false)).toBe(false);
+    expect(executes(10, 100, 0.4, true, false)).toBe(false);
+    expect(executes(10, 100, 0.4, false, true)).toBe(false);
+  });
+
+  it("tornado: o primeiro elemento absorvível fica", () => {
+    expect(tornadoInfusion(null, "fire")).toBe("fire");
+    expect(tornadoInfusion(null, "wind")).toBeNull();
+    expect(tornadoInfusion(null, null)).toBeNull();
+    expect(tornadoInfusion("ice", "fire")).toBe("ice");
   });
 });
