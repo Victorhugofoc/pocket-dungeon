@@ -24,6 +24,7 @@ import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } fr
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
 import { TUNING } from "../data/tuning";
+import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
 import { Audio } from "./audio";
 import { Enemy, enemyDef } from "./enemy";
@@ -989,7 +990,7 @@ export class Game {
     this.events.statusChanged();
   }
 
-  /** O combate da onda está correndo: cura e regeneração valem `RUN_TUNING.combatHealMult` (damage.lua). */
+  /** O combate da onda está correndo: cura e regeneração valem `PACE.combatHealMult` (damage.lua). */
   get inCombat(): boolean {
     return !!this.wave && this.wave.started && !this.wave.complete;
   }
@@ -1043,7 +1044,7 @@ export class Game {
     const p = this.player;
     const before = p.hp;
     if (!full) amount *= this.stats.healing; // damage.lua `healPlayer`: armadura e `healPct`
-    if (this.inCombat && !full) amount *= RUN_TUNING.combatHealMult;
+    if (this.inCombat && !full) amount *= PACE.combatHealMult;
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
     this.run.statistics.healed += p.hp - before;
     this.ach.healed(this.run.statistics.healed);
@@ -2059,7 +2060,7 @@ export class Game {
     }
     if (s.regen > 0 && p.hp < s.maxHp) {
       const before = p.hp;
-      p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? RUN_TUNING.combatHealMult : 1));
+      p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? PACE.combatHealMult : 1));
       this.run.statistics.healed += p.hp - before;
       this.ach.healed(this.run.statistics.healed);
     }

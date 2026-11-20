@@ -3,6 +3,7 @@
 // A sala do mapa da partida entra pela camada da onda (runmap.ts). Sem pactos, eventos, afixos e modificadores de
 // herói por enquanto (M9, M13 e o resto do M20-05): o que não existe vale 1.
 import type { Rng } from "./rng";
+import { pacedCount, pacedDuration } from "./pace";
 import { waveLayer } from "./runmap";
 import { AMBUSH_DELAY, ENEMY_GROUPS, type RoomDef } from "../data/rooms";
 import {
@@ -145,8 +146,9 @@ export function biasedComposition(list: readonly { id: string; weight: number }[
  */
 export function startWave(wave: number, champions: Rng, known: (id: string) => boolean, mods?: WaveMods): WaveState {
   const room = mods?.room ?? null;
-  const duration = baseDuration(wave);
-  const target = targetCount(wave, mods?.enemyCount ?? 1);
+  // camada de ritmo (M21-02): contagem e duração adaptadas; targetCount e baseDuration continuam iguais aos de lá
+  const duration = pacedDuration(wave);
+  const target = pacedCount(targetCount(wave, mods?.enemyCount ?? 1), wave);
   const boss = isBossWave(wave);
   const composition = biasedComposition(compositionFor(wave), room).filter((c) => known(c.id)).map((c) => [c.id, c.weight] as [string, number]);
   if (!composition.length) composition.push(["goblin", 1]);

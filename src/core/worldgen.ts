@@ -2,6 +2,7 @@
 // Lógica pura (sem three.js): o mesmo seed gera sempre o mesmo mapa.
 import { Rng } from "./rng";
 import { TUNING } from "../data/tuning";
+import { pacedClearing } from "./pace";
 import type { DecorKind, ZoneDef } from "../data/zones";
 
 export interface Vec2 {
@@ -76,6 +77,8 @@ export function pointOnPath(path: Vec2[], d: number): Vec2 {
 }
 
 export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
+  /** raio das clareiras das ondas, com a camada de ritmo (M21-02) */
+  const SEG_R = pacedClearing(TUNING.world.segmentRadius);
   const W = TUNING.world;
   const half = W.size / 2;
   const inner = half - W.margin;
@@ -107,13 +110,13 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
   let next: Vec2 = boss;
   let nextR: number = W.bossArenaRadius;
   for (let i = at.length - 1; i >= 0; i--) {
-    let d = Math.min(at[i], (i + 1 < at.length ? at[i + 1] : len) - W.segmentRadius - nextR - gap);
+    let d = Math.min(at[i], (i + 1 < at.length ? at[i + 1] : len) - SEG_R - nextR - gap);
     let c = pointOnPath(path, d);
-    while (d > 0 && Math.hypot(c.x - next.x, c.z - next.z) < W.segmentRadius + nextR + gap) c = pointOnPath(path, (d -= 1));
+    while (d > 0 && Math.hypot(c.x - next.x, c.z - next.z) < SEG_R + nextR + gap) c = pointOnPath(path, (d -= 1));
     at[i] = d;
     centers[i] = c;
     next = c;
-    nextR = W.segmentRadius;
+    nextR = SEG_R;
   }
   // entrada: o primeiro ponto do caminho, voltando da clareira, que fica 3 unidades fora dela
   const entryOf = (c: Vec2, r: number, d: number): Vec2 => {
@@ -121,7 +124,7 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
     while (d > 0 && Math.hypot(e.x - c.x, e.z - c.z) < r + 3) e = pointOnPath(path, (d -= 1));
     return e;
   };
-  const segments: Segment[] = centers.map((c, i) => ({ ...c, r: W.segmentRadius, entry: entryOf(c, W.segmentRadius, at[i]) }));
+  const segments: Segment[] = centers.map((c, i) => ({ ...c, r: SEG_R, entry: entryOf(c, SEG_R, at[i]) }));
   segments.push({ ...boss, r: W.bossArenaRadius, entry: entryOf(boss, W.bossArenaRadius, len) });
 
   // obstáculos e decoração

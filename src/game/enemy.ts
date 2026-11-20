@@ -1,6 +1,7 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
 import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
+import { pacedFoe } from "../core/pace";
 import { circleInArc } from "../core/melee";
 import { BURN, CHILD_SCALE, MINION_SCALE, RUN_TUNING } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
@@ -169,7 +170,7 @@ export class Enemy {
     if (isBoss) this.patterns = opts.crownAttack ? [...(def as BossDef).patterns, opts.crownAttack] : (def as BossDef).patterns;
     // vida, dano e velocidade como no Dungeon Reign (enemy.lua, boss.lua): pela onda e pela dificuldade
     this.ambush = isBoss && !!opts.ambush;
-    const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final, opts.ambush ?? null) : enemyStats(def, wave, game.mods, this.champion);
+    const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final, opts.ambush ?? null) : pacedFoe(enemyStats(def, wave, game.mods, this.champion));
     const derived = opts.child ? CHILD_SCALE : this.summoned ? MINION_SCALE : null;
     this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1));
     this.projK = st.projectileSpeed;

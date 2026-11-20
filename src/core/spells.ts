@@ -9,6 +9,7 @@ import {
 import { DR_BASE_DAMAGE, DR_BASE_HP, DR_SPELL_POWER } from "../data/techniques";
 import type { FinalStats } from "./stats";
 import { px, stackMultiplier } from "./techniques";
+import { PACE } from "../data/pace";
 
 /** O que a spell precisa dos atributos do herói (subconjunto de FinalStats). */
 export interface SpellContext {
@@ -226,7 +227,7 @@ export function spellStats(
   const levelScale = spellLevelScale(level);
   const evo = slotEvolution(slot);
   // §34: a recarga e a área globais entram no mesmo pool que as da spell (D14)
-  const areaMult = stackMultiplier([...(ctx.areaValue ? [ctx.areaValue] : []), ...L.areaPct]);
+  const areaMult = stackMultiplier([...(ctx.areaValue ? [ctx.areaValue] : []), ...L.areaPct]) * PACE.spellAreaMult;
   const cooldownMult = Math.max(SPELL_TUNING.cooldownFloor,
     stackMultiplier([...(ctx.cooldownValue ? [ctx.cooldownValue] : []), ...L.cooldownPct]) * (evo?.cooldownMult ?? 1));
   const school = ctx.school?.[def.school] ?? 1;
