@@ -5,8 +5,8 @@
 // tornado, totem, campo de cura, lâminas em órbita, runas, impacto, queimadura, lentidão, veneno, empurrão, atordoamento,
 // Eco e Volátil.
 import * as THREE from "three";
-import { isSpellId, spellContext, spellStats, type SpellStats } from "../core/spells";
-import { MAX_SPELLS, SPELL_CAST, SPELL_SCHOOL } from "../data/spells";
+import { isAura, isSpellId, remainingTicks, spellContext, spellStats, type SpellStats } from "../core/spells";
+import { AURA_SPIKE, MAX_SPELLS, SPELL_CAST, SPELL_SCHOOL } from "../data/spells";
 import { REACTIONS } from "../data/reactions";
 import { tornadoInfusion, type TornadoElement } from "../core/reactions";
 import { DR_BASE_HP, FROST, TECH_EVO } from "../data/techniques";
@@ -135,6 +135,19 @@ interface Vortex {
   area?: VfxHandle;
   /** M21-05: elemento que o tornado absorveu (o primeiro fica até ele acabar) */
   element: TornadoElement | null;
+}
+
+/** M21-06: lâmina do Blade Orbit voando para fora (pico da aura). */
+interface BladeFlight {
+  obj: THREE.Object3D;
+  x: number; z: number; dx: number; dz: number;
+  left: number;
+  speed: number;
+  st: SpellStats;
+  hit: Set<Enemy>;
+  trail: TrailHandle;
+  /** grupo do giro de onde a lâmina saiu: os materiais são liberados quando a última lâmina dele cai */
+  from: THREE.Group;
 }
 
 /** Quake Totem em pé (techniques.lua `world.totems`): bate no chão a cada tique. */
@@ -409,6 +422,9 @@ export class SpellCaster {
   stats: (SpellStats | null)[] = [];
   /** o espaço pisca quando a tecla foi apertada e a spell não saiu (spell ainda sem efeito no jogo) */
   noTarget: number[] = [];
+  /** M21-06: recarga do pico de cada espaço de aura (a tecla) */
+  spikeCd: number[] = [];
+  private flights: BladeFlight[] = [];
   private shots: SpellProjectile[] = [];
   private beams: Beam[] = [];
   private vortices: Vortex[] = [];
@@ -439,6 +455,8 @@ export class SpellCaster {
         : null);
     while (this.cooldown.length < this.stats.length) this.cooldown.push(0);
     this.cooldown.length = this.stats.length;
+    while (this.spikeCd.length < this.stats.length) this.spikeCd.push(0);
+    this.spikeCd.length = this.stats.length;
     this.noTarget.length = this.stats.length;
   }
 
@@ -462,8 +480,13 @@ export class SpellCaster {
     for (let i = 0; i < this.cooldown.length; i++) {
       this.cooldown[i] = Math.max(0, this.cooldown[i] - dt);
       this.noTarget[i] = Math.max(0, (this.noTarget[i] ?? 0) - dt);
-      // Rune Traps: como lá, deixa uma runa a cada intervalo enquanto o herói anda; a tecla deixa uma parado (D15)
-      if (castKeys[i] || (walking && this.stats[i]?.kind === "rune" && this.cooldown[i] <= 0)) this.tryCast(i);
+      this.spikeCd[i] = Math.max(0, (this.spikeCd[i] ?? 0) - dt);
+      const st = this.stats[i];
+      if (st && isAura(st.id)) {
+        // M21-06 (D18): a aura sai sozinha como lá (S14); a tecla dá o pico
+        if (castKeys[i]) this.trySpike(i);
+        if (this.cooldown[i] <= 0 && this.autoReady(st, walking)) this.tryCast(i);
+      } else if (castKeys[i]) this.tryCast(i);
     }
     // Eco: relança igual, de graça e sem novo Eco (spell_system.lua `update`)
     for (let k = this.pending.length - 1; k >= 0; k--) {
@@ -492,6 +515,138 @@ export class SpellCaster {
     this.updateAuras(dt);
     this.updateWalls(dt);
     this.updateStorms(dt);
+    this.updateFlights(dt);
+  }
+
+  /** Quando a aura sai sozinha: Rune Traps só andando (como lá), Venom Nova só com inimigo no raio, o resto sempre. */
+  private autoReady(st: SpellStats, walking: boolean): boolean {
+    if (st.kind === "rune") return walking;
+    if (st.kind === "nova") return this.inArea(this.game.player.x, this.game.player.z, st.radius).length > 0;
+    return true;
+  }
+
+  /** Recarga que o HUD mostra na tecla: a do pico nas auras, a da spell nas outras. */
+  keyCooldown(i: number): number {
+    const st = this.stats[i];
+    return st && isAura(st.id) ? this.spikeCd[i] ?? 0 : this.cooldown[i] ?? 0;
+  }
+
+  /**
+   * M21-06: o pico da aura na tecla. Precisa do efeito em campo (lâminas, campo, runas; a Nova não precisa); ao sair,
+   * a recarga do pico e a da aura recomeçam juntas, então a aura só volta depois dela.
+   */
+  trySpike(i: number): boolean {
+    const st = this.stats[i];
+    const g = this.game;
+    if (!st || this.spikeCd[i] > 0 || !g.playerAlive) return false;
+    let ok = false;
+    if (st.kind === "orbit") ok = this.spikeOrbit(i);
+    else if (st.kind === "field") ok = this.spikeField(i);
+    else if (st.kind === "rune") ok = this.spikeRunes(i);
+    else if (st.kind === "nova") ok = this.castNova(st, AURA_SPIKE.novaStacks);
+    if (!ok) {
+      this.noTarget[i] = 0.35;
+      return false;
+    }
+    this.cooldown[i] = st.cooldown;
+    this.spikeCd[i] = st.cooldown;
+    return true;
+  }
+
+  /** Blade Orbit: cada lâmina sai voando em linha, para fora, a partir de onde está; o giro acaba. */
+  private spikeOrbit(i: number): boolean {
+    const g = this.game;
+    const p = g.player;
+    const k = this.orbits.findIndex((o) => o.slot === i);
+    if (k < 0) return false;
+    const o = this.orbits[k];
+    const tint = o.st.evolution === "blade_storm" ? EVO_COLOR.blade_storm : BLADE_STEEL;
+    for (const b of o.blades) {
+      const bx = b.position.x;
+      const bz = b.position.z;
+      const d = Math.hypot(bx, bz) || 1;
+      const x = p.x + bx;
+      const z = p.z + bz;
+      b.removeFromParent();
+      g.scene.add(b);
+      b.position.set(x, 1, z);
+      this.flights.push({ obj: b, x, z, dx: bx / d, dz: bz / d, left: AURA_SPIKE.orbitReach,
+        speed: AURA_SPIKE.orbitReach / AURA_SPIKE.orbitFlight, st: o.st, hit: new Set(), from: o.group,
+        trail: g.fx.lib.trail({ color: tint, core: BLADE_CORE, width: 1.1, life: 0.25, head: 0, sheds: 8 }) });
+    }
+    // o resto do giro some; o grupo (com os materiais) fica até a última lâmina cair
+    for (const t of o.trails) t.kill(0.12);
+    o.group.removeFromParent();
+    this.orbits.splice(k, 1);
+    g.fx.lib.ring(p.x, p.z, { radius: o.st.radius * 1.4, color: tint, core: BLADE_CORE, width: 0.35, from: 0.6, dust: 6, dur: 0.3 });
+    g.fx.text(p.x, 2.8, p.z, "Blade Burst", "react");
+    g.audio.play("tech");
+    return true;
+  }
+
+  private updateFlights(dt: number): void {
+    const g = this.game;
+    for (let k = this.flights.length - 1; k >= 0; k--) {
+      const f = this.flights[k];
+      const step = Math.min(f.left, f.speed * dt);
+      const x0 = f.x;
+      const z0 = f.z;
+      f.x += f.dx * step;
+      f.z += f.dz * step;
+      f.left -= step;
+      // fere quem está no trecho andado neste quadro (segmento, para não pular ninguém)
+      for (const e of this.inSegment(x0, z0, f.dx, f.dz, 0, step, AURA_SPIKE.orbitWidth, f.hit)) {
+        f.hit.add(e);
+        g.spellHit(e, f.st.damage * AURA_SPIKE.orbitDamage, false, schoolOf(f.st));
+        g.fx.lib.burst(e.x, 1, e.z, { radius: 0.8, color: BLADE_STEEL, core: BLADE_CORE, rays: 3, sparks: 7, light: 0, dur: 0.16, wave: 0 });
+      }
+      f.obj.position.set(f.x, 1, f.z);
+      f.obj.rotation.set(0, -Math.atan2(f.dz, f.dx), 0.25);
+      f.obj.scale.setScalar(3);
+      f.trail.push(f.x, 1, f.z);
+      if (f.left > 1e-6) continue;
+      g.fx.lib.burst(f.x, 1, f.z, { radius: 0.6, color: BLADE_STEEL, core: BLADE_CORE, rays: 0, sparks: 6, light: 0, dur: 0.18, wave: 0 });
+      f.trail.kill(0.15);
+      // a lâmina volta ao grupo dela, para os materiais saírem junto quando o grupo for liberado
+      f.from.add(f.obj);
+      this.flights.splice(k, 1);
+      if (!this.flights.some((o) => o.from === f.from)) freeGroup(f.from);
+    }
+  }
+
+  /** Healing Field: o campo que segue o herói some e dá de uma vez a cura dos tiques que faltavam. */
+  private spikeField(i: number): boolean {
+    const g = this.game;
+    const p = g.player;
+    const k = this.fields.findIndex((f) => f.slot === i && f.follow);
+    if (k < 0) return false;
+    const f = this.fields[k];
+    const n = remainingTicks(f.time, f.tickLeft, f.st.tick ?? 1);
+    if (n <= 0) return false;
+    g.heal(g.stats.maxHp * (f.st.heal ?? 0) * n * AURA_SPIKE.fieldHeal, true);
+    if (f.st.fieldDamage) this.sanctuaryBurn(f);
+    const c = f.st.evolution === "sanctuary" ? EVO_COLOR.sanctuary : SPELL_COLOR.healing_field;
+    g.fx.lib.pillar(p.x, p.z, { radius: 1.4, height: 6, color: c, core: HEAL_CORE, speed: 6, dur: 0.7 });
+    g.fx.lib.ring(p.x, p.z, { radius: f.st.radius, color: c, core: HEAL_CORE, width: 0.5, from: 1, fill: 0.2, dust: 10, dur: 0.45 });
+    g.fx.text(p.x, 2.8, p.z, "Healing Burst", "heal react");
+    this.freeField(k);
+    g.audio.play("tech");
+    return true;
+  }
+
+  /** Rune Traps: todas as runas do espaço explodem já, armadas ou não. */
+  private spikeRunes(i: number): boolean {
+    const g = this.game;
+    let n = 0;
+    for (let k = this.runes.length - 1; k >= 0; k--) {
+      const r = this.runes[k];
+      if (r.slot !== i || r.fade !== undefined) continue;
+      this.detonate(r);
+      this.freeRune(k);
+      n++;
+    }
+    if (n) g.fx.text(g.player.x, 2.8, g.player.z, "Detonate", "react");
+    return n > 0;
   }
 
   /** spell_system.lua `tryCast`: a recarga é gasta quando a spell sai; spell sem efeito ainda (M6-05) não gasta. */
@@ -985,7 +1140,8 @@ export class SpellCaster {
    * techniques.lua `Tech.nova.cast`: onda de veneno em volta do herói; cada inimigo dentro ganha um acúmulo. Lá só saía
    * com inimigo no raio; aqui sai sempre (D15).
    */
-  private castNova(st: SpellStats): boolean {
+  /** `stackMult` (pico da aura, M21-06): cada inimigo leva tantos acúmulos de uma vez, com o teto multiplicado junto. */
+  private castNova(st: SpellStats, stackMult = 1): boolean {
     const g = this.game;
     const p = g.player;
     const r = st.radius;
@@ -997,12 +1153,13 @@ export class SpellCaster {
     for (const e of g.enemies) {
       if (e.dead) continue;
       if ((e.x - p.x) ** 2 + (e.z - p.z) ** 2 > (r + e.radius) ** 2) continue;
-      this.applyPoison(e, dps, st.duration ?? 0, st.stacks ?? 1, spread);
+      for (let n = 0; n < stackMult; n++) this.applyPoison(e, dps, st.duration ?? 0, (st.stacks ?? 1) * stackMult, spread);
       if (!e.aggro) e.setAggro(g);
       // respingo aos pés de cada um (D-417)
       lib.burst(e.x, 0.5, e.z, { radius: 0.8, color, core: VENOM_CORE, rays: 0, sparks: 6, light: 0, wave: 0, dur: 0.25 });
     }
     this.novaFx(p.x, p.z, r, spread ? EVO_COLOR.plague_bloom : VENOM_DARK);
+    if (stackMult > 1) g.fx.text(p.x, 2.8, p.z, "Venom Surge", "poison react");
     g.audio.play("tech");
     return true;
   }
@@ -2337,6 +2494,13 @@ export class SpellCaster {
     while (this.fields.length) this.freeField(this.fields.length - 1);
     while (this.orbits.length) this.freeOrbit(this.orbits.length - 1);
     while (this.runes.length) this.freeRune(this.runes.length - 1);
+    for (const f of this.flights) {
+      f.trail.kill(0);
+      f.from.add(f.obj);
+    }
+    for (const grp of new Set(this.flights.map((f) => f.from))) freeGroup(grp);
+    this.flights.length = 0;
+    this.spikeCd.fill(0);
     for (const m of this.lines) m.removeFromParent();
     this.runeTicks.clear();
     for (const a of this.auras) freeGroup(a.ring.group);

@@ -174,6 +174,8 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .skill.spell.ready { border-color: #9fd0ff; box-shadow: 0 0 8px rgba(140, 200, 255, 0.45); }
 .skill.spell.empty { opacity: 0.4; }
 .skill.spell.no-target { border-color: var(--bad); }
+.skill.spell.aura { border-style: dashed; }
+.skill.spell.aura.ready { border-style: solid; border-color: #ffe066; box-shadow: 0 0 8px rgba(255, 224, 102, 0.45); }
 .skill.big.ready { box-shadow: 0 0 10px rgba(255, 210, 90, 0.55); }
 
 /* ondas (M20-02) */

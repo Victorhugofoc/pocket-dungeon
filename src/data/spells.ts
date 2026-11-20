@@ -84,6 +84,8 @@ export interface SpellDef {
   name: string;
   school: string;
   kind: SpellKind;
+  /** M21-06 (D18): "aura" sai sozinha e a tecla dá o pico; "active" sai na tecla */
+  mode: "active" | "aura";
   cooldown: number;
   range: number;
   /** dano = (baseDamage + poder de magia × damageScale) × escala do nível; por golpe, tique ou acúmulo conforme o tipo */
@@ -125,7 +127,7 @@ const mod = (id: string, name: string, text: string, effect: SpellEffect): Spell
 
 export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
   fireball: {
-    id: "fireball", name: "Fireball", school: "fire", kind: "projectile",
+    id: "fireball", name: "Fireball", school: "fire", kind: "projectile", mode: "active",
     cooldown: 3.0, projectileSpeed: 280, range: 160, baseDamage: 14, damageScale: 0.55,
     radius: 48, burnDps: 5, burnDuration: 3.0,
     milestones: [
@@ -145,7 +147,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["firestorm", "firewave"],
   },
   iceball: {
-    id: "iceball", name: "Iceball", school: "ice", kind: "projectile",
+    id: "iceball", name: "Iceball", school: "ice", kind: "projectile", mode: "active",
     cooldown: 2.4, projectileSpeed: 240, range: 160, baseDamage: 16, damageScale: 0.50,
     radius: 42, slow: 0.30, slowDuration: 1.25,
     milestones: [
@@ -166,7 +168,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["blizzard"],
   },
   chain_lightning: {
-    id: "chain_lightning", name: "Chain Lightning", school: "lightning", kind: "chain",
+    id: "chain_lightning", name: "Chain Lightning", school: "lightning", kind: "chain", mode: "active",
     cooldown: 4.2, range: 160, baseDamage: 18, damageScale: 0.45, targets: 3, chainRange: 105,
     milestones: [
       ms(2, "FORKED CURRENT", "+1 target", { targets: 1 }),
@@ -184,7 +186,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["lightning_strike"],
   },
   arcane_bolt: {
-    id: "arcane_bolt", name: "Arcane Bolt", school: "arcane", kind: "projectile",
+    id: "arcane_bolt", name: "Arcane Bolt", school: "arcane", kind: "projectile", mode: "active",
     cooldown: 2.5, projectileSpeed: 350, range: 185, baseDamage: 14, damageScale: 0.50,
     radius: 26, projectiles: 1,
     milestones: [
@@ -203,7 +205,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["arcane_strike"],
   },
   healing_field: {
-    id: "healing_field", name: "Healing Field", school: "healing", kind: "field", startable: false,
+    id: "healing_field", name: "Healing Field", school: "healing", kind: "field", mode: "aura", startable: false,
     cooldown: 8.0, range: 170, radius: 58, duration: 8.0, heal: 2, tick: 0.75,
     milestones: [
       ms(2, "WIDER CIRCLE", "+15% area", { areaPct: 0.15 }),
@@ -223,7 +225,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["sanctuary"],
   },
   blade_orbit: {
-    id: "blade_orbit", name: "Blade Orbit", school: "blade", kind: "orbit",
+    id: "blade_orbit", name: "Blade Orbit", school: "blade", kind: "orbit", mode: "aura",
     cooldown: 9.0, range: 70, radius: 60, duration: 6.0, blades: 3, hitCooldown: 0.5,
     baseDamage: 9, damageScale: 0.35,
     milestones: [
@@ -242,7 +244,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["blade_storm"],
   },
   venom_nova: {
-    id: "venom_nova", name: "Venom Nova", school: "poison", kind: "nova",
+    id: "venom_nova", name: "Venom Nova", school: "poison", kind: "nova", mode: "aura",
     cooldown: 7.0, range: 110, radius: 110, duration: 4.0, stacks: 5,
     baseDamage: 6, damageScale: 0.25,
     milestones: [
@@ -261,7 +263,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["plague_bloom"],
   },
   cyclone: {
-    id: "cyclone", name: "Cyclone", school: "wind", kind: "vortex",
+    id: "cyclone", name: "Cyclone", school: "wind", kind: "vortex", mode: "active",
     cooldown: 7.0, range: 170, radius: 70, duration: 3.5, tick: 0.5, pull: 90, bossPull: 0.20,
     baseDamage: 5, damageScale: 0.20,
     milestones: [
@@ -280,7 +282,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["maelstrom"],
   },
   rune_traps: {
-    id: "rune_traps", name: "Rune Traps", school: "rune", kind: "rune",
+    id: "rune_traps", name: "Rune Traps", school: "rune", kind: "rune", mode: "aura",
     cooldown: 1.6, range: 0, radius: 40, duration: 8.0, maxRunes: 4, root: 0.6, trigger: 12, arm: 0.3,
     baseDamage: 12, damageScale: 0.45,
     milestones: [
@@ -299,7 +301,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["rune_circle"],
   },
   prism_beam: {
-    id: "prism_beam", name: "Prism Beam", school: "light", kind: "beam",
+    id: "prism_beam", name: "Prism Beam", school: "light", kind: "beam", mode: "active",
     cooldown: 6.0, range: 220, width: 12, duration: 1.8, tick: 0.15,
     baseDamage: 3, damageScale: 0.15,
     milestones: [
@@ -318,7 +320,7 @@ export const SPELLS: Readonly<Record<SpellId, SpellDef>> = {
     evolutions: ["spectrum"],
   },
   quake_totem: {
-    id: "quake_totem", name: "Quake Totem", school: "earth", kind: "totem",
+    id: "quake_totem", name: "Quake Totem", school: "earth", kind: "totem", mode: "active",
     cooldown: 10.0, range: 150, radius: 70, duration: 6.0, tick: 1.2, knockback: 20,
     baseDamage: 10, damageScale: 0.40,
     milestones: [
@@ -361,6 +363,29 @@ export function modifierCounts(spellId: SpellId, mods: readonly string[]): { id:
 }
 
 /** Números do lançamento no jogo (behaviors.lua, status.lua, tuning.lua), já em metros. */
+/**
+ * M21-06 (D18): o pico das auras na tecla. Não existe no original (lá tudo saía sozinho); números daqui.
+ */
+export const AURA_SPIKE = {
+  /** Blade Orbit: alcance do voo de cada lâmina (m), meia largura do corte (m), dano sobre o de um golpe do giro, segundos de voo */
+  orbitReach: 8,
+  orbitWidth: 0.7,
+  orbitDamage: 2,
+  orbitFlight: 0.3,
+  /** Healing Field: fração da cura que faltava, dada de uma vez */
+  fieldHeal: 1,
+  /** Venom Nova: acúmulos por inimigo e teto, multiplicados */
+  novaStacks: 2,
+} as const;
+
+/** O que a tecla faz em cada aura (dica do espaço no HUD). */
+export const AURA_SPIKE_TEXT: Readonly<Record<string, string>> = {
+  blade_orbit: "Key: hurl the blades outward.",
+  healing_field: "Key: burst all remaining healing at once.",
+  rune_traps: "Key: detonate every rune.",
+  venom_nova: "Key: release a nova with double stacks.",
+};
+
 export const SPELL_CAST = {
   /** rad entre projéteis múltiplos (tuning.lua `SPELL_PROJECTILE_SPREAD`) */
   projectileSpread: 0.14,
