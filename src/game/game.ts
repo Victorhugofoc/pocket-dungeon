@@ -18,6 +18,9 @@ import { hasMapBefore, isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
+import { buildElements, primedReactions, reactionFor, type ReactionId } from "../core/reactions";
+import { REACTIONS } from "../data/reactions";
+import { SPELL_SCHOOL, type SpellId } from "../data/spells";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, type BossPattern } from "../data/enemies";
 import { crownAttack, drawBoss } from "../core/bossbag";
@@ -288,6 +291,10 @@ export class Game {
     { heroes: HERO_ORDER, bosses: Object.keys(BOSSES), enemies: Object.keys(ENEMIES), relics: RELIC_IDS }, loadRecords(this.storage).kills);
   /** de onde veio o golpe em curso (o "ataque básico" de quick_trigger) */
   private hitSource: KillSource = "other";
+  /** elemento do golpe em andamento quando quem bate não passa um (técnica: a escola dela), para as reações (M21-05) */
+  private hitElement: string | null = null;
+  /** elementos da build (refeito no `recompute`) */
+  elements = new Set<string>();
   fps = 60;
   /** registro de tempo por quadro (F3, M16-01) */
   probe: FrameProbe;
@@ -416,6 +423,7 @@ export class Game {
     sources.push(upgradeStats(this.run));
     sources.push(shopStats(this.run.shop));
     this.stats = computeStats(sources);
+    this.elements = this.buildElements();
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
       ? techniqueStats(tid, this.run.technique.level, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage })
@@ -791,10 +799,13 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- dano
-  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean; noKnock?: boolean }): void {
+  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean; noKnock?: boolean; element?: string }): void {
     if (e.dead) return;
     const s = this.stats;
     const now = this.time;
+    // M21-05: a reação olha o estado de antes do golpe
+    const element = hit?.element ?? this.hitElement ?? (hit?.ice ? "ice" : null);
+    const reaction = reactionFor(e.reactState(now), { kind: "hit", element }, now);
     const crit = hit?.crit === true || Math.random() < s.critChance;
     // ataque básico e técnicas levam o dano do ataque (autoDamagePct); as spells, não (D14)
     let amount = s.damage * s.autoDamage * mult * (0.9 + Math.random() * 0.2);
@@ -824,8 +835,10 @@ export class Game {
     this.damageEnemy(e, amount, { crit, noKnock: hit?.noKnock });
     if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount);
     if (back && e.dead) this.heal(s.maxHp * SHADOW.backstabKillHeal, true); // Umbra: matar pelas costas cura
+    if (reaction) this.react(e, reaction);
     if (deepChill && !e.dead) {
       this.applyStatus(e, { kind: "stun", power: 1, duration: FROST.chillFreeze }, amount);
+      e.chillUntil = Math.max(e.chillUntil, e.stunUntil);
       this.fx.burst(e.x, 1, e.z, 0x9fdcff, 12, 4, 0.12, 0.5, 2);
     }
   }
@@ -847,6 +860,7 @@ export class Game {
       const v = Math.min(0.85, st.power);
       // chefes: o gelo da Frostine deixa lento até FROST.bossSlowCap; o resto vale 40%
       e.slowPower = e.isBoss ? (this.hero.frost ? Math.min(FROST.bossSlowCap, v) : v * 0.4) : v;
+      if (this.hero.frost) e.chillUntil = Math.max(e.chillUntil, now + st.duration);
     } else if (st.kind === "stun") {
       e.stunUntil = Math.max(e.stunUntil, now + st.duration * (e.isBoss ? 0.3 : 1));
       e.windupT = -1;
@@ -860,7 +874,7 @@ export class Game {
     }
   }
 
-  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean } = {}): void {
+  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId } = {}): void {
     if (e.dead) return;
     if (e.isBoss) amount *= this.stats.bossDamage; // damage.lua: Smite do Seraph (D-317)
     amount = Math.max(1, Math.round(amount));
@@ -868,7 +882,10 @@ export class Game {
     e.hp -= amount;
     if (!e.aggro) e.setAggro(this);
     const top = e.rig.height + 0.3;
-    if (opts.dot) {
+    if (opts.reaction) {
+      e.flash = 1;
+      this.fx.text(e.x, top, e.z, String(amount), opts.reaction === "shatter" ? "frost" : "poison");
+    } else if (opts.dot) {
       this.fx.text(e.x, top, e.z, String(amount), opts.dot === "poison" ? "poison" : "burn");
     } else {
       e.flash = 1;
@@ -1632,9 +1649,56 @@ export class Game {
    * Golpe de spell: mesmo caminho do dano do herói (crítico, Frostine), contado como "other" nas conquistas. `noKnock`:
    * sem o empurrão para longe do herói (Cyclone puxa para o centro; o Quake Totem empurra a partir dele).
    */
-  spellHit(e: Enemy, mult: number, noKnock = false): void {
+  spellHit(e: Enemy, mult: number, noKnock = false, element?: string): void {
     this.hitSource = "other";
-    this.hitEnemy(e, mult, undefined, noKnock ? { noKnock } : undefined);
+    this.hitEnemy(e, mult, undefined, { noKnock, element });
+  }
+
+  /** Elementos que a build aplica agora (ícone de reação pronta). */
+  buildElements(): Set<string> {
+    const schools = this.run.spells.map((sp) => SPELL_SCHOOL[sp.id as SpellId]).filter(Boolean);
+    const t = this.hero.technique.school;
+    return buildElements(schools, t === "auto" ? null : t, this.hero.auto.status?.kind ?? null, this.hero.frost === true);
+  }
+
+  /** Reações prontas de um inimigo para a build atual. */
+  primed(e: Enemy): ReactionId[] {
+    return primedReactions(e.reactState(this.time), this.time, this.elements);
+  }
+
+  /**
+   * M21-05: efeito de uma reação em volta do inimigo. Estilhaço consome o gelo; Praga passa queimadura e veneno aos
+   * vizinhos, que ficam em recarga (não reagem em cadeia). O dano vai direto (`damageEnemy`), sem nova reação.
+   */
+  react(e: Enemy, id: ReactionId): void {
+    const R = REACTIONS;
+    const now = this.time;
+    const s = this.stats;
+    e.reactUntil = now + R.cooldown;
+    const def = R[id];
+    if (id === "shatter") {
+      e.chillUntil = 0;
+      e.slowUntil = 0;
+      if (this.hero.frost) e.stunUntil = 0;
+    }
+    const P = R.plague;
+    const label = id === "shatter" ? "Shatter" : "Plague";
+    for (const o of this.enemies) {
+      if (o.dead || (o.x - e.x) ** 2 + (o.z - e.z) ** 2 > (def.radius + o.radius) ** 2) continue;
+      if (id === "plague" && o !== e) {
+        o.reactUntil = Math.max(o.reactUntil, now + R.cooldown);
+        o.applyBurn(now, s.damage * P.burnDps * s.burn, P.burnDuration);
+        o.applyPoison(now, s.damage * P.poisonDps * s.poison, P.poisonDuration, 1, undefined, "plague");
+      }
+      this.damageEnemy(o, s.damage * def.damage * (o.isBoss ? R.bossMult : 1), { reaction: id });
+    }
+    const top = e.rig.height + 0.9;
+    this.fx.text(e.x, top, e.z, label, id === "shatter" ? "frost react" : "poison react");
+    this.fx.burst(e.x, 1, e.z, def.color, 34, 10, 0.17, 0.6, id === "shatter" ? 10 : 3);
+    this.fx.lib.ring(e.x, e.z, { radius: def.radius, color: def.color, core: 0xffffff, width: 0.4, from: 0.15, dust: 8, dur: 0.35 });
+    this.fx.addShake(0.16);
+    this.hitstop = Math.max(this.hitstop, 0.04);
+    this.audio.play("crit");
   }
 
   aimPoint(maxRange: number): { x: number; z: number } {
@@ -1725,6 +1789,16 @@ export class Game {
   }
 
   private useTechnique(): void {
+    const school = this.hero.technique.school;
+    this.hitElement = school === "auto" ? null : school;
+    try {
+      this.castTechnique();
+    } finally {
+      this.hitElement = null;
+    }
+  }
+
+  private castTechnique(): void {
     const p = this.player;
     const t = this.hero.technique;
     const s = this.stats;
@@ -2682,7 +2756,7 @@ export class Game {
       this.updateWave(dt, raw);
       this.flushAchievements();
       this.updateEnemies(dt);
-      this.statusIcons.update(this.enemies, { now: this.time, volatile: this.spells.volatile, brittleChill: this.spells.brittle }, this.camera, this.fx, dt);
+      this.statusIcons.update(this.enemies, { now: this.time, volatile: this.spells.volatile, brittleChill: this.spells.brittle, primed: (e) => this.primed(e) }, this.camera, this.fx, dt);
       this.updateProjectiles(dt);
       const inp = this.input;
       this.spells.update(dt, [inp.wasPressed("Digit1") || inp.wasPressed("Numpad1"), inp.wasPressed("Digit2") || inp.wasPressed("Numpad2")]);

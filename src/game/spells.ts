@@ -6,7 +6,7 @@
 // Eco e Volátil.
 import * as THREE from "three";
 import { isSpellId, spellContext, spellStats, type SpellStats } from "../core/spells";
-import { MAX_SPELLS, SPELL_CAST } from "../data/spells";
+import { MAX_SPELLS, SPELL_CAST, SPELL_SCHOOL } from "../data/spells";
 import { DR_BASE_HP, FROST, TECH_EVO } from "../data/techniques";
 import { KNOCK_DECAY, type Dot, type Enemy } from "./enemy";
 import type { Game } from "./game";
@@ -236,6 +236,9 @@ interface Wall {
 }
 
 /** Blizzard (behaviors.lua `world.storms`): tempestade parada na mira; fere e deixa lento a cada tique. */
+/** escola da spell do golpe: o elemento que as reações olham (M21-05) */
+const schoolOf = (st: SpellStats): string => SPELL_SCHOOL[st.id];
+
 interface Storm {
   slot: number;
   st: SpellStats;
@@ -755,10 +758,10 @@ export class SpellCaster {
       const cx = e.x;
       const cz = e.z;
       this.arc(px, pz, cx, cz, count, (count - 1) * CHAIN_STEP);
-      g.spellHit(e, st.damage);
+      g.spellHit(e, st.damage, false, schoolOf(st));
       // Static Field: chance de acertar o primeiro alvo duas vezes
       if (count === 1 && st.doubleHit && !e.dead && Math.random() < st.doubleHit) {
-        g.spellHit(e, st.damage);
+        g.spellHit(e, st.damage, false, schoolOf(st));
         g.fx.text(cx, 2.6, cz, "x2", "frost");
         g.fx.lib.burst(cx, 1.1, cz, { radius: 1.6, color: BOLT_BODY, core: BOLT_CORE, rays: 9, sparks: 14, light: 2.2, dur: 0.3 });
       }
@@ -910,7 +913,7 @@ export class SpellCaster {
       const t = ex * b.dx + ez * b.dz;
       if (t < -e.radius || t > len + e.radius) continue;
       if (Math.abs(ex * b.dz - ez * b.dx) > hw + e.radius) continue;
-      g.spellHit(e, b.st.damage);
+      g.spellHit(e, b.st.damage, false, schoolOf(b.st));
       if (!e.dead && Math.random() < 0.35) g.fx.spark(e.x, 1.2, e.z, 0xfff6d8, 0.12, 0.3, 1);
     }
   }
@@ -930,7 +933,7 @@ export class SpellCaster {
     b.split = first ? Math.max(0, first.t) : null;
     if (!first) return;
     const hit = new Set<Enemy>([first.e]);
-    g.spellHit(first.e, st.damage);
+    g.spellHit(first.e, st.damage, false, schoolOf(st));
     const sx = p.x + b.dx * b.split!;
     const sz = p.z + b.dz * b.split!;
     const a = Math.atan2(b.dx, b.dz);
@@ -942,7 +945,7 @@ export class SpellCaster {
         .map((e) => ({ e, t: (e.x - sx) * dx + (e.z - sz) * dz }))
         .sort((u, v) => u.t - v.t);
       hits.forEach(({ e }, n) => {
-        g.spellHit(e, st.rayDamage ?? 0);
+        g.spellHit(e, st.rayDamage ?? 0, false, schoolOf(st));
         if (e.dead) return;
         if (color === "red") this.applyBurn(e, st, b.slot);
         else if (color === "blue") this.applySlow(e, st.slow ?? 0, st.slowDuration ?? 0);
@@ -961,7 +964,7 @@ export class SpellCaster {
       .sort((u, v) => ((u.x - from.x) ** 2 + (u.z - from.z) ** 2) - ((v.x - from.x) ** 2 + (v.z - from.z) ** 2))
       .slice(0, st.jumps ?? 0);
     for (const e of near) {
-      g.spellHit(e, st.jumpDamage ?? 0);
+      g.spellHit(e, st.jumpDamage ?? 0, false, schoolOf(st));
       this.arc(from.x, from.z, e.x, e.z, 1);
     }
   }
@@ -1142,7 +1145,7 @@ export class SpellCaster {
         for (const e of g.enemies) {
           if (e.dead) continue;
           if ((e.x - v.x) ** 2 + (e.z - v.z) ** 2 > (st.radius + e.radius) ** 2) continue;
-          g.spellHit(e, st.damage, true);
+          g.spellHit(e, st.damage, true, schoolOf(st));
         }
       }
       if (v.time <= 0) {
@@ -1391,7 +1394,7 @@ export class SpellCaster {
       const dx = e.x - t.x;
       const dz = e.z - t.z;
       if (dx * dx + dz * dz > (r + e.radius) ** 2) continue;
-      g.spellHit(e, st.damage, true);
+      g.spellHit(e, st.damage, true, schoolOf(st));
       if (e.dead || e.isBoss || e.champion) continue;
       const d = Math.hypot(dx, dz);
       e.kx += (d < 0.08 ? 1 : dx / d) * kb;
@@ -1554,7 +1557,7 @@ export class SpellCaster {
     let n = 0;
     for (const e of this.inArea(f.x, f.z, f.st.radius)) {
       if (e.dead) continue;
-      g.spellHit(e, f.st.fieldDamage ?? 0, true);
+      g.spellHit(e, f.st.fieldDamage ?? 0, true, schoolOf(f.st));
       const x = e.x;
       const z = e.z;
       const delay = (n++ % 5) * 40;
@@ -1667,7 +1670,7 @@ export class SpellCaster {
           const last = o.lastHit.get(e);
           if (last !== undefined && g.time - last < o.hitCooldown) continue;
           o.lastHit.set(e, g.time);
-          g.spellHit(e, o.st.damage);
+          g.spellHit(e, o.st.damage, false, schoolOf(o.st));
           g.fx.lib.burst(e.x, 1, e.z, { radius: 0.7, color: BLADE_STEEL, core: BLADE_CORE, rays: 3, sparks: 6, light: 0, dur: 0.14, wave: 0 });
         }
       }
@@ -1806,7 +1809,7 @@ export class SpellCaster {
         if (len < 0.05) continue;
         if (tick) {
           for (const e of this.inSegment(a.x, a.z, dx / len, dz / len, 0, len, hw, hit)) {
-            g.spellHit(e, st.lineDamage ?? 0, true);
+            g.spellHit(e, st.lineDamage ?? 0, true, schoolOf(st));
             g.fx.spark(e.x, 0.8, e.z, EVO_COLOR.rune_circle, 0.1, 0.25, 1);
           }
         }
@@ -1862,7 +1865,7 @@ export class SpellCaster {
     const blast = () => {
       for (const e of g.enemies) {
         if (e.dead || (e.x - r.x) ** 2 + (e.z - r.z) ** 2 > (st.radius + e.radius) ** 2) continue;
-        g.spellHit(e, st.damage, true);
+        g.spellHit(e, st.damage, true, schoolOf(st));
         if (!e.dead && !e.isBoss && st.root) g.applyStatus(e, { kind: "stun", power: 1, duration: st.root }, 0);
       }
     };
@@ -1972,7 +1975,7 @@ export class SpellCaster {
             a.burned.add(e);
             this.applyBurn(e, a.st, a.slot);
           }
-          g.spellHit(e, a.st.tickDamage ?? 0);
+          g.spellHit(e, a.st.tickDamage ?? 0, false, schoolOf(a.st));
           if (!e.dead) g.fx.burst(e.x, 0.6, e.z, EVO_COLOR.firestorm, 5, 3, 0.1, 0.35, -3);
         }
       }
@@ -2033,7 +2036,7 @@ export class SpellCaster {
       if (reach > w.done) {
         for (const e of this.inSegment(w.x, w.z, w.dx, w.dz, 0, reach, hw, w.hit)) {
           this.applyBurn(e, w.st, w.slot);
-          g.spellHit(e, w.st.damage);
+          g.spellHit(e, w.st.damage, false, schoolOf(w.st));
         }
         // a frente da muralha: colunas de fogo ao longo da largura
         for (let c = 0; c < 6; c++) {
@@ -2081,9 +2084,9 @@ export class SpellCaster {
         s.tickLeft += s.st.tick ?? 1;
         s.pulse = 1;
         for (const e of this.inArea(s.x, s.z, s.st.radius)) {
-          g.spellHit(e, s.st.tickDamage ?? 0, true);
+          g.spellHit(e, s.st.tickDamage ?? 0, true, schoolOf(s.st));
           if (!e.dead) {
-            this.applySlow(e, s.st.slow ?? 0, s.st.slowDuration ?? 0);
+            this.applySlow(e, s.st.slow ?? 0, s.st.slowDuration ?? 0, true);
             g.fx.burst(e.x, 0.8, e.z, 0xeaf8ff, 5, 3, 0.1, 0.35, 4);
           }
         }
@@ -2118,8 +2121,8 @@ export class SpellCaster {
     const len = st.length ?? 0;
     const hits = this.inSegment(p.x, p.z, dx, dz, 0, len, (st.width ?? 0) / 2);
     for (const e of hits) {
-      g.spellHit(e, st.damage);
-      if (st.doubleHit && !e.dead && Math.random() < st.doubleHit) g.spellHit(e, st.damage);
+      g.spellHit(e, st.damage, false, schoolOf(st));
+      if (st.doubleHit && !e.dead && Math.random() < st.doubleHit) g.spellHit(e, st.damage, false, schoolOf(st));
     }
     p.facing = Math.atan2(dx, dz);
     const x1 = p.x + dx * len;
@@ -2147,7 +2150,7 @@ export class SpellCaster {
       const x = target.x;
       const z = target.z;
       this.cooldown[i] = st.cooldown;
-      for (const e of this.inArea(x, z, st.radius)) g.spellHit(e, st.damage);
+      for (const e of this.inArea(x, z, st.radius)) g.spellHit(e, st.damage, false, schoolOf(st));
       g.fx.shockwave(x, z, st.radius, EVO_COLOR.arcane_strike, 0.4);
       g.fx.streak(x - st.radius * 0.7, z, x + st.radius * 0.7, z, 0.18, 0xe6d2ff, 0.3);
       g.fx.streak(x, z - st.radius * 0.7, x, z + st.radius * 0.7, 0.18, 0xe6d2ff, 0.3);
@@ -2222,8 +2225,8 @@ export class SpellCaster {
       if (e.dead) continue;
       if ((e.x - pr.x) ** 2 + (e.z - pr.z) ** 2 > (r + e.radius) ** 2) continue;
       if (st.id === "fireball") this.applyBurn(e, st, pr.slot);
-      g.spellHit(e, st.damage);
-      if (st.id === "iceball" && !e.dead) this.applySlow(e, st.slow ?? 0, st.slowDuration ?? 0);
+      g.spellHit(e, st.damage, false, schoolOf(st));
+      if (st.id === "iceball" && !e.dead) this.applySlow(e, st.slow ?? 0, st.slowDuration ?? 0, true);
     }
     if (st.id === "arcane_bolt") {
       this.arcaneImpact(pr.x, pr.z, r);
@@ -2244,7 +2247,7 @@ export class SpellCaster {
   }
 
   /** status.lua `applySlow`: não acumula; chefes levam 20% (ou até o teto da Frostine). */
-  private applySlow(e: Enemy, amount: number, duration: number): void {
+  private applySlow(e: Enemy, amount: number, duration: number, ice = false): void {
     const g = this.game;
     if (e.isBoss) {
       const weak = amount * SPELL_CAST.bossSlowEffect;
@@ -2255,6 +2258,7 @@ export class SpellCaster {
     const active = now < e.slowUntil;
     e.slowPower = active ? Math.max(e.slowPower, amount) : amount;
     e.slowUntil = Math.max(e.slowUntil, now + duration);
+    if (ice) e.chillUntil = Math.max(e.chillUntil, now + duration); // M21-05: gelado (Estilhaço)
   }
 
   /** spell_system.lua `onKill` (S17, Volátil): inimigo queimando pelo Fireball pode explodir ao morrer. */
@@ -2270,7 +2274,7 @@ export class SpellCaster {
     const z = e.z;
     for (const o of g.enemies) {
       if (o.dead || o === e) continue;
-      if ((o.x - x) ** 2 + (o.z - z) ** 2 <= (r + o.radius) ** 2) g.spellHit(o, st.damage * SPELL_CAST.volatileFraction);
+      if ((o.x - x) ** 2 + (o.z - z) ** 2 <= (r + o.radius) ** 2) g.spellHit(o, st.damage * SPELL_CAST.volatileFraction, false, schoolOf(st));
     }
     g.fx.shockwave(x, z, r, 0xff5a1a, 0.35);
     g.fx.burst(x, 0.8, z, 0xff8a2a, 26, 7, 0.15, 0.5, -2);

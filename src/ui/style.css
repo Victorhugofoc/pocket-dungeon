@@ -38,6 +38,8 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .float-text.poison { color: #8cf273; font-size: 14px; }
 .float-text.dodge { color: #c8d9ff; font-size: 15px; }
 .float-text.frost { color: #cdeeff; font-size: 15px; letter-spacing: 1px; }
+.float-text.react { font-size: 26px; letter-spacing: 2px; text-transform: uppercase; }
+.float-text.poison.react { color: #b8f24a; }
 .float-text.level { color: #ffe066; font-size: 30px; letter-spacing: 2px; }
 
 /* HUD */

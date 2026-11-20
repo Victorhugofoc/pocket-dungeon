@@ -45,12 +45,14 @@ export interface Technique {
   text: string;
   kind: TechniqueKind;
   cooldown: number;
+  /** escola da técnica (elemento das reações, M21-05) */
+  school: string;
 }
 
 /** Monta a ficha da técnica a partir dos dados portados do Dungeon Reign. */
 const tech = (id: string): Technique => {
   const d = TECHNIQUES[id];
-  return { id, name: d.name, text: d.text, kind: d.kind, cooldown: d.cooldown };
+  return { id, name: d.name, text: d.text, kind: d.kind, cooldown: d.cooldown, school: d.school };
 };
 
 export type WeaponKind = "staff" | "sword" | "guns" | "mace" | "daggers" | "shield" | "claws";
