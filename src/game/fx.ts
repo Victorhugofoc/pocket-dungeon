@@ -177,6 +177,12 @@ export function makeChampionAura(scene: THREE.Scene): ChampionAura {
   };
 }
 
+/** Marca de golpe no chão que o dono controla (M21-01): o inimigo diz o progresso e a posição a cada quadro. */
+export interface GroundArc {
+  set(x: number, z: number, k: number): void;
+  dispose(): void;
+}
+
 export class Fx {
   private particles: Particle[] = [];
   private pMesh: THREE.InstancedMesh;
@@ -341,6 +347,52 @@ export class Fx {
     fill.scale.set(width, 0.01, 1);
     this.telegraphs.push(tg);
     return tg;
+  }
+
+  private arcGeos = new Map<number, THREE.CircleGeometry>();
+  private arcEdgeGeos = new Map<number, THREE.RingGeometry>();
+
+  /** setor de abertura `arc` (rad) e raio `r`, apontado para `angle` (atan2(dx,dz)); o preenchimento cresce com k */
+  groundArc(x: number, z: number, angle: number, arc: number, r: number): GroundArc {
+    const key = Math.round(arc * 100);
+    let geo = this.arcGeos.get(key);
+    if (!geo) {
+      geo = new THREE.CircleGeometry(1, 24, -arc / 2, arc);
+      this.arcGeos.set(key, geo);
+    }
+    let edgeGeo = this.arcEdgeGeos.get(key);
+    if (!edgeGeo) {
+      edgeGeo = new THREE.RingGeometry(0.9, 1, 24, 1, -arc / 2, arc);
+      this.arcEdgeGeos.set(key, edgeGeo);
+    }
+    // o círculo deitado (rotation.x = -π/2) aponta θ = 0 para +x; a direção (sin a, cos a) fica em θ = a - π/2
+    const mk = (g: THREE.BufferGeometry, m: THREE.Material, y: number) => {
+      const mesh = new THREE.Mesh(g, m);
+      mesh.rotation.set(-Math.PI / 2, 0, angle - Math.PI / 2);
+      mesh.position.set(x, y, z);
+      mesh.renderOrder = 2;
+      this.scene.add(mesh);
+      return mesh;
+    };
+    const outline = mk(geo, this.matOutline, 0.06);
+    outline.scale.setScalar(r);
+    const edge = mk(edgeGeo, this.matEdge, 0.07);
+    edge.scale.setScalar(r);
+    const fill = mk(geo, this.matFill, 0.08);
+    fill.scale.setScalar(0.01);
+    return {
+      set: (px, pz, k) => {
+        outline.position.set(px, 0.06, pz);
+        edge.position.set(px, 0.07, pz);
+        fill.position.set(px, 0.08, pz);
+        fill.scale.setScalar(Math.max(0.01, r * Math.min(1, k)));
+      },
+      dispose: () => {
+        outline.removeFromParent();
+        edge.removeFromParent();
+        fill.removeFromParent();
+      },
+    };
   }
 
   cancelTelegraph(tg: Telegraph): void {

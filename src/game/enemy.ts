@@ -1,6 +1,7 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
 import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
+import { circleInArc } from "../core/melee";
 import { CHILD_SCALE, MINION_SCALE } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
@@ -8,7 +9,7 @@ import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/
 import type { StatusKind } from "../data/heroes";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
-import { type BossRing, type ChampionAura, makeBossRing, makeChampionAura } from "./fx";
+import { type BossRing, type ChampionAura, type GroundArc, makeBossRing, makeChampionAura } from "./fx";
 import type { Game } from "./game";
 
 export interface Dot {
@@ -60,7 +61,10 @@ export class Enemy {
   remove = false;
   cd = 0;
   windupT = -1;
-  windupDur = 0.4;
+  windupDur: number = TUNING.enemy.telegraph.windup;
+  /** direção travada do golpe em preparo e a marca dele no chão (M21-01) */
+  swingAngle = 0;
+  private swingMark: GroundArc | null = null;
   attackAnim = -1;
   moveAmt = 0;
   flash = 0;
@@ -119,7 +123,7 @@ export class Enemy {
     this.speed = def.speed * st.speed * (derived ? derived.speed : 1);
     this.radius = def.radius * (this.champion ? 1.2 : 1);
     this.noReward = this.summoned || opts.child === true;
-    if (isBoss) this.windupDur = 0.55;
+    if (isBoss) this.windupDur = TUNING.enemy.telegraph.bossWindup;
 
     this.rig = this.makeRig();
     this.rig.root.position.set(x, 0, z);
@@ -136,6 +140,7 @@ export class Enemy {
 
   /** tira da cena tudo o que é deste inimigo */
   dispose(): void {
+    this.endSwing();
     disposeRig(this.rig);
     this.ring?.dispose();
     this.ring = null;
@@ -184,6 +189,7 @@ export class Enemy {
     const rig = this.rig;
 
     if (this.dead) {
+      if (this.windupT >= 0) this.endSwing();
       this.deadT += this.boss ? (dt * 1.25) / TUNING.boss.deathTime : dt * 2.0;
       // o corpo ainda desliza com o último empurrão
       this.x += this.kx * dt;
@@ -221,6 +227,7 @@ export class Enemy {
     this.moveAmt = 0;
     this.cd -= dt;
     const stunned = now < this.stunUntil;
+    if (stunned && this.windupT >= 0 && TUNING.enemy.telegraph.stunInterrupts) this.endSwing();
     const slow = now < this.slowUntil ? 1 - this.slowPower : 1;
     const speed = this.speed * slow * (this.enraged ? 1.15 : 1);
     const dxp = p.x - this.x;
@@ -337,7 +344,7 @@ export class Enemy {
 
   private reset(game: Game): void {
     this.aggro = false;
-    this.windupT = -1;
+    this.endSwing();
     this.casting = 0;
     this.charging = null;
     this.spiral = null;
@@ -355,7 +362,7 @@ export class Enemy {
   private startRoar(dur: number): void {
     this.roarT = 0;
     this.roarDur = dur;
-    this.windupT = -1;
+    this.endSwing();
   }
 
   /** Rugido: o chefe encara o herói e, no auge, solta uma onda no chão com tremor de câmera. */
@@ -393,19 +400,40 @@ export class Enemy {
     }
   }
 
+  /** Começa o golpe: trava a direção e desenha o arco no chão (M21-01). */
+  private startSwing(game: Game, tx: number, tz: number, range: number): void {
+    const T = TUNING.enemy.telegraph;
+    this.windupT = 0;
+    this.swingAngle = Math.atan2(tx - this.x, tz - this.z);
+    this.facing = this.swingAngle;
+    this.swingMark?.dispose();
+    this.swingMark = game.fx.groundArc(this.x, this.z, this.swingAngle, this.boss ? T.bossArc : T.arc, range + T.reachPad);
+  }
+
+  /** Cancela ou fecha o golpe em preparo e tira a marca. */
+  private endSwing(): void {
+    this.windupT = -1;
+    this.swingMark?.dispose();
+    this.swingMark = null;
+  }
+
+  /** O herói (círculo de raio `playerRadius`) toca o arco do golpe? */
+  private swingHits(px: number, pz: number, range: number): boolean {
+    const T = TUNING.enemy.telegraph;
+    return circleInArc(this.x, this.z, this.swingAngle, this.boss ? T.bossArc : T.arc, range + T.reachPad, px, pz, T.playerRadius);
+  }
+
   private meleeStep(game: Game, dt: number, dist: number, speed: number, range: number): void {
     const p = game.player;
     if (this.windupT >= 0) {
       this.windupT += dt;
+      this.swingMark?.set(this.x, this.z, this.windupT / this.windupDur);
       if (this.windupT >= this.windupDur) {
-        this.windupT = -1;
+        this.endSwing();
         this.attackAnim = 0;
         const ward = this.boss ? null : game.spells.wardFor(this);
         if (ward) game.spells.hitWard(ward);
-        else {
-          const d = Math.hypot(p.x - this.x, p.z - this.z);
-          if (d <= range + 1.1) game.hurtPlayer(this.dmg, this.name);
-        }
+        else if (this.swingHits(p.x, p.z, range)) game.hurtPlayer(this.dmg, this.name);
         this.cd = this.boss ? this.boss.attackCooldown : this.def!.cooldown;
       }
       return;
@@ -417,12 +445,12 @@ export class Enemy {
       const wd = Math.hypot(ward.x - this.x, ward.z - this.z);
       const reach = range - 0.3 + SPELL_CAST.wardHitRadius;
       if (wd > reach * 0.85) this.moveToward(game, ward.x, ward.z, speed, dt);
-      else if (this.cd <= 0) this.windupT = 0;
+      else if (this.cd <= 0) this.startSwing(game, ward.x, ward.z, range);
       return;
     }
     this.face(p.x, p.z);
     if (dist > range) this.moveToward(game, p.x, p.z, speed, dt);
-    else if (this.cd <= 0) this.windupT = 0;
+    else if (this.cd <= 0) this.startSwing(game, p.x, p.z, range);
   }
 
   private shoot(game: Game, color: number, speedP: number, spreadErr = 0.06): void {
