@@ -35,3 +35,6 @@ Como a v1 (`swing`, `crouch` 0,1, `armOut` 0,5, `poseL` [-0,35; -1,9]), com `lea
 - Decisões fixas dadas ao crítico: pá e lanterna da v1 (forma, tamanho, lado); cena noturna; golpe é do `M4-08`.
 - Médios que restaram (para o usuário decidir): proporção mais atarracada que o sprite (o esqueleto é o da v1), pelerine volumosa, mão da lanterna arredondada.
 - ~6,4 mil triângulos.
+
+## 7. Revisão do usuário (2026-11-19)
+- "Quase perfeito": as mãos atravessavam a pá (pior) e a lanterna. A travessa do punho em D passava pelo meio da palma. Corrigido em `gravekeeperShovel`: a pá desce 0,1 e a mão fica apoiada por cima do punho, com a ponta ainda no chão. Em `gravekeeperLantern`, a argola deitada virou alça em pé presa nos dedos, e o corpo da lanterna desceu 0,05. Vale também para a v1.

@@ -420,7 +420,8 @@ const GK_HAND = 0.41, GK_RUST = 0x9a5426, GK_RUST_D = 0x5e3216;
 function gravekeeperShovel(b: Builder): void {
   const BLADE = 0x9aa1a8;
   const R = restArm(b, 1, GK_HAND);
-  const L = R.y + 0.04;
+  const D = 0.1; // a pá desce: a mão fica apoiada por cima do punho em D, sem a travessa atravessar a palma
+  const L = R.y + 0.04 - D;
   const tip = cone(0.212, 0.16, BLADE, 4, 0x7a5a48);
   tip.rotateY(Math.PI / 4).scale(1, 1, 0.12);
   const shovel = [
@@ -430,19 +431,22 @@ function gravekeeperShovel(b: Builder): void {
     at(cyl(0.042, 0.042, 0.09, 0x3a3d42, 8), 0, -(L - 0.46), 0),
     at(bx(0.3, 0.3, 0.036, BLADE, 0x7a5a48), 0, -(L - 0.3), 0), at(tip, 0, -(L - 0.07), 0, Math.PI),
   ];
+  for (const g of shovel) g.translate(0, -D, 0);
   b.add("foreR", ...hang(shovel, R.inv, GK_HAND));
 }
 /** Lanterna do Gravekeeper pendurada na mão esquerda, com luz âmbar que chega ao chão. */
 function gravekeeperLantern(b: Builder): void {
   const Lq = restArm(b, -1, GK_HAND);
   const lantern = [
-    at(torus(0.07, 0.012, 0x3a3d42), 0, -0.07, 0, Math.PI / 2),
+    at(torus(0.055, 0.012, 0x3a3d42), 0, -0.05, 0, Math.PI / 2), // alça em pé, presa nos dedos abaixo da palma
     at(cone(0.1, 0.09, GK_RUST, 8, GK_RUST_D), 0, -0.175, 0), at(cyl(0.1, 0.1, 0.05, GK_RUST, 8, GK_RUST_D), 0, -0.445, 0),
   ];
+  for (const g of lantern) g.translate(0, -0.05, 0);
   for (let i = 0; i < 4; i++) lantern.push(at(bx(0.022, 0.22, 0.022, GK_RUST, GK_RUST_D), Math.cos(i * 1.571 + 0.785) * 0.085, -0.32, Math.sin(i * 1.571 + 0.785) * 0.085));
+  for (const g of lantern.slice(3)) g.translate(0, -0.05, 0);
   b.add("foreL", ...hang(lantern, Lq.inv, GK_HAND));
-  b.lit("foreL", ...hang([at(cyl(0.072, 0.072, 0.2, 0xffb347, 8, 0xffb347), 0, -0.32, 0)], Lq.inv, GK_HAND));
-  const lp = new THREE.Vector3(0, -0.32, 0).applyQuaternion(Lq.inv);
+  b.lit("foreL", ...hang([at(cyl(0.072, 0.072, 0.2, 0xffb347, 8, 0xffb347), 0, -0.37, 0)], Lq.inv, GK_HAND));
+  const lp = new THREE.Vector3(0, -0.37, 0).applyQuaternion(Lq.inv);
   b.lights.push({ bone: "foreL", x: lp.x, y: lp.y - GK_HAND, z: lp.z, color: 0xffa64a, intensity: 9, distance: 12 });
 }
 
