@@ -2,7 +2,8 @@
 import { MAP_NODE } from "../data/map-nodes";
 import { canHasten, hastenBonus } from "../core/wave";
 import { DIFFICULTIES, DIFFICULTY_ORDER, DIFFICULTY_TEXT, TOTAL_WAVES, type DifficultyId } from "../data/run";
-import { clearRun, discardLegacySave, loadRecords, loadRun, safeStorage, writeRecords } from "../core/save";
+import { clearRun, discardLegacySave, loadRecords, loadRun, loadRunLog, safeStorage, writeRecords } from "../core/save";
+import { downloadRunLog } from "../game/runlog";
 import { RunRng, addRecord, continueRun, decodeSeed, newRun, newSpellSlot, recordsRun, summarize, type NewRunOptions, type RunState } from "../core/run";
 import { addModifier, addSpell, levelUpSpell, type SlotResult } from "../core/spells";
 import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unlockCondition } from "../core/achievements";
@@ -138,6 +139,10 @@ export class Ui {
       banner: (t, sub) => this.banner(t, sub),
     };
     window.addEventListener("keydown", (e) => this.onKey(e));
+    // registro de partidas: fechar a aba (ou recarregar) no meio de uma partida também conta
+    window.addEventListener("pagehide", () => {
+      if (this.game.started && this.game.playerAlive) this.game.logRunEnd("closed", true);
+    });
     this.showTitle();
     const loop = () => {
       requestAnimationFrame(loop);
@@ -228,6 +233,7 @@ export class Ui {
     }
     const save = loadRun(this.storage);
     const rec = loadRecords(this.storage);
+    const runLog = loadRunLog(this.storage).length;
     const ach = this.game.ach.state;
     const open = (id: string) => isOpen(ach, "hero", id, TUNING.unlockAll);
     if (!open(this.selectedHero)) this.selectedHero = HERO_ORDER.find(open) ?? HERO_ORDER[0];
@@ -251,6 +257,7 @@ export class Ui {
         ${save ? `<div class="continue"><button class="primary" data-act="continue" style="padding:12px 30px;font-size:16px">
           Continue — ${HEROES[save.run.heroId]?.name ?? "?"} · ${DIFFICULTIES[save.run.difficultyId].name} · wave ${save.wave} · level ${save.run.level} · seed ${save.run.seedCode}</button></div>` : ""}
         ${rec.runs ? `<p class="tag" style="margin:-8px 0 14px">${rec.runs} runs · ${rec.wins} wins · best wave ${rec.highestWave}${rec.bestEndless ? ` · endless to wave ${rec.bestEndless}` : ""} · ${rec.kills} kills · ${achievementCount(ach)} of ${ACHIEVEMENTS.length} achievements</p>` : ""}
+        ${runLog ? `<p class="tag" style="margin:-8px 0 14px"><button data-act="runlog">Export run log (${runLog} ${runLog === 1 ? "run" : "runs"})</button></p>` : ""}
         <div class="section">Step 1 of 3 · ${save ? "choose the hero for a new run (ends the current one)" : "choose your hero"}</div>
         <div class="heroes">${HERO_ORDER.map((id) => {
           const d = HEROES[id];
@@ -281,7 +288,10 @@ export class Ui {
         return;
       }
       const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
-      if (act === "continue" && save) {
+      if (act === "runlog") {
+        const n = downloadRunLog(this.storage);
+        this.toast(`Run log exported (${n} runs)`, "#9be4ff");
+      } else if (act === "continue" && save) {
         const c = continueRun(save);
         this.begin(c.run, c.rng);
       } else if (act === "next") {
@@ -391,7 +401,7 @@ export class Ui {
   /** Partida nova: apaga o checkpoint anterior; com `seed`, repete aquela seed. */
   private newRunWith(setup: RunSetup, seed?: number): void {
     clearRun(this.storage);
-    const run = newRun({ ...setup, seed, randomSeed: (Math.random() * 0x7fffffff) >>> 0 });
+    const run = newRun({ ...setup, seed, randomSeed: (Math.random() * 0x7fffffff) >>> 0, startedAt: new Date().toISOString() });
     this.begin(run, new RunRng(run.seed));
   }
 
@@ -987,7 +997,10 @@ export class Ui {
       } else if (act === "mute") {
         g.audio.muted = !g.audio.muted;
         this.showPause();
-      } else if (act === "title") this.showTitle();
+      } else if (act === "title") {
+        g.logRunEnd("quit");
+        this.showTitle();
+      }
     };
   }
 
@@ -1016,6 +1029,7 @@ export class Ui {
   private showResults(kind: "death" | "victory"): void {
     const g = this.game, run = g.run;
     clearRun(this.storage);
+    g.logRunEnd(kind);
     const rec = loadRecords(this.storage);
     // results.lua: partida com o DEV Grimoire não entra nos registros
     const isBest = recordsRun(run) && addRecord(rec, summarize(run), new Date().toISOString().slice(0, 10));

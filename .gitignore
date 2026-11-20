@@ -22,3 +22,6 @@ desktop.ini
 # Backups automáticos do Blender
 *.blend1
 __pycache__/
+
+# Registro de partidas do npm run dev (src/core/runlog.ts)
+/logs/

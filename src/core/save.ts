@@ -4,10 +4,13 @@
 // - conquistas e desbloqueios: alargam o sorteio (heróis, relíquias), nunca dão poder.
 // O save contínuo antigo (v1, um herói com itens e nível até 60) é descartado na primeira leitura.
 import { emptyAchievements, normalizeAchievements, type AchievementState } from "./achievements";
+import { isRunLog, type RunLogEntry } from "./runlog";
 import { emptyRecords, isCheckpoint, isRecords, type Checkpoint, type Records } from "./run";
 
 export const RUN_KEY = "dungeon-reign-rpg.run.v2";
 export const RECORDS_KEY = "dungeon-reign-rpg.records.v2";
+/** registro das partidas encerradas (core/runlog.ts) */
+export const RUNLOG_KEY = "dungeon-reign-rpg.runlog.v1";
 export const ACHIEVEMENTS_KEY = "dungeon-reign-rpg.achievements.v1";
 /** chave do save contínuo antigo (até a D13) */
 export const LEGACY_SAVE_KEY = "dungeon-reign-rpg.save.v1";
@@ -67,6 +70,15 @@ export function loadRecords(storage: Storage | undefined): Records {
 
 export function writeRecords(storage: Storage | undefined, r: Records): boolean {
   return writeJson(storage, RECORDS_KEY, r);
+}
+
+export function loadRunLog(storage: Storage | undefined): RunLogEntry[] {
+  const r = readJson(storage, RUNLOG_KEY);
+  return isRunLog(r) ? r : [];
+}
+
+export function writeRunLog(storage: Storage | undefined, list: RunLogEntry[]): boolean {
+  return writeJson(storage, RUNLOG_KEY, list);
 }
 
 /** Conquistas e desbloqueios entre partidas (core/achievements.ts). */
