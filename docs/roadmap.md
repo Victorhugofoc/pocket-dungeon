@@ -48,10 +48,12 @@ Conteúdo disponível no Dungeon Reign para portar: 11 spells, 13 chefes (cada u
 
 ## 2. Aonde chegar (1.0)
 
-Um RPG de ação de 8 a 12 horas na primeira passada, com rejogabilidade por dificuldade:
-- 9 heróis reconhecíveis à primeira vista, cada um com ataque, técnica e 2 spells equipáveis.
+Reescrito em 2026-11-20 (D18): a versão anterior prometia um RPG de 8 a 12 horas com ferreiro e itens, que a D13 já tinha cancelado. Um roguelite de ação em partidas de 30 a 40 minutos, com rejogabilidade por herói, dificuldade e Depths:
+- Um loop de combate que é bom de jogar antes de ser bonito: esquiva com telegrafia legível, reações de estado, spells ativas e auras, cura no risco (`M21`).
+- 9 heróis reconhecíveis à primeira vista, cada um com ataque, técnica e 2 spells equipáveis, e maestria por herói que libera alternativas.
+- Mapa que pesa nas decisões: bifurcações físicas entre as salas, desvios opcionais e terreno usado na luta.
 - 6 biomas com relevo, 13 chefes com mecânica própria, 15 inimigos e elites com afixo.
-- Ouro, mercador e ferreiro na fogueira; itens lendários com efeito; cerca de 90 relíquias com sinergias.
+- Ouro e Magic Shop do original; as 94 relíquias com sinergias.
 - Depois do chefe final: dificuldades e Depths com mutações.
 - Roda a 60 fps em placa intermediária, com opções de vídeo, som e teclas, e publicado em uma página.
 
@@ -60,6 +62,9 @@ Um RPG de ação de 8 a 12 horas na primeira passada, com rejogabilidade por dif
 ## 3. Ordem dos marcos
 
 ### 3.0 Ordem atual (D17, decidida pelo usuário em 2026-11-19)
+
+> **D18 (2026-11-20): antes da fase 1 vem o marco `M21` (loop de jogo).** O jogo nunca foi jogado de ponta a ponta; o combate e o ritmo se ajustam jogando antes de continuar a paridade. Ordem: `M21-01` a `M21-04` (a `M21-04` é a fatia de sensação que o usuário joga); depois a fase 1 abaixo segue, com as tarefas `M21-05` em diante intercaladas onde fizerem sentido. Pela D18, números de combate e de ritmo do original são "adaptado" por padrão (ver o topo de `docs/paridade.md`); o resto da régua da fase 1 continua igual.
+
 **Primeiro a jogabilidade inteira do Dungeon Reign, depois o acabamento de VFX, SFX e arte.** Toda regra, sistema e conteúdo jogável do original entra antes de fechar efeitos, som e modelos. Nesta fase:
 - Inimigos e chefes novos entram com **corpo provisório por código** (simples, legível na câmera, com a silhueta certa); a modelagem no Blender fica para a fase 2.
 - Efeito visual e som entram só no mínimo para o jogador ler a mecânica (telegrafia simples, cor do estado, som existente); o efeito próprio fica para a fase 2.
@@ -155,6 +160,59 @@ Até cerca de 12 mil triângulos para chefe, 6 mil para herói, 3 mil para inimi
 ---
 
 ## 5. Marcos e tarefas
+
+### M21 — Loop de jogo [decisão D18]
+
+Registrado em 2026-11-20, depois de uma revisão crítica do loop pedida pelo usuário (ele concordou com todas as propostas). O esqueleto da partida do Dungeon Reign foi feito para um jogo em que as spells saem sozinhas e o jogador só decide a build; aqui o jogador mira, esquiva e aperta teclas. O marco ajusta o combate e o ritmo para esse formato e faz o mapa aberto pesar nas decisões. Regra da D17: conteúdo igual ao original, números de combate e de ritmo adaptados. Ordem: `M21-01`, `M21-02`, `M21-03`, `M21-04` (jogar), antes da fase 1 da seção 3.0; `M21-05` em diante se intercalam com ela. Cada tarefa anota o plano antes de começar; se eu discordar de algo do usuário, explico, proponho alternativa e espero o ok (regra do `CLAUDE.md`).
+
+**M21-00 · Decisões e documentos** · P
+- D18 na seção 8, `docs/design.md` reescrito (visão, loop, combate), regra na `docs/paridade.md`, seção 2 e ordem dos marcos (seção 3) deste arquivo.
+- Pronto quando: os quatro documentos dizem a mesma coisa.
+
+**M21-01 · Telegrafia dos golpes inimigos** · M [validar]
+- Absorve a parte de jogo da `M4-08` (a pose da arma no plano certo continua lá). Todo golpe corpo a corpo de inimigo ganha preparo legível (`windupT` em `enemy.ts`): o corpo recua, brilho na arma e marca no chão do arco que vai acertar; o golpe só acerta quem está dentro da marca quando ela fecha. Tiros inimigos com aviso curto na boca da arma. Durações em `src/data` (`TUNING.enemy.telegraph`), não em `src/game`.
+- Pronto quando: em vídeo ou captura, dá para dizer quem vai bater, quando e onde, e esquivar para fora da marca evita o dano.
+- Partes: **1** arco no chão e acerto só dentro dele, para corpo a corpo de inimigo e chefe (feita em 2026-11-20); **2** aviso na boca de tiro dos inimigos à distância e brilho na arma durante o preparo.
+
+**M21-02 · Camada de ritmo (números de ação)** · M
+- `src/data/pace.ts`: multiplicadores e trocas sobre os números do original (contagem por onda, vida e dano por onda, duração da onda, raio da clareira, cura durante a onda, alcance das áreas), com o valor do original ao lado em comentário. `core/waves.ts` e `core/wave.ts` leem a camada; o teste de paridade continua comparando o valor do original, e um teste novo confere que a camada é aplicada. Primeiro chute: menos inimigos nas ondas 1 a 3 (o `countMult` 2,8 foi feito para área automática), clareira um pouco maior.
+- Pronto quando: trocar um número em `pace.ts` muda o jogo, e `npm test` segue verde.
+
+**M21-03 · Cura no risco (sai a poção)** · P
+- Sai a poção (tecla F, `potionCd`, `potionHealPct`, HUD). Entra o orbe de cura no chão: cai do campeão, da reação de estado (`M21-05`) e com chance baixa de inimigo comum; some em 4 s piscando no último. Números em `pace.ts`. Q3 muda: a esquiva fica, a poção sai.
+- Pronto quando: não há poção na interface nem no código, e o orbe cura ao ser recolhido e some no tempo.
+
+**M21-04 · Fatia de sensação** · M [validar]
+- Um herói de mira (Kaelen ou Zephyr), ondas 1 a 5 e o Bloodfang, com telegrafia, camada de ritmo e cura no risco. O usuário joga 3 vezes e anota onde ficou chato, confuso ou injusto; a sessão seguinte mexe só em números (`pace.ts`) e telegrafia até ele aprovar. F3 aberto para fechar o `M16-01` junto.
+- Pronto quando: o usuário diz que as 5 primeiras ondas são boas de jogar.
+
+**M21-05 · Reações de estado** · G (dividir: núcleo e 2 reações; depois as outras 2)
+- `src/core/reactions.ts` puro e testado: dado o estado de um inimigo e o golpe que chega, devolve a reação. Primeiras quatro: congelado + raio = Estilhaço (dano em área, consome o congelamento); queimando + veneno = Praga (explosão que espalha queimadura e veneno); Cyclone + elemento = tornado daquele elemento; atordoado + golpe pelas costas = execução. Números em `src/data/reactions.ts`. Texto flutuante e efeito próprio por reação; ícone de estado avisa que a reação está pronta.
+- Pronto quando: as quatro reações saem no jogo e têm teste no núcleo.
+
+**M21-06 · Spells ativas e auras** · M
+- Classificar as 11 spells (`SPELLS` ganha `mode: "active" | "aura"`). As auras (proposta: Blade Orbit, Healing Field, Rune Traps, Venom Nova) saem sozinhas como no original (volta a S14 para elas) e a tecla dá o pico: Orbit lança as lâminas para fora, Field estoura a cura de uma vez, Runes detonam todas, Nova dobra o acúmulo. O pico gasta a recarga e a aura volta depois dela.
+- Pronto quando: cada aura funciona sem tecla, e o pico de cada uma tem efeito e recarga.
+
+**M21-07 · Épicas de comportamento** · M
+- 10 a 12 melhorias épicas novas que mudam como o herói joga (ex.: a esquiva deixa uma runa; o 3º ataque básico seguido sai em leque; recolher orbe recarrega 0,5 s da técnica; matar por reação estende o estado aos vizinhos). Entram no sorteio de `upgrades.ts` como épicas, com as regras de disponibilidade de lá; os números ficam em `src/data`.
+- Pronto quando: cada épica tem efeito no jogo, texto em inglês e aparece no sorteio.
+
+**M21-08 · Bifurcações físicas no mapa** · G (dividir: geração das saídas; sinal de cada sala)
+- `worldgen` gera, depois de cada clareira, 2 ou 3 saídas, uma por opção do mapa da partida (`runmap`). Andar por uma saída escolhe a sala (o menu do mapa sai, ou fica só como mapa de consulta). Cada tipo de sala tem um sinal visível de longe (céu vermelho, raios, luz dourada, fumaça, som). A seed decide as saídas como hoje decide as opções.
+- Pronto quando: a partida inteira se escolhe andando, e continuar a partida dá as mesmas saídas.
+
+**M21-09 · Desvios opcionais** · M
+- Entre clareiras, 0 a 2 desvios por trecho, sorteados pela seed: baú guardado por um campeão; santuário que troca vida por ouro; atalho que pula a próxima loja e dá recompensa. Cada um cabe em 10 a 20 s.
+- Pronto quando: os três desvios aparecem, funcionam e contam no registro da partida.
+
+**M21-10 · Terreno na luta** · M
+- Barris explosivos (arte por código), gargalos entre pedras e beiradas onde o empurrão mata inimigo comum (chefe não). O empurrão das técnicas e do Quake Totem passa a ter onde empurrar.
+- Pronto quando: há os três elementos nas clareiras e o empurrão usa as beiradas.
+
+**M21-11 · Maestria por herói** · M (depois do M13)
+- Jogar com um herói libera alternativas sem ganho de poder (ex.: técnica alternativa, ataque básico alternativo), no espírito dos desbloqueios do original.
+- Pronto quando: cada herói tem ao menos uma alternativa desbloqueável e ela não é mais forte que a original.
 
 ### M0 — Fundação e ferramentas
 
@@ -385,6 +443,7 @@ Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de 
 - Passos: poeira nos passos por tipo de chão, pegada na neve e na cinza, grama abrindo ao passar (uniform em `shared.ts`).
 
 **M4-08 · Golpes dos inimigos e chefes** · M [validar]
+- 2026-11-20: a telegrafia (preparo legível e marca no chão) passou para a `M21-01`; aqui fica a pose da arma e dos padrões.
 - Registrado em 2026-11-19, a pedido do usuário. Cada ataque de inimigo e de chefe ganha preparo, golpe e retorno legíveis, com a arma no plano certo: no `swing` a clava e o machado hoje ficam de lado ou para trás no meio do golpe; o arremesso do bombardier (`throwL`) lê como soco; o archer solta a flecha do arco; spellcaster e summoner erguem cetro e livro. Os padrões dos chefes (slam, charge, nova, summon e os demais em `enemy.ts`) com pose própria. Casa com `M5-01` (telegrafias), `M5-04` (efeitos dos padrões) e `M5-06` (projéteis).
 - Pronto quando: dá para dizer qual inimigo vai atacar e quando, só pelo corpo.
 
@@ -829,6 +888,7 @@ Cada uma traz a proposta. Sem resposta, a tarefa que depende dela não começa.
 | D10 | Nome definitivo do jogo | Em aberto (o usuário ainda não sabe, 2026-11-16) | Nenhuma |
 | D12 | Spells como no Dungeon Reign: lançadas sozinhas (como lá) ou em teclas? | **Decidido em 2026-11-14: em teclas.** As mesmas spells do Dungeon Reign, sem lançamento automático: teclas 1 e 2 para as 2 spells; técnica e esquiva ficam onde estão. M6 vem logo depois do M19 | M6 |
 | D13 | Save contínuo ou partidas? | **Decidido em 2026-11-15: partidas como no Dungeon Reign.** Seed por partida, continuar no meio, morte encerra; sem equipamento; cada zona = 5 ondas, chefe nas ondas 5, 10, 15 e 20 | M20 |
+| D18 | O loop vem antes da paridade? | **Decidido em 2026-11-20: sim.** Paridade de conteúdo, não de regra de combate: números de combate e de ritmo viram "adaptado" por padrão, numa camada própria (`src/data/pace.ts`). Sai a poção (cura no risco); spells divididas em ativas e auras; reações de estado; bifurcações físicas no mapa; desvios opcionais; terreno na luta; épicas de comportamento; maestria por herói. A fase 1 da D17 (paridade de jogo) espera a `M21-04`; a arte continua na fase 2 | M21 |
 | D11 | Bosque Sombrio: deixar sombrio (fim de tarde, verdes fechados, luz fria, fogueira e cogumelos como contraste quente) ou manter ensolarado? | **Decidido em 2026-11-14: sombrio** | M18-07 |
 | D15 | Spell na tecla sai sem inimigo no alcance? | **Decidido em 2026-11-16: sai sempre e gasta a recarga**, acerte ou não (no original não saía sem alvo). Paridade S13 adaptada | M6 |
 | D17 | Ordem do trabalho daqui em diante | **Decidido pelo usuário em 2026-11-19:** toda a jogabilidade do Dungeon Reign antes de terminar VFX, SFX e arte (seção 3.0). Inimigos e chefes novos com corpo provisório por código até a fase 2. O `M1-06` pausa com bloodfang e gravekeeper aprovados | Seção 3 |
@@ -941,5 +1001,7 @@ Atualizar a cada sessão. Estados: `pendente`, `em curso`, `feito`, `adiado`. **
 | M20-11 | feito | 2026-11-19 | Saiu o corte 0,55 da vida dos chefes (Bloodfang na onda 5, Normal: 1648, igual ao `bossStats`); projéteis inimigos com a velocidade da dificuldade, da sala e do chefe (`BOSS_MULTS.projectileSpeed`, testado contra o Lua); Apressar acelera movimento e ataque dos inimigos em 20%, chefes fora. Decisões do usuário no mesmo dia: S23 (um veneno só, como lá) e S30 (Trick Shot reflete na borda da clareira) viraram "igual"; H6 aceito. Conferido pelo console. Falta jogar: a luta de chefe ficou mais longa. |
 | M20-10 | feito | 2026-11-19 | Varredura de paridade: paridade ganhou as seções E (inimigos), B (chefes), X (relíquias e build) e P (extras da partida), e a lista "Para o usuário decidir" (S23, S30, H6, H7, H8). Linhas velhas corrigidas (S8, S10, S18, S22 a S27, R8, R11 a R13, R15, R18 a R20, R23, R27). Tarefas novas: `M20-11` a `M20-14`, `M9-08`, `M12-08` a `M12-10`, `M13-05`, `M13-06`; `M11-08` passa a trazer os 17 eventos. Tabela da seção 3.0 refeita. |
 | D17 | decidido | 2026-11-19 | Roadmap reordenado a pedido do usuário: fase 1 de paridade de jogo (seção 3.0, começa pela `M20-10`) antes de VFX, SFX e arte. Tarefas novas: `M20-10` (varredura de paridade) e `M19-08` (Boss Killer do Varok). |
+| D18, M21-00 | feito | 2026-11-20 | Revisão crítica do loop pedida pelo usuário; ele aceitou todas as propostas. Marco M21 (loop de jogo) na frente da ordem; `docs/design.md` reescrito; regra D17 na paridade; seção 2 reescrita; telegrafia saiu da `M4-08` para a `M21-01`. Regra nova no `CLAUDE.md`: anotar o plano antes de implementar e, se eu discordar, propor alternativa e esperar o ok |
+| M21-01 | parte 1 feita, falta jogar | 2026-11-20 | Golpe corpo a corpo trava a direção no preparo e desenha o arco no chão (`Fx.groundArc`, setor que enche com o preparo e segue o inimigo); só acerta quem toca o arco (`circleInArc` em `src/core/melee.ts`, 6 testes). Atordoar no preparo cancela o golpe. Números em `TUNING.enemy.telegraph` (preparo 0,4 e 0,55 como antes; arco 92°, chefe 126°). Conferido no Chromium sem GPU: parado leva 7, atrás do goblin leva 0; captura em `.shots/m21-01-melee-arc.png`. Na luz da fogueira o vermelho perde força e o corpo do herói cobre parte da marca: ver jogando (`M21-04`). Falta a parte 2 (tiros) |
 
 O M1 está completo, faltando só a validação da `M1-05`. No M2, os nove heróis estão refeitos: oito aprovados e Vesper (com as abelhas) esperando validação. Próxima sessão, sugestão: `M2-10`. `M0-03` (prévia com seletor, lineup e contagem) continua pendente.

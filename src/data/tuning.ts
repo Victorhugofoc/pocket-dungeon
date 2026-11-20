@@ -37,6 +37,22 @@ export const TUNING = {
     summoned: { tint: [0.8, 0.75, 0.95] as const, opacity: 0.85, emissive: 0x30265e },
     /** distância (px do Dungeon Idle) -> unidades do mundo */
     pxToUnit: 1 / 16,
+    /**
+     * M21-01 (D18): telegrafia do golpe corpo a corpo. No preparo a direção trava e o arco aparece no chão;
+     * o golpe só acerta quem está dentro dele quando fecha. Antes acertava em volta toda, até alcance + 1,1.
+     */
+    telegraph: {
+      /** s de preparo (os 0,4 e 0,55 de antes; ajustar jogando na M21-04) */
+      windup: 0.4, bossWindup: 0.55,
+      /** abertura do arco em rad (1,6 ≈ 92°) */
+      arc: 1.6, bossArc: 2.2,
+      /** folga além do alcance de ataque, em unidades */
+      reachPad: 0.7,
+      /** raio do herói para o teste de ângulo */
+      playerRadius: 0.45,
+      /** atordoar no preparo cancela o golpe */
+      stunInterrupts: true,
+    },
   },
   boss: {
     enrageAt: 0.3,
