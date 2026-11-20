@@ -70,8 +70,8 @@ describe("dados", () => {
 describe("atributos", () => {
   it("herói nível 1 sem nada usa a base + bônus do herói", () => {
     const s = computeStats([HEROES.varok.stats]);
-    expect(s.maxHp).toBe(Math.round(TUNING.hero.baseHp * 1.6));
-    expect(s.damage).toBeCloseTo(TUNING.hero.baseDamage * 1.35);
+    expect(s.maxHp).toBe(Math.round(TUNING.hero.baseHp * 1.8));
+    expect(s.damage).toBeCloseTo(TUNING.hero.baseDamage * 1.95);
   });
   it("relíquias e melhorias mudam o poder; o nível sozinho não", () => {
     const base = computeStats([]);

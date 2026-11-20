@@ -160,6 +160,9 @@ export const BOSS = {
 } as const;
 
 /** tuning.lua: regras gerais de combate da partida. */
+/** status.lua: queimadura num efeito só por inimigo; cada acúmulo extra soma 50% do maior dano (D-161), até 8 contados. */
+export const BURN = { tick: 0.5, stackBonus: 0.5, stackCap: 8 } as const;
+
 export const RUN_TUNING = {
   introTime: 1.8,
   clearedTime: 2.6,

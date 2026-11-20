@@ -2240,13 +2240,7 @@ export class SpellCaster {
   private applyBurn(e: Enemy, st: SpellStats, slot: number): void {
     const g = this.game;
     const dps = g.stats.damage * (st.burnDps ?? 0);
-    const until = g.time + (st.burnDuration ?? 0);
-    const cur = e.dots.find((d) => d.kind === "burn" && d.spell === "fireball");
-    if (cur) {
-      cur.dps = Math.max(cur.dps, dps);
-      cur.until = Math.max(cur.until, until);
-      cur.slot = slot;
-    } else e.dots.push({ kind: "burn", dps, until, spell: "fireball", slot });
+    e.applyBurn(g.time, dps, st.burnDuration ?? 0, "fireball", slot);
   }
 
   /** status.lua `applySlow`: não acumula; chefes levam 20% (ou até o teto da Frostine). */

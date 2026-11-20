@@ -17,7 +17,7 @@ import {
   BOSS, DEPTHS_FROM, DEPTHS_STEP, DIFFICULTIES, DIFFICULTY_ORDER, ENDLESS, ENEMY_WEIGHT, LEVEL_UP_CHOICES,
   LEVELUP_REROLL, RUN_MAP, RUN_START, RUN_TUNING, TOTAL_WAVES, UPGRADE_TIER_WEIGHTS, UPGRADE_TIERS, WAVE_STAGES, WAVES,
   XP_GROWTH,
-  ARENA_CROWD, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SURVIVOR_FACTOR,
+  ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SURVIVOR_FACTOR,
 } from "../src/data/run";
 import { ENEMIES } from "../src/data/enemies";
 import { UPGRADE_CAPS, UPGRADES } from "../src/data/upgrades";
@@ -519,6 +519,26 @@ describe.skipIf(!dr)("paridade com o Dungeon Reign", () => {
     const { pickup, settle, pullSpeed, pullAccel, maxOnFloor } = RUN_TUNING.loot;
     expect({ pickup, settle, pullSpeed, pullAccel, maxOnFloor }).toEqual(TU.LOOT);
     expect(RUN_TUNING.loot.heroRadius).toBe(C.PLAYER.radius);
+  });
+
+  it("atributos dos heróis iguais aos de lá (H7, characters.lua `effects`)", () => {
+    // `spellCooldownPct` de lá é negativo (mais rápido) e aqui é `cdrPct` positivo; `bossSlowCap` vive em FROST
+    const rename: Record<string, [string, number]> = { spellCooldownPct: ["cdrPct", -1] };
+    for (const id of HERO_ORDER) {
+      const theirs: Record<string, number> = {};
+      for (const e of CH[id].effects as { stat: string; value: number }[]) {
+        if (e.stat === "bossSlowCap") continue;
+        const [k, m] = rename[e.stat] ?? [e.stat, 1];
+        theirs[k] = e.value * m;
+      }
+      expect({ ...HEROES[id].stats }, id).toEqual(theirs);
+    }
+    expect(FROST.bossSlowCap).toBe(CH.frostine.effects.find((e: { stat: string }) => e.stat === "bossSlowCap").value);
+  });
+
+  it("queimadura num efeito só, com acúmulos (status.lua `applyBurn`)", () => {
+    expect(BURN.tick).toBe(0.5); // status.lua `BURN_TICK` (D-015)
+    expect(BURN.stackBonus).toBe(TU.BURN_STACK_BONUS);
   });
 
   it("Inquebrável do Varok", () => {

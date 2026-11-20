@@ -109,7 +109,7 @@ export const HEROES: Record<string, HeroDef> = {
   aurelius: {
     id: "aurelius", name: "Aurelius", title: "Arcane Sage", identity: "Magic, cooldown, regeneration",
     color: 0xd08cff, accent: 0xffe9a8, weapon: "staff", weaponName: "Staff",
-    stats: { spellDamagePct: 0.10, cdrPct: 0.15, regen: 0.4, maxHpPct: 0.08, areaPct: 0.15, moveSpeedPct: -0.05 },
+    stats: { spellDamagePct: 0.10, cdrPct: 0.04, regen: 0.4, maxHpPct: 0.08, autoDamagePct: -0.12, moveSpeedPct: -0.05 },
     auto: { kind: "projectile", rate: 1.5, damage: 1.15, range: 16, speed: 22, color: 0xd9a0ff, pierce: 2, size: 1.3 },
     technique: tech("time_rift"),
     startingSpells: ["arcane_bolt", "iceball", "prism_beam", "rune_traps"],
@@ -118,7 +118,7 @@ export const HEROES: Record<string, HeroDef> = {
   ignis: {
     id: "ignis", name: "Ignis", title: "Inferno", identity: "Fire, burn, pressure",
     color: 0xff7a1a, accent: 0xffd34d, weapon: "claws", weaponName: "Gauntlets",
-    stats: { firePct: 0.25, burnPct: 0.30, armor: 8, maxHpPct: 0.08, icePct: -0.10, moveSpeedPct: -0.08 },
+    stats: { firePct: 0.25, burnPct: 0.30, burnStacks: 2, armor: 8, maxHpPct: 0.08, icePct: -0.10, moveSpeedPct: -0.08 },
     auto: { kind: "fan", rate: 1.5, damage: 0.5, range: 8.5, speed: 20, count: 5, spreadDeg: 44, color: 0xff8a2a,
       status: { kind: "burn", power: 0.35, duration: 3, maxStacks: 3 } },
     technique: tech("inferno_charge"),
@@ -128,7 +128,7 @@ export const HEROES: Record<string, HeroDef> = {
   zephyr: {
     id: "zephyr", name: "Zephyr", title: "Gunslinger", identity: "Shooting, speed, crit",
     color: 0xe6b366, accent: 0x8a5a2b, weapon: "guns", weaponName: "Revolvers",
-    stats: { autoDamagePct: 0.20, attackSpeedPct: 0.16, critChance: 0.10, moveSpeedPct: 0.08, spellDamagePct: -0.05, maxHpPct: 0.10, armor: 8 },
+    stats: { autoDamagePct: 0.38, attackSpeedPct: 0.16, critChance: 0.10, moveSpeedPct: 0.08, spellDamagePct: -0.05, maxHpPct: 0.20, armor: 16 },
     auto: { kind: "projectile", rate: 2.6, damage: 0.8, range: 16, speed: 42, color: 0xffe9b0,
       ricochet: 1, ricochetDamage: 0.7, size: 0.8 },
     technique: tech("fan_the_hammer"),
@@ -138,8 +138,8 @@ export const HEROES: Record<string, HeroDef> = {
   varok: {
     id: "varok", name: "Varok", title: "Boss Slayer", identity: "Mace, heavy blows, toughness",
     color: 0xf2594a, accent: 0xb9c2cc, weapon: "mace", weaponName: "Mace",
-    stats: { damagePct: 0.35, maxHpPct: 0.60, armor: 14 },
-    auto: { kind: "melee", rate: 1.05, damage: 2.3, range: 3.4, arcDeg: 130, color: 0xffb3a8 },
+    stats: { damagePct: 0.95, maxHpPct: 0.80, armor: 8 },
+    auto: { kind: "melee", rate: 1.05, damage: 1.8, range: 3.4, arcDeg: 130, color: 0xffb3a8 },
     technique: tech("execution_leap"),
     startingSpells: ["quake_totem", "fireball", "iceball", "blade_orbit"],
     passive: [...UNBREAKABLE.passiveText],
@@ -157,7 +157,7 @@ export const HEROES: Record<string, HeroDef> = {
   seraph: {
     id: "seraph", name: "Seraph", title: "Paladin", identity: "Armor, healing, shield",
     color: 0xffdb73, accent: 0xffffff, weapon: "shield", weaponName: "Shield",
-    stats: { maxHpPct: 0.35, armor: 18, regen: 0.3, attackSpeedPct: -0.10, moveSpeedPct: -0.08 },
+    stats: { maxHpPct: 0.35, armor: 18, regen: 0.3, healPct: 0.15, bossDamagePct: 0.25, attackSpeedPct: -0.10, moveSpeedPct: -0.08 },
     auto: { kind: "projectile", rate: 1.3, damage: 1.25, range: 12, speed: 20, color: 0xfff0b0, pierce: 1,
       ricochet: 2, ricochetDamage: 0.8, size: 1.6 },
     technique: tech("aegis"),
@@ -168,12 +168,12 @@ export const HEROES: Record<string, HeroDef> = {
   vesper: {
     id: "vesper", name: "Vesper", title: "Venom Weaver", identity: "Poison, bees, area",
     color: 0x8cf273, accent: 0x3a2a55, weapon: "staff", weaponName: "Scepter",
-    stats: { poisonPct: 0.30, areaPct: 0.10, maxHpPct: 0.08 },
+    stats: { poisonPct: 0.30, poisonStacks: 1, areaPct: 0.10, maxHpPct: 0.08 },
     auto: { kind: "projectile", rate: 1.9, damage: 0.7, range: 14, speed: 26, color: 0x9dff7a,
       status: { kind: "poison", power: VENOM.autoFraction, duration: VENOM.autoDuration, maxStacks: VENOM.autoStacks } },
     technique: tech("brood"),
     startingSpells: ["venom_nova", "quake_totem", "arcane_bolt", "rune_traps"],
-    passive: [...VENOM.passiveText, `Poison: every shot poisons (up to ${VENOM.autoStacks} stacks).`],
+    passive: [...VENOM.passiveText, `Poison: every shot poisons (up to ${VENOM.autoStacks + 1} stacks).`],
     nest: true,
   },
 };

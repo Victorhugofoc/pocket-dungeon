@@ -846,20 +846,17 @@ export class Game {
       e.windupT = -1;
     } else if (st.kind === "poison") {
       // S23: um veneno só por inimigo, dividido com a Venom Nova (status.lua `applyPoison`)
-      e.applyPoison(now, hitDamage * st.power * potency, st.duration, st.maxStacks ?? 1, undefined, "auto");
+      // auto_attack.lua: máximo = o do tiro + `poisonStacks` do herói (Vesper +1)
+      e.applyPoison(now, hitDamage * st.power * potency, st.duration, (st.maxStacks ?? 1) + this.stats.poisonStacks, undefined, "auto");
     } else {
-      const max = st.maxStacks ?? 1;
-      const dot = { kind: st.kind, dps: hitDamage * st.power * potency, until: now + st.duration };
-      const same = e.dots.filter((d) => d.kind === st.kind && !d.spell);
-      if (same.length >= max) {
-        same.sort((a, b) => a.until - b.until);
-        Object.assign(same[0], dot);
-      } else e.dots.push(dot);
+      // S23/status.lua: uma queimadura só por inimigo, dividida com o Fireball
+      e.applyBurn(now, hitDamage * st.power * potency, st.duration);
     }
   }
 
   damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean } = {}): void {
     if (e.dead) return;
+    if (e.isBoss) amount *= this.stats.bossDamage; // damage.lua: Smite do Seraph (D-317)
     amount = Math.max(1, Math.round(amount));
     this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
     e.hp -= amount;
@@ -1041,6 +1038,7 @@ export class Game {
   heal(amount: number, show: boolean, full = false): void {
     const p = this.player;
     const before = p.hp;
+    if (!full) amount *= this.stats.healing; // damage.lua `healPlayer`: armadura e `healPct`
     if (this.inCombat && !full) amount *= RUN_TUNING.combatHealMult;
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
     this.run.statistics.healed += p.hp - before;

@@ -57,11 +57,11 @@ Primeira rodada (2026-11-15): o teste achou 1 divergência real. O tiro da Vespe
 | H1 | 9 heróis, na mesma ordem | `characters.lua` `order` | testado | igual |
 | H2 | Técnica de cada herói, números, marcos e evolução | `data/spells.lua` (as 9 `tech`) | `src/data/techniques.ts` (testado campo a campo) | igual |
 | H3 | Frostine: Estilhaçar, Quebradiço, Pingente, Frio profundo | `characters.lua` `frost`; `combat/frost.lua` | `FROST` (testado) | igual |
-| H4 | Vesper: veneno do tiro (3 acúmulos) e Ninhada | `characters.lua` `autoPoison`, `brood` | `VENOM` (testado) | igual (corrigido de 4 para 3 acúmulos) |
+| H4 | Vesper: veneno do tiro (3 acúmulos) e Ninhada | `characters.lua` `autoPoison`, `brood` | `VENOM` (testado) | igual (corrigido de 4 para 3 acúmulos; com o `poisonStacks` +1 da Vesper, 4 no total, como lá) |
 | H5 | Varok: Inquebrável (no máximo 50% da vida por golpe) | `characters.lua` `maxHitFraction` | testado | igual |
 | H6 | Umbra e Seraph: curas fixas (4 e 2 de vida) | `passiveText` | 4% e 2% da vida máxima | **adaptado**, aceito pelo usuário em 2026-11-19: a vida daqui cresce até o nível 60, e 4 de vida fixa sumiria |
-| H7 | Atributos do herói (`effects`: gelo %, fogo %, dano de spell %...) | `characters.lua` `effects` | `HeroDef.stats`; os atributos de efeito separados no `M6-12` (D14) | **adaptado**: os de efeito iguais aos de lá (escolas, queimadura, duração da lentidão, veneno, dano de spell, dano do ataque do Zephyr); os outros números seguem os da 0.1 (Varok, Zephyr, Aurelius com recarga e área próprias, Ignis sem acúmulos de queimadura extra, Frostine sem o teto de lentidão em chefe como atributo) |
-| H8 | Estilo do ataque básico (`autoStyle`) | `combat/auto_attack.lua` | Kaelen salta para 2, Aurelius atravessa 2, Ignis atira leque de projéteis | **a decidir** (pendência do `M19-03` e do `M19-04`) |
+| H7 | Atributos do herói (`effects`: gelo %, fogo %, dano de spell %...) | `characters.lua` `effects` | `HeroDef.stats` igual aos `effects` de lá, testado herói a herói (`spellCooldownPct` vira `cdrPct`; `bossSlowCap` fica em `FROST`). Atributos novos no `M20-11`: `healPct` e a cura pela armadura (`modifiers.lua` `healingMultiplier`), `bossDamagePct`, `burnStacks` e `poisonStacks` | igual desde 2026-11-19 (decisão do usuário: como o original). A queimadura virou um efeito só por inimigo, com acúmulos de +50% do maior dano até `burnStacks` (status.lua `applyBurn`). Falta a base do ataque de cada herói (dano, ritmo, alcance), que vem com o H8 |
+| H8 | Estilo do ataque básico (`autoStyle`) | `combat/auto_attack.lua` | Kaelen salta para 2, Aurelius atravessa 2, Ignis atira leque de projéteis | **decidido em 2026-11-19: como o original** (`autoStyle`: frost, storm, firefan, gunslinger, hammer, shadowblade, shieldthrow, venom; Aurelius sem estilo, tiro normal). Entra no `M20-12`, junto com Cone Shot, Double Shot e Pierce, que mudam por estilo. O Varok já usa o dano do martelo de lá (1,8) |
 | H9 | Varok: modo Matador de Chefes (menos inimigos, chefes mais fortes, recompensa maior) | `characters.lua` `runMods` | — | falta (`M19-08`) |
 | H10 | Textos das passivas | `passiveText` | os mesmos; os da Frostine estão por extenso | igual |
 
@@ -148,11 +148,9 @@ Números em `src/data/run.ts`, fórmulas em `src/core/waves.ts` e o ciclo da ond
 
 ## Para o usuário decidir (varredura `M20-10`, 2026-11-19)
 
-Linhas em "adaptado" ainda não aceitas, ou em "a decidir":
-- **H7**: atributos dos heróis que não são de efeito (exemplos levados ao usuário em 2026-11-19; diferenças: Aurelius com recarga 15% e área 15% aqui contra recarga 4% e ataque -12% lá; Zephyr com ataque +20%, vida +10% e armadura 8 contra +38%, +20% e 16; Varok com dano +35%, vida +60% e armadura 14 contra +95%, +80% e 8; Seraph sem cura +15% e dano em chefe +25%; Ignis sem +2 acúmulos de queimadura; Vesper sem +1 acúmulo de veneno).
-- **H8**: estilo do ataque básico (`autoStyle`); explicado ao usuário em 2026-11-19.
-- R18 e R20 esperam as tarefas indicadas na própria linha; não precisam de resposta agora.
-- Resolvidas em 2026-11-19: S23 e S30 (viraram "igual" no `M20-11`), H6 (aceito).
+Linhas em "adaptado" ainda não aceitas, ou em "a decidir": nenhuma agora.
+- R18 e R20 esperam as tarefas indicadas na própria linha.
+- Resolvidas em 2026-11-19: S23 e S30 (viraram "igual" no `M20-11`), H6 (aceito), H7 (igual ao original) e H8 (como o original, no `M20-12`).
 
 ## Perguntas respondidas
 

@@ -1,7 +1,7 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
 import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
-import { CHILD_SCALE, MINION_SCALE, RUN_TUNING } from "../data/run";
+import { BURN, CHILD_SCALE, MINION_SCALE, RUN_TUNING } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
 import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
@@ -82,6 +82,23 @@ export class Enemy {
    * Plague Bloom); cada aplicação soma um acúmulo (até o maior máximo visto) e renova a duração; fica o maior dano
    * por segundo; o contágio e a fonte ficam os da primeira aplicação que os trouxe.
    */
+  /**
+   * status.lua `applyBurn`: não acumula como efeito separado; reaplicar renova a duração, fica o maior dano por
+   * segundo e conta um acúmulo (até 8); no tique valem até `burnStacks` do herói (1 + extras; Ignis +2), cada extra
+   * com +50% do dano. A spell e o espaço lembram quem aplicou (Volátil do Fireball).
+   */
+  applyBurn(now: number, dps: number, duration: number, spell?: string, slot?: number): void {
+    const until = now + duration;
+    const cur = this.dots.find((d) => d.kind === "burn");
+    if (cur) {
+      cur.dps = Math.max(cur.dps, dps);
+      cur.until = Math.max(cur.until, until);
+      cur.stacks = Math.min(BURN.stackCap, (cur.stacks ?? 1) + 1);
+      if (spell) cur.spell = spell;
+      if (slot !== undefined) cur.slot = slot;
+    } else this.dots.push({ kind: "burn", dps, until, spell, slot, stacks: 1 });
+  }
+
   applyPoison(now: number, dps: number, duration: number, maxStacks: number, spread?: Dot["spread"], source?: string): void {
     const until = now + duration;
     const cur = this.dots.find((d) => d.kind === "poison");
@@ -229,7 +246,9 @@ export class Enemy {
         let kind: StatusKind = "burn";
         this.dots = this.dots.filter((d) => d.until > now);
         for (const d of this.dots) {
-          total += d.dps * (d.stacks ?? 1) * 0.5;
+          const n = d.stacks ?? 1;
+          // veneno: dano por acúmulo; queimadura: +50% do maior dano por acúmulo extra, até o máximo do herói
+          total += d.kind === "burn" ? d.dps * (1 + BURN.stackBonus * (Math.min(n, game.stats.burnStacks) - 1)) * BURN.tick : d.dps * n * 0.5;
           kind = d.kind;
         }
         if (total > 0) game.damageEnemy(this, total, { dot: kind });
