@@ -18,7 +18,8 @@ import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/ru
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
-import { BOSSES, ENEMIES } from "../data/enemies";
+import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, type BossPattern } from "../data/enemies";
+import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
@@ -214,6 +215,9 @@ export class Game {
   nearPortal = false;
   /** a onda em andamento (core/wave.ts) e os modificadores dela; null entre as ondas */
   wave: WaveState | null = null;
+  /** chefe da onda de chefe atual (saco de chefes) e o ataque emprestado do rei coroado */
+  waveBoss: string | null = null;
+  crown: BossPattern | null = null;
   mods: WaveMods = waveMods(1, "normal");
   phase: WavePhase = "walk";
   private phaseT = 0;
@@ -1315,8 +1319,11 @@ export class Game {
     this.phaseT = 0;
     this.showRing(true);
     const boss = this.wave.isBossWave;
+    // D6/M20-09: o chefe sai do saco (boss_bag.lua) ao começar a onda; continuar do checkpoint tira o mesmo
+    this.waveBoss = boss ? drawBoss(this.run, this.rng.get("bosses"), Game.BOSS_POOL) : null;
+    this.crown = boss && n === BOSS.final.wave ? this.crownPattern(this.waveBoss!) : null;
     const room = this.mods.room;
-    const sub = boss ? `${BOSSES[this.zone.boss].name} approaches` : room ? `${room.name}` : this.zone.name;
+    const sub = this.waveBoss ? `${n === BOSS.final.wave ? CROWN_TITLE : BOSSES[this.waveBoss].name} approaches` : room ? `${room.name}` : this.zone.name;
     this.events.banner(`Wave ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, sub);
     this.audio.play(boss ? "boss" : "level");
   }
@@ -1368,17 +1375,28 @@ export class Game {
     return { x: sg.x + (dx / d) * r, z: sg.z + (dz / d) * r };
   }
 
-  private queueBoss(): void {
-    this.queueSpawn({ id: this.zone.boss, champion: false }, true);
+  /** Chefes que podem sair do saco: os de `bosses.lua` que já têm luta aqui (hoje os 4; os do `M10` entram depois). */
+  static readonly BOSS_POOL: readonly string[] = BOSS_ORDER.filter((id) => id in BOSSES);
+
+  /** `WaveSystem.crownAttack`: o padrão de outro chefe, de um tipo que o rei não tem (D-640). */
+  private crownPattern(id: string): BossPattern | null {
+    const own = BOSSES[id].patterns.map((p) => p.kind);
+    const kind = crownAttack(own, CROWN_BORROW, this.rng.get("bosses"));
+    if (!kind) return null;
+    for (const other of Game.BOSS_POOL) {
+      const pt = BOSSES[other].patterns.find((p) => p.kind === kind);
+      if (pt) return pt;
+    }
+    return null;
   }
 
-  /**
-   * §7.9 Emboscada: um chefe enfraquecido entra na onda normal. Lá ele sai do saco dos 13; aqui, de um dos 4 chefes
-   * que não é o da zona (o da zona fica para a arena), no fluxo `bosses`.
-   */
+  private queueBoss(): void {
+    this.queueSpawn({ id: this.waveBoss ?? Game.BOSS_POOL[0], champion: false }, true);
+  }
+
+  /** §7.9/§70 Emboscada: um chefe enfraquecido entra na onda normal; sai do mesmo saco das ondas de chefe. */
   private queueAmbush(): void {
-    const pool = ZONE_ORDER.map((z) => ZONES[z].boss).filter((b) => b !== this.zone.boss && BOSSES[b]);
-    const id = this.rng.get("bosses").pick(pool);
+    const id = drawBoss(this.run, this.rng.get("bosses"), Game.BOSS_POOL);
     this.queueSpawn({ id, champion: false }, true);
     this.events.toast(`Boss Ambush: ${BOSSES[id].name}!`, "#ff7a5a");
   }
@@ -1399,7 +1417,7 @@ export class Game {
       if (m.boss) {
         const ambush = this.wave?.ambush ?? null;
         const final = !ambush && this.run.wave === BOSS.final.wave;
-        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush });
+        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush, crownAttack: final ? this.crown : null });
         this.ach.bossSpawned(e, this.run.statistics.elapsed);
         e.hunter = true;
         this.boss = e;

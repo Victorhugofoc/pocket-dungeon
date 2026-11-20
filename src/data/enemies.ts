@@ -98,6 +98,22 @@ export interface BossDef {
   xp: number;
 }
 
+/** Ordem dos 13 chefes em `bosses.lua` (`B.order`); o saco usa os que existem em `BOSSES` (M20-09, D6). */
+export const BOSS_ORDER = [
+  "bloodfang", "deathstalker", "storm_tyrant", "iron_colossus", "venom_hydra", "gravekeeper", "void_reaver",
+  "ember_matriarch", "rimefang_wyrm", "gorged_ooze", "dune_leviathan", "hollow_king", "mirage_djinn",
+] as const;
+
+/**
+ * `bosses.lua` `CROWN.borrow`: ataques que o rei coroado da onda 20 pode pegar de outro chefe. Lá são `nova`,
+ * `crossfire`, `radial`, `fanvolley`, `spiralvolley`, `stormfield`, `venomfield` e `quake`; aqui só existem os
+ * equivalentes de `nova`, `fanvolley` e `spiralvolley` (os outros chegam com os chefes do `M10`).
+ */
+export const CROWN_BORROW = ["nova", "fan", "spiral"] as const;
+
+/** Título do rei coroado (en.lua: "THE CROWNED KING", D-640). */
+export const CROWN_TITLE = "The Crowned King";
+
 export const BOSSES: Record<string, BossDef> = {
   bloodfang: {
     id: "bloodfang", name: "Bloodfang", title: "The Berserker", hp: 1500, damage: 14, speed: 3.6, radius: 1.5,

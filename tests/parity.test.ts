@@ -19,7 +19,7 @@ import {
   XP_GROWTH,
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SURVIVOR_FACTOR,
 } from "../src/data/run";
-import { ENEMIES } from "../src/data/enemies";
+import { BOSS_ORDER, ENEMIES } from "../src/data/enemies";
 import { UPGRADE_CAPS, UPGRADES } from "../src/data/upgrades";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
 import { newRun } from "../src/core/run";
@@ -822,6 +822,7 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     expect(SURVIVOR_FACTOR).toBe(C.SURVIVOR_FACTOR);
     expect(ARENA_CROWD).toBeCloseTo(TU.ARENA_CROWD, 12);
     expect(SPAWN).toEqual({ telegraph: C.SPAWN_TELEGRAPH, bossTelegraph: TU.BOSS_TELEGRAPH, minDistancePx: C.SPAWN_MIN_DISTANCE });
+    expect([...BOSS_ORDER]).toEqual(BS.order); // saco de chefes (M20-09)
     for (const [id, m] of Object.entries(BOSS_MULTS)) {
       const b = BS.builds[id].mults;
       expect(m, id).toEqual({ hp: b.hp, damage: b.damage, speed: b.speed, projectileSpeed: b.projectileSpeed });

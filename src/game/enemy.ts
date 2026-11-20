@@ -4,7 +4,7 @@ import { bossStats, enemyStats } from "../core/wave";
 import { BURN, CHILD_SCALE, MINION_SCALE, RUN_TUNING } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
-import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
+import { CROWN_TITLE, ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
 import type { StatusKind } from "../data/heroes";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -116,6 +116,10 @@ export class Enemy {
   strafe = Math.random() < 0.5 ? -1 : 1;
   summonCd = 3;
   chargeCd = 2.5;
+  /** chefe: os padrões que ele usa (os dele e, no rei coroado, o emprestado) */
+  patterns: readonly BossPattern[] = [];
+  crowned = false;
+  title = "";
   /** velocidade dos projéteis: dificuldade, sala e, no chefe, o dele */
   projK = 1;
   charging: { t: number; dur: number; dx: number; dz: number; speed: number; dmg: number; hit: boolean } | null = null;
@@ -136,7 +140,8 @@ export class Enemy {
   private aura: ChampionAura | null = null;
 
   constructor(game: Game, def: EnemyDef | BossDef, wave: number, x: number, z: number,
-    opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean; ambush?: { hp: number; damage: number } | null } = {}) {
+    opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean; ambush?: { hp: number; damage: number } | null;
+      crownAttack?: BossPattern | null } = {}) {
     this.x = this.homeX = x;
     this.z = this.homeZ = z;
     this.level = wave;
@@ -147,6 +152,10 @@ export class Enemy {
     this.boss = isBoss ? (def as BossDef) : null;
     this.def = isBoss ? null : (def as EnemyDef);
     this.name = def.name;
+    // onda 20: o rei coroado leva o título de lá e um ataque emprestado de outro chefe (wave_system.lua, D-640)
+    this.crowned = isBoss && opts.final === true;
+    this.title = this.crowned ? CROWN_TITLE : isBoss ? (def as BossDef).title : "";
+    if (isBoss) this.patterns = opts.crownAttack ? [...(def as BossDef).patterns, opts.crownAttack] : (def as BossDef).patterns;
     // vida, dano e velocidade como no Dungeon Reign (enemy.lua, boss.lua): pela onda e pela dificuldade
     this.ambush = isBoss && !!opts.ambush;
     const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final, opts.ambush ?? null) : enemyStats(def, wave, game.mods, this.champion);
@@ -581,10 +590,11 @@ export class Enemy {
     this.patternCd -= dt;
     if (this.patternCd <= 0 && this.windupT < 0) {
       this.patternCd = b.patternCooldown * (this.enraged ? TUNING.boss.enrageCooldownMult : 1);
-      let idx = Math.floor(Math.random() * b.patterns.length);
-      if (idx === this.lastPattern) idx = (idx + 1) % b.patterns.length;
+      const list = this.patterns;
+      let idx = Math.floor(Math.random() * list.length);
+      if (idx === this.lastPattern) idx = (idx + 1) % list.length;
       this.lastPattern = idx;
-      this.startPattern(game, b.patterns[idx], dist);
+      this.startPattern(game, list[idx], dist);
       return;
     }
     this.meleeStep(game, dt, dist, speed, b.attackRange);

@@ -140,6 +140,10 @@ export interface RunState {
   curseContinues: boolean;
   /** cartas escolhidas no mapa, em ordem */
   mapHistory: string[];
+  /** saco de chefes (boss_bag.lua): o que falta sair, o último que saiu e a ordem de todos */
+  bossBag: string[];
+  lastBoss: string | null;
+  bossHistory: string[];
   endless: boolean;
   victory: boolean;
   /** quantas vezes a partida foi continuada */
@@ -196,6 +200,9 @@ export function newRun(opts: NewRunOptions): RunState {
     curseWavesLeft: 0,
     curseContinues: false,
     mapHistory: [],
+    bossBag: [],
+    lastBoss: null,
+    bossHistory: [],
     endless: false,
     victory: false,
     resumes: 0,
@@ -245,6 +252,10 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.curseWavesLeft ??= 0;
   run.curseContinues ??= false;
   run.mapHistory ??= [];
+  // checkpoints de antes do M20-09
+  run.bossBag ??= [];
+  run.lastBoss ??= null;
+  run.bossHistory ??= [];
   // checkpoints de antes do M6-06
   run.relicVersion ??= 0;
   run.evolutionDeclined ??= {};

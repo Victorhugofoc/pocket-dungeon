@@ -48,10 +48,9 @@ describe("dados", () => {
       expect(HEROES[id].technique.cooldown).toBeGreaterThan(0);
     }
   });
-  it("zonas apontam para inimigos e chefes que existem", () => {
+  it("zonas apontam para inimigos que existem", () => {
     for (const id of ZONE_ORDER) {
       const z = ZONES[id];
-      expect(BOSSES[z.boss]).toBeDefined();
       for (const [e] of z.enemies) expect(ENEMIES[e]).toBeDefined();
       expect(z.decor.some((d) => d[2])).toBe(true);
     }
