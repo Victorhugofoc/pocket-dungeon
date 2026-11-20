@@ -52,6 +52,12 @@ export const TUNING = {
       playerRadius: 0.45,
       /** atordoar no preparo cancela o golpe */
       stunInterrupts: true,
+      /** s de mira dos tiros comuns (M21-01 parte 2): a boca brilha e o tiro sai na direção do herói no fim */
+      shotWindup: 0.3,
+      /** tamanho do brilho na arma (preparo) e na boca do tiro (mira), do começo ao fim */
+      glowSize: [0.35, 1.1] as [number, number],
+      /** distância da boca do tiro além do raio do corpo */
+      muzzleReach: 0.35,
     },
   },
   boss: {
