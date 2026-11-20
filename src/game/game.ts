@@ -39,6 +39,7 @@ import { RoomHazards } from "./roomhazards";
 import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
 import { MapGates } from "./gates";
+import { GATE_SIGNAL } from "../data/map-nodes";
 import type { MoveHandle, TrailHandle } from "./vfx";
 import { LootView } from "./loot";
 import { promisesBank } from "../core/loot";
@@ -270,7 +271,7 @@ export class Game {
   /** M21-08: a carta da onda já foi escolhida (ou não há mapa antes dela); até lá a clareira não começa */
   private mapResolved = false;
   /** os portões do mapa no chão e o mais perto do herói (a carta aparece no HUD), ou -1 */
-  private gates = new MapGates(this.scene);
+  private gates!: MapGates;
   nearGate = -1;
   /** o santuário de relíquias está com a escolha aberta */
   private shrineOpen = false;
@@ -314,6 +315,7 @@ export class Game {
     this.pipeline = new Pipeline(this.renderer, this.scene, this.camera);
     this.probe = new FrameProbe(this.renderer);
     this.fx = new Fx(this.scene, textLayer);
+    this.gates = new MapGates(this.scene, this.fx);
     this.hazards = new RoomHazards({
       scene: this.scene,
       fx: this.fx,
@@ -1299,7 +1301,7 @@ export class Game {
     }
     if (this.phase === "walk") {
       if (!this.mapResolved) {
-        this.walkGates();
+        this.walkGates(dt);
         return;
       }
       if (this.playerAlive && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r - 1.5) this.beginWave();
@@ -1539,6 +1541,11 @@ export class Game {
   static readonly MAP_DISABLED: ReadonlySet<MapNodeId> = new Set<MapNodeId>(["pact", "event"]);
 
   /** As cartas do mapa da onda atual ainda por escolher (M21-08: uma por portão), ou null. */
+  /** Os portões no minimapa: posição e cor. */
+  get gateMarks(): { x: number; z: number; color: string }[] {
+    return this.mapCards ? this.gates.marks : [];
+  }
+
   get mapCards(): MapCard[] | null {
     const o = this.run?.mapOffer;
     return o && o.wave === this.run.wave ? o.cards : null;
@@ -1568,10 +1575,14 @@ export class Game {
   }
 
   /** Caminhada com o mapa por escolher: passar por um portão escolhe a carta dele. */
-  private walkGates(): void {
+  private walkGates(dt: number): void {
     const p = this.player;
-    this.gates.update(this.time);
-    this.nearGate = this.gates.nearest(p.x, p.z, 7);
+    this.gates.update(this.time, dt);
+    const near = this.gates.nearest(p.x, p.z, 7);
+    // o som da sala ao chegar perto do portão (parte do sinal, M21-08)
+    const cards = this.mapCards;
+    if (near >= 0 && near !== this.nearGate && cards) this.audio.play(GATE_SIGNAL[cards[near].node].sound);
+    this.nearGate = near;
     if (!this.playerAlive || this.shrineOpen || this.shopVisit || !this.mapCards) return;
     const i = this.gates.hit(p.x, p.z);
     if (i >= 0) this.chooseMapCard(i);

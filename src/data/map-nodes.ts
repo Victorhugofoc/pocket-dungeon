@@ -12,3 +12,21 @@ export const MAP_NODE: Record<MapNodeId, { name: string; text: string; color: st
   boss_ambush: { name: "Boss Ambush", text: "A weakened boss joins the wave: a risk relic", color: "#ff7a5a" },
 };
 
+
+/**
+ * M21-08 parte 2: o sinal de cada sala, visto de longe. Coluna de luz na cor da carta (`beam` m de altura) e
+ * partículas próprias (`every` s entre uma e outra): brasas, fumaça, faíscas, moedas, poeira de luz; raios do céu
+ * na emboscada de chefe. `sound`: o som ao chegar perto do portão.
+ */
+export type GateMotes = "embers" | "smoke" | "sparks" | "coins" | "motes" | "lightning";
+export type GateSound = "swing" | "zap" | "rare" | "coin" | "level" | "boss" | "pickup";
+export const GATE_SIGNAL: Record<MapNodeId, { beam: number; motes: GateMotes; every: number; sound: GateSound }> = {
+  combat_room: { beam: 9, motes: "embers", every: 0.08, sound: "swing" },
+  cursed_room: { beam: 8, motes: "smoke", every: 0.1, sound: "zap" },
+  pact: { beam: 9, motes: "smoke", every: 0.1, sound: "zap" },
+  event: { beam: 9, motes: "motes", every: 0.12, sound: "pickup" },
+  shop: { beam: 10, motes: "coins", every: 0.14, sound: "coin" },
+  elite: { beam: 11, motes: "sparks", every: 0.07, sound: "rare" },
+  relic_shrine: { beam: 12, motes: "motes", every: 0.1, sound: "level" },
+  boss_ambush: { beam: 14, motes: "lightning", every: 1.4, sound: "boss" },
+};

@@ -585,6 +585,16 @@ export class Ui {
       ctx.arc(tx(sg.x), tx(sg.z), sg.r * k, 0, 7);
       ctx.stroke();
     });
+    // M21-08: os portões do mapa, na cor da carta
+    for (const m of g.gateMarks) {
+      ctx.fillStyle = m.color;
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(tx(m.x), tx(m.z), 3.5, 0, 7);
+      ctx.fill();
+      ctx.stroke();
+    }
     // chefe / portal
     ctx.font = "14px system-ui";
     ctx.textAlign = "center";

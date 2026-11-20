@@ -1,11 +1,13 @@
 // M21-08: os portões do mapa da partida. Ao fim da onda, 2 ou 3 portões em leque na borda da clareira vencida
 // (ou em volta da fogueira, na zona nova); passar por um escolhe a carta. Arte por código: duas colunas de pedra,
-// a verga e o chão acesos na cor da carta, e a placa com o nome. Os sinais de longe de cada sala ficam na parte 2.
+// a verga e o chão acesos na cor da carta, e a placa com o nome. Parte 2: o sinal de longe de cada sala
+// (`GATE_SIGNAL`): coluna de luz, partículas do tipo e raios do céu na emboscada de chefe.
 import * as THREE from "three";
 import type { GateSpot, MapCard } from "../core/runmap";
-import { MAP_NODE } from "../data/map-nodes";
+import { GATE_SIGNAL, MAP_NODE, type GateMotes } from "../data/map-nodes";
 import { ROOM_BY_ID } from "../data/rooms";
 import { TUNING } from "../data/tuning";
+import type { VfxHandle } from "./vfx";
 
 const G = TUNING.world.gates;
 const PILLAR_H = 3.4;
@@ -14,6 +16,23 @@ interface Gate {
   root: THREE.Group;
   spot: GateSpot;
   glow: THREE.MeshBasicMaterial[];
+  card: MapCard;
+  color: number;
+  beam: VfxHandle;
+  /** segundos até a próxima partícula (ou raio) */
+  next: number;
+}
+
+/** O pedaço do `Fx` que os sinais usam. */
+export interface GateFx {
+  glow(x: number, y: number, z: number, color: number, size: number, life: number, vx?: number, vy?: number, vz?: number, grav?: number): void;
+  spark(x: number, y: number, z: number, color: number, size?: number, life?: number, vy?: number): void;
+  flashLight(x: number, y: number, z: number, color: number, power: number, dur?: number): void;
+  lib: {
+    pillar(x: number, z: number, o: { color: number; radius: number; height: number; dur?: number; power?: number; speed?: number }): VfxHandle;
+    lightning(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number,
+      o: { color: number; core?: number; dur?: number; width?: number; branches?: number; rate?: number }): unknown;
+  };
 }
 
 function label(card: MapCard): THREE.SpriteMaterial {
@@ -53,7 +72,12 @@ export class MapGates {
   private ringGeo = new THREE.RingGeometry(0.72, 1, 40);
   private discGeo = new THREE.CircleGeometry(1, 40);
 
-  constructor(private scene: THREE.Scene) {}
+  constructor(private scene: THREE.Scene, private fx: GateFx) {}
+
+  /** Posição e cor de cada portão (o minimapa). */
+  get marks(): { x: number; z: number; color: string }[] {
+    return this.gates.map((g) => ({ x: g.spot.x, z: g.spot.z, color: MAP_NODE[g.card.node].color }));
+  }
 
   get count(): number {
     return this.gates.length;
@@ -98,7 +122,9 @@ export class MapGates {
       sign.renderOrder = 15;
       root.add(sign);
       this.scene.add(root);
-      this.gates.push({ root, spot, glow });
+      const sig = GATE_SIGNAL[card.node];
+      const beam = this.fx.lib.pillar(spot.x, spot.z, { color: color.getHex(), radius: G.width * 0.42, height: sig.beam, dur: Infinity, power: 0.6, speed: 3 });
+      this.gates.push({ root, spot, glow, card, color: color.getHex(), beam, next: Math.random() * sig.every });
     });
   }
 
@@ -121,16 +147,56 @@ export class MapGates {
     return best;
   }
 
-  update(time: number): void {
+  update(time: number, dt: number): void {
     const k = 0.5 + 0.5 * Math.sin(time * 3);
     for (const g of this.gates) {
       g.glow[1].opacity = 0.55 + 0.35 * k;
       g.glow[2].opacity = 0.14 + 0.14 * k;
+      const sig = GATE_SIGNAL[g.card.node];
+      g.next -= dt;
+      while (g.next <= 0) {
+        g.next += sig.every * (0.6 + Math.random() * 0.8);
+        this.mote(g, sig.motes, sig.beam);
+      }
+    }
+  }
+
+  /** Uma partícula do sinal (ou um raio do céu). */
+  private mote(g: Gate, kind: GateMotes, h: number): void {
+    const fx = this.fx;
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.random() * G.width * 0.45;
+    const x = g.spot.x + Math.cos(a) * r;
+    const z = g.spot.z + Math.sin(a) * r;
+    const jit = () => (Math.random() - 0.5) * 0.8;
+    switch (kind) {
+      case "embers":
+        fx.glow(x, 0.3, z, Math.random() < 0.5 ? 0xff7a2a : 0xffb347, 0.22, 1.6, jit(), 3 + Math.random() * 3, jit(), -0.4);
+        break;
+      case "smoke":
+        fx.glow(x, 0.4, z, Math.random() < 0.5 ? 0x5b2a86 : 0x8c4fd0, 0.7 + Math.random() * 0.5, 2.4, jit(), 1.4 + Math.random(), jit(), 0);
+        break;
+      case "sparks":
+        fx.spark(x, 0.5 + Math.random() * h * 0.6, z, Math.random() < 0.5 ? 0xffe27a : 0xffc83d, 0.16, 0.6, 2.5);
+        break;
+      case "coins":
+        fx.glow(x, h * (0.5 + Math.random() * 0.4), z, 0xffd34d, 0.2, 1.6, 0, -0.5, 0, 4);
+        break;
+      case "motes":
+        fx.glow(x, 0.3 + Math.random(), z, g.color, 0.18, 2.2, 0, 2 + Math.random() * 2, 0, 0);
+        break;
+      case "lightning":
+        fx.lib.lightning(x + (Math.random() - 0.5) * 3, h + 4, z + (Math.random() - 0.5) * 3, g.spot.x, 0.2, g.spot.z,
+          { color: g.color, core: 0xffffff, width: 0.22, branches: 3, rate: 0.05, dur: 0.28 });
+        fx.flashLight(g.spot.x, 3, g.spot.z, g.color, 1.6, 0.3);
+        fx.glow(x, 0.4, z, 0xff4a3a, 0.5, 1.2, 0, 2, 0, 0);
+        break;
     }
   }
 
   hide(): void {
     for (const g of this.gates) {
+      g.beam.kill(0.3);
       g.root.removeFromParent();
       for (const m of g.glow) m.dispose();
       for (const o of g.root.children) if (o instanceof THREE.Sprite) {
