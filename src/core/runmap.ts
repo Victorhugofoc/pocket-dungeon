@@ -4,6 +4,7 @@
 import { RUN_MAP } from "../data/run";
 import { COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
 import type { RunState } from "./run";
+import { hasMapBefore } from "./waves";
 
 export type MapNodeId = (typeof RUN_MAP.nodes)[number]["id"];
 
@@ -122,4 +123,41 @@ export function waveLayer(room: RoomDef | null): WaveLayer {
     reward: m.reward ?? 1, enemyHp: m.enemyHp ?? 1, enemyDamage: m.enemyDamage ?? 1, enemySpeed: m.enemySpeed ?? 1,
     projectileSpeed: m.projectileSpeed ?? 1, enemyCount: m.enemyCount ?? 1,
   };
+}
+
+// ---------------------------------------------------------------- M21-08: o mapa escolhido andando
+
+/** As cartas do mapa da onda `wave`, gravadas na partida: continuar do checkpoint mostra os mesmos portões. */
+export interface MapOffer {
+  wave: number;
+  /** null depois da escolha */
+  cards: MapCard[] | null;
+}
+
+/** A onda tem mapa ainda não sorteado (sem mapa na 1ª, na de chefe e na que segue uma maldição, D-150). */
+export function needsMap(run: RunState, wave: number): boolean {
+  return hasMapBefore(wave) && !run.curseContinues && run.mapOffer?.wave !== wave;
+}
+
+export interface GateSpot {
+  x: number;
+  z: number;
+  /** direção (radianos, no plano xz) do centro para o portão: o portão fica de frente para ela */
+  angle: number;
+}
+
+/**
+ * Os portões em leque na borda de um círculo (centro `anchor`, raio `radius`), abertos na direção de `toward`,
+ * da esquerda para a direita de quem anda até lá (a ordem das cartas).
+ */
+export function gateSpots(anchor: { x: number; z: number }, radius: number, toward: { x: number; z: number }, n: number, spreadDeg: number): GateSpot[] {
+  const base = Math.atan2(toward.z - anchor.z, toward.x - anchor.x);
+  const step = (spreadDeg * Math.PI) / 180;
+  const out: GateSpot[] = [];
+  for (let i = 0; i < n; i++) {
+    // com a câmera olhando para -z, o ângulo menor fica à esquerda na tela
+    const angle = base + (i - (n - 1) / 2) * step;
+    out.push({ x: anchor.x + Math.cos(angle) * radius, z: anchor.z + Math.sin(angle) * radius, angle });
+  }
+  return out;
 }

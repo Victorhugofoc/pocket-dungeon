@@ -7,6 +7,7 @@ import { DIFFICULTIES, RUN_START, type DifficultyId } from "../data/run";
 import { HEROES } from "../data/heroes";
 import type { UpgradeTier } from "./levelup";
 import { newShopState, type ShopState } from "./shop";
+import type { MapOffer } from "./runmap";
 
 /** rng.lua `RNG.STREAMS`: um fluxo de sorteio por finalidade, na mesma ordem. */
 export const RUN_STREAMS = [
@@ -142,6 +143,8 @@ export interface RunState {
   curseContinues: boolean;
   /** cartas escolhidas no mapa, em ordem */
   mapHistory: string[];
+  /** M21-08: o mapa da onda atual, sorteado ao preparar a onda e escolhido andando por um portão */
+  mapOffer: MapOffer | null;
   /** saco de chefes (boss_bag.lua): o que falta sair, o último que saiu e a ordem de todos */
   bossBag: string[];
   lastBoss: string | null;
@@ -203,6 +206,7 @@ export function newRun(opts: NewRunOptions): RunState {
     curseWavesLeft: 0,
     curseContinues: false,
     mapHistory: [],
+    mapOffer: null,
     bossBag: [],
     lastBoss: null,
     bossHistory: [],
@@ -256,6 +260,8 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.curseWavesLeft ??= 0;
   run.curseContinues ??= false;
   run.mapHistory ??= [];
+  // checkpoints de antes do M21-08
+  run.mapOffer ??= null;
   // checkpoints de antes do M20-09
   run.bossBag ??= [];
   run.lastBoss ??= null;

@@ -8,13 +8,13 @@ import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, sa
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
 import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
-import { chooseCard, expireWaveScope, generateMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
+import { chooseCard, expireWaveScope, gateSpots, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
   canHasten, hasten, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
   type WaveMods, type WaveSpawn, type WaveState,
 } from "../core/wave";
 import { pacedHealOrb } from "../core/pace";
-import { hasMapBefore, isBossWave, segmentOf } from "../core/waves";
+import { isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
@@ -38,6 +38,8 @@ import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
 import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
+import { MapGates } from "./gates";
+import { GATE_SIGNAL } from "../data/map-nodes";
 import type { MoveHandle, TrailHandle } from "./vfx";
 import { LootView } from "./loot";
 import { promisesBank } from "../core/loot";
@@ -78,8 +80,6 @@ const TECH_FX = {
 export interface GameEvents {
   toast(msg: string, color?: string): void;
   relicChoice(ids: string[], pick: (id: string) => void, title?: string): void;
-  /** abriu o mapa da partida; as cartas estão em `Game.mapCards` */
-  mapOpen(): void;
   /** abriu (ou mudou) a escolha de melhoria de nível; o estado está em `Game.levelUp` */
   levelUp(): void;
   /** abriu a oferta de evolução de spell; as opções estão em `Game.evolutionOffer` */
@@ -268,10 +268,11 @@ export class Game {
   /** até 3 evoluções oferecidas no intervalo (evolution.lua `pendingOffer`, S18) */
   evolutionOffer: EvolutionOption[] | null = null;
   private levelUpIndex = 0;
-  /** cartas do mapa da partida abertas no fim da onda (run_map.lua); null = fechado */
-  mapCards: MapCard[] | null = null;
-  /** a carta da próxima onda já foi escolhida (ou não há mapa antes dela) */
+  /** M21-08: a carta da onda já foi escolhida (ou não há mapa antes dela); até lá a clareira não começa */
   private mapResolved = false;
+  /** os portões do mapa no chão e o mais perto do herói (a carta aparece no HUD), ou -1 */
+  private gates!: MapGates;
+  nearGate = -1;
   /** o santuário de relíquias está com a escolha aberta */
   private shrineOpen = false;
   /** Magic Shop aberta (shop_system.lua); null = fechada */
@@ -314,6 +315,7 @@ export class Game {
     this.pipeline = new Pipeline(this.renderer, this.scene, this.camera);
     this.probe = new FrameProbe(this.renderer);
     this.fx = new Fx(this.scene, textLayer);
+    this.gates = new MapGates(this.scene, this.fx);
     this.hazards = new RoomHazards({
       scene: this.scene,
       fx: this.fx,
@@ -498,8 +500,6 @@ export class Game {
     this.segment = this.layout.segments[z.index];
     this.wave = null;
     this.mods = waveMods(wave, run.difficultyId, roomOf(run));
-    this.mapCards = null;
-    this.mapResolved = false;
     this.shrineOpen = false;
     this.shopVisit = null;
     this.pendingShop = null;
@@ -511,8 +511,10 @@ export class Game {
     if (this.world) this.world.portal.visible = false;
     const p = this.player;
     // na primeira onda da zona o herói começa na fogueira; nas outras, na entrada do trecho
+    const gates = this.offerMap(z.index);
     if (zoneChanged) {
-      const at = z.index === 0 ? this.layout.spawn : this.segment.entry;
+      // continuar com o mapa por escolher: o herói volta para a clareira de antes, onde estão os portões
+      const at = z.index === 0 ? this.layout.spawn : gates ? this.layout.segments[z.index - 1] : this.segment.entry;
       p.x = at.x;
       p.z = at.z;
       this.camTarget.set(p.x, 0, p.z);
@@ -579,6 +581,7 @@ export class Game {
     this.projectiles.length = 0;
     this.spells.clear();
     this.statusIcons.clear();
+    this.gates.hide();
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
     this.loot.clear();
@@ -1297,6 +1300,10 @@ export class Game {
       this.ring.visible = m.opacity > 0;
     }
     if (this.phase === "walk") {
+      if (!this.mapResolved) {
+        this.walkGates(dt);
+        return;
+      }
       if (this.playerAlive && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r - 1.5) this.beginWave();
       return;
     }
@@ -1348,11 +1355,7 @@ export class Game {
         return;
       }
       this.pendingShop = null;
-      // R19/R20: depois do nível, o mapa da onda seguinte (a maldição que continua pula o mapa)
-      if (!this.mapResolved && this.playerAlive) {
-        if (this.mapCards || this.shrineOpen) return;
-        if (this.openMap()) return;
-      }
+      // M21-08: o mapa da onda seguinte sai em portões, na caminhada (`prepareWave`)
       if (isBossWave(this.run.wave)) this.openPortal();
       else this.prepareWave(this.run.wave + 1);
     }
@@ -1521,7 +1524,7 @@ export class Game {
     this.ach.waveComplete({ wave: run.wave, bossWave: w.isBossWave, gameOver: !this.playerAlive, gold: run.gold });
     this.saveAchievements();
     // §6: a sala vale só para esta onda; a maldição segue para a próxima, que fica sem mapa
-    if (expireWaveScope(run)) this.mapResolved = true;
+    expireWaveScope(run);
     // wave_system.lua `complete`: a loja automática antes de toda onda de chefe
     if (isBossWave(run.wave + 1)) this.pendingShop ??= "preboss";
     this.phase = "cleared";
@@ -1537,27 +1540,67 @@ export class Game {
   /** Cartas que dependem de sistema que ainda não existe aqui: pacto (M12) e evento (M12). */
   static readonly MAP_DISABLED: ReadonlySet<MapNodeId> = new Set<MapNodeId>(["pact", "event"]);
 
-  /** Abre o mapa da onda seguinte, se houver; devolve false quando não há mapa (a onda segue direto). */
-  private openMap(): boolean {
+  /** As cartas do mapa da onda atual ainda por escolher (M21-08: uma por portão), ou null. */
+  /** Os portões no minimapa: posição e cor. */
+  get gateMarks(): { x: number; z: number; color: string }[] {
+    return this.mapCards ? this.gates.marks : [];
+  }
+
+  get mapCards(): MapCard[] | null {
+    const o = this.run?.mapOffer;
+    return o && o.wave === this.run.wave ? o.cards : null;
+  }
+
+  /**
+   * M21-08: sorteia o mapa da onda (uma vez: fica na partida e vai no checkpoint) e põe os portões em leque na
+   * borda da clareira de antes, ou em volta da fogueira na primeira onda da zona. Devolve se há portões.
+   */
+  private offerMap(index: number): boolean {
     const run = this.run;
-    const next = run.wave + 1;
-    if (run.curseContinues || !hasMapBefore(next)) {
-      this.mapResolved = true;
-      return false;
+    this.gates.hide();
+    this.nearGate = -1;
+    if (needsMap(run, run.wave)) {
+      const shrine = this.relicPool().length > 0;
+      run.mapOffer = { wave: run.wave, cards: generateMap(this.rng.get("map"), run.wave, { disabled: Game.MAP_DISABLED, shrine }) };
     }
-    const shrine = this.relicPool().length > 0;
-    this.mapCards = generateMap(this.rng.get("map"), next, { disabled: Game.MAP_DISABLED, shrine });
-    this.events.mapOpen();
+    const cards = this.mapCards;
+    this.mapResolved = !cards;
+    if (!cards) return false;
+    const G = TUNING.world.gates;
+    const prev = index > 0 ? this.layout.segments[index - 1] : null;
+    const anchor = prev ?? this.layout.spawn;
+    const radius = prev ? prev.r - G.rimInset : G.spawnRadius;
+    this.gates.show(gateSpots(anchor, radius, this.segment, cards.length, G.spreadDeg), cards);
     return true;
   }
 
-  /** run_map_flow.lua `chooseMapCard`: a sala vale para a onda seguinte; o santuário abre 1 de 3 relíquias. */
+  /** Caminhada com o mapa por escolher: passar por um portão escolhe a carta dele. */
+  private walkGates(dt: number): void {
+    const p = this.player;
+    this.gates.update(this.time, dt);
+    const near = this.gates.nearest(p.x, p.z, 7);
+    // o som da sala ao chegar perto do portão (parte do sinal, M21-08)
+    const cards = this.mapCards;
+    if (near >= 0 && near !== this.nearGate && cards) this.audio.play(GATE_SIGNAL[cards[near].node].sound);
+    this.nearGate = near;
+    if (!this.playerAlive || this.shrineOpen || this.shopVisit || !this.mapCards) return;
+    const i = this.gates.hit(p.x, p.z);
+    if (i >= 0) this.chooseMapCard(i);
+  }
+
+  /** run_map_flow.lua `chooseMapCard`: a sala vale para esta onda; o santuário abre 1 de 3 relíquias. */
   chooseMapCard(index: number): void {
+    const run = this.run;
     const card = this.mapCards?.[index];
     if (!card) return;
-    this.mapCards = null;
-    const step = chooseCard(this.run, card);
+    run.mapOffer = { wave: run.wave, cards: null };
+    this.gates.hide();
+    this.nearGate = -1;
+    const step = chooseCard(run, card);
+    // a sala escolhida muda os números desta onda
+    this.mods = waveMods(run.wave, run.difficultyId, roomOf(run));
     this.audio.play("pickup");
+    this.events.zoneChanged();
     if (step === "relic") {
       const pool = this.relicPool();
       this.rng.get("relics").shuffle(pool);
@@ -1566,7 +1609,7 @@ export class Game {
       this.events.relicChoice(offer, (id) => {
         this.addRelic(id);
         this.shrineOpen = false;
-        this.mapResolved = true;
+        this.resolveMap();
       }, "Relic Shrine");
       return;
     }
@@ -1574,14 +1617,21 @@ export class Game {
       this.openShop(null);
       return;
     }
+    this.resolveMap();
+  }
+
+  /** A carta da onda está resolvida: a clareira pode começar, e o checkpoint guarda a escolha. */
+  private resolveMap(): void {
     this.mapResolved = true;
+    if (this.phase === "walk") this.saveCheckpoint();
   }
 
   // ---------------------------------------------------------------- Magic Shop (run_map_flow.lua)
 
   /** `openAutoShop` (reason) ou a carta "Shop" do mapa (null): uma visita nova, sorteada no fluxo `shop`. */
   private openShop(auto: ShopReason | null): void {
-    const v = rollShop(this.run, this.rng.get("shop"), this.run.wave + 1, this.relicPool());
+    // a automática abre no fim da onda (vale para a seguinte); a do portão, na caminhada da própria onda
+    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, this.relicPool());
     this.shopVisit = { ...v, auto };
     this.audio.play("pickup");
     this.events.shop();
@@ -1622,7 +1672,7 @@ export class Game {
     const v = this.shopVisit;
     if (!v) return;
     this.shopVisit = null;
-    if (!v.auto) this.mapResolved = true;
+    if (!v.auto) this.resolveMap();
   }
 
   /** Depois do chefe da zona: o portal abre no meio da arena e leva à próxima zona (onda seguinte). */

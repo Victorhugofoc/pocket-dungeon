@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/core/rng";
-import { newRun } from "../src/core/run";
-import { chooseCard, expireWaveScope, generateMap, nodePool, roomOf, type MapNodeId } from "../src/core/runmap";
+import { checkpoint, continueRun, newRun, RunRng } from "../src/core/run";
+import { chooseCard, expireWaveScope, gateSpots, generateMap, needsMap, nodePool, roomOf, type MapNodeId } from "../src/core/runmap";
 import { startWave, stepWave, waveMods } from "../src/core/wave";
 import { ROOM_BY_ID } from "../src/data/rooms";
 import { startRoomFx, stepRoomFx, stormDps, tickCount } from "../src/core/roomfx";
@@ -107,5 +107,38 @@ describe("mapa da partida", () => {
     let n = 0;
     for (let t = 0; t < 6; t += 0.05) n += tickCount(z, 0.05);
     expect(n).toBe(8);
+  });
+});
+
+describe("M21-08: portões do mapa", () => {
+  it("gateSpots abre o leque na direção da próxima clareira, da esquerda para a direita", () => {
+    const g = gateSpots({ x: 0, z: 0 }, 10, { x: 0, z: -50 }, 3, 45);
+    expect(g).toHaveLength(3);
+    for (const s of g) expect(Math.hypot(s.x, s.z)).toBeCloseTo(10);
+    expect(g[1].x).toBeCloseTo(0);
+    expect(g[1].z).toBeCloseTo(-10);
+    expect(g[0].x).toBeLessThan(0);
+    expect(g[2].x).toBeGreaterThan(0);
+    expect(gateSpots({ x: 0, z: 0 }, 10, { x: 0, z: -50 }, 2, 40).map((s) => Math.sign(s.x))).toEqual([-1, 1]);
+  });
+
+  it("needsMap: sem mapa na 1ª onda, na de chefe, depois da maldição e quando já sorteado", () => {
+    const r = run();
+    expect(needsMap(r, 1)).toBe(false);
+    expect(needsMap(r, 2)).toBe(true);
+    expect(needsMap(r, 5)).toBe(false);
+    r.mapOffer = { wave: 2, cards: null };
+    expect(needsMap(r, 2)).toBe(false);
+    expect(needsMap(r, 3)).toBe(true);
+    r.curseContinues = true;
+    expect(needsMap(r, 3)).toBe(false);
+  });
+
+  it("o mapa sorteado vai no checkpoint", () => {
+    const r = run();
+    r.wave = 2;
+    r.mapOffer = { wave: 2, cards: [{ node: "shop" }, { node: "combat_room", room: "x" }] };
+    const back = continueRun(JSON.parse(JSON.stringify(checkpoint(r, new RunRng(7), 2))));
+    expect(back.run.mapOffer).toEqual(r.mapOffer);
   });
 });

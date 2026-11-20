@@ -75,5 +75,17 @@ export const TUNING = {
     /** raio das clareiras das ondas 1 a 4 de cada zona e onde ficam no caminho (fração do comprimento) */
     segmentRadius: 16,
     segmentAt: [0.17, 0.37, 0.57, 0.77],
+    /** M21-08: portões do mapa da partida, na borda da clareira vencida (ou em volta da fogueira, na zona nova) */
+    gates: {
+      /** quanto o portão fica para dentro da borda da clareira, e o raio em volta da fogueira */
+      rimInset: 3,
+      spawnRadius: 7.5,
+      /** abertura (graus) entre um portão e o vizinho, em leque na direção da próxima clareira */
+      spreadDeg: 46,
+      /** distância do centro do portão que conta como passar por ele */
+      triggerRadius: 1.8,
+      /** vão entre as colunas (metros) */
+      width: 3.2,
+    },
   },
 } as const;
