@@ -4,6 +4,8 @@ import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
 import { applyEvolution, declineEvolutions, pendingEvolutionOffer, type EvolutionOption } from "../core/evolution";
 import { addXp, applyUpgrade, draftLevelUp, draftTiers, rerollCost, rerollsLeft, upgradeStats, type UpgradeTier } from "../core/levelup";
 import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
+import { runLogEntry, waveEntry, type RunOutcome } from "../core/runlog";
+import { BUILD, storeRunLog } from "./runlog";
 import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, safeStorage } from "../core/save";
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
 import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
@@ -38,6 +40,7 @@ import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
 import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
+import { EnemyBars } from "./hpbars";
 import { MapGates } from "./gates";
 import { GATE_SIGNAL } from "../data/map-nodes";
 import type { MoveHandle, TrailHandle } from "./vfx";
@@ -250,6 +253,7 @@ export class Game {
   spells = new SpellCaster(this);
   /** ícones de estado sobre os inimigos (M5-05) */
   private statusIcons = new StatusIcons(this.scene);
+  private hpBars = new EnemyBars(this.scene);
   /** orbes de ouro e XP no chão (M7-02) */
   readonly loot = new LootView(this.scene);
   private projPool: THREE.Mesh[] = [];
@@ -377,6 +381,7 @@ export class Game {
     this.spells.reset();
     this.player.hp = Math.min(this.stats.maxHp, run.hp ?? this.stats.maxHp);
     this.started = true;
+    this.runLogged = false;
     this.ach.runStart(run.heroId);
     this.ach.devUsed = run.devUsed;
     this.saveAchievements();
@@ -450,6 +455,19 @@ export class Game {
     if (!this.run || this.run.devUsed) return; // run_save.lua: partida DEV nunca é gravada
     this.run.hp = this.playerAlive ? this.player.hp : null;
     writeRun(this.storage, checkpoint(this.run, this.rng, Math.max(1, this.run.wave)));
+  }
+
+  /** a partida atual já entrou no registro (uma vez por partida; `start` zera) */
+  private runLogged = false;
+
+  /** Registro de partidas (core/runlog.ts): o resumo da partida, com a onda interrompida quando acabou no meio. */
+  logRunEnd(outcome: RunOutcome, beacon = false): void {
+    if (!this.run || this.runLogged || this.run.wave < 1) return;
+    this.runLogged = true;
+    const w = this.wave, run = this.run;
+    const midWave = !!w && w.started && !(run.waveLog.at(-1)?.wave === run.wave);
+    const last = midWave ? waveEntry(run, w, this.playerAlive ? this.player.hp / this.stats.maxHp : 0, false) : null;
+    storeRunLog(this.storage, runLogEntry(run, outcome, new Date().toISOString(), BUILD, last), beacon);
   }
 
   saveAchievements(): void {
@@ -581,6 +599,7 @@ export class Game {
     this.projectiles.length = 0;
     this.spells.clear();
     this.statusIcons.clear();
+    this.hpBars.clear();
     this.gates.hide();
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
@@ -1521,6 +1540,7 @@ export class Game {
       run.victory = true;
       this.ach.victory(run);
     }
+    if (this.playerAlive) run.waveLog.push(waveEntry(run, w, this.player.hp / this.stats.maxHp, true));
     this.ach.waveComplete({ wave: run.wave, bossWave: w.isBossWave, gameOver: !this.playerAlive, gold: run.gold });
     this.saveAchievements();
     // §6: a sala vale só para esta onda; a maldição segue para a próxima, que fica sem mapa
@@ -2883,6 +2903,7 @@ export class Game {
       this.updateWave(dt, raw);
       this.flushAchievements();
       this.updateEnemies(dt);
+      this.hpBars.update(this.enemies, this.camera);
       this.statusIcons.update(this.enemies, { now: this.time, volatile: this.spells.volatile, brittleChill: this.spells.brittle, primed: (e) => this.primed(e) }, this.camera, this.fx, dt);
       this.updateProjectiles(dt);
       const inp = this.input;

@@ -8,6 +8,7 @@ import { HEROES } from "../data/heroes";
 import type { UpgradeTier } from "./levelup";
 import { newShopState, type ShopState } from "./shop";
 import type { MapOffer } from "./runmap";
+import { runId, type WaveEntry } from "./runlog";
 
 /** rng.lua `RNG.STREAMS`: um fluxo de sorteio por finalidade, na mesma ordem. */
 export const RUN_STREAMS = [
@@ -158,6 +159,10 @@ export interface RunState {
   killedBy: string | null;
   /** o DEV Grimoire (F1) foi aberto: a partida não grava checkpoint nem entra nos registros (run_save.lua, results.lua) */
   devUsed: boolean;
+  /** registro de partidas (core/runlog.ts): id, hora de início e as ondas vencidas até agora */
+  runId: string;
+  startedAt: string;
+  waveLog: WaveEntry[];
 }
 
 export interface NewRunOptions {
@@ -167,6 +172,8 @@ export interface NewRunOptions {
   /** seed escolhida pelo jogador; sem ela vem de `randomSeed` */
   seed?: number;
   randomSeed: number;
+  /** hora de início (ISO), para o registro de partidas; sem ela fica vazia */
+  startedAt?: string;
 }
 
 /** game_state.lua `newRun`. */
@@ -216,6 +223,9 @@ export function newRun(opts: NewRunOptions): RunState {
     statistics: { kills: 0, damage: 0, damageTaken: 0, elapsed: 0, goldEarned: 0, goldSpent: 0, xpEarned: 0, healed: 0 },
     killedBy: null,
     devUsed: false,
+    runId: opts.startedAt ? runId(encodeSeed(seed), opts.startedAt) : "",
+    startedAt: opts.startedAt ?? "",
+    waveLog: [],
   };
 }
 
@@ -272,6 +282,10 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.evolutionsDone ??= 0;
   // checkpoints de antes do M6-07
   run.devUsed ??= false;
+  // checkpoints de antes do registro de partidas
+  run.runId ??= "";
+  run.startedAt ??= "";
+  run.waveLog ??= [];
   // checkpoints de antes do M7-02
   run.lootBank ??= [];
   // checkpoints de antes do M7-03
