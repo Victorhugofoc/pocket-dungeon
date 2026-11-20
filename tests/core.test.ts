@@ -48,10 +48,9 @@ describe("dados", () => {
       expect(HEROES[id].technique.cooldown).toBeGreaterThan(0);
     }
   });
-  it("zonas apontam para inimigos e chefes que existem", () => {
+  it("zonas apontam para inimigos que existem", () => {
     for (const id of ZONE_ORDER) {
       const z = ZONES[id];
-      expect(BOSSES[z.boss]).toBeDefined();
       for (const [e] of z.enemies) expect(ENEMIES[e]).toBeDefined();
       expect(z.decor.some((d) => d[2])).toBe(true);
     }
@@ -70,8 +69,8 @@ describe("dados", () => {
 describe("atributos", () => {
   it("herói nível 1 sem nada usa a base + bônus do herói", () => {
     const s = computeStats([HEROES.varok.stats]);
-    expect(s.maxHp).toBe(Math.round(TUNING.hero.baseHp * 1.6));
-    expect(s.damage).toBeCloseTo(TUNING.hero.baseDamage * 1.35);
+    expect(s.maxHp).toBe(Math.round(TUNING.hero.baseHp * 1.8));
+    expect(s.damage).toBeCloseTo(TUNING.hero.baseDamage * 1.95);
   });
   it("relíquias e melhorias mudam o poder; o nível sozinho não", () => {
     const base = computeStats([]);

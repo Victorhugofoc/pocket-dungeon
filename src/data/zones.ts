@@ -12,7 +12,6 @@ export interface ZoneDef {
   name: string;
   subtitle: string;
   level: number;
-  boss: string;
   /** [id do inimigo, peso] */
   enemies: [string, number][];
   ground: [number, number, number]; // 3 tons do chão
@@ -63,7 +62,7 @@ export const ZONE_ORDER = ["bosque", "cripta", "vulcao", "vazio"] as const;
 
 export const ZONES: Record<string, ZoneDef> = {
   bosque: {
-    id: "bosque", name: "Shadow Grove", subtitle: "Where the goblins made camp", level: 1, boss: "bloodfang",
+    id: "bosque", name: "Shadow Grove", subtitle: "Where the goblins made camp", level: 1,
     enemies: [["goblin", 5], ["swarm", 3], ["archer", 2], ["orc", 2], ["splitter", 1]],
     ground: [0x2f4e2c, 0x3a5a32, 0x243f27], path: 0x5e5242, fog: 0x31463f, sky: 0x31463f,
     sun: 0xd2dcea, sunIntensity: 2.6, ambient: 0x82a2b0, ambientIntensity: 1.25,
@@ -82,7 +81,7 @@ export const ZONES: Record<string, ZoneDef> = {
     haze: { start: 30, density: 0.015, mist: 0.36, mistHeight: 0.8, mistColor: 0x5c766c, mistSize: 10, mistSpeed: 0.7 },
   },
   cripta: {
-    id: "cripta", name: "Crypt Fields", subtitle: "The dead do not rest here", level: 6, boss: "gravekeeper",
+    id: "cripta", name: "Crypt Fields", subtitle: "The dead do not rest here", level: 6,
     enemies: [["goblin", 2], ["assassin", 3], ["archer", 2], ["spellcaster", 3], ["summoner", 1.5], ["orc", 2]],
     ground: [0x3c4644, 0x48524e, 0x30383a], path: 0x4a4c50, fog: 0x3e4c64, sky: 0x3e4c64,
     sun: 0xd8e2ff, sunIntensity: 2.1, ambient: 0x9aa4ac, ambientIntensity: 1.15,
@@ -99,7 +98,7 @@ export const ZONES: Record<string, ZoneDef> = {
     haze: { start: 22, density: 0.017, mist: 0.5, mistHeight: 0.5, mistColor: 0x7084b0, mistSize: 8, mistSpeed: 0.5 },
   },
   vulcao: {
-    id: "vulcao", name: "Volcanic Wastes", subtitle: "Ash, embers and artillery", level: 11, boss: "ember_matriarch",
+    id: "vulcao", name: "Volcanic Wastes", subtitle: "Ash, embers and artillery", level: 11,
     enemies: [["berserker", 3], ["bombardier", 2], ["orc", 3], ["spellcaster", 2], ["splitter", 1.5], ["archer", 2]],
     ground: [0x4c4440, 0x5a504a, 0x3c3532], path: 0x645850, fog: 0x3c3836, sky: 0x3c3836,
     sun: 0xffc8a0, sunIntensity: 2.4, ambient: 0xaaa4a8, ambientIntensity: 1.15,
@@ -115,7 +114,7 @@ export const ZONES: Record<string, ZoneDef> = {
     haze: { start: 14, density: 0.026, mist: 0.4, mistHeight: 2.2, mistColor: 0x6a6462, mistSize: 12, mistSpeed: 1.4 },
   },
   vazio: {
-    id: "vazio", name: "The Void", subtitle: "The Hollow King's throne", level: 16, boss: "hollow_king",
+    id: "vazio", name: "The Void", subtitle: "The Hollow King's throne", level: 16,
     enemies: [["assassin", 3], ["spellcaster", 3], ["summoner", 2], ["berserker", 2], ["bombardier", 1.5], ["splitter", 1.5]],
     ground: [0x463e62, 0x524872, 0x383052], path: 0x5c527c, fog: 0x221a3c, sky: 0x221a3c,
     sun: 0xd8ccff, sunIntensity: 2.0, ambient: 0xa888d0, ambientIntensity: 1.45,

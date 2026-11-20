@@ -1,10 +1,10 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
 import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
-import { CHILD_SCALE, MINION_SCALE } from "../data/run";
+import { BURN, CHILD_SCALE, MINION_SCALE, RUN_TUNING } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
-import { ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
+import { CROWN_TITLE, ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
 import type { StatusKind } from "../data/heroes";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -18,7 +18,7 @@ export interface Dot {
   /** spell que aplicou (Fireball: o Volátil olha isto) e o espaço dela */
   spell?: string;
   slot?: number;
-  /** Venom Nova: um efeito só com contador de acúmulos (status.lua `applyPoison`); o dano por segundo vale por acúmulo */
+  /** veneno: um efeito só por inimigo com contador de acúmulos (status.lua `applyPoison`); o dano por segundo vale por acúmulo */
   stacks?: number;
   maxStacks?: number;
   /** Plague Bloom: duração de cada aplicação e o contágio na morte (status.lua `po.spread`) */
@@ -76,10 +76,52 @@ export class Enemy {
   /** estado do gelo da Frostine (src/core/frost.ts) */
   frost: FrostTarget;
   dots: Dot[] = [];
+
+  /**
+   * status.lua `applyPoison`: um veneno só por inimigo, de qualquer fonte (tiro da Vesper, Venom Nova, Ninhada,
+   * Plague Bloom); cada aplicação soma um acúmulo (até o maior máximo visto) e renova a duração; fica o maior dano
+   * por segundo; o contágio e a fonte ficam os da primeira aplicação que os trouxe.
+   */
+  /**
+   * status.lua `applyBurn`: não acumula como efeito separado; reaplicar renova a duração, fica o maior dano por
+   * segundo e conta um acúmulo (até 8); no tique valem até `burnStacks` do herói (1 + extras; Ignis +2), cada extra
+   * com +50% do dano. A spell e o espaço lembram quem aplicou (Volátil do Fireball).
+   */
+  applyBurn(now: number, dps: number, duration: number, spell?: string, slot?: number): void {
+    const until = now + duration;
+    const cur = this.dots.find((d) => d.kind === "burn");
+    if (cur) {
+      cur.dps = Math.max(cur.dps, dps);
+      cur.until = Math.max(cur.until, until);
+      cur.stacks = Math.min(BURN.stackCap, (cur.stacks ?? 1) + 1);
+      if (spell) cur.spell = spell;
+      if (slot !== undefined) cur.slot = slot;
+    } else this.dots.push({ kind: "burn", dps, until, spell, slot, stacks: 1 });
+  }
+
+  applyPoison(now: number, dps: number, duration: number, maxStacks: number, spread?: Dot["spread"], source?: string): void {
+    const until = now + duration;
+    const cur = this.dots.find((d) => d.kind === "poison");
+    if (cur) {
+      cur.dps = Math.max(cur.dps, dps);
+      cur.until = Math.max(cur.until, until);
+      cur.duration = Math.max(cur.duration ?? 0, duration);
+      cur.maxStacks = Math.max(cur.maxStacks ?? 1, maxStacks);
+      cur.stacks = Math.min(cur.maxStacks, (cur.stacks ?? 1) + 1);
+      cur.spread ??= spread;
+      cur.spell ??= source;
+    } else this.dots.push({ kind: "poison", dps, until, duration, spell: source, stacks: 1, maxStacks, spread });
+  }
   dotTick = 0;
   strafe = Math.random() < 0.5 ? -1 : 1;
   summonCd = 3;
   chargeCd = 2.5;
+  /** chefe: os padrões que ele usa (os dele e, no rei coroado, o emprestado) */
+  patterns: readonly BossPattern[] = [];
+  crowned = false;
+  title = "";
+  /** velocidade dos projéteis: dificuldade, sala e, no chefe, o dele */
+  projK = 1;
   charging: { t: number; dur: number; dx: number; dz: number; speed: number; dmg: number; hit: boolean } | null = null;
   casting = 0;
   patternCd = 3;
@@ -98,7 +140,8 @@ export class Enemy {
   private aura: ChampionAura | null = null;
 
   constructor(game: Game, def: EnemyDef | BossDef, wave: number, x: number, z: number,
-    opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean; ambush?: { hp: number; damage: number } | null } = {}) {
+    opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean; ambush?: { hp: number; damage: number } | null;
+      crownAttack?: BossPattern | null } = {}) {
     this.x = this.homeX = x;
     this.z = this.homeZ = z;
     this.level = wave;
@@ -109,12 +152,16 @@ export class Enemy {
     this.boss = isBoss ? (def as BossDef) : null;
     this.def = isBoss ? null : (def as EnemyDef);
     this.name = def.name;
+    // onda 20: o rei coroado leva o título de lá e um ataque emprestado de outro chefe (wave_system.lua, D-640)
+    this.crowned = isBoss && opts.final === true;
+    this.title = this.crowned ? CROWN_TITLE : isBoss ? (def as BossDef).title : "";
+    if (isBoss) this.patterns = opts.crownAttack ? [...(def as BossDef).patterns, opts.crownAttack] : (def as BossDef).patterns;
     // vida, dano e velocidade como no Dungeon Reign (enemy.lua, boss.lua): pela onda e pela dificuldade
     this.ambush = isBoss && !!opts.ambush;
     const st = isBoss ? bossStats(def.id, wave, game.mods, opts.final, opts.ambush ?? null) : enemyStats(def, wave, game.mods, this.champion);
     const derived = opts.child ? CHILD_SCALE : this.summoned ? MINION_SCALE : null;
-    const hpK = isBoss ? TUNING.boss.hpMult : 1;
-    this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1) * hpK);
+    this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1));
+    this.projK = st.projectileSpeed;
     this.dmg = st.damage * (derived ? derived.damage : 1);
     this.speed = def.speed * st.speed * (derived ? derived.speed : 1);
     this.radius = def.radius * (this.champion ? 1.2 : 1);
@@ -208,7 +255,9 @@ export class Enemy {
         let kind: StatusKind = "burn";
         this.dots = this.dots.filter((d) => d.until > now);
         for (const d of this.dots) {
-          total += d.dps * (d.stacks ?? 1) * 0.5;
+          const n = d.stacks ?? 1;
+          // veneno: dano por acúmulo; queimadura: +50% do maior dano por acúmulo extra, até o máximo do herói
+          total += d.kind === "burn" ? d.dps * (1 + BURN.stackBonus * (Math.min(n, game.stats.burnStacks) - 1)) * BURN.tick : d.dps * n * 0.5;
           kind = d.kind;
         }
         if (total > 0) game.damageEnemy(this, total, { dot: kind });
@@ -219,10 +268,12 @@ export class Enemy {
     const vx0 = this.x;
     const vz0 = this.z;
     this.moveAmt = 0;
-    this.cd -= dt;
+    // ai.lua D-196: onda apressada acelera movimento e ritmo de ataque dos inimigos, menos os chefes
+    const haste = !this.boss && game.wave?.hastened ? RUN_TUNING.hasten.enemySpeed : 1;
+    this.cd -= dt * haste;
     const stunned = now < this.stunUntil;
     const slow = now < this.slowUntil ? 1 - this.slowPower : 1;
-    const speed = this.speed * slow * (this.enraged ? 1.15 : 1);
+    const speed = this.speed * slow * haste * (this.enraged ? 1.15 : 1);
     const dxp = p.x - this.x;
     const dzp = p.z - this.z;
     const dist = Math.hypot(dxp, dzp);
@@ -428,7 +479,7 @@ export class Enemy {
   private shoot(game: Game, color: number, speedP: number, spreadErr = 0.06): void {
     const p = game.player;
     const a = Math.atan2(p.x - this.x, p.z - this.z) + (Math.random() - 0.5) * spreadErr;
-    game.spawnEnemyProjectile(this.x + Math.sin(a) * this.radius, this.z + Math.cos(a) * this.radius, a, speedP, this.dmg, color, 0.26);
+    game.spawnEnemyProjectile(this.x + Math.sin(a) * this.radius, this.z + Math.cos(a) * this.radius, a, speedP * this.projK, this.dmg, color, 0.26);
     this.attackAnim = 0;
   }
 
@@ -525,7 +576,7 @@ export class Enemy {
         s.left--;
         s.angle += 0.52;
         for (let arm = 0; arm < 3; arm++) {
-          game.spawnEnemyProjectile(this.x, this.z, s.angle + (arm * Math.PI * 2) / 3, s.p.speed ?? 10, this.dmg * s.p.damage, b.projectileColor, 0.3);
+          game.spawnEnemyProjectile(this.x, this.z, s.angle + (arm * Math.PI * 2) / 3, (s.p.speed ?? 10) * this.projK, this.dmg * s.p.damage, b.projectileColor, 0.3);
         }
       }
       if (s.left <= 0) this.spiral = null;
@@ -539,10 +590,11 @@ export class Enemy {
     this.patternCd -= dt;
     if (this.patternCd <= 0 && this.windupT < 0) {
       this.patternCd = b.patternCooldown * (this.enraged ? TUNING.boss.enrageCooldownMult : 1);
-      let idx = Math.floor(Math.random() * b.patterns.length);
-      if (idx === this.lastPattern) idx = (idx + 1) % b.patterns.length;
+      const list = this.patterns;
+      let idx = Math.floor(Math.random() * list.length);
+      if (idx === this.lastPattern) idx = (idx + 1) % list.length;
       this.lastPattern = idx;
-      this.startPattern(game, b.patterns[idx], dist);
+      this.startPattern(game, list[idx], dist);
       return;
     }
     this.meleeStep(game, dt, dist, speed, b.attackRange);
@@ -585,7 +637,7 @@ export class Enemy {
           if (!ok()) return;
           const off = Math.random() * Math.PI;
           for (let i = 0; i < n; i++) {
-            game.spawnEnemyProjectile(this.x, this.z, off + (i / n) * Math.PI * 2, pt.speed ?? 10, this.dmg * pt.damage, b.projectileColor, 0.32);
+            game.spawnEnemyProjectile(this.x, this.z, off + (i / n) * Math.PI * 2, (pt.speed ?? 10) * this.projK, this.dmg * pt.damage, b.projectileColor, 0.32);
           }
           fx.shockwave(this.x, this.z, 4, b.glow);
         });
@@ -599,7 +651,7 @@ export class Enemy {
           const a = Math.atan2(p.x - this.x, p.z - this.z);
           this.attackAnim = 0;
           for (let i = 0; i < n; i++) {
-            game.spawnEnemyProjectile(this.x, this.z, a - spread / 2 + (spread * i) / (n - 1), pt.speed ?? 13, this.dmg * pt.damage, b.projectileColor, 0.34);
+            game.spawnEnemyProjectile(this.x, this.z, a - spread / 2 + (spread * i) / (n - 1), (pt.speed ?? 13) * this.projK, this.dmg * pt.damage, b.projectileColor, 0.34);
           }
         });
         break;
