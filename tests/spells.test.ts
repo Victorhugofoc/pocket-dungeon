@@ -147,3 +147,24 @@ describe("texto e contagem dos modificadores (M6-08)", () => {
     ]);
   });
 });
+
+describe("auras e ativas (M21-06)", () => {
+  it("as quatro auras da proposta; as outras sete são ativas", async () => {
+    const { SPELLS, SPELL_ORDER } = await import("../src/data/spells");
+    const { isAura } = await import("../src/core/spells");
+    const auras = SPELL_ORDER.filter((id) => SPELLS[id].mode === "aura");
+    expect([...auras].sort()).toEqual(["blade_orbit", "healing_field", "rune_traps", "venom_nova"]);
+    expect(SPELL_ORDER.filter((id) => SPELLS[id].mode === "active")).toHaveLength(7);
+    expect(isAura("venom_nova")).toBe(true);
+    expect(isAura("fireball")).toBe(false);
+    expect(isAura("nope")).toBe(false);
+  });
+
+  it("tiques que faltam no campo (o do fim conta)", async () => {
+    const { remainingTicks } = await import("../src/core/spells");
+    expect(remainingTicks(8, 0.75, 0.75)).toBe(10);
+    expect(remainingTicks(0.75, 0.75, 0.75)).toBe(1);
+    expect(remainingTicks(0.5, 0.75, 0.75)).toBe(0);
+    expect(remainingTicks(2, 0.2, 0.75)).toBe(3);
+  });
+});

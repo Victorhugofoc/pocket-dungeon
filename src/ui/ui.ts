@@ -8,7 +8,7 @@ import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unl
 import { ACHIEVEMENTS } from "../data/achievements";
 import { formatStat, STAT_KEYS, type FinalStats, type StatBlock } from "../core/stats";
 import {
-  EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
+  AURA_SPIKE_TEXT, EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
 } from "../data/spells";
 import { wantedRelics } from "../core/evolution";
 import { effectsFor, rerollCost as levelRerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
@@ -458,9 +458,12 @@ export class Ui {
       if (r[`spName${i}`].textContent !== name) {
         r[`spName${i}`].textContent = name;
         r[`spIcon${i}`].textContent = slot ? (SPELL_ICON[slot.id] ?? "✦") : "";
-        box.title = slot && isSpellKey(slot.id) ? `${spellName(slot.id)} — ${SPELL_TEXT[slot.id]}` : "Empty spell slot";
+        box.title = slot && isSpellKey(slot.id)
+          ? `${spellName(slot.id)} — ${SPELL_TEXT[slot.id]}${AURA_SPIKE_TEXT[slot.id] ? ` Aura: casts itself. ${AURA_SPIKE_TEXT[slot.id]}` : ""}`
+          : "Empty spell slot";
+        box.classList.toggle("aura", !!slot && !!AURA_SPIKE_TEXT[slot.id]);
       }
-      const cd = g.spells.cooldown[i] ?? 0;
+      const cd = g.spells.keyCooldown(i);
       const max = st?.cooldown ?? 1;
       r[`spCd${i}`].style.height = `${Math.min(1, cd / max) * 100}%`;
       r[`spN${i}`].textContent = cd > 0 ? cd.toFixed(cd < 3 ? 1 : 0) : "";

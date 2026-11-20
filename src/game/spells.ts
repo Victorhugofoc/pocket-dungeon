@@ -5,8 +5,10 @@
 // tornado, totem, campo de cura, lâminas em órbita, runas, impacto, queimadura, lentidão, veneno, empurrão, atordoamento,
 // Eco e Volátil.
 import * as THREE from "three";
-import { isSpellId, spellContext, spellStats, type SpellStats } from "../core/spells";
-import { MAX_SPELLS, SPELL_CAST } from "../data/spells";
+import { isAura, isSpellId, remainingTicks, spellContext, spellStats, type SpellStats } from "../core/spells";
+import { AURA_SPIKE, MAX_SPELLS, SPELL_CAST, SPELL_SCHOOL } from "../data/spells";
+import { REACTIONS } from "../data/reactions";
+import { tornadoInfusion, type TornadoElement } from "../core/reactions";
 import { DR_BASE_HP, FROST, TECH_EVO } from "../data/techniques";
 import { KNOCK_DECAY, type Dot, type Enemy } from "./enemy";
 import type { Game } from "./game";
@@ -131,6 +133,21 @@ interface Vortex {
   /** correntes de vento em volta (pé e meio do funil) e a área no chão */
   winds: MoveHandle[];
   area?: VfxHandle;
+  /** M21-05: elemento que o tornado absorveu (o primeiro fica até ele acabar) */
+  element: TornadoElement | null;
+}
+
+/** M21-06: lâmina do Blade Orbit voando para fora (pico da aura). */
+interface BladeFlight {
+  obj: THREE.Object3D;
+  x: number; z: number; dx: number; dz: number;
+  left: number;
+  speed: number;
+  st: SpellStats;
+  hit: Set<Enemy>;
+  trail: TrailHandle;
+  /** grupo do giro de onde a lâmina saiu: os materiais são liberados quando a última lâmina dele cai */
+  from: THREE.Group;
 }
 
 /** Quake Totem em pé (techniques.lua `world.totems`): bate no chão a cada tique. */
@@ -236,6 +253,9 @@ interface Wall {
 }
 
 /** Blizzard (behaviors.lua `world.storms`): tempestade parada na mira; fere e deixa lento a cada tique. */
+/** escola da spell do golpe: o elemento que as reações olham (M21-05) */
+const schoolOf = (st: SpellStats): string => SPELL_SCHOOL[st.id];
+
 interface Storm {
   slot: number;
   st: SpellStats;
@@ -402,6 +422,9 @@ export class SpellCaster {
   stats: (SpellStats | null)[] = [];
   /** o espaço pisca quando a tecla foi apertada e a spell não saiu (spell ainda sem efeito no jogo) */
   noTarget: number[] = [];
+  /** M21-06: recarga do pico de cada espaço de aura (a tecla) */
+  spikeCd: number[] = [];
+  private flights: BladeFlight[] = [];
   private shots: SpellProjectile[] = [];
   private beams: Beam[] = [];
   private vortices: Vortex[] = [];
@@ -432,6 +455,8 @@ export class SpellCaster {
         : null);
     while (this.cooldown.length < this.stats.length) this.cooldown.push(0);
     this.cooldown.length = this.stats.length;
+    while (this.spikeCd.length < this.stats.length) this.spikeCd.push(0);
+    this.spikeCd.length = this.stats.length;
     this.noTarget.length = this.stats.length;
   }
 
@@ -455,8 +480,13 @@ export class SpellCaster {
     for (let i = 0; i < this.cooldown.length; i++) {
       this.cooldown[i] = Math.max(0, this.cooldown[i] - dt);
       this.noTarget[i] = Math.max(0, (this.noTarget[i] ?? 0) - dt);
-      // Rune Traps: como lá, deixa uma runa a cada intervalo enquanto o herói anda; a tecla deixa uma parado (D15)
-      if (castKeys[i] || (walking && this.stats[i]?.kind === "rune" && this.cooldown[i] <= 0)) this.tryCast(i);
+      this.spikeCd[i] = Math.max(0, (this.spikeCd[i] ?? 0) - dt);
+      const st = this.stats[i];
+      if (st && isAura(st.id)) {
+        // M21-06 (D18): a aura sai sozinha como lá (S14); a tecla dá o pico
+        if (castKeys[i]) this.trySpike(i);
+        if (this.cooldown[i] <= 0 && this.autoReady(st, walking)) this.tryCast(i);
+      } else if (castKeys[i]) this.tryCast(i);
     }
     // Eco: relança igual, de graça e sem novo Eco (spell_system.lua `update`)
     for (let k = this.pending.length - 1; k >= 0; k--) {
@@ -485,6 +515,138 @@ export class SpellCaster {
     this.updateAuras(dt);
     this.updateWalls(dt);
     this.updateStorms(dt);
+    this.updateFlights(dt);
+  }
+
+  /** Quando a aura sai sozinha: Rune Traps só andando (como lá), Venom Nova só com inimigo no raio, o resto sempre. */
+  private autoReady(st: SpellStats, walking: boolean): boolean {
+    if (st.kind === "rune") return walking;
+    if (st.kind === "nova") return this.inArea(this.game.player.x, this.game.player.z, st.radius).length > 0;
+    return true;
+  }
+
+  /** Recarga que o HUD mostra na tecla: a do pico nas auras, a da spell nas outras. */
+  keyCooldown(i: number): number {
+    const st = this.stats[i];
+    return st && isAura(st.id) ? this.spikeCd[i] ?? 0 : this.cooldown[i] ?? 0;
+  }
+
+  /**
+   * M21-06: o pico da aura na tecla. Precisa do efeito em campo (lâminas, campo, runas; a Nova não precisa); ao sair,
+   * a recarga do pico e a da aura recomeçam juntas, então a aura só volta depois dela.
+   */
+  trySpike(i: number): boolean {
+    const st = this.stats[i];
+    const g = this.game;
+    if (!st || this.spikeCd[i] > 0 || !g.playerAlive) return false;
+    let ok = false;
+    if (st.kind === "orbit") ok = this.spikeOrbit(i);
+    else if (st.kind === "field") ok = this.spikeField(i);
+    else if (st.kind === "rune") ok = this.spikeRunes(i);
+    else if (st.kind === "nova") ok = this.castNova(st, AURA_SPIKE.novaStacks);
+    if (!ok) {
+      this.noTarget[i] = 0.35;
+      return false;
+    }
+    this.cooldown[i] = st.cooldown;
+    this.spikeCd[i] = st.cooldown;
+    return true;
+  }
+
+  /** Blade Orbit: cada lâmina sai voando em linha, para fora, a partir de onde está; o giro acaba. */
+  private spikeOrbit(i: number): boolean {
+    const g = this.game;
+    const p = g.player;
+    const k = this.orbits.findIndex((o) => o.slot === i);
+    if (k < 0) return false;
+    const o = this.orbits[k];
+    const tint = o.st.evolution === "blade_storm" ? EVO_COLOR.blade_storm : BLADE_STEEL;
+    for (const b of o.blades) {
+      const bx = b.position.x;
+      const bz = b.position.z;
+      const d = Math.hypot(bx, bz) || 1;
+      const x = p.x + bx;
+      const z = p.z + bz;
+      b.removeFromParent();
+      g.scene.add(b);
+      b.position.set(x, 1, z);
+      this.flights.push({ obj: b, x, z, dx: bx / d, dz: bz / d, left: AURA_SPIKE.orbitReach,
+        speed: AURA_SPIKE.orbitReach / AURA_SPIKE.orbitFlight, st: o.st, hit: new Set(), from: o.group,
+        trail: g.fx.lib.trail({ color: tint, core: BLADE_CORE, width: 1.1, life: 0.25, head: 0, sheds: 8 }) });
+    }
+    // o resto do giro some; o grupo (com os materiais) fica até a última lâmina cair
+    for (const t of o.trails) t.kill(0.12);
+    o.group.removeFromParent();
+    this.orbits.splice(k, 1);
+    g.fx.lib.ring(p.x, p.z, { radius: o.st.radius * 1.4, color: tint, core: BLADE_CORE, width: 0.35, from: 0.6, dust: 6, dur: 0.3 });
+    g.fx.text(p.x, 2.8, p.z, "Blade Burst", "react");
+    g.audio.play("tech");
+    return true;
+  }
+
+  private updateFlights(dt: number): void {
+    const g = this.game;
+    for (let k = this.flights.length - 1; k >= 0; k--) {
+      const f = this.flights[k];
+      const step = Math.min(f.left, f.speed * dt);
+      const x0 = f.x;
+      const z0 = f.z;
+      f.x += f.dx * step;
+      f.z += f.dz * step;
+      f.left -= step;
+      // fere quem está no trecho andado neste quadro (segmento, para não pular ninguém)
+      for (const e of this.inSegment(x0, z0, f.dx, f.dz, 0, step, AURA_SPIKE.orbitWidth, f.hit)) {
+        f.hit.add(e);
+        g.spellHit(e, f.st.damage * AURA_SPIKE.orbitDamage, false, schoolOf(f.st));
+        g.fx.lib.burst(e.x, 1, e.z, { radius: 0.8, color: BLADE_STEEL, core: BLADE_CORE, rays: 3, sparks: 7, light: 0, dur: 0.16, wave: 0 });
+      }
+      f.obj.position.set(f.x, 1, f.z);
+      f.obj.rotation.set(0, -Math.atan2(f.dz, f.dx), 0.25);
+      f.obj.scale.setScalar(3);
+      f.trail.push(f.x, 1, f.z);
+      if (f.left > 1e-6) continue;
+      g.fx.lib.burst(f.x, 1, f.z, { radius: 0.6, color: BLADE_STEEL, core: BLADE_CORE, rays: 0, sparks: 6, light: 0, dur: 0.18, wave: 0 });
+      f.trail.kill(0.15);
+      // a lâmina volta ao grupo dela, para os materiais saírem junto quando o grupo for liberado
+      f.from.add(f.obj);
+      this.flights.splice(k, 1);
+      if (!this.flights.some((o) => o.from === f.from)) freeGroup(f.from);
+    }
+  }
+
+  /** Healing Field: o campo que segue o herói some e dá de uma vez a cura dos tiques que faltavam. */
+  private spikeField(i: number): boolean {
+    const g = this.game;
+    const p = g.player;
+    const k = this.fields.findIndex((f) => f.slot === i && f.follow);
+    if (k < 0) return false;
+    const f = this.fields[k];
+    const n = remainingTicks(f.time, f.tickLeft, f.st.tick ?? 1);
+    if (n <= 0) return false;
+    g.heal(g.stats.maxHp * (f.st.heal ?? 0) * n * AURA_SPIKE.fieldHeal, true);
+    if (f.st.fieldDamage) this.sanctuaryBurn(f);
+    const c = f.st.evolution === "sanctuary" ? EVO_COLOR.sanctuary : SPELL_COLOR.healing_field;
+    g.fx.lib.pillar(p.x, p.z, { radius: 1.4, height: 6, color: c, core: HEAL_CORE, speed: 6, dur: 0.7 });
+    g.fx.lib.ring(p.x, p.z, { radius: f.st.radius, color: c, core: HEAL_CORE, width: 0.5, from: 1, fill: 0.2, dust: 10, dur: 0.45 });
+    g.fx.text(p.x, 2.8, p.z, "Healing Burst", "heal react");
+    this.freeField(k);
+    g.audio.play("tech");
+    return true;
+  }
+
+  /** Rune Traps: todas as runas do espaço explodem já, armadas ou não. */
+  private spikeRunes(i: number): boolean {
+    const g = this.game;
+    let n = 0;
+    for (let k = this.runes.length - 1; k >= 0; k--) {
+      const r = this.runes[k];
+      if (r.slot !== i || r.fade !== undefined) continue;
+      this.detonate(r);
+      this.freeRune(k);
+      n++;
+    }
+    if (n) g.fx.text(g.player.x, 2.8, g.player.z, "Detonate", "react");
+    return n > 0;
   }
 
   /** spell_system.lua `tryCast`: a recarga é gasta quando a spell sai; spell sem efeito ainda (M6-05) não gasta. */
@@ -755,10 +917,10 @@ export class SpellCaster {
       const cx = e.x;
       const cz = e.z;
       this.arc(px, pz, cx, cz, count, (count - 1) * CHAIN_STEP);
-      g.spellHit(e, st.damage);
+      g.spellHit(e, st.damage, false, schoolOf(st));
       // Static Field: chance de acertar o primeiro alvo duas vezes
       if (count === 1 && st.doubleHit && !e.dead && Math.random() < st.doubleHit) {
-        g.spellHit(e, st.damage);
+        g.spellHit(e, st.damage, false, schoolOf(st));
         g.fx.text(cx, 2.6, cz, "x2", "frost");
         g.fx.lib.burst(cx, 1.1, cz, { radius: 1.6, color: BOLT_BODY, core: BOLT_CORE, rays: 9, sparks: 14, light: 2.2, dur: 0.3 });
       }
@@ -910,7 +1072,7 @@ export class SpellCaster {
       const t = ex * b.dx + ez * b.dz;
       if (t < -e.radius || t > len + e.radius) continue;
       if (Math.abs(ex * b.dz - ez * b.dx) > hw + e.radius) continue;
-      g.spellHit(e, b.st.damage);
+      g.spellHit(e, b.st.damage, false, schoolOf(b.st));
       if (!e.dead && Math.random() < 0.35) g.fx.spark(e.x, 1.2, e.z, 0xfff6d8, 0.12, 0.3, 1);
     }
   }
@@ -930,7 +1092,7 @@ export class SpellCaster {
     b.split = first ? Math.max(0, first.t) : null;
     if (!first) return;
     const hit = new Set<Enemy>([first.e]);
-    g.spellHit(first.e, st.damage);
+    g.spellHit(first.e, st.damage, false, schoolOf(st));
     const sx = p.x + b.dx * b.split!;
     const sz = p.z + b.dz * b.split!;
     const a = Math.atan2(b.dx, b.dz);
@@ -942,7 +1104,7 @@ export class SpellCaster {
         .map((e) => ({ e, t: (e.x - sx) * dx + (e.z - sz) * dz }))
         .sort((u, v) => u.t - v.t);
       hits.forEach(({ e }, n) => {
-        g.spellHit(e, st.rayDamage ?? 0);
+        g.spellHit(e, st.rayDamage ?? 0, false, schoolOf(st));
         if (e.dead) return;
         if (color === "red") this.applyBurn(e, st, b.slot);
         else if (color === "blue") this.applySlow(e, st.slow ?? 0, st.slowDuration ?? 0);
@@ -961,7 +1123,7 @@ export class SpellCaster {
       .sort((u, v) => ((u.x - from.x) ** 2 + (u.z - from.z) ** 2) - ((v.x - from.x) ** 2 + (v.z - from.z) ** 2))
       .slice(0, st.jumps ?? 0);
     for (const e of near) {
-      g.spellHit(e, st.jumpDamage ?? 0);
+      g.spellHit(e, st.jumpDamage ?? 0, false, schoolOf(st));
       this.arc(from.x, from.z, e.x, e.z, 1);
     }
   }
@@ -978,7 +1140,8 @@ export class SpellCaster {
    * techniques.lua `Tech.nova.cast`: onda de veneno em volta do herói; cada inimigo dentro ganha um acúmulo. Lá só saía
    * com inimigo no raio; aqui sai sempre (D15).
    */
-  private castNova(st: SpellStats): boolean {
+  /** `stackMult` (pico da aura, M21-06): cada inimigo leva tantos acúmulos de uma vez, com o teto multiplicado junto. */
+  private castNova(st: SpellStats, stackMult = 1): boolean {
     const g = this.game;
     const p = g.player;
     const r = st.radius;
@@ -990,12 +1153,13 @@ export class SpellCaster {
     for (const e of g.enemies) {
       if (e.dead) continue;
       if ((e.x - p.x) ** 2 + (e.z - p.z) ** 2 > (r + e.radius) ** 2) continue;
-      this.applyPoison(e, dps, st.duration ?? 0, st.stacks ?? 1, spread);
+      for (let n = 0; n < stackMult; n++) this.applyPoison(e, dps, st.duration ?? 0, (st.stacks ?? 1) * stackMult, spread);
       if (!e.aggro) e.setAggro(g);
       // respingo aos pés de cada um (D-417)
       lib.burst(e.x, 0.5, e.z, { radius: 0.8, color, core: VENOM_CORE, rays: 0, sparks: 6, light: 0, wave: 0, dur: 0.25 });
     }
     this.novaFx(p.x, p.z, r, spread ? EVO_COLOR.plague_bloom : VENOM_DARK);
+    if (stackMult > 1) g.fx.text(p.x, 2.8, p.z, "Venom Surge", "poison react");
     g.audio.play("tech");
     return true;
   }
@@ -1094,11 +1258,45 @@ export class SpellCaster {
     // a área que fere, parada no chão (o Maelstrom anda, então fica sem)
     const area = st.followSpeed ? undefined
       : lib.ring(a.x, a.z, { radius: st.radius, color: tint, core: WIND_CORE, width: 0.22, from: 1, fill: 0.12, dust: 0, dur: Infinity, power: 0.45 });
-    this.vortices.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 0.5, group, cones, winds, area });
+    this.vortices.push({ slot: i, st, x: a.x, z: a.z, time: st.duration ?? 1, tickLeft: st.tick ?? 0.5, group, cones, winds, area, element: null });
     lib.ring(a.x, a.z, { radius: reach, color: tint, core: WIND_CORE, width: 0.35, from: 0.2, dust: 10, dur: 0.4 });
     lib.burst(a.x, 0.8, a.z, { radius: 1.2, color: tint, core: WIND_CORE, rays: 0, sparks: 8, light: 0.8, dur: 0.25, wave: 0 });
     g.audio.play("tech");
     return true;
+  }
+
+  /** M21-05: golpe de fogo, gelo, raio ou veneno em quem está no funil dá o elemento ao tornado. */
+  infuse(e: Enemy, element: string): void {
+    const g = this.game;
+    for (const v of this.vortices) {
+      if (v.element) continue;
+      const reach = v.st.radius * SPELL_CAST.vortexReach;
+      if ((e.x - v.x) ** 2 + (e.z - v.z) ** 2 > (reach + e.radius) ** 2) continue;
+      const el = tornadoInfusion(null, element);
+      if (!el) return;
+      v.element = el;
+      const color = REACTIONS.tornado[el].color;
+      for (const m of v.cones) (m.material as THREE.MeshBasicMaterial).color.setHex(color);
+      const name = el === "fire" ? "Fire" : el === "ice" ? "Ice" : el === "lightning" ? "Storm" : "Venom";
+      g.fx.text(v.x, 3.6, v.z, `${name} Tornado`, "react");
+      g.fx.lib.ring(v.x, v.z, { radius: reach, color, core: 0xffffff, width: 0.4, from: 0.2, dust: 10, dur: 0.4 });
+      g.fx.lib.burst(v.x, 1.4, v.z, { radius: 1.6, color, core: 0xffffff, rays: 4, sparks: 16, light: 1, dur: 0.3, wave: 0 });
+      g.audio.play("tech");
+    }
+  }
+
+  /** Tique de um tornado com elemento em quem está dentro: queima, gela, dá choque de raio ou envenena. */
+  private tornadoTick(v: Vortex, e: Enemy): void {
+    const g = this.game;
+    const T = REACTIONS.tornado;
+    const now = g.time;
+    const s = g.stats;
+    if (v.element === "fire") e.applyBurn(now, s.damage * T.fire.burnDps * s.burn, T.fire.burnDuration);
+    else if (v.element === "ice") this.applySlow(e, T.ice.slow, T.ice.slowDuration, true);
+    else if (v.element === "lightning") {
+      g.spellHit(e, v.st.damage * T.lightning.shock, true, "lightning");
+      if (Math.random() < 0.5) g.fx.spark(e.x, 1.2, e.z, T.lightning.color, 0.14, 0.3, 1);
+    } else if (v.element === "poison") e.applyPoison(now, s.damage * T.poison.poisonDps * s.poison, T.poison.poisonDuration, T.poison.maxStacks, undefined, "tornado");
   }
 
   /** techniques.lua `updateVortex`: puxa todos no alcance do funil para o olho (chefes, `bossPull`) e fere os de dentro. */
@@ -1142,7 +1340,8 @@ export class SpellCaster {
         for (const e of g.enemies) {
           if (e.dead) continue;
           if ((e.x - v.x) ** 2 + (e.z - v.z) ** 2 > (st.radius + e.radius) ** 2) continue;
-          g.spellHit(e, st.damage, true);
+          g.spellHit(e, st.damage, true, schoolOf(st));
+          if (v.element && !e.dead) this.tornadoTick(v, e);
         }
       }
       if (v.time <= 0) {
@@ -1391,7 +1590,7 @@ export class SpellCaster {
       const dx = e.x - t.x;
       const dz = e.z - t.z;
       if (dx * dx + dz * dz > (r + e.radius) ** 2) continue;
-      g.spellHit(e, st.damage, true);
+      g.spellHit(e, st.damage, true, schoolOf(st));
       if (e.dead || e.isBoss || e.champion) continue;
       const d = Math.hypot(dx, dz);
       e.kx += (d < 0.08 ? 1 : dx / d) * kb;
@@ -1554,7 +1753,7 @@ export class SpellCaster {
     let n = 0;
     for (const e of this.inArea(f.x, f.z, f.st.radius)) {
       if (e.dead) continue;
-      g.spellHit(e, f.st.fieldDamage ?? 0, true);
+      g.spellHit(e, f.st.fieldDamage ?? 0, true, schoolOf(f.st));
       const x = e.x;
       const z = e.z;
       const delay = (n++ % 5) * 40;
@@ -1667,7 +1866,7 @@ export class SpellCaster {
           const last = o.lastHit.get(e);
           if (last !== undefined && g.time - last < o.hitCooldown) continue;
           o.lastHit.set(e, g.time);
-          g.spellHit(e, o.st.damage);
+          g.spellHit(e, o.st.damage, false, schoolOf(o.st));
           g.fx.lib.burst(e.x, 1, e.z, { radius: 0.7, color: BLADE_STEEL, core: BLADE_CORE, rays: 3, sparks: 6, light: 0, dur: 0.14, wave: 0 });
         }
       }
@@ -1806,7 +2005,7 @@ export class SpellCaster {
         if (len < 0.05) continue;
         if (tick) {
           for (const e of this.inSegment(a.x, a.z, dx / len, dz / len, 0, len, hw, hit)) {
-            g.spellHit(e, st.lineDamage ?? 0, true);
+            g.spellHit(e, st.lineDamage ?? 0, true, schoolOf(st));
             g.fx.spark(e.x, 0.8, e.z, EVO_COLOR.rune_circle, 0.1, 0.25, 1);
           }
         }
@@ -1862,7 +2061,7 @@ export class SpellCaster {
     const blast = () => {
       for (const e of g.enemies) {
         if (e.dead || (e.x - r.x) ** 2 + (e.z - r.z) ** 2 > (st.radius + e.radius) ** 2) continue;
-        g.spellHit(e, st.damage, true);
+        g.spellHit(e, st.damage, true, schoolOf(st));
         if (!e.dead && !e.isBoss && st.root) g.applyStatus(e, { kind: "stun", power: 1, duration: st.root }, 0);
       }
     };
@@ -1972,7 +2171,7 @@ export class SpellCaster {
             a.burned.add(e);
             this.applyBurn(e, a.st, a.slot);
           }
-          g.spellHit(e, a.st.tickDamage ?? 0);
+          g.spellHit(e, a.st.tickDamage ?? 0, false, schoolOf(a.st));
           if (!e.dead) g.fx.burst(e.x, 0.6, e.z, EVO_COLOR.firestorm, 5, 3, 0.1, 0.35, -3);
         }
       }
@@ -2033,7 +2232,7 @@ export class SpellCaster {
       if (reach > w.done) {
         for (const e of this.inSegment(w.x, w.z, w.dx, w.dz, 0, reach, hw, w.hit)) {
           this.applyBurn(e, w.st, w.slot);
-          g.spellHit(e, w.st.damage);
+          g.spellHit(e, w.st.damage, false, schoolOf(w.st));
         }
         // a frente da muralha: colunas de fogo ao longo da largura
         for (let c = 0; c < 6; c++) {
@@ -2081,9 +2280,9 @@ export class SpellCaster {
         s.tickLeft += s.st.tick ?? 1;
         s.pulse = 1;
         for (const e of this.inArea(s.x, s.z, s.st.radius)) {
-          g.spellHit(e, s.st.tickDamage ?? 0, true);
+          g.spellHit(e, s.st.tickDamage ?? 0, true, schoolOf(s.st));
           if (!e.dead) {
-            this.applySlow(e, s.st.slow ?? 0, s.st.slowDuration ?? 0);
+            this.applySlow(e, s.st.slow ?? 0, s.st.slowDuration ?? 0, true);
             g.fx.burst(e.x, 0.8, e.z, 0xeaf8ff, 5, 3, 0.1, 0.35, 4);
           }
         }
@@ -2118,8 +2317,8 @@ export class SpellCaster {
     const len = st.length ?? 0;
     const hits = this.inSegment(p.x, p.z, dx, dz, 0, len, (st.width ?? 0) / 2);
     for (const e of hits) {
-      g.spellHit(e, st.damage);
-      if (st.doubleHit && !e.dead && Math.random() < st.doubleHit) g.spellHit(e, st.damage);
+      g.spellHit(e, st.damage, false, schoolOf(st));
+      if (st.doubleHit && !e.dead && Math.random() < st.doubleHit) g.spellHit(e, st.damage, false, schoolOf(st));
     }
     p.facing = Math.atan2(dx, dz);
     const x1 = p.x + dx * len;
@@ -2147,7 +2346,7 @@ export class SpellCaster {
       const x = target.x;
       const z = target.z;
       this.cooldown[i] = st.cooldown;
-      for (const e of this.inArea(x, z, st.radius)) g.spellHit(e, st.damage);
+      for (const e of this.inArea(x, z, st.radius)) g.spellHit(e, st.damage, false, schoolOf(st));
       g.fx.shockwave(x, z, st.radius, EVO_COLOR.arcane_strike, 0.4);
       g.fx.streak(x - st.radius * 0.7, z, x + st.radius * 0.7, z, 0.18, 0xe6d2ff, 0.3);
       g.fx.streak(x, z - st.radius * 0.7, x, z + st.radius * 0.7, 0.18, 0xe6d2ff, 0.3);
@@ -2222,8 +2421,8 @@ export class SpellCaster {
       if (e.dead) continue;
       if ((e.x - pr.x) ** 2 + (e.z - pr.z) ** 2 > (r + e.radius) ** 2) continue;
       if (st.id === "fireball") this.applyBurn(e, st, pr.slot);
-      g.spellHit(e, st.damage);
-      if (st.id === "iceball" && !e.dead) this.applySlow(e, st.slow ?? 0, st.slowDuration ?? 0);
+      g.spellHit(e, st.damage, false, schoolOf(st));
+      if (st.id === "iceball" && !e.dead) this.applySlow(e, st.slow ?? 0, st.slowDuration ?? 0, true);
     }
     if (st.id === "arcane_bolt") {
       this.arcaneImpact(pr.x, pr.z, r);
@@ -2244,7 +2443,7 @@ export class SpellCaster {
   }
 
   /** status.lua `applySlow`: não acumula; chefes levam 20% (ou até o teto da Frostine). */
-  private applySlow(e: Enemy, amount: number, duration: number): void {
+  private applySlow(e: Enemy, amount: number, duration: number, ice = false): void {
     const g = this.game;
     if (e.isBoss) {
       const weak = amount * SPELL_CAST.bossSlowEffect;
@@ -2255,6 +2454,7 @@ export class SpellCaster {
     const active = now < e.slowUntil;
     e.slowPower = active ? Math.max(e.slowPower, amount) : amount;
     e.slowUntil = Math.max(e.slowUntil, now + duration);
+    if (ice) e.chillUntil = Math.max(e.chillUntil, now + duration); // M21-05: gelado (Estilhaço)
   }
 
   /** spell_system.lua `onKill` (S17, Volátil): inimigo queimando pelo Fireball pode explodir ao morrer. */
@@ -2270,7 +2470,7 @@ export class SpellCaster {
     const z = e.z;
     for (const o of g.enemies) {
       if (o.dead || o === e) continue;
-      if ((o.x - x) ** 2 + (o.z - z) ** 2 <= (r + o.radius) ** 2) g.spellHit(o, st.damage * SPELL_CAST.volatileFraction);
+      if ((o.x - x) ** 2 + (o.z - z) ** 2 <= (r + o.radius) ** 2) g.spellHit(o, st.damage * SPELL_CAST.volatileFraction, false, schoolOf(st));
     }
     g.fx.shockwave(x, z, r, 0xff5a1a, 0.35);
     g.fx.burst(x, 0.8, z, 0xff8a2a, 26, 7, 0.15, 0.5, -2);
@@ -2294,6 +2494,13 @@ export class SpellCaster {
     while (this.fields.length) this.freeField(this.fields.length - 1);
     while (this.orbits.length) this.freeOrbit(this.orbits.length - 1);
     while (this.runes.length) this.freeRune(this.runes.length - 1);
+    for (const f of this.flights) {
+      f.trail.kill(0);
+      f.from.add(f.obj);
+    }
+    for (const grp of new Set(this.flights.map((f) => f.from))) freeGroup(grp);
+    this.flights.length = 0;
+    this.spikeCd.fill(0);
     for (const m of this.lines) m.removeFromParent();
     this.runeTicks.clear();
     for (const a of this.auras) freeGroup(a.ring.group);

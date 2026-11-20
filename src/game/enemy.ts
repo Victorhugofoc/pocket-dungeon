@@ -3,6 +3,7 @@ import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
 import { pacedFoe } from "../core/pace";
 import { circleInArc } from "../core/melee";
+import { reactionFor, type ReactionId, type ReactState } from "../core/reactions";
 import { BURN, CHILD_SCALE, MINION_SCALE, RUN_TUNING } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
@@ -88,6 +89,27 @@ export class Enemy {
   /** estado do gelo da Frostine (src/core/frost.ts) */
   frost: FrostTarget;
   dots: Dot[] = [];
+  /** M21-05: lento por fonte de gelo até aqui (Estilhaço), recarga das reações e reação esperando o próximo quadro */
+  chillUntil = 0;
+  reactUntil = 0;
+  pendingReaction: ReactionId | null = null;
+
+  reactState(now: number): ReactState {
+    let burning = false;
+    let poisoned = false;
+    for (const d of this.dots) {
+      if (d.until <= now) continue;
+      if (d.kind === "burn") burning = true;
+      else if (d.kind === "poison") poisoned = true;
+    }
+    return { chillUntil: this.chillUntil, burning, poisoned, stunned: now < this.stunUntil, reactUntil: this.reactUntil };
+  }
+
+  /** Praga: o estado que chega olha o de antes; a reação sai no próximo quadro (`update`), fora da pilha de quem aplicou. */
+  private checkApply(now: number, status: "burn" | "poison"): void {
+    const r = reactionFor(this.reactState(now), { kind: "apply", status }, now);
+    if (r) this.pendingReaction = r;
+  }
 
   /**
    * status.lua `applyPoison`: um veneno só por inimigo, de qualquer fonte (tiro da Vesper, Venom Nova, Ninhada,
@@ -100,6 +122,7 @@ export class Enemy {
    * com +50% do dano. A spell e o espaço lembram quem aplicou (Volátil do Fireball).
    */
   applyBurn(now: number, dps: number, duration: number, spell?: string, slot?: number): void {
+    this.checkApply(now, "burn");
     const until = now + duration;
     const cur = this.dots.find((d) => d.kind === "burn");
     if (cur) {
@@ -112,6 +135,7 @@ export class Enemy {
   }
 
   applyPoison(now: number, dps: number, duration: number, maxStacks: number, spread?: Dot["spread"], source?: string): void {
+    this.checkApply(now, "poison");
     const until = now + duration;
     const cur = this.dots.find((d) => d.kind === "poison");
     if (cur) {
@@ -278,6 +302,12 @@ export class Enemy {
         if (total > 0) game.damageEnemy(this, total, { dot: kind });
         if (this.dead) return;
       }
+    }
+    if (this.pendingReaction) {
+      const r = this.pendingReaction;
+      this.pendingReaction = null;
+      if (now >= this.reactUntil) game.react(this, r);
+      if (this.dead) return;
     }
 
     const vx0 = this.x;

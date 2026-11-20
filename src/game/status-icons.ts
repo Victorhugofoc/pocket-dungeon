@@ -2,9 +2,11 @@
 // partículas no corpo (brasas, bolhas). Pedido do usuário: todo estado que muda o jogo tem indicador.
 import * as THREE from "three";
 import type { Enemy } from "./enemy";
+import type { ReactionId } from "../core/reactions";
 
 export type StatusIconKind =
-  | "burn" | "volatile" | "poison" | "slow" | "brittleChill" | "stun" | "frost" | "shatter" | "loot";
+  | "burn" | "volatile" | "poison" | "slow" | "brittleChill" | "stun" | "frost" | "shatter" | "loot"
+  | "shatterReady" | "plagueReady";
 
 /** Um estado de um inimigo, já pronto para desenhar. `n` aparece como número no canto (acúmulos); `until` é quando o estado
  * acaba (o contorno do ícone esvazia até lá). Sem `until` (acúmulos de gelo), o contorno fica cheio. */
@@ -17,12 +19,20 @@ export interface StatusContext {
   volatile: number;
   /** dano extra em inimigo lento (Brittle Chill) */
   brittleChill: number;
+  /** M21-05: reações que a build fecha neste inimigo agora (ícone "pronta") */
+  primed?: (e: Enemy) => readonly ReactionId[];
 }
 
 /** Estados ativos de um inimigo, na ordem em que aparecem (o mais perigoso para ele primeiro). */
 export function enemyStatuses(e: Enemy, ctx: StatusContext): StatusBadge[] {
   const out: StatusBadge[] = [];
   const now = ctx.now;
+  // M21-05: reação pronta vai na frente, é o convite para fechar o combo
+  for (const r of ctx.primed?.(e) ?? []) {
+    if (r === "shatter") out.push({ kind: "shatterReady", until: e.chillUntil });
+    else if (r === "plague") out.push({ kind: "plagueReady" });
+    // execução: o ícone do atordoamento já é o aviso (qualquer build bate pelas costas)
+  }
   const dots = e.dots.filter((d) => d.until > now);
   const burns = dots.filter((d) => d.kind === "burn");
   const last = (ds: typeof dots) => ds.reduce((m, d) => Math.max(m, d.until), 0);
@@ -74,6 +84,7 @@ const RING_STEPS = 48;
 const RING: Record<StatusIconKind, string> = {
   burn: "#ff7a1a", volatile: "#fff2b0", poison: "#5fd35f", slow: "#8fdcff",
   brittleChill: "#ff6a6a", stun: "#ffd94a", frost: "#8fdcff", shatter: "#ffffff", loot: "#ffc83d",
+  shatterReady: "#ffe066", plagueReady: "#ffe066",
 };
 
 /** Fundo do ícone. O contorno aqui é só o trilho apagado; a parte acesa vem por cima, do relógio. */
@@ -181,6 +192,22 @@ function crack(c: CanvasRenderingContext2D, col: string): void {
   c.stroke();
 }
 
+function bolt(c: CanvasRenderingContext2D, col: string): void {
+  c.beginPath();
+  c.moveTo(36, 8);
+  c.lineTo(22, 34);
+  c.lineTo(31, 34);
+  c.lineTo(26, 56);
+  c.lineTo(43, 27);
+  c.lineTo(34, 27);
+  c.closePath();
+  c.fillStyle = col;
+  c.fill();
+  c.lineWidth = 2;
+  c.strokeStyle = "#5a3a08";
+  c.stroke();
+}
+
 function badge(c: CanvasRenderingContext2D, text: string, fill: string): void {
   c.beginPath();
   c.arc(49, 49, 15, 0, Math.PI * 2);
@@ -272,6 +299,27 @@ function drawIcon(kind: StatusIconKind, n: number | undefined): HTMLCanvasElemen
       disc(c, "#1a2a3a", "#ffffff");
       crystal(c, "#e6f8ff", "#ffffff");
       crack(c, "#1a5a8a");
+      break;
+    case "shatterReady":
+      // gelo esperando o raio: floco com um raio dourado por cima
+      disc(c, "#0e2236", "#ffe066");
+      snowflake(c, "#8fdcff");
+      bolt(c, "#ffe066");
+      break;
+    case "plagueReady":
+      // gota de veneno e chama lado a lado: falta o outro
+      disc(c, "#1e2a0c", "#ffe066");
+      c.save();
+      c.translate(-8, 0);
+      flame(c, 0.75, "#ff7a1a", "#ffd166");
+      c.restore();
+      c.beginPath();
+      c.moveTo(42, 18);
+      c.bezierCurveTo(50, 30, 52, 36, 50, 40);
+      c.bezierCurveTo(48, 48, 36, 48, 34, 40);
+      c.bezierCurveTo(32, 36, 34, 30, 42, 18);
+      c.fillStyle = "#5fd35f";
+      c.fill();
       break;
     case "loot":
       // duas moedas de lado: o orbe sai em dobro

@@ -423,3 +423,17 @@ export function addModifier(spells: SpellSlotState[], index: number, modId: stri
   slot.modifiers.push(modId);
   return { ok: true };
 }
+
+/** M21-06: aura sai sozinha e a tecla dá o pico (`SpellDef.mode`). */
+export function isAura(id: string): boolean {
+  return isSpellId(id) && SPELLS[id].mode === "aura";
+}
+
+/**
+ * Tiques que um efeito por tique ainda daria: o próximo sai em `tickLeft` e depois a cada `tick`, enquanto sobrar
+ * `time` (o Healing Field cura no tique em que o tempo chega a zero, então ele conta).
+ */
+export function remainingTicks(time: number, tickLeft: number, tick: number): number {
+  if (time < tickLeft - 1e-9 || tick <= 0) return 0;
+  return 1 + Math.floor((time - tickLeft) / tick + 1e-9);
+}
