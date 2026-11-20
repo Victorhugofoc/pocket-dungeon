@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  addXp, applyUpgrade, availablePool, draft, draftTiers, rerollCost, rerollsLeft, upgradeLive, upgradeStats,
+  addXp, applyUpgrade, availableEpics, availablePool, draft, draftLevelUp, draftTiers, epicChance, rerollCost, rerollsLeft, upgradeLive, upgradeStats,
 } from "../src/core/levelup";
 import { RunRng, checkpoint, continueRun, newRun, type RunState } from "../src/core/run";
 import { computeStats } from "../src/core/stats";
 import { UPGRADE_BY_ID, UPGRADES } from "../src/data/upgrades";
 import { HEROES } from "../src/data/heroes";
 import { TUNING } from "../src/data/tuning";
+import { BEHAVIOR_EPICS, EPIC, EPIC_ODDS } from "../src/data/epics";
+import { Rng } from "../src/core/rng";
 
 function run(heroId = "varok", seed = 7): RunState {
   return newRun({ heroId, difficultyId: "normal", startingSpell: HEROES[heroId].startingSpells[0], seed, randomSeed: 1 });
@@ -102,5 +104,64 @@ describe("melhorias de nível (level_up.lua)", () => {
       return { ids, tiers: draftTiers(x.run, x.rng.get("levelup"), ids) };
     };
     expect(go(continueRun(cp))).toEqual(go(continueRun(cp)));
+  });
+});
+
+describe("épicas de comportamento (M21-07)", () => {
+  it("ficam fora da lista do original, mas o id resolve, e cada uma tem número e texto", () => {
+    for (const u of BEHAVIOR_EPICS) {
+      expect(UPGRADES.includes(u)).toBe(false);
+      expect(UPGRADE_BY_ID[u.id]).toBe(u);
+      expect(EPIC[u.id as keyof typeof EPIC], u.id).toBeDefined();
+      expect(u.note && /^[\x20-\x7e]+$/.test(u.note), u.id).toBe(true); // texto em inglês, sem acento
+    }
+    expect(BEHAVIOR_EPICS.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("a chance começa em 5% e sobe a cada tela sem épica; zera quando uma aparece", () => {
+    const r = run();
+    r.wave = EPIC_ODDS.minWave;
+    expect(epicChance(r)).toBeCloseTo(EPIC_ODDS.base);
+    const rng = new Rng(3);
+    let seen = 0;
+    for (let i = 0; i < 200; i++) {
+      const before = r.epicPity;
+      const ids = draftLevelUp(r, rng);
+      expect(ids.length).toBe(3);
+      const got = ids.filter((id) => UPGRADE_BY_ID[id].behavior);
+      expect(got.length).toBeLessThanOrEqual(1);
+      if (got.length) {
+        seen++;
+        expect(r.epicPity).toBe(0);
+      } else expect(r.epicPity).toBe(before + 1);
+    }
+    expect(seen).toBeGreaterThan(10);
+    r.epicPity = 1000;
+    expect(epicChance(r)).toBe(1);
+  });
+
+  it("antes da onda mínima não sai nem conta; épica é sempre épica e sai uma vez só", () => {
+    const r = run();
+    r.wave = EPIC_ODDS.minWave - 1;
+    r.epicPity = 50;
+    const ids = draftLevelUp(r, new Rng(1));
+    expect(ids.some((id) => UPGRADE_BY_ID[id].behavior)).toBe(false);
+    expect(r.epicPity).toBe(50);
+    r.wave = EPIC_ODDS.minWave;
+    expect(availableEpics(r).length).toBe(BEHAVIOR_EPICS.length);
+    r.pendingLevelUps = 1;
+    applyUpgrade(r, "rune_step", "common");
+    expect(r.upgradeTiers.at(-1)).toBe("epic");
+    expect(draftTiers(r, new Rng(1), ["kinetic"])).toEqual(["epic"]);
+    expect(availableEpics(r).some((u) => u.id === "rune_step")).toBe(false);
+    // sem atributo: não mexe nas contas
+    expect(upgradeStats(r)).toEqual({});
+  });
+
+  it("o checkpoint antigo ganha o contador zerado", () => {
+    const r = run();
+    delete (r as Partial<RunState>).epicPity;
+    const rr = new RunRng(r.seed);
+    expect(continueRun(checkpoint(r, rr, 1)).run.epicPity).toBe(0);
   });
 });

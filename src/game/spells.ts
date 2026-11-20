@@ -486,7 +486,7 @@ export class SpellCaster {
         // M21-06 (D18): a aura sai sozinha como lá (S14); a tecla dá o pico
         if (castKeys[i]) this.trySpike(i);
         if (this.cooldown[i] <= 0 && this.autoReady(st, walking)) this.tryCast(i);
-      } else if (castKeys[i]) this.tryCast(i);
+      } else if (castKeys[i]) this.tryCast(i, true);
     }
     // Eco: relança igual, de graça e sem novo Eco (spell_system.lua `update`)
     for (let k = this.pending.length - 1; k >= 0; k--) {
@@ -650,7 +650,7 @@ export class SpellCaster {
   }
 
   /** spell_system.lua `tryCast`: a recarga é gasta quando a spell sai; spell sem efeito ainda (M6-05) não gasta. */
-  tryCast(i: number): boolean {
+  tryCast(i: number, manual = false): boolean {
     const st = this.stats[i];
     if (!st || this.cooldown[i] > 0 || !this.game.playerAlive) return false;
     // Arcane Strike não se lança: a recarga carrega o próximo ataque básico (`onAutoHit`)
@@ -660,6 +660,8 @@ export class SpellCaster {
       return false;
     }
     this.cooldown[i] = st.cooldown;
+    // Overcharge (M21-07): depois da técnica, a spell da tecla sai sem gastar a recarga
+    if (manual && this.game.epics.takeFreeSpell()) this.cooldown[i] = 0;
     // Eco (S16): chance de relançar igual e de graça 0,2 s depois
     if (st.echo && !st.evolution && Math.random() < st.echo) this.pending.push({ slot: i, t: SPELL_CAST.echoDelay });
     return true;

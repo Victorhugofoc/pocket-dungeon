@@ -19,7 +19,7 @@ Roguelite de ação para PC, em partidas de 30 a 40 minutos. Cada partida é uma
 2. Zona 1, onda 1: o primeiro trecho do mapa aberto. Limpar os inimigos do trecho fecha a onda.
 3. Entre as ondas, o caminho se **bifurca no mapa**: cada saída leva a uma sala (combate, amaldiçoada, pacto, evento, loja, elite, santuário de relíquia, emboscada de chefe) e mostra de longe o que vem (céu vermelho na Blood Moon, raios na Storm Floor, luz dourada no santuário). O jogador escolhe andando, não num menu. A loja continua garantida a cada 3 ondas.
 4. O caminho entre clareiras tem **desvios opcionais** curtos, cada um uma pergunta de risco: baú guardado por campeão, santuário que troca vida por ouro, atalho que pula a loja e dá recompensa.
-5. Subir de nível abre 3 melhorias para escolher (comum, rara ou épica). Comum e rara dão atributo; **a épica muda o comportamento** do herói (ex.: a esquiva deixa uma runa). Ouro dos inimigos vai para a loja: spell nova, nível de spell e da técnica, modificadores, relíquia.
+5. Subir de nível abre 3 melhorias para escolher (comum, rara ou épica), com os atributos do original. Além delas, uma das 3 cartas pode virar uma **épica de comportamento**, que muda como o herói joga (ex.: a esquiva deixa uma runa): a chance começa em 5% e sobe 5% a cada tela de nível sem ela, zerando quando uma aparece (a partir da onda 3; cada uma sai uma vez por partida). As 11 (decididas em 2026-11-20, `src/data/epics.ts`): Rune Step, Cold Snap, Close Call, Charged Step, Third Strike, Kinetic, Anchor, Orb Rush, Chain Reaction, Overcharge, Frenzy. Ouro dos inimigos vai para a loja: spell nova, nível de spell e da técnica, modificadores, relíquia.
 6. A onda 5 é o chefe da zona. Vencer leva à próxima zona (ondas 6 a 10), e assim até o chefe final na onda 20.
 7. Morrer encerra a partida. Vencer a onda 20 também, com a opção de seguir no modo sem fim, como no original.
 8. Entre partidas ficam registros, conquistas e desbloqueios sem ganho de poder (heróis, relíquias, pactos, eventos), como no original. A maestria de cada herói (jogar com ele) libera alternativas, não poder a mais.
@@ -45,4 +45,4 @@ WASD move · mouse mira · botão esquerdo ataca · botão direito ou Q usa a t�
 ## Em aberto
 - Ordem e sorteio das zonas e dos chefes quando houver mais de 4 (o original sorteia os chefes por onda).
 - Quais spells são aura e o que faz o pico de cada uma (`M21-06`).
-- Lista das épicas de comportamento (`M21-07`) e das reações além das quatro primeiras (`M21-05`).
+- Reações além das quatro primeiras (`M21-05`).

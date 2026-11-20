@@ -68,6 +68,8 @@ export class Enemy {
   remove = false;
   cd = 0;
   windupT = -1;
+  /** alcance do golpe em preparo (Close Call olha a marca) */
+  private swingRange = 0;
   windupDur: number = TUNING.enemy.telegraph.windup;
   /** direção travada do golpe em preparo e a marca dele no chão (M21-01) */
   swingAngle = 0;
@@ -499,6 +501,7 @@ export class Enemy {
     const T = TUNING.enemy.telegraph;
     this.windupT = 0;
     this.swingAngle = Math.atan2(tx - this.x, tz - this.z);
+    this.swingRange = range;
     this.facing = this.swingAngle;
     this.swingMark?.dispose();
     this.swingMark = game.fx.groundArc(this.x, this.z, this.swingAngle, this.boss ? T.bossArc : T.arc, range + T.reachPad);
@@ -509,6 +512,12 @@ export class Enemy {
     this.windupT = -1;
     this.swingMark?.dispose();
     this.swingMark = null;
+  }
+
+  /** Close Call (M21-07): segundos até o golpe em preparo fechar, se ele acertaria o herói em (px, pz); senão Infinity. */
+  swingThreat(px: number, pz: number): number {
+    if (this.windupT < 0 || !this.swingHits(px, pz, this.swingRange)) return Infinity;
+    return Math.max(0, this.windupDur - this.windupT);
   }
 
   /** O herói (círculo de raio `playerRadius`) toca o arco do golpe? */
