@@ -2,6 +2,7 @@
 // para ler depois como foram as runs. No `npm run dev` cada resumo também vira uma linha em `logs/runs.jsonl`
 // (vite.config.ts); fora dele fica só no navegador e sai pelo botão "Export run log" da tela de título.
 import type { RunState } from "./run";
+import type { FrameStats, RunPerf } from "./perflog";
 
 export const RUNLOG_VERSION = 1;
 /** quantas partidas o navegador guarda (as mais novas) */
@@ -33,6 +34,8 @@ export interface WaveEntry {
   clearedEarly: boolean;
   /** false só na última entrada de uma partida que acabou no meio da onda */
   cleared: boolean;
+  /** fps e travadinhas da onda (core/perflog.ts); posto pelo jogo, ausente nos testes e nas partidas antigas */
+  perf?: FrameStats;
 }
 
 export interface RunLogEntry {
@@ -68,6 +71,8 @@ export interface RunLogEntry {
   detours: { wave: number; kind: string }[];
   bossHistory: string[];
   waves: WaveEntry[];
+  /** desempenho da partida (só do trecho jogado nesta sessão do navegador; as ondas guardam o delas) */
+  perf?: RunPerf;
 }
 
 const round = (x: number, d = 0) => Math.round(x * 10 ** d) / 10 ** d;
@@ -95,7 +100,7 @@ export function waveEntry(
 }
 
 /** O resumo da partida encerrada; `last` é a onda interrompida (morte, quit), que ainda não está em `run.waveLog`. */
-export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string, build: string, last: WaveEntry | null): RunLogEntry {
+export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string, build: string, last: WaveEntry | null, perf?: RunPerf): RunLogEntry {
   const s = run.statistics;
   return {
     v: RUNLOG_VERSION, runId: run.runId || runId(run.seedCode, endedAt), startedAt: run.startedAt, endedAt, build, outcome,
@@ -112,6 +117,7 @@ export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string,
     upgrades: run.upgradesTaken.map((id, i) => ({ id, tier: run.upgradeTiers[i] ?? "common" })),
     mapHistory: [...run.mapHistory], detours: run.detours.map((d) => ({ ...d })), bossHistory: [...run.bossHistory],
     waves: last ? [...run.waveLog, last] : [...run.waveLog],
+    ...(perf ? { perf } : {}),
   };
 }
 

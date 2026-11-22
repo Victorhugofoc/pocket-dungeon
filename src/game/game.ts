@@ -57,7 +57,8 @@ import { Pipeline } from "./render";
 import { U } from "./shared";
 import { SUN_OFFSET, stepMotes } from "./air";
 import { buildWorld, driftSun, fireFlicker, setZoneAtmosphere, type WorldView } from "./world";
-import { FrameProbe } from "./perf";
+import { FrameProbe, PerfLog, gpuName } from "./perf";
+import { perfLine } from "../core/perflog";
 import { EpicRuntime, type AutoMod } from "./epics";
 import { initLamps, updateLamps } from "./lamps";
 
@@ -318,6 +319,8 @@ export class Game {
   fps = 60;
   /** registro de tempo por quadro (F3, M16-01) */
   probe: FrameProbe;
+  /** fps e travadinhas por onda para o registro de partidas (core/perflog.ts) */
+  perfLog = new PerfLog();
 
   constructor(private canvas: HTMLCanvasElement, textLayer: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -372,6 +375,7 @@ export class Game {
   // ---------------------------------------------------------------- início / zona
   start(run: RunState, rng: RunRng): void {
     this.run = run;
+    this.perfLog.reset();
     this.rng = rng;
     this.hero = HEROES[run.heroId];
     if (this.player.rig) disposeRig(this.player.rig);
@@ -476,7 +480,9 @@ export class Game {
     const w = this.wave, run = this.run;
     const midWave = !!w && w.started && !(run.waveLog.at(-1)?.wave === run.wave);
     const last = midWave ? waveEntry(run, w, this.playerAlive ? this.player.hp / this.stats.maxHp : 0, false) : null;
-    storeRunLog(this.storage, runLogEntry(run, outcome, new Date().toISOString(), BUILD, last), beacon);
+    if (last) last.perf = this.perfLog.takeWave();
+    const env = { gpu: gpuName(this.renderer), width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio, quality: this.quality };
+    storeRunLog(this.storage, runLogEntry(run, outcome, new Date().toISOString(), BUILD, last, this.perfLog.run(env)), beacon);
   }
 
   saveAchievements(): void {
@@ -557,6 +563,7 @@ export class Game {
     this.zone = zone;
     this.clearZone();
     const seed = zoneSeed(this.run.seed, zone.id, visit);
+    this.probe.tag("zone");
     this.layout = generateZone(zone, seed);
     this.grid = new ObstacleGrid(this.layout.obstacles);
     this.world = buildWorld(this.scene, zone, this.layout);
@@ -1560,7 +1567,13 @@ export class Game {
       run.victory = true;
       this.ach.victory(run);
     }
-    if (this.playerAlive) run.waveLog.push(waveEntry(run, w, this.player.hp / this.stats.maxHp, true));
+    if (this.playerAlive) {
+      const entry = waveEntry(run, w, this.player.hp / this.stats.maxHp, true);
+      // a onda leva os quadros desde o fim da anterior (o caminho até ela, as telas sem pausa e o combate)
+      entry.perf = this.perfLog.takeWave();
+      run.waveLog.push(entry);
+      console.info(`[perf] wave ${run.wave} · ${perfLine(entry.perf)}`);
+    }
     this.ach.waveComplete({ wave: run.wave, bossWave: w.isBossWave, gameOver: !this.playerAlive, gold: run.gold });
     this.saveAchievements();
     // §6: a sala vale só para esta onda; a maldição segue para a próxima, que fica sem mapa
@@ -3039,5 +3052,8 @@ export class Game {
     this.pipeline.render();
     this.adaptResolution(raw);
     this.probe.end(real * 1000, this.time);
+    if (!this.paused && this.run.wave >= 1) {
+      this.perfLog.add(real * 1000, this.probe.lastCpu, this.pipeline.gpuMs, this.resScale, this.probe.lastTags, this.run.wave, this.run.statistics.elapsed);
+    }
   }
 }
