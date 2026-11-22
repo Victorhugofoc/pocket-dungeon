@@ -92,3 +92,16 @@ export const TUNING = {
     },
   },
 } as const;
+
+/**
+ * Pilhas com retorno decrescente (core/modifiers.lua, constants.lua): teto suave da regeneração (`REGEN_SOFTCAP`),
+ * esquiva até 60% (`DODGE_CAP`), recarga com piso de 35% (`COOLDOWN_FLOOR`). O crítico fica com o teto de 75% daqui
+ * (lá vai até 100%).
+ */
+export const STACKING = { regenSoftcap: 2.0, dodgeCap: 0.6, cooldownFloor: 0.35, critCap: 0.75 };
+
+/**
+ * Melhorias de ataque e recompensa (M20-12): `damage.lua` DEATH_HEAL (vida curada pela chance ao matar) e
+ * FOLLOW_THROUGH_TIME (segundos depois da técnica); `tuning.lua` KNOCKBACK_PX (px empurrados a +100% de Knockback).
+ */
+export const UPGRADE_FX = { deathHeal: 10, followThroughTime: 3, knockbackPx: 48 };

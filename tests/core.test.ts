@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng, hashStr, makeNoise2D } from "../src/core/rng";
-import { armorReduction, computeStats } from "../src/core/stats";
+import { killReward, survivorReward, waveMods } from "../src/core/wave";
+import { armorReduction, computeStats, effectiveRegen, stackChance, stackMultiplier } from "../src/core/stats";
 import { generateZone, ObstacleGrid, distToPath } from "../src/core/worldgen";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { BOSSES, ENEMIES } from "../src/data/enemies";
@@ -89,8 +90,49 @@ describe("atributos", () => {
     const s = computeStats([{ dodge: 5, critChance: 5, cdrPct: 5, maxHpPct: -5 }]);
     expect(s.dodge).toBeLessThanOrEqual(0.6);
     expect(s.critChance).toBeLessThanOrEqual(0.75);
-    expect(s.cooldownMult).toBeGreaterThanOrEqual(0.4);
+    expect(s.cooldownMult).toBeGreaterThanOrEqual(0.35);
     expect(s.maxHp).toBeGreaterThan(0);
+  });
+  it("pilhas com retorno decrescente como modifiers.lua (M20-12)", () => {
+    // positivos em pool: +20% e +20% = +36%; negativo multiplica: × 0,9
+    expect(stackMultiplier([0.2, 0.2])).toBeCloseTo(1.36);
+    expect(stackMultiplier([0.2, -0.1])).toBeCloseTo(1.08);
+    const two = computeStats([{ damagePct: 0.2 }, { damagePct: 0.2 }]);
+    expect(two.damage).toBeCloseTo(TUNING.hero.baseDamage * 1.36);
+    // a mesma fonte soma antes do pool (uma melhoria = uma fonte)
+    expect(computeStats([{ damagePct: 0.4 }]).damage).toBeCloseTo(TUNING.hero.baseDamage * 1.4);
+    // chances: 1 - Π(1 - p); a esquiva para em 60%
+    expect(stackChance([0.05, 0.05])).toBeCloseTo(0.0975);
+    expect(computeStats([{ dodge: 0.5 }, { dodge: 0.5 }]).dodge).toBeCloseTo(0.6);
+    expect(computeStats([{ deathHealChance: 0.05 }, { deathHealChance: 0.08 }]).deathHealChance).toBeCloseTo(1 - 0.95 * 0.92);
+    // crítico: a base de 5% entra no pool
+    expect(computeStats([{ critChance: 0.1 }]).critChance).toBeCloseTo(1 - 0.95 * 0.9);
+    // regeneração com teto suave em 2/s: 2 × (1 - e^(-raw/2))
+    expect(computeStats([{ regen: 1 }]).regen).toBeCloseTo(2 * (1 - Math.exp(-0.5)));
+    expect(effectiveRegen(100)).toBeLessThanOrEqual(2);
+    expect(effectiveRegen(4)).toBeLessThan(2);
+    // recarga: −10% e −10% = × 0,81; piso de 35%
+    expect(computeStats([{ cdrPct: 0.1 }, { cdrPct: 0.1 }]).cooldownMult).toBeCloseTo(0.81);
+    expect(computeStats([{ cdrPct: 0.1 }, { cdrPct: 0.1 }]).cooldownValues).toEqual([-0.1, -0.1]);
+    // atributos novos: bônus acima de 1
+    const n = computeStats([{ techniqueDamagePct: 0.2, followThroughPct: 0.15, knockbackPct: 0.25, survivorRewardPct: 0.15 }]);
+    expect(n.techniqueDamage).toBeCloseTo(1.2);
+    expect(n.followThrough).toBeCloseTo(0.15);
+    expect(n.knockback).toBeCloseTo(0.25);
+    expect(n.survivor).toBeCloseTo(1.15);
+    expect(computeStats([]).knockback).toBe(0);
+  });
+  it("Champion's Bounty e Survivor's Grace mexem na recompensa (rewards.lua)", () => {
+    const m = waveMods(3, "normal", null);
+    const t = { gold: ENEMIES.orc.gold, xp: ENEMIES.orc.xp, champion: true, bossWave: null, noReward: false };
+    const base = killReward(t, m, 1);
+    const up = killReward(t, m, 1, { gold: 2, xp: 2 });
+    expect(up.gold).toBeGreaterThanOrEqual(base.gold * 2 - 1);
+    expect(up.xp).toBeGreaterThanOrEqual(base.xp * 2 - 1);
+    expect(killReward({ ...t, champion: false }, m, 1, { gold: 2, xp: 2 })).toEqual(killReward({ ...t, champion: false }, m, 1));
+    const sv = survivorReward({ gold: 100, xp: 100 }, false, m, 1);
+    const sv2 = survivorReward({ gold: 100, xp: 100 }, false, m, 1, { gold: 1, xp: 1 }, 2);
+    expect(sv2.gold).toBeGreaterThanOrEqual(sv.gold * 2 - 1);
   });
 });
 

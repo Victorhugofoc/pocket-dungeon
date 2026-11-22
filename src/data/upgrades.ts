@@ -199,4 +199,12 @@ export const UPGRADE_STAT: Readonly<Record<string, { key: StatKey; scale: number
   xpPct: { key: "xpPct", scale: 1 },
   goldPct: { key: "goldPct", scale: 1 },
   spellCooldownPct: { key: "cdrPct", scale: -1 },
+  // M20-12 parte 1: ataque e recompensa
+  techniqueDamagePct: { key: "techniqueDamagePct", scale: 1 },
+  followThroughPct: { key: "followThroughPct", scale: 1 },
+  deathHealChance: { key: "deathHealChance", scale: 1 },
+  championXpPct: { key: "championXpPct", scale: 1 },
+  championGoldPct: { key: "championGoldPct", scale: 1 },
+  survivorRewardPct: { key: "survivorRewardPct", scale: 1 },
+  knockbackPct: { key: "knockbackPct", scale: 1 },
 };

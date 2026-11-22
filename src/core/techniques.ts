@@ -1,5 +1,6 @@
 // Números finais de uma técnica (porta de SpellStats.compute/extra do Dungeon Reign, só a parte das técnicas).
 // Lógica pura: recebe o nível e os atributos do herói, devolve metros, segundos e multiplicadores de dano.
+import { stackMultiplier } from "./stats";
 import {
   DR_BASE_DAMAGE, DR_PX_PER_M, DR_SPELL_POWER, TECH_LEVEL_STEP, TECH_MAX_LEVEL, TECHNIQUES,
   type TechDef, type TechMilestoneEffect,
@@ -60,17 +61,8 @@ function clampLevel(level: number): number {
   return Math.max(1, Math.min(TECH_MAX_LEVEL, Math.floor(level)));
 }
 
-/** Multiplicador de uma lista de percentuais como no Dungeon Reign (modifiers.lua §18): positivos em pool
- * 1 - Π(1 - p), negativos em Π(1 - |p|), combinados como (1 + positivo) × negativo. */
-export function stackMultiplier(values: number[]): number {
-  let pos = 1;
-  let neg = 1;
-  for (const v of values) {
-    if (v > 0) pos *= 1 - v;
-    else if (v < 0) neg *= 1 - Math.abs(v);
-  }
-  return (1 + (1 - pos)) * neg;
-}
+/** Multiplicador de uma lista de percentuais como no Dungeon Reign (modifiers.lua §18); mora em `core/stats.ts`. */
+export { stackMultiplier };
 
 function milestoneValues(def: TechDef, level: number, k: keyof TechMilestoneEffect): number[] {
   const out: number[] = [];

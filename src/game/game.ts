@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
 import { applyEvolution, declineEvolutions, pendingEvolutionOffer, type EvolutionOption } from "../core/evolution";
-import { addXp, applyUpgrade, draftLevelUp, draftTiers, rerollCost, rerollsLeft, upgradeStats, type UpgradeTier } from "../core/levelup";
+import { addXp, applyUpgrade, draftLevelUp, draftTiers, rerollCost, rerollsLeft, upgradeSources, type UpgradeTier } from "../core/levelup";
 import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
 import { runLogEntry, waveEntry, type RunOutcome } from "../core/runlog";
 import { BUILD, storeRunLog } from "./runlog";
@@ -29,7 +29,7 @@ import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
-import { TUNING } from "../data/tuning";
+import { TUNING, UPGRADE_FX } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
 import { Audio } from "./audio";
@@ -177,6 +177,8 @@ export interface PlayerState {
   rig: Rig | null;
   moveAmt: number; attackAnim: number; attackCd: number;
   techCd: number; techMax: number;
+  /** FOLLOW-THROUGH: até quando o dano leva o bônus (tempo do jogo) */
+  followUntil: number;
   dashCd: number; dashT: number; dashDx: number; dashDz: number;
   iframes: number;
   /** Umbra: golpes contam como pelas costas até este instante */
@@ -218,7 +220,7 @@ export class Game {
   world: WorldView | null = null;
 
   player: PlayerState = {
-    x: 0, z: 0, facing: 0, hp: 1, rig: null, moveAmt: 0, attackAnim: -1, attackCd: 0, techCd: 0, techMax: 1,
+    x: 0, z: 0, facing: 0, hp: 1, rig: null, moveAmt: 0, attackAnim: -1, attackCd: 0, techCd: 0, techMax: 1, followUntil: 0,
     dashCd: 0, dashT: 0, dashDx: 0, dashDz: 0, iframes: 0, shadowUntil: 0, aegis: null, throws: 0, nestT: VENOM.broodEvery,
     flash: 0, hurtT: 0, leap: null, rush: null,
   };
@@ -313,6 +315,8 @@ export class Game {
     { heroes: HERO_ORDER, bosses: Object.keys(BOSSES), enemies: Object.keys(ENEMIES), relics: RELIC_IDS }, loadRecords(this.storage).kills);
   /** de onde veio o golpe em curso (o "ataque básico" de quick_trigger) */
   private hitSource: KillSource = "other";
+  /** > 0 enquanto o golpe é da técnica (`asTechnique`) */
+  private techDepth = 0;
   /** o ataque básico que está saindo agora (M21-07) */
   private autoMod: AutoMod | null = null;
   /** elemento do golpe em andamento quando quem bate não passa um (técnica: a escola dela), para as reações (M21-05) */
@@ -455,7 +459,7 @@ export class Game {
   recompute(): void {
     const sources: StatBlock[] = [this.hero.stats];
     for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
-    sources.push(upgradeStats(this.run));
+    sources.push(...upgradeSources(this.run));
     sources.push(shopStats(this.run.shop));
     this.stats = computeStats(sources);
     this.epics.refresh(this.run.upgradesTaken);
@@ -804,7 +808,10 @@ export class Game {
           this.hitEnemy(e, pr.dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined, crit: pr.crit && first ? true : undefined });
           if (pr.knock && first) this.epics.knock(e, pr.knock);
           this.hitSource = "other";
-          if (pr.source === "auto") this.spells.onAutoHit(e);
+          if (pr.source === "auto") {
+            this.spells.onAutoHit(e);
+            if (first) this.autoKnock(e, pr.vx, pr.vz);
+          }
           if (pr.push && !e.isBoss && !e.dead) {
             const sp = Math.hypot(pr.vx, pr.vz) || 1;
             e.kx += (pr.vx / sp) * pr.push * TUNING.enemy.knockback;
@@ -876,6 +883,7 @@ export class Game {
     const crit = hit?.crit === true || Math.random() < s.critChance;
     // ataque básico e técnicas levam o dano do ataque (autoDamagePct); as spells, não (D14)
     let amount = s.damage * s.autoDamage * mult * (0.9 + Math.random() * 0.2);
+    if (this.techDepth > 0) amount *= s.techniqueDamage; // SIGNATURE (D-309)
     const back = this.hero.auto.backstab !== undefined && this.isBackstab(e);
     if (back) amount *= 1 + this.hero.auto.backstab!;
     let deepChill = false;
@@ -944,6 +952,7 @@ export class Game {
   damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId } = {}): void {
     if (e.dead) return;
     if (e.isBoss) amount *= this.stats.bossDamage; // damage.lua: Smite do Seraph (D-317)
+    if (this.stats.followThrough > 0 && this.time < this.player.followUntil) amount *= 1 + this.stats.followThrough;
     amount *= this.epics.damageMult();
     amount = Math.max(1, Math.round(amount));
     this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
@@ -998,10 +1007,12 @@ export class Game {
     // D-147: matar um campeão abre a loja depois da onda (a relíquia de risco chega no M12)
     if (e.champion && !e.isBoss && !e.summoned && e !== this.detourGuard) this.pendingShop = "champion";
     if (this.stats.lifeOnKill > 0 && this.playerAlive) this.heal(this.stats.lifeOnKill, false);
+    // BLOOD RITE e relíquias de cura ao matar: uma rolagem por morte na chance combinada (damage.lua §16)
+    if (this.stats.deathHealChance > 0 && this.playerAlive && Math.random() < this.stats.deathHealChance) this.heal(UPGRADE_FX.deathHeal, false);
     // rewards.lua `enemyKill`: ouro e XP pela sala e dificuldade, campeão ×4,5, chefe com o tier (M7-01)
     // loot.lua (M7-02): cai como orbe no chão; o prometido leva também um orbe do banco
     const r = killReward({ gold: e.def?.gold ?? 0, xp: e.def?.xp ?? 0, champion: e.champion, bossWave: e.isBoss ? e.level : null,
-      noReward: e.noReward }, this.mods, this.stats.gold);
+      noReward: e.noReward }, this.mods, this.stats.gold, { gold: this.stats.championGold, xp: this.stats.championXp });
     this.loot.drop(e.x, e.z, r.gold, r.xp, e.lootBonus ? this.run.lootBank : null);
     const split = e.def?.splitInto;
     if (split) {
@@ -1593,7 +1604,8 @@ export class Game {
     for (const e of this.enemies) {
       if (e.dead) continue;
       if (e.def && !e.summoned) {
-        const r = survivorReward(e.def, e.champion, this.mods, this.stats.gold);
+        const r = survivorReward(e.def, e.champion, this.mods, this.stats.gold,
+          { gold: this.stats.championGold, xp: this.stats.championXp }, this.stats.survivor);
         gold += r.gold;
         xp += r.xp;
         survivors++;
@@ -2107,6 +2119,7 @@ export class Game {
         this.hitSource = "other";
         if (this.autoMod?.knock) this.epics.knock(e, this.autoMod.knock);
         this.spells.onAutoHit(e);
+        this.autoKnock(e, e.x - p.x, e.z - p.z);
         hits++;
       }
       if (hits) this.fx.addShake(0.08);
@@ -2127,11 +2140,38 @@ export class Game {
     const school = this.hero.technique.school;
     this.hitElement = school === "auto" ? null : school;
     try {
-      this.castTechnique();
+      this.asTechnique(() => this.castTechnique());
     } finally {
       this.hitElement = null;
     }
-    if (this.player.techCd > 0) this.epics.onTechnique();
+    if (this.player.techCd > 0) {
+      this.epics.onTechnique();
+      // FOLLOW-THROUGH (D-309): todo o dano sobe por alguns segundos depois de usar a técnica
+      if (this.stats.followThrough > 0) this.player.followUntil = this.time + UPGRADE_FX.followThroughTime;
+    }
+  }
+
+  /**
+   * Knockback (auto_attack.lua `Auto.knockback`, D-160): o ataque básico empurra o inimigo comum ao longo do golpe,
+   * `KNOCKBACK_PX` × o bônus; chefe e campeão não se movem.
+   */
+  private autoKnock(e: Enemy, dx: number, dz: number): void {
+    const k = this.stats.knockback;
+    if (k <= 0 || e.dead || e.isBoss || e.champion) return;
+    const l = Math.hypot(dx, dz) || 1;
+    const dist = px(UPGRADE_FX.knockbackPx) * k;
+    e.kx += (dx / l) * dist * KNOCK_DECAY;
+    e.kz += (dz / l) * dist * KNOCK_DECAY;
+  }
+
+  /** O que acontece dentro de `fn` é golpe da técnica (SIGNATURE, `techniqueDamagePct`). */
+  private asTechnique<T>(fn: () => T): T {
+    this.techDepth++;
+    try {
+      return fn();
+    } finally {
+      this.techDepth--;
+    }
   }
 
   private castTechnique(): void {
@@ -2497,7 +2537,7 @@ export class Game {
         const T = this.tech!;
         this.grid.resolve(p, 0.5);
         this.terrain.resolve(p, 0.5);
-        this.executionLanding(T.radius ?? 5.8, T);
+        this.asTechnique(() => this.executionLanding(T.radius ?? 5.8, T));
         this.audio.play("kill");
       }
     } else if (p.rush) {
@@ -2508,7 +2548,7 @@ export class Game {
       const sp = r.speed ?? 30;
       const nx = p.x + r.dx * sp * step;
       const nz = p.z + r.dz * sp * step;
-      if (T) this.lineHit(p.x, p.z, nx, nz, (T.width ?? 2.5) / 2, T.damage, this.chargeBurn(T), r.hit);
+      if (T) this.asTechnique(() => this.lineHit(p.x, p.z, nx, nz, (T.width ?? 2.5) / 2, T.damage, this.chargeBurn(T), r.hit));
       // labareda ao longo do caminho
       for (let k = 0; k < 4; k++) {
         const q = Math.random();
@@ -2526,7 +2566,7 @@ export class Game {
         r.fire?.kill();
         p.rush = null;
         if (T) {
-          this.infernoRing(T);
+          this.asTechnique(() => this.infernoRing(T));
           // Phoenix Rush: o caminho fica em chamas (a cada 0,5 s, 25% do dano e queimadura)
           if (T.fireTrail) this.addTrail(r.x0, r.z0, p.x, p.z, (T.width ?? 2.5) / 2, T.fireTrail, TECH_EVO.fireTrailEvery, T.damage * TECH_EVO.fireTrailFraction, 0xff7a2a, this.chargeBurn(T));
         }
@@ -2621,7 +2661,7 @@ export class Game {
       a.fx.move(p.x, 1.1, p.z);
       a.mesh.rotation.y += dt * 0.8;
       (a.mesh.material as THREE.MeshBasicMaterial).opacity = (a.block ? 0.2 : 0.1) + Math.sin(this.time * 9) * 0.04;
-      if (this.time >= a.until) this.endAegis(true);
+      if (this.time >= a.until) this.asTechnique(() => this.endAegis(true));
     }
     // Vesper, Ninhada: uma abelha pequena a cada VENOM.broodEvery s, até VENOM.broodMax, com inimigo por perto
     if (this.hero.nest && this.playerAlive) {
@@ -2671,7 +2711,9 @@ export class Game {
       if (target && d < target.radius + 1.1 && b.hitCd <= 0) {
         b.hitCd = b.every;
         b.sting = 0;
-        this.hitEnemy(target, b.dmg, b.poison);
+        // a abelha grande é a técnica (Swarm); as pequenas da Ninhada, não
+        if (b.big) this.asTechnique(() => this.hitEnemy(target, b.dmg, b.poison));
+        else this.hitEnemy(target, b.dmg, b.poison);
         if (b.big) this.fx.lib.burst(target.x, 1, target.z, { radius: 0.7, color: TECH_FX.venom, core: TECH_FX.venomCore, rays: 3, sparks: 6, light: 0, dur: 0.16, wave: 0, power: 0.7 });
       }
       if (b.sting >= 0) {
@@ -3026,9 +3068,11 @@ export class Game {
         a.z = p.z + (dz / d) * min;
       }
     }
-    this.updateIceWalls(dt, active);
-    this.updateZonesOfTech(dt);
-    this.updateEvolvedTech(dt);
+    this.asTechnique(() => {
+      this.updateIceWalls(dt, active);
+      this.updateZonesOfTech(dt);
+      this.updateEvolvedTech(dt);
+    });
     this.hazards.update(dt, this.time);
     this.terrain.update(dt, this.time);
   }

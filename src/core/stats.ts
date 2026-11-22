@@ -1,6 +1,6 @@
 // Atributos derivados do herói: herói + melhorias de nível + relíquias.
 import { DR_SPELL_POWER } from "../data/techniques";
-import { TUNING } from "../data/tuning";
+import { STACKING, TUNING } from "../data/tuning";
 
 export type StatKey =
   | "damage" // dano plano somado à base
@@ -34,7 +34,14 @@ export type StatKey =
   | "healPct" // cura recebida (lá, `healPct`; Seraph)
   | "bossDamagePct" // dano em chefe (lá, `bossDamagePct`; Smite do Seraph)
   | "burnStacks" // acúmulos extras de queimadura (lá, `burnStacks`; Ignis)
-  | "poisonStacks"; // acúmulos extras de veneno (lá, `poisonStacks`; Vesper)
+  | "poisonStacks" // acúmulos extras de veneno (lá, `poisonStacks`; Vesper)
+  | "techniqueDamagePct" // dano da técnica (lá, `techniqueDamagePct`; Signature)
+  | "followThroughPct" // todo o dano por 3 s depois da técnica (lá, `followThroughPct`)
+  | "deathHealChance" // chance de curar 10 ao matar (lá, `deathHealChance`; Blood Rite)
+  | "championXpPct"
+  | "championGoldPct"
+  | "survivorRewardPct" // ouro e XP de quem sobra no fim da onda
+  | "knockbackPct"; // empurrão do ataque básico em inimigo comum (lá, `knockbackPct`)
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -43,6 +50,8 @@ export const STAT_KEYS: StatKey[] = [
   "arcanePct", "burnPct", "slowPct", "slowDurationPct", "poisonPct", "maxHp", "maxHpPct", "attackSpeedPct", "moveSpeedPct", "critChance",
   "critDamagePct", "armor", "regen", "dodge", "cdrPct", "areaPct", "rangePct",
   "xpPct", "goldPct", "lifeOnKill", "healPct", "bossDamagePct", "burnStacks", "poisonStacks",
+  "techniqueDamagePct", "followThroughPct", "deathHealChance", "championXpPct", "championGoldPct", "survivorRewardPct",
+  "knockbackPct",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -78,6 +87,13 @@ export const STAT_LABEL: Record<StatKey, string> = {
   bossDamagePct: "Boss Damage",
   burnStacks: "Burn Stacks",
   poisonStacks: "Poison Stacks",
+  techniqueDamagePct: "Technique Damage",
+  followThroughPct: "Follow-Through",
+  deathHealChance: "Heal on Kill",
+  championXpPct: "Champion XP",
+  championGoldPct: "Champion Gold",
+  survivorRewardPct: "Survivor Reward",
+  knockbackPct: "Knockback",
 };
 
 const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true };
@@ -124,9 +140,9 @@ export interface FinalStats {
   slowPoints: number;
   slowDuration: number;
   poison: number;
-  /** o valor global no formato do pool das spells (negativo = mais rápido), somado ao pool de cada uma */
-  cooldownValue: number;
-  areaValue: number;
+  /** os valores globais no formato do pool das spells (negativo = mais rápido), somados ao pool de cada uma */
+  cooldownValues: number[];
+  areaValues: number[];
   area: number;
   range: number;
   xp: number;
@@ -140,6 +156,18 @@ export interface FinalStats {
   burnStacks: number;
   /** acúmulos de veneno a mais por aplicação de veneno do ataque */
   poisonStacks: number;
+  /** multiplicador do dano da técnica (Signature) */
+  techniqueDamage: number;
+  /** bônus de todo o dano nos 3 s depois da técnica (0 = nenhum) */
+  followThrough: number;
+  /** chance de curar `DEATH_HEAL` ao matar (pool com retorno decrescente) */
+  deathHealChance: number;
+  championXp: number;
+  championGold: number;
+  /** multiplicador da recompensa de quem sobra no fim da onda */
+  survivor: number;
+  /** empurrão do ataque básico (0 = nenhum; distância = `KNOCKBACK.px` × isto) */
+  knockback: number;
 }
 
 /** Escolas cujo dano tem bônus próprio (D14). As outras spells (cura, lâmina, veneno, vento...) usam 1. */
@@ -150,52 +178,101 @@ export function armorReduction(armor: number): number {
   return a / (a + 100);
 }
 
-/** Soma todas as fontes e devolve os atributos finais. `sources` = herói, melhorias e relíquias. */
+/** modifiers.lua §18.1-18.2: percentuais em pool (1 - Π(1 - p) nos positivos, Π(1 - |p|) nos negativos). */
+export function stackMultiplier(values: readonly number[]): number {
+  let pos = 1;
+  let neg = 1;
+  for (const v of values) {
+    if (v > 0) pos *= 1 - v;
+    else if (v < 0) neg *= 1 - Math.abs(v);
+  }
+  return (1 + (1 - pos)) * neg;
+}
+
+/** modifiers.lua `stackChance`: chances em pool, reduzidas pelos negativos, com teto. */
+export function stackChance(values: readonly number[], cap = 1): number {
+  let pos = 1;
+  let neg = 1;
+  for (const v of values) {
+    if (v > 0) pos *= 1 - v;
+    else if (v < 0) neg *= 1 - Math.abs(v);
+  }
+  return Math.max(0, Math.min(cap, (1 - pos) * neg));
+}
+
+/** modifiers.lua §21: teto suave da regeneração. */
+export function effectiveRegen(raw: number): number {
+  if (raw <= 0) return 0;
+  return STACKING.regenSoftcap * (1 - Math.exp(-raw / STACKING.regenSoftcap));
+}
+
+/**
+ * Junta todas as fontes e devolve os atributos finais (player/stats.lua `compute`). `sources` = herói, cada relíquia,
+ * cada melhoria e a loja: cada fonte entra com um valor por atributo. Planos somam; percentuais vão para o pool com
+ * retorno decrescente (`stackMultiplier`); chances (crítico, esquiva, cura ao matar) para `stackChance`.
+ */
 export function computeStats(sources: StatBlock[]): FinalStats {
   const t = TUNING.hero;
-  const sum: StatBlock = {};
-  for (const s of sources) addStats(sum, s);
-  const g = (k: StatKey) => sum[k] ?? 0;
+  const lists: Partial<Record<StatKey, number[]>> = {};
+  for (const s of sources) {
+    for (const k of STAT_KEYS) {
+      const v = s[k];
+      if (v !== undefined && v !== 0) (lists[k] ??= []).push(v);
+    }
+  }
+  const L = (k: StatKey): number[] => lists[k] ?? [];
+  const g = (k: StatKey) => L(k).reduce((a, b) => a + b, 0);
+  const m = (k: StatKey) => stackMultiplier(L(k));
 
   // como no Dungeon Reign, o nível não dá atributo: só as melhorias escolhidas
   const baseHp = t.baseHp + g("maxHp");
   const baseDmg = t.baseDamage + g("damage");
   const armor = g("armor");
+  // `cdrPct` positivo = mais rápido; lá `spellCooldownPct` negativo = mais rápido
+  const cooldownValues = L("cdrPct").map((v) => -v);
+  const areaValues = L("areaPct");
   return {
-    maxHp: Math.max(1, Math.round(baseHp * Math.max(0.2, 1 + g("maxHpPct")))),
-    damage: baseDmg * Math.max(0.1, 1 + g("damagePct")),
-    attackSpeed: Math.max(0.3, 1 + g("attackSpeedPct")),
-    moveSpeed: t.moveSpeed * Math.max(0.4, Math.min(1.8, 1 + g("moveSpeedPct"))),
-    critChance: Math.min(0.75, t.baseCritChance + g("critChance")),
-    critDamage: t.baseCritDamage + g("critDamagePct"),
+    maxHp: Math.max(1, Math.round(baseHp * Math.max(0.2, m("maxHpPct")))),
+    damage: baseDmg * Math.max(0.1, m("damagePct")),
+    attackSpeed: Math.max(0.3, m("attackSpeedPct")),
+    moveSpeed: t.moveSpeed * Math.max(0.4, Math.min(1.8, m("moveSpeedPct"))),
+    critChance: stackChance([t.baseCritChance, ...L("critChance")], STACKING.critCap),
+    critDamage: t.baseCritDamage * m("critDamagePct"),
     armor,
     damageTaken: 1 - armorReduction(armor),
-    regen: g("regen"),
-    dodge: Math.min(0.6, Math.max(0, g("dodge"))),
-    cooldownMult: Math.max(0.4, 1 - g("cdrPct")),
-    autoDamage: Math.max(0.1, 1 + g("autoDamagePct")),
+    regen: effectiveRegen(g("regen")),
+    dodge: stackChance(L("dodge"), STACKING.dodgeCap),
+    cooldownMult: Math.max(STACKING.cooldownFloor, stackMultiplier(cooldownValues)),
+    autoDamage: Math.max(0.1, m("autoDamagePct")),
     spellPower: Math.max(1, DR_SPELL_POWER + g("spellPower")),
-    spellDamage: Math.max(0.1, 1 + g("spellDamagePct")),
+    spellDamage: Math.max(0.1, m("spellDamagePct")),
     school: {
-      fire: Math.max(0.1, 1 + g("firePct")),
-      ice: Math.max(0.1, 1 + g("icePct")),
-      lightning: Math.max(0.1, 1 + g("lightningPct")),
-      arcane: Math.max(0.1, 1 + g("arcanePct")),
+      fire: Math.max(0.1, m("firePct")),
+      ice: Math.max(0.1, m("icePct")),
+      lightning: Math.max(0.1, m("lightningPct")),
+      arcane: Math.max(0.1, m("arcanePct")),
     },
-    burn: Math.max(0.1, 1 + g("burnPct")),
+    burn: Math.max(0.1, m("burnPct")),
     slowPoints: g("slowPct"),
-    slowDuration: Math.max(0.2, 1 + g("slowDurationPct")),
-    poison: Math.max(0.1, 1 + g("poisonPct")),
-    cooldownValue: -g("cdrPct"),
-    areaValue: g("areaPct"),
-    area: Math.max(0.5, 1 + g("areaPct")),
-    range: Math.max(0.5, 1 + g("rangePct")),
-    xp: Math.max(0.1, 1 + g("xpPct")),
-    gold: Math.max(0.1, 1 + g("goldPct")),
+    slowDuration: Math.max(0.2, m("slowDurationPct")),
+    poison: Math.max(0.1, m("poisonPct")),
+    cooldownValues,
+    areaValues,
+    area: Math.max(0.5, stackMultiplier(areaValues)),
+    range: Math.max(0.5, m("rangePct")),
+    xp: Math.max(0.1, m("xpPct")),
+    gold: Math.max(0.1, m("goldPct")),
     lifeOnKill: g("lifeOnKill"),
-    healing: (armor > 0 ? 1 + armor / (armor + 60) : 1) * Math.max(0.1, 1 + g("healPct")),
-    bossDamage: Math.max(0.1, 1 + g("bossDamagePct")),
+    healing: (armor > 0 ? 1 + armor / (armor + 60) : 1) * Math.max(0.1, m("healPct")),
+    bossDamage: Math.max(0.1, m("bossDamagePct")),
     burnStacks: 1 + Math.max(0, g("burnStacks")),
     poisonStacks: Math.max(0, g("poisonStacks")),
+    techniqueDamage: Math.max(0.1, m("techniqueDamagePct")),
+    followThrough: Math.max(0, m("followThroughPct") - 1),
+    deathHealChance: stackChance(L("deathHealChance")),
+    championXp: Math.max(0.1, m("championXpPct")),
+    championGold: Math.max(0.1, m("championGoldPct")),
+    survivor: Math.max(0.1, m("survivorRewardPct")),
+    knockback: Math.max(0, m("knockbackPct") - 1),
   };
 }

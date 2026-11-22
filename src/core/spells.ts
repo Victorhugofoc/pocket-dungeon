@@ -13,10 +13,10 @@ import { PACE } from "../data/pace";
 
 /** O que a spell precisa dos atributos do herói (subconjunto de FinalStats). */
 export interface SpellContext {
-  /** recarga global no formato do pool (FinalStats.cooldownValue; negativo = mais rápida), somada ao pool da spell */
-  cooldownValue?: number;
-  /** área global (FinalStats.areaValue), somada ao pool de área da spell */
-  areaValue?: number;
+  /** recarga global no formato do pool (FinalStats.cooldownValues; negativo = mais rápida), somada ao pool da spell */
+  cooldownValues?: readonly number[];
+  /** área global (FinalStats.areaValues), somada ao pool de área da spell */
+  areaValues?: readonly number[];
   range: number;
   /** poder de magia na escala de lá (8 no início; FinalStats.spellPower) */
   spellPower?: number;
@@ -39,7 +39,7 @@ export interface SpellContext {
 /** O que as spells leem dos atributos finais do herói (D14). */
 export function spellContext(s: FinalStats): SpellContext {
   return {
-    cooldownValue: s.cooldownValue, areaValue: s.areaValue, range: s.range, spellPower: s.spellPower,
+    cooldownValues: s.cooldownValues, areaValues: s.areaValues, range: s.range, spellPower: s.spellPower,
     spellDamage: s.spellDamage, school: s.school, burn: s.burn, slowPoints: s.slowPoints,
     slowDuration: s.slowDuration, poison: s.poison,
   };
@@ -227,9 +227,9 @@ export function spellStats(
   const levelScale = spellLevelScale(level);
   const evo = slotEvolution(slot);
   // §34: a recarga e a área globais entram no mesmo pool que as da spell (D14)
-  const areaMult = stackMultiplier([...(ctx.areaValue ? [ctx.areaValue] : []), ...L.areaPct]) * PACE.spellAreaMult;
+  const areaMult = stackMultiplier([...(ctx.areaValues ?? []), ...L.areaPct]) * PACE.spellAreaMult;
   const cooldownMult = Math.max(SPELL_TUNING.cooldownFloor,
-    stackMultiplier([...(ctx.cooldownValue ? [ctx.cooldownValue] : []), ...L.cooldownPct]) * (evo?.cooldownMult ?? 1));
+    stackMultiplier([...(ctx.cooldownValues ?? []), ...L.cooldownPct]) * (evo?.cooldownMult ?? 1));
   const school = ctx.school?.[def.school] ?? 1;
   const burnMult = (ctx.burn ?? 1) * (ctx.school?.fire ?? 1);
   const slowDurMult = ctx.slowDuration ?? 1;

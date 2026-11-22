@@ -203,16 +203,28 @@ export function applyUpgrade(run: RunState, id: string, tier: UpgradeTier): Upgr
   return u;
 }
 
-/** As melhorias pegas como atributos daqui (soma; os de lá sem equivalente ficam de fora). */
-export function upgradeStats(run: RunState): StatBlock {
-  const out: StatBlock = {};
+/**
+ * As melhorias pegas como atributos daqui, uma fonte por melhoria (como `Stats:addSource` de lá), para as pilhas
+ * com retorno decrescente de `computeStats`. Os atributos de lá sem equivalente ficam de fora.
+ */
+export function upgradeSources(run: RunState): StatBlock[] {
+  const out: StatBlock[] = [];
   run.upgradesTaken.forEach((id, i) => {
     const u = UPGRADE_BY_ID[id];
     if (!u) return;
+    const b: StatBlock = {};
     for (const e of effectsFor(u, run.upgradeTiers[i])) {
       const m = UPGRADE_STAT[e.stat];
-      if (m) out[m.key] = (out[m.key] ?? 0) + e.value * m.scale;
+      if (m) b[m.key] = (b[m.key] ?? 0) + e.value * m.scale;
     }
+    out.push(b);
   });
+  return out;
+}
+
+/** As melhorias pegas somadas num bloco (para mostrar; o cálculo usa `upgradeSources`). */
+export function upgradeStats(run: RunState): StatBlock {
+  const out: StatBlock = {};
+  for (const b of upgradeSources(run)) for (const k in b) out[k as keyof StatBlock] = (out[k as keyof StatBlock] ?? 0) + b[k as keyof StatBlock]!;
   return out;
 }
