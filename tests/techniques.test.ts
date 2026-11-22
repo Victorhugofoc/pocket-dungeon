@@ -7,6 +7,21 @@ import { HEROES } from "../src/data/heroes";
 const ctx: TechContext = { cooldownMult: 1, area: 1, range: 1, autoDamage: 1 };
 
 describe("técnicas", () => {
+  it("exclusivas de herói como spell_stats.lua: Permafrost, Static Charge e Time Loop", () => {
+    const wall = techniqueStats("glacial_wall", 1, ctx);
+    const wallP = techniqueStats("glacial_wall", 1, { ...ctx, permafrost: 1 });
+    expect(wallP.freeze).toBeCloseTo((wall.freeze ?? 0) + 1);
+    expect(wallP.duration).toBeCloseTo((wall.duration ?? 0) + 2);
+    const step = techniqueStats("storm_step", 1, ctx);
+    const stepS = techniqueStats("storm_step", 1, { ...ctx, staticCharge: 1 });
+    expect(stepS.trail).toBeCloseTo((step.trail ?? 0) + 1);
+    expect(step.trailMult).toBeUndefined();
+    expect(stepS.trailMult).toBe(2);
+    expect(techniqueStats("time_rift", 1, { ...ctx, riftDuration: 1 }).duration).toBeCloseTo((techniqueStats("time_rift", 1, ctx).duration ?? 0) + 1);
+    // a exclusiva de um não mexe na técnica do outro
+    expect(techniqueStats("time_rift", 1, { ...ctx, permafrost: 1 }).duration).toBe(techniqueStats("time_rift", 1, ctx).duration);
+  });
+
   it("há uma técnica por herói e todas têm 4 marcos (níveis 2 a 5)", () => {
     expect(TECHNIQUE_ORDER.length).toBe(9);
     const heroes = new Set(TECHNIQUE_ORDER.map((id) => TECHNIQUES[id].hero));

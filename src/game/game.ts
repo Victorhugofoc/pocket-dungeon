@@ -31,7 +31,7 @@ import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
-import { TUNING, UPGRADE_FX } from "../data/tuning";
+import { HERO_UPGRADES, TUNING, UPGRADE_FX } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
 import { Audio } from "./audio";
@@ -158,6 +158,10 @@ interface Projectile {
   icicleSooner?: number;
   /** Big Iron: dano a mais em quem está perto do Zephyr */
   pointBlank?: number;
+  /** tiro inimigo: quem atirou (JUDGEMENT) */
+  owner?: Enemy;
+  /** BOOMERANG (Seraph): o escudo vai até o alcance e volta, acertando todos nos dois sentidos; `back` = voltando */
+  boomerang?: { back: boolean };
 }
 
 /** Golpe extra do Double Shot num estilo de arco, ou o escudo de luz do Seraph (H8). */
@@ -484,7 +488,8 @@ export class Game {
     this.elements = this.buildElements();
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
-      ? techniqueStats(tid, this.run.technique.level, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage })
+      ? techniqueStats(tid, this.run.technique.level, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage,
+        permafrost: this.stats.permafrost, staticCharge: this.stats.staticCharge, riftDuration: this.stats.riftDuration })
       : null;
     this.spells.refresh();
     this.player.hp = Math.min(this.player.hp, this.stats.maxHp);
@@ -742,9 +747,9 @@ export class Game {
     pr.fx = undefined;
   }
 
-  spawnEnemyProjectile(x: number, z: number, angle: number, speed: number, dmg: number, color: number, r: number): void {
+  spawnEnemyProjectile(x: number, z: number, angle: number, speed: number, dmg: number, color: number, r: number, owner?: Enemy): void {
     this.addProjectile({ x, z, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed, r, dmg, life: 26 / speed, friendly: false,
-      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile" });
+      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile", owner });
   }
 
   /**
@@ -766,6 +771,10 @@ export class Game {
     // Arcane Strike pronto: o tiro sai carregado, roxo e maior (D-215)
     const charged = this.spells.arcaneReady;
     const bounce = styled && (st === "gunslinger" || st === "shieldthrow");
+    // Seraph (shield_throw.lua): BOOMERANG troca os ricochetes por ida e volta; HOLY RICOCHET dá +2 que ferem mais
+    const shield = styled && st === "shieldthrow";
+    const boomerang = shield && s.shieldBoomerang > 0;
+    const holy = shield && !boomerang && s.shieldRicochet > 0;
     let status = auto.status;
     if (styled && st === "venom" && status && s.doubleShot > 0) status = { ...status, maxStacks: (status.maxStacks ?? 1) + s.doubleShot };
     const side = opt.side ?? 0;
@@ -773,8 +782,10 @@ export class Game {
     this.addProjectile({
       x: p.x + Math.sin(angle) * 0.7 + sx, z: p.z + Math.cos(angle) * 0.7 + sz, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed,
       r: 0.24 * (auto.size ?? 1) * (icicle ? 1.9 : 1) * (charged ? ARCANE_CHARGED.size : 1), dmg: mult * (icicle ? FROST.icicleMult : 1), life: range / speed, friendly: true,
-      pierce: (auto.pierce ?? 0) + (styled && !bounce ? s.pierce : 0),
-      ricochet: (auto.ricochet ?? 0) + (bounce ? s.pierce : 0), ricochetDamage: auto.ricochetDamage ?? 1,
+      pierce: boomerang ? 1e9 : (auto.pierce ?? 0) + (styled && !bounce ? s.pierce : 0),
+      ricochet: boomerang ? 0 : (auto.ricochet ?? 0) + (bounce ? s.pierce : 0) + (holy ? HERO_UPGRADES.holyBounces : 0),
+      ricochetDamage: holy ? HERO_UPGRADES.holyMult : auto.ricochetDamage ?? 1,
+      boomerang: boomerang ? { back: false } : undefined,
       status, color: icicle ? 0xf2fbff : charged ? ARCANE_CHARGED.color : auto.color, source: "auto", ice, icicle,
       crit: this.autoMod?.crit || undefined, knock: this.autoMod?.knock || undefined,
       styled: styled || undefined,
@@ -823,6 +834,28 @@ export class Game {
     } else this.fx.burst(pr.x, 1.15, pr.z, 0xffe9b0, 10, 5, 0.1, 0.25, 2);
   }
 
+  /**
+   * shield_throw.lua `step` no modo "line" (BOOMERANG): no fim da ida (alcance ou parede) o escudo vira para o herói
+   * e esquece quem acertou; na volta segue o herói. `turn` = chegou ao fim da ida (devolve true se virou); senão
+   * devolve true quando o escudo voltou à mão.
+   */
+  private boomerangStep(pr: Projectile, turn: boolean): boolean {
+    const b = pr.boomerang!;
+    const p = this.player;
+    const sp = Math.hypot(pr.vx, pr.vz) || 1;
+    const dx = p.x - pr.x, dz = p.z - pr.z;
+    const d = Math.hypot(dx, dz) || 1;
+    if (turn) {
+      if (b.back) return false;
+      b.back = true;
+      pr.hit.clear();
+      pr.life = 4;
+    } else if (d <= sp * 0.05 + 0.6) return true;
+    pr.vx = (dx / d) * sp;
+    pr.vz = (dz / d) * sp;
+    return turn;
+  }
+
   private updateProjectiles(dt: number): void {
     const p = this.player;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
@@ -835,7 +868,10 @@ export class Game {
         pr.z += pr.vz * dt;
       }
       if (pr.friendly && pr.bounces && pr.bounces > 0) this.trickShot(pr);
-      let dead = pr.life <= 0 || this.grid.hits(pr.x, pr.z, pr.r * 0.5) || this.terrain.shot(pr.x, pr.z, pr.r);
+      // o escudo do BOOMERANG volta à mão sem bater em parede
+      let dead = pr.life <= 0 || (!pr.boomerang?.back && (this.grid.hits(pr.x, pr.z, pr.r * 0.5) || this.terrain.shot(pr.x, pr.z, pr.r)));
+      if (dead && pr.boomerang && this.boomerangStep(pr, true)) dead = false;
+      else if (!dead && pr.boomerang?.back && this.boomerangStep(pr, false)) dead = true;
       // Rune Traps (D-575): o tiro do ataque básico estoura a runa armada que cruza
       if (!dead && pr.friendly && pr.source === "auto" && this.spells.hasRunes) {
         this.spells.shootRunes((x, z, trig) => (x - pr.x) ** 2 + (z - pr.z) ** 2 <= (pr.r + trig) ** 2);
@@ -856,7 +892,7 @@ export class Game {
           }
           // H8 (§26): do 2º alvo em diante o tiro que atravessa fere 50%; o salto do Kaelen e o ricochete do Zephyr, 70%
           let dmg = pr.dmg;
-          if (pr.styled && !first) {
+          if (pr.styled && !first && !pr.boomerang) {
             dmg *= pr.chained ? STYLE_STORM.chainMult : pr.bounced ? (pr.flatRicochet ? pr.ricochetDamage : 1) : AUTO_SHOT.pierceFraction;
           }
           if (pr.pointBlank && (e.x - p.x) ** 2 + (e.z - p.z) ** 2 <= px(STYLE_GUN.pointBlankRange) ** 2) dmg *= 1 + pr.pointBlank;
@@ -913,7 +949,7 @@ export class Game {
       } else if (!dead && this.playerAlive) {
         const rr = 0.55 + pr.r;
         if ((p.x - pr.x) ** 2 + (p.z - pr.z) ** 2 < rr * rr && p.iframes <= 0) {
-          this.hurtPlayer(pr.dmg, pr.source);
+          this.hurtPlayer(pr.dmg, pr.source, pr.owner);
           dead = true;
         }
       }
@@ -1026,6 +1062,8 @@ export class Game {
   damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId } = {}): void {
     if (e.dead) return;
     if (e.isBoss) amount *= this.stats.bossDamage; // damage.lua: Smite do Seraph (D-317)
+    // EXECUTIONER (Varok): chefe abaixo de 30% da vida leva mais
+    if (e.isBoss && this.stats.executioner > 0 && e.hp < e.maxHp * HERO_UPGRADES.executionerBelow) amount *= 1 + this.stats.executioner;
     if (this.stats.followThrough > 0 && this.time < this.player.followUntil) amount *= 1 + this.stats.followThrough;
     amount *= this.epics.damageMult();
     amount = Math.max(1, Math.round(amount));
@@ -1070,6 +1108,7 @@ export class Game {
   private killEnemy(e: Enemy, source: KillSource = "other"): void {
     e.dead = true;
     e.hp = 0;
+    this.spreadOnKill(e);
     this.spells.onKill(e);
     this.epics.onKill();
     this.ach.enemyKilled({ key: e, id: e.boss?.id ?? e.def!.id, boss: e.isBoss, champion: e.champion, source,
@@ -1097,6 +1136,34 @@ export class Game {
     }
     if (!e.summoned) this.rollHealOrb(e);
     if (e.isBoss) this.onBossKilled(e);
+  }
+
+  /**
+   * techniques.lua `Tech.wildfire` e `Tech.contagion` (M20-12 parte 3): quem morre queimando passa a queimadura
+   * para quem está perto (Ignis); quem morre envenenado passa metade dos acúmulos para o mais perto (Vesper).
+   */
+  private spreadOnKill(e: Enemy): void {
+    const H = HERO_UPGRADES;
+    const now = this.time;
+    const burn = this.stats.wildfire > 0 ? e.dots.find((d) => d.kind === "burn" && d.until > now) : undefined;
+    if (burn) {
+      const r = px(H.wildfireRadiusPx);
+      const dur = Math.max(H.wildfireMinTime, burn.until - now);
+      for (const o of this.enemies) {
+        if (o === e || o.dead || (o.x - e.x) ** 2 + (o.z - e.z) ** 2 > (r + o.radius) ** 2) continue;
+        o.applyBurn(now, burn.dps, dur, burn.spell, burn.slot);
+      }
+      this.fx.lib.ring(e.x, e.z, { radius: r, color: 0xff6a1a, core: 0xffd27a, width: 0.35, from: 0.3, dust: 8, dur: 0.4 });
+    }
+    const po = this.stats.contagion > 0 ? e.dots.find((d) => d.kind === "poison" && d.until > now) : undefined;
+    if (po) {
+      const o = this.nearestEnemy(e.x, e.z, px(H.contagionRangePx), new Set([e]));
+      if (o) {
+        const n = Math.max(1, Math.ceil((po.stacks ?? 1) / 2));
+        for (let k = 0; k < n; k++) o.applyPoison(now, po.dps, po.duration ?? Math.max(1, po.until - now), po.maxStacks ?? 1, undefined, po.spell);
+        this.fx.burst(o.x, 1, o.z, 0x9dff7a, 10, 4, 0.1, 0.4, 2);
+      }
+    }
   }
 
   /** Orbe de cura (M21-03, cura no risco): chance por tipo de inimigo com ritmo (`PACE.healOrb`), teto por onda; o campeão sempre deixa. */
@@ -1317,7 +1384,8 @@ export class Game {
     this.evolutionOffer = null;
   }
 
-  hurtPlayer(amount: number, source: string): void {
+  /** `attacker`: quem bateu (JUDGEMENT devolve o golpe bloqueado pelo Aegis). */
+  hurtPlayer(amount: number, source: string, attacker?: Enemy): void {
     void source;
     const p = this.player;
     if (!this.playerAlive) return;
@@ -1329,6 +1397,8 @@ export class Game {
       this.fx.text(p.x, 2.6, p.z, "Dodge", "dodge");
       p.iframes = 0.15;
       this.ach.dodge();
+      // NIGHTFALL (Umbra): cada esquiva tira 0,5 s da recarga da técnica
+      if (this.stats.nightfall > 0 && p.techCd > 0) p.techCd = Math.max(0, p.techCd - HERO_UPGRADES.nightfallCdr * this.stats.nightfall);
       return;
     }
     if (p.aegis?.block) {
@@ -1348,6 +1418,11 @@ export class Game {
       this.fx.addShake(0.18);
       p.aegis.fx.power = 0.45;
       this.audio.play("crit");
+      // JUDGEMENT (Seraph): o golpe bloqueado volta para quem bateu, ×2
+      if (this.stats.judgement > 0 && attacker && !attacker.dead) {
+        this.damageEnemy(attacker, amount * HERO_UPGRADES.judgementMult * this.stats.judgement);
+        this.fx.lib.burst(attacker.x, 1.4, attacker.z, { radius: 1.4, color: TECH_FX.holy, core: TECH_FX.holyCore, rays: 6, sparks: 12, light: 1.4, dur: 0.18, wave: 0 });
+      }
       return;
     }
     amount *= this.stats.damageTaken;
@@ -2337,7 +2412,7 @@ export class Game {
         this.grid.resolve(p, 0.5);
         this.terrain.resolve(p, 0.5);
         p.iframes = Math.max(p.iframes, T.invuln ?? 0.3);
-        this.addTrail(x0, z0, p.x, p.z, hw, T.trail ?? 2, T.trailTick ?? 0.4, T.damage * (T.trailFraction ?? 0.35), color);
+        this.addTrail(x0, z0, p.x, p.z, hw, T.trail ?? 2, T.trailTick ?? 0.4, T.damage * (T.trailFraction ?? 0.35) * (T.trailMult ?? 1), color);
         // M5-03: o herói vira raio; relâmpago do ponto de saída ao de chegada, estalo na saída e descarga na chegada
         const lib = this.fx.lib;
         lib.lightning(x0, 1.1, z0, p.x, 1.1, p.z, { color: TECH_FX.boltBody, core: TECH_FX.boltCore, width: 0.28, branches: 3, rate: 0.05, dur: 0.3 });

@@ -213,4 +213,15 @@ export const UPGRADE_STAT: Readonly<Record<string, { key: StatKey; scale: number
   pierce: { key: "pierce", scale: 1 },
   autoProjectileSpeedPct: { key: "autoProjectileSpeedPct", scale: 1 },
   fanShots: { key: "fanShots", scale: 1 },
+  // M20-12 parte 3: as exclusivas de herói (efeitos em `HERO_UPGRADES`, data/tuning.ts)
+  permafrost: { key: "permafrost", scale: 1 },
+  staticCharge: { key: "staticCharge", scale: 1 },
+  riftDurationFlat: { key: "riftDurationFlat", scale: 1 },
+  wildfire: { key: "wildfire", scale: 1 },
+  executionerPct: { key: "executionerPct", scale: 1 },
+  nightfall: { key: "nightfall", scale: 1 },
+  judgement: { key: "judgement", scale: 1 },
+  contagion: { key: "contagion", scale: 1 },
+  shieldBoomerang: { key: "shieldBoomerang", scale: 1 },
+  shieldRicochet: { key: "shieldRicochet", scale: 1 },
 };

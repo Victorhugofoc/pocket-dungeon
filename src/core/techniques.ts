@@ -5,6 +5,7 @@ import {
   DR_BASE_DAMAGE, DR_PX_PER_M, DR_SPELL_POWER, TECH_LEVEL_STEP, TECH_MAX_LEVEL, TECHNIQUES,
   type TechDef, type TechMilestoneEffect,
 } from "../data/techniques";
+import { HERO_UPGRADES } from "../data/tuning";
 
 /** O que a técnica precisa dos atributos do herói (subconjunto de FinalStats, mais o ataque básico dele). */
 export interface TechContext {
@@ -13,6 +14,10 @@ export interface TechContext {
   range: number;
   /** multiplicador do ataque básico do herói (HeroDef.auto.damage) */
   autoDamage: number;
+  /** M20-12 parte 3 (spell_stats.lua): exclusivas de herói que mexem na técnica; 0 ou ausente = nenhuma */
+  permafrost?: number;
+  staticCharge?: number;
+  riftDuration?: number;
 }
 
 export interface TechStats {
@@ -38,6 +43,8 @@ export interface TechStats {
   stun?: number;
   // por tipo
   trail?: number; trailTick?: number; trailFraction?: number; shockRadius?: number;
+  /** STATIC CHARGE: multiplicador do dano do rastro */
+  trailMult?: number;
   riftSlow?: number; perEnemy?: number; maxMult?: number;
   shots?: number; spread?: number; bounces?: number; bounceDamage?: number;
   shatter?: boolean;
@@ -170,6 +177,17 @@ export function techniqueStats(id: string, level: number, ctx: TechContext): Tec
       st.poisonStacks = num(def, "poisonStacks");
       if (evolved) st.poolTime = num(def, "evoPoolTime");
       break;
+  }
+  // spell_stats.lua: as exclusivas de herói (1.9.9 D-310 AF-5)
+  const H = HERO_UPGRADES;
+  if (def.kind === "blink" && (ctx.staticCharge ?? 0) > 0) {
+    st.trail = (st.trail ?? 0) + H.staticTrail * ctx.staticCharge!;
+    st.trailMult = H.staticTrailMult;
+  }
+  if (def.kind === "rift" && (ctx.riftDuration ?? 0) > 0) st.duration = (st.duration ?? 0) + ctx.riftDuration!;
+  if (def.kind === "icewall" && (ctx.permafrost ?? 0) > 0) {
+    st.freeze = (st.freeze ?? 0) + H.permafrostFreeze * ctx.permafrost!;
+    st.duration = (st.duration ?? 0) + H.permafrostDuration * ctx.permafrost!;
   }
   return st;
 }

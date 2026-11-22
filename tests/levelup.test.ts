@@ -46,17 +46,10 @@ describe("melhorias de nível (level_up.lua)", () => {
     expect(new Set(a).size).toBe(3);
     for (const id of a) expect(upgradeLive(UPGRADE_BY_ID[id])).toBe(true);
   });
-  it("as ligadas: ataque, defesa, economia, magia, escolas, queimadura, lentidão e (M20-12) técnica, recompensa e tiros extras", () => {
-    const live = UPGRADES.filter(upgradeLive).map((u) => u.id);
-    expect(live).toEqual([
-      "spellweave", "brutality", "rapid_strike", "deadly_edge", "critical_edge", "double_shot", "cone_shot", "piercing_round",
-      "glass_cannon", "heavy_shot", "concussive_rounds", "wide_bore", "focused_volley",
-      "signature", "follow_through", "kindling", "quickdraw", "fleetfoot",
-      "vitality", "long_reach", "evasive_footwork", "phantom_step", "blood_rite", "second_wind", "iron_skin", "runic_ward",
-      "infernal_affinity", "frost_affinity", "storm_affinity", "arcane_affinity", "elemental_attunement", "arcane_conversion",
-      "cold_precision", "martial_focus", "arcane_focus", "arcane_power", "arcane_haste", "spell_surge", "quickened_mind",
-      "spellsworn", "overchannel", "blade_discipline", "wisdom", "golden_instinct", "champions_bounty", "survivors_grace",
-    ]);
+  it("todas as melhorias de upgrades.lua estão ligadas (M20-12 parte 3: as exclusivas de herói)", () => {
+    expect(UPGRADES.filter((u) => !upgradeLive(u)).map((u) => u.id)).toEqual([]);
+    for (const id of ["permafrost", "static_charge", "time_loop", "wildfire", "executioner", "nightfall", "judgement",
+      "contagion", "boomerang", "holy_ricochet", "quickdraw"]) expect(UPGRADE_BY_ID[id]?.hero).toBeTruthy();
   });
   it("aplicar grava a raridade e as tags e gasta um nível; a única não volta", () => {
     const r = run();

@@ -48,7 +48,18 @@ export type StatKey =
   | "coneShot"
   | "pierce"
   | "autoProjectileSpeedPct"
-  | "fanShots"; // tiros a mais no Fan the Hammer (Quickdraw)
+  | "fanShots" // tiros a mais no Fan the Hammer (Quickdraw)
+  // M20-12 parte 3: as exclusivas de herói (contagens, menos `riftDurationFlat` em s e `executionerPct`)
+  | "permafrost"
+  | "staticCharge"
+  | "riftDurationFlat"
+  | "wildfire"
+  | "executionerPct"
+  | "nightfall"
+  | "judgement"
+  | "contagion"
+  | "shieldBoomerang"
+  | "shieldRicochet";
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -59,6 +70,8 @@ export const STAT_KEYS: StatKey[] = [
   "xpPct", "goldPct", "lifeOnKill", "healPct", "bossDamagePct", "burnStacks", "poisonStacks",
   "techniqueDamagePct", "followThroughPct", "deathHealChance", "championXpPct", "championGoldPct", "survivorRewardPct",
   "knockbackPct", "doubleShot", "coneShot", "pierce", "autoProjectileSpeedPct", "fanShots",
+  "permafrost", "staticCharge", "riftDurationFlat", "wildfire", "executionerPct", "nightfall", "judgement", "contagion",
+  "shieldBoomerang", "shieldRicochet",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -106,10 +119,22 @@ export const STAT_LABEL: Record<StatKey, string> = {
   pierce: "Pierce",
   autoProjectileSpeedPct: "Projectile Speed",
   fanShots: "Fan the Hammer shots",
+  permafrost: "Permafrost",
+  staticCharge: "Static Charge",
+  riftDurationFlat: "Time Rift duration (s)",
+  wildfire: "Wildfire",
+  executionerPct: "Executioner",
+  nightfall: "Nightfall",
+  judgement: "Judgement",
+  contagion: "Contagion",
+  shieldBoomerang: "Boomerang",
+  shieldRicochet: "Holy Ricochet",
 };
 
 const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true,
-  doubleShot: true, coneShot: true, pierce: true, fanShots: true };
+  doubleShot: true, coneShot: true, pierce: true, fanShots: true,
+  permafrost: true, staticCharge: true, riftDurationFlat: true, wildfire: true, nightfall: true, judgement: true, contagion: true,
+  shieldBoomerang: true, shieldRicochet: true };
 
 export function isFlat(k: StatKey): boolean {
   return FLAT[k] === true;
@@ -190,6 +215,18 @@ export interface FinalStats {
   /** Big Iron (Zephyr): dano a mais em quem está perto (0 = nenhum) */
   pointBlank: number;
   fanShots: number;
+  /** M20-12 parte 3 (stats.lua `sum`): as exclusivas de herói, somadas sem retorno decrescente */
+  permafrost: number;
+  staticCharge: number;
+  riftDuration: number;
+  wildfire: number;
+  /** dano a mais em chefe abaixo de `HERO_UPGRADES.executionerBelow` da vida */
+  executioner: number;
+  nightfall: number;
+  judgement: number;
+  contagion: number;
+  shieldBoomerang: number;
+  shieldRicochet: number;
 }
 
 /** Escolas cujo dano tem bônus próprio (D14). As outras spells (cura, lâmina, veneno, vento...) usam 1. */
@@ -308,5 +345,15 @@ export function computeStats(sources: StatBlock[], style: AutoStyle = "normal"):
     projectileSpeed: arcLike || gun ? 1 : Math.max(0.3, m("autoProjectileSpeedPct")),
     pointBlank: gun ? slow * AUTO_SHOT.pointBlankPerSlow : 0,
     fanShots: Math.max(0, g("fanShots")),
+    permafrost: Math.max(0, g("permafrost")),
+    staticCharge: Math.max(0, g("staticCharge")),
+    riftDuration: Math.max(0, g("riftDurationFlat")),
+    wildfire: Math.max(0, g("wildfire")),
+    executioner: Math.max(0, g("executionerPct")),
+    nightfall: Math.max(0, g("nightfall")),
+    judgement: Math.max(0, g("judgement")),
+    contagion: Math.max(0, g("contagion")),
+    shieldBoomerang: Math.max(0, g("shieldBoomerang")),
+    shieldRicochet: Math.max(0, g("shieldRicochet")),
   };
 }
