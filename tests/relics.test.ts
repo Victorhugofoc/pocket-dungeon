@@ -1,6 +1,6 @@
 // Motor de relíquias (core/relics.ts): posse com tags, fontes de atributo, efeitos de spell e despacho dos ganchos.
 import { describe, expect, it } from "vitest";
-import { grantRelic, relicDraftable, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
+import { bossRelicOffer, BURN_SPREAD, CAST_HEAL, FROSTBITE, GLASS_THRONE, grantRelic, prismSchool, PRISM_CYCLE, relicDraftable, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, type RelicFoe, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
 import { newRun } from "../src/core/run";
 import { computeStats } from "../src/core/stats";
 import { spellContext, spellStats } from "../src/core/spells";
@@ -10,7 +10,8 @@ import { RELIC_IDS, RELIC_MECH, RELICS, type RelicDef } from "../src/data/relics
 const run = () => newRun({ heroId: "frostine", difficultyId: "normal", startingSpell: HEROES.frostine.startingSpells[0], randomSeed: 7 });
 
 const world = (over: Partial<RelicWorld> = {}): RelicWorld => ({
-  time: 0, waveActive: true, hp: 50, maxHp: 100, gold: 0, moving: false, heal: () => {}, emit: () => {}, ...over,
+  time: 0, waveActive: true, hp: 50, maxHp: 100, gold: 0, moving: false, heal: () => {}, emit: () => {},
+  foes: () => [], stun: () => true, burn: () => {}, ...over,
 });
 
 describe("relíquias: dados", () => {
@@ -93,7 +94,7 @@ describe("relíquias: ganchos", () => {
     const w = world();
     h.refresh({ lifeOnKill: 0.5 });
     expect(h.ids).toEqual(["streak"]);
-    const e = { x: 0, z: 0, maxHp: 10, champion: false, boss: false };
+    const e = { key: {}, x: 0, z: 0, maxHp: 10, champion: false, boss: false, slowed: false, burn: null };
     h.onKill(w, e);
     h.onKill(w, e);
     expect(h.attackSpeedMult(w)).toBeCloseTo(1.06);
@@ -241,5 +242,100 @@ describe("relíquias: lote 2 (M12-03)", () => {
     const p = stats(["pyre_sigil"]);
     expect(p.school.fire / stats([]).school.fire).toBeCloseTo(1.2, 6); // o pool positivo multiplica o -50% da Frostine
     expect(p.school.ice).toBeLessThan(stats([]).school.ice);
+  });
+});
+
+describe("relíquias: lote 3 (M12-04)", () => {
+  const stats = (ids: string[]) => computeStats([HEROES.frostine.stats, ...relicSources(ids)]);
+  const foe = (over: Partial<RelicFoe> = {}): RelicFoe => ({ key: {}, x: 0, z: 0, boss: false, slowed: false, burn: null, ...over });
+
+  it("Cinder Lens passa a queimadura de quem morre ao vizinho mais perto, no máximo 2,5 s", () => {
+    const near = foe({ x: 1 }), far = foe({ x: 2 }), out = foe({ x: 50 });
+    const got: { f: RelicFoe; dps: number; t: number }[] = [];
+    const w = world({ foes: () => [far, near, out], burn: (f, dps, t) => { got.push({ f, dps, t }); } });
+    const h = new RelicHooks([BURN_SPREAD]);
+    h.refresh({ burnSpread: 1 });
+    h.onKill(w, { ...foe({ burn: { dps: 4, left: 6 } }), maxHp: 10, champion: false });
+    expect(got).toEqual([{ f: near, dps: 4, t: RELIC_MECH.spreadMaxTime }]);
+    h.onKill(w, { ...foe(), maxHp: 10, champion: false });
+    expect(got.length).toBe(1);
+  });
+
+  it("Frost Crown congela depois de 3 s de Slow seguido e espera 4 s; chefe não congela", () => {
+    const e = foe({ slowed: true }), b = foe({ slowed: true, boss: true });
+    const stunned: RelicFoe[] = [];
+    const w = world({ foes: () => [e, b], stun: (f) => { if (f.boss) return false; stunned.push(f); return true; } });
+    const h = new RelicHooks([FROSTBITE]);
+    h.refresh({ frostbite: 0.6 });
+    for (let i = 0; i < 29; i++) h.tick(w, 0.1);
+    expect(stunned).toEqual([]);
+    h.tick(w, 0.15);
+    expect(stunned).toEqual([e]);
+    for (let i = 0; i < 60; i++) h.tick(w, 0.1); // 4 s de espera + 2 s de Slow: ainda não
+    expect(stunned.length).toBe(1);
+    for (let i = 0; i < 11; i++) h.tick(w, 0.1);
+    expect(stunned.length).toBe(2);
+  });
+
+  it("Glass Throne dá o bônus até levar golpe, e volta 5 s depois", () => {
+    const w = world({ time: 10 });
+    const h = new RelicHooks([GLASS_THRONE]);
+    h.refresh({ untouchedPct: 0.6 });
+    expect(h.damageMult(w, { source: "auto", boss: false })).toBeCloseTo(1.6);
+    h.onPlayerHit(w, 0);
+    expect(h.damageMult(w, { source: "auto", boss: false })).toBeCloseTo(1.6);
+    h.onPlayerHit(w, 3);
+    expect(h.damageMult(w, { source: "auto", boss: false })).toBe(1);
+    expect(h.statuses({ ...w, time: 12 })[0].left).toBeCloseTo(2);
+    expect(h.damageMult({ ...w, time: 15 }, { source: "auto", boss: false })).toBeCloseTo(1.6);
+  });
+
+  it("Mana Battery cura por spell, no mínimo 1", () => {
+    let healed = 0;
+    const h = new RelicHooks([CAST_HEAL]);
+    h.refresh({ castHealPct: 0.005 });
+    h.onCast(world({ maxHp: 100, heal: (a) => { healed += a; } }));
+    expect(healed).toBe(1);
+    h.onCast(world({ maxHp: 1000, heal: (a) => { healed += a; } }));
+    expect(healed).toBe(6);
+  });
+
+  it("Prism Cycle troca de escola a cada 5 s, na ordem de lá, e só vale nela", () => {
+    expect([0, 5, 10, 15, 20].map((t) => prismSchool(t).school)).toEqual(["fire", "ice", "lightning", "arcane", "fire"]);
+    const h = new RelicHooks([PRISM_CYCLE]);
+    h.refresh({ prismCycle: 0.4 });
+    const w = world({ time: 6 });
+    expect(h.damageMult(w, { source: "other", school: "ice", boss: false })).toBeCloseTo(1.4);
+    expect(h.damageMult(w, { source: "other", school: "fire", boss: false })).toBe(1);
+    expect(h.damageMult(w, { source: "auto", boss: false })).toBe(1);
+    expect(h.statuses(w)[0].id).toBe("prism_ice");
+  });
+
+  it("Arcane Dominion põe o dano de spell e de Arcane no ataque", () => {
+    const base = stats([]);
+    const s = stats(["arcane_dominion", "rune_charm"]);
+    expect(s.autoDamage / base.autoDamage).toBeCloseTo(s.spellDamage * s.school.arcane / (base.spellDamage * base.school.arcane), 6);
+    expect(s.autoDamage).toBeGreaterThan(base.autoDamage);
+  });
+
+  it("relíquias de chefe ficam fora do sorteio normal", () => {
+    for (const id of RELIC_IDS) {
+      const c = RELICS[id].category;
+      if (c === "boss" || c === "boss_build") expect(relicDraftable(id, []), id).toBe(false);
+    }
+    expect(RELIC_IDS.filter((id) => RELICS[id].rarity === "boss").length).toBe(20);
+  });
+
+  it("recompensa do chefe: premium só com o sorteio, a da build do chefe antes, senão universal", () => {
+    const normal = ["blood_pact", "arcane_core", "hunters_eye"];
+    const none = bossRelicOffer([], "berserker", normal, 3, 0.9, 0.35, () => 0);
+    expect(none).toEqual({ offer: normal, premium: null });
+    const b = bossRelicOffer([], "berserker", normal, 3, 0.1, 0.35, () => 0);
+    expect(RELICS[b.premium!].bossBuild).toBe("berserker");
+    expect(b.offer).toEqual([b.premium, "blood_pact", "arcane_core"]);
+    const owned = ["berserkers_brand", "bloodrush_medallion"];
+    const u = bossRelicOffer(owned, "berserker", normal, 3, 0.1, 0.35, () => 0);
+    expect(RELICS[u.premium!].category).toBe("boss");
+    expect(RELICS[bossRelicOffer([], undefined, normal, 3, 0.1, 0.35, () => 0).premium!].category).toBe("boss");
   });
 });

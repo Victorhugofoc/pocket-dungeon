@@ -5,10 +5,11 @@
 // - Ganchos: as relíquias que mudam o jogo (não só somam atributo) são mecânicas ligadas por um atributo próprio,
 //   como em relic_mechanics.lua; o jogo chama `RelicHooks` nos pontos de evento (quadro, abate, golpe sofrido,
 //   conjuração, nível, dano causado, cura) e elas respondem pelo `RelicWorld`.
-import { RELIC_MECH, RELICS, type RelicDef } from "../data/relics";
+import { inNormalPool, RELIC_MECH, RELICS, type RelicDef } from "../data/relics";
 import type { SpellEffect } from "../data/spells";
 import type { StatBlock, StatKey } from "./stats";
 import type { RunState } from "./run";
+import { px } from "./techniques";
 
 export function relicDef(id: string): RelicDef | undefined {
   return Object.prototype.hasOwnProperty.call(RELICS, id) ? RELICS[id] : undefined;
@@ -57,10 +58,13 @@ export function relicTotals(relics: readonly string[]): StatBlock {
   return sum;
 }
 
-/** relic_system.lua `isDraftable` (D-050): relíquia de spell (§43) só entra no sorteio com a spell dela equipada. */
+/**
+ * relic_system.lua `isDraftable`: só as categorias do sorteio normal (sem as de chefe e as evoluções), e a de spell
+ * (§43, D-050) só com a spell dela equipada.
+ */
 export function relicDraftable(id: string, spells: readonly { id: string }[]): boolean {
   const d = relicDef(id);
-  if (!d) return false;
+  if (!d || !inNormalPool(d)) return false;
   return d.category !== "spell" || spells.some((s) => s.id === d.spell);
 }
 
@@ -89,23 +93,39 @@ export interface RelicWorld {
   moving: boolean;
   /** cura que passa pelas regras de cura do jogo (`Game.heal`) */
   heal(amount: number): void;
+  /** os inimigos vivos */
+  foes(): readonly RelicFoe[];
+  /** atordoa (o congelado daqui); chefe não é atordoado: devolve se pegou */
+  stun(foe: RelicFoe, seconds: number): boolean;
+  /** aplica queimadura pelas regras de status (uma só por inimigo) */
+  burn(foe: RelicFoe, dps: number, seconds: number): void;
   /** aviso para efeito e som (o nome é o do evento de lá, como `burn_spread`) */
   emit(event: string, data?: Record<string, unknown>): void;
 }
 
-/** O inimigo como as mecânicas o veem. */
-export interface RelicEnemy {
+/** Um inimigo vivo como as mecânicas o veem. `key` é o objeto do jogo (identidade entre quadros). */
+export interface RelicFoe {
+  key: object;
   x: number;
   z: number;
+  boss: boolean;
+  slowed: boolean;
+  /** a queimadura dele agora, ou null */
+  burn: { dps: number; left: number } | null;
+}
+
+/** O inimigo que morreu. */
+export interface RelicEnemy extends RelicFoe {
   maxHp: number;
   champion: boolean;
-  boss: boolean;
 }
 
 /** O golpe que o herói dá (`Damage.toEnemy` `info`). */
 export interface RelicHit {
   /** `auto`, `dot`, `other`, ou a spell/escola quando houver */
   source: string;
+  /** escola do golpe (spell, queimadura = fire), ou nada */
+  school?: string;
   boss: boolean;
 }
 
@@ -174,8 +194,112 @@ export const OVERHEAL_SHIELD: RelicMechanic<{ hp: number }> = {
   status: (s, v, w) => (s.hp > 0 ? { id: "overshield", left: s.hp, total: w.maxHp * v } : null),
 };
 
+/** relic_mechanics.lua CINDER LENS (D-438): quem morre queimando passa a queimadura ao inimigo mais perto. */
+export const BURN_SPREAD: RelicMechanic<Record<string, never>> = {
+  id: "burn_spread", stat: "burnSpread", init: () => ({}),
+  onKill: (_s, _v, w, e) => {
+    if (!e.burn || e.burn.left <= 0) return;
+    let best: RelicFoe | null = null;
+    let bd = px(RELIC_MECH.spreadRadiusPx) ** 2;
+    for (const o of w.foes()) {
+      if (o.key === e.key) continue;
+      const d = (o.x - e.x) ** 2 + (o.z - e.z) ** 2;
+      if (d <= bd) {
+        best = o;
+        bd = d;
+      }
+    }
+    if (!best) return;
+    w.burn(best, e.burn.dps, Math.min(RELIC_MECH.spreadMaxTime, e.burn.left));
+    w.emit("burn_spread", { x0: e.x, z0: e.z, x: best.x, z: best.z });
+  },
+};
+
+/** relic_mechanics.lua FROST CROWN (D-438): inimigo com Slow por 3 s seguidos congela por `v` s; espera 4 s para de novo. */
+export const FROSTBITE: RelicMechanic<{ t: WeakMap<object, number> }> = {
+  id: "frostbite", stat: "frostbite", init: () => ({ t: new WeakMap() }),
+  tick: (s, v, w, dt) => {
+    for (const e of w.foes()) {
+      const cur = s.t.get(e.key);
+      if (e.slowed) {
+        const t = (cur ?? 0) + dt;
+        if (t >= RELIC_MECH.frostbiteAfter && w.stun(e, v)) {
+          s.t.set(e.key, -RELIC_MECH.frostbiteCooldown);
+          w.emit("frost_deep_chill", { x: e.x, z: e.z });
+        } else s.t.set(e.key, t);
+      } else if (cur !== undefined) {
+        // fora do Slow: zera a contagem, mas a espera depois de congelar continua correndo
+        s.t.set(e.key, cur > 0 ? 0 : Math.min(0, cur + dt));
+      }
+    }
+  },
+};
+
+/** relic_mechanics.lua GLASS THRONE (D-438): +`v` de dano enquanto o herói não levou golpe nos últimos 5 s. */
+export const GLASS_THRONE: RelicMechanic<{ broken: number }> = {
+  id: "glass_throne", stat: "untouchedPct", init: () => ({ broken: -1e9 }),
+  damageMult: (s, v, w) => (s.broken <= w.time ? 1 + v : 1),
+  onPlayerHit: (s, _v, w, dealt) => {
+    if (dealt > 0) s.broken = w.time + RELIC_MECH.throneBreak;
+  },
+  status: (s, _v, w) => {
+    const T = RELIC_MECH.throneBreak;
+    return { id: "glass_throne", left: s.broken <= w.time ? T : T - (s.broken - w.time), total: T };
+  },
+};
+
+/** relic_mechanics.lua MANA BATTERY (D-438, D-589): cada spell lançada cura `v` da vida máxima, no mínimo 1. */
+export const CAST_HEAL: RelicMechanic<Record<string, never>> = {
+  id: "cast_heal", stat: "castHealPct", init: () => ({}),
+  onCast: (_s, v, w) => w.heal(Math.max(RELIC_MECH.castHealMin, w.maxHp * v)),
+};
+
+/** relic_mechanics.lua `prismSchool`: a escola da vez e quanto falta para trocar. */
+export function prismSchool(time: number): { school: string; left: number } {
+  const T = RELIC_MECH.prismTime;
+  const order = RELIC_MECH.prismOrder;
+  const i = ((Math.floor(time / T) % order.length) + order.length) % order.length;
+  return { school: order[i], left: T - (((time % T) + T) % T) };
+}
+
+/** relic_mechanics.lua PRISM CYCLE (D-433): +`v` de dano na escola da vez (fogo, gelo, raio, arcano; 5 s cada). */
+export const PRISM_CYCLE: RelicMechanic<Record<string, never>> = {
+  id: "prism_cycle", stat: "prismCycle", init: () => ({}),
+  damageMult: (_s, v, w, hit) => (hit.school !== undefined && hit.school === prismSchool(w.time).school ? 1 + v : 1),
+  status: (_s, _v, w) => {
+    const p = prismSchool(w.time);
+    return { id: `prism_${p.school}`, left: p.left, total: RELIC_MECH.prismTime };
+  },
+};
+
 /** As mecânicas de relíquia ligadas pelo atributo; cada lote do M12 põe as dele aqui. */
-export const RELIC_MECHANICS: AnyMechanic[] = [MOMENTUM, LEVEL_HEAL, OVERHEAL_SHIELD];
+export const RELIC_MECHANICS: AnyMechanic[] = [MOMENTUM, LEVEL_HEAL, OVERHEAL_SHIELD, BURN_SPREAD, FROSTBITE, GLASS_THRONE,
+  CAST_HEAL, PRISM_CYCLE];
+
+/**
+ * bosses/boss_rewards.lua `draft` (§67, B4): no máximo UMA premium (chance `premiumChance`), a da build do chefe
+ * antes, senão uma universal; o resto vem do sorteio normal (`normal`, já embaralhado). `roll` é o sorteio de 0 a 1 e
+ * `pick(n)` escolhe um índice de 0 a n − 1.
+ */
+export function bossRelicOffer(owned: readonly string[], relicBuild: string | undefined, normal: readonly string[],
+  choices: number, roll: number, premiumChance: number, pick: (n: number) => number): { offer: string[]; premium: string | null } {
+  let premium: string | null = null;
+  if (roll < premiumChance) {
+    const specific: string[] = [];
+    const universal: string[] = [];
+    for (const id of Object.keys(RELICS)) {
+      if (owned.includes(id)) continue;
+      const d = RELICS[id];
+      if (d.category === "boss_build" && relicBuild && d.bossBuild === relicBuild) specific.push(id);
+      else if (d.category === "boss") universal.push(id);
+    }
+    const pool = specific.length ? specific : universal;
+    if (pool.length) premium = pool[pick(pool.length)];
+  }
+  const offer = premium ? [premium, ...normal.slice(0, choices - 1)] : normal.slice(0, choices);
+  return { offer, premium };
+}
+
 
 /** O despacho dos ganchos: o jogo chama `refresh` ao recalcular os atributos e os métodos nos pontos de evento. */
 export class RelicHooks {

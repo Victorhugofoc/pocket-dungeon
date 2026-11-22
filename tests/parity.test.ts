@@ -19,7 +19,7 @@ import {
   XP_GROWTH,
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
 } from "../src/data/run";
-import { BOSS_ORDER, ENEMIES } from "../src/data/enemies";
+import { BOSS_ORDER, BOSSES, ENEMIES } from "../src/data/enemies";
 import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
@@ -1093,5 +1093,20 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     const num = (k: string) => Number(src.match(new RegExp(String.raw`RM\.${k}\s*=\s*([\d.]+)`))![1]);
     expect(RELIC_MECH.momentumRamp).toBe(num("MOMENTUM_RAMP"));
     expect(RELIC_MECH.momentumFade).toBe(num("MOMENTUM_FADE"));
+    expect(RELIC_MECH.spreadRadiusPx).toBe(num("SPREAD_RADIUS"));
+    expect(RELIC_MECH.spreadMaxTime).toBe(num("SPREAD_MAX_TIME"));
+    expect(RELIC_MECH.frostbiteAfter).toBe(num("FROSTBITE_AFTER"));
+    expect(RELIC_MECH.frostbiteCooldown).toBe(num("FROSTBITE_COOLDOWN"));
+    expect(RELIC_MECH.throneBreak).toBe(num("THRONE_BREAK"));
+    expect(RELIC_MECH.prismTime).toBe(num("PRISM_TIME"));
+    expect(RELIC_MECH.castHealMin).toBe(num("CAST_HEAL_MIN"));
+    expect(src).toContain(`RM.PRISM_ORDER = { ${RELIC_MECH.prismOrder.map((x) => `"${x}"`).join(", ")} }`);
+  });
+
+  it("recompensa do chefe e build de relíquia de cada chefe iguais às de lá", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    expect(BOSS.premiumChance).toBe(BS.PREMIUM_CHANCE);
+    for (const id of Object.keys(BOSSES)) expect(BOSSES[id].relicBuild, id).toBe(BS.builds[id]?.relicBuild ?? undefined);
+    for (const id of RELIC_IDS) expect(RELICS[id].bossBuild, id).toBe(RL[id].bossBuild ?? undefined);
   });
 });

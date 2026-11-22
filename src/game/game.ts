@@ -31,7 +31,7 @@ import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
-import { grantRelic, relicDraftable, relicSources, relicTotals, removeRelic, RelicHooks, type RelicWorld } from "../core/relics";
+import { bossRelicOffer, grantRelic, relicDraftable, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
 import { HERO_UPGRADES, TUNING, UPGRADE_FX } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -310,7 +310,18 @@ export class Game {
       get gold() { return g.run.gold; },
       get moving() { return g.player.moveAmt > 0; },
       heal: (amount: number) => g.heal(amount, true),
-      emit: () => {},
+      emit: (ev: string, d?: Record<string, unknown>) => g.onRelicEvent(ev, d ?? {}),
+      foes: () => g.enemies.filter((e) => !e.dead).map((e) => g.relicFoe(e)),
+      stun: (f: RelicFoe, seconds: number) => {
+        const e = f.key as Enemy;
+        if (e.dead || e.isBoss) return false;
+        g.applyStatus(e, { kind: "stun", power: 1, duration: seconds }, 0);
+        return true;
+      },
+      burn: (f: RelicFoe, dps: number, seconds: number) => {
+        const e = f.key as Enemy;
+        if (!e.dead) e.applyBurn(g.time, dps, seconds);
+      },
     };
   })();
   /** recompensa do chefe, entregue quando o corpo dele some */
@@ -540,6 +551,24 @@ export class Game {
 
   saveAchievements(): void {
     writeAchievements(this.storage, this.ach.state);
+  }
+
+  /** O inimigo como as mecânicas de relíquia o veem (`RelicFoe`). */
+  relicFoe(e: Enemy): RelicFoe {
+    const now = this.time;
+    const b = e.dots.find((d) => d.kind === "burn" && d.until > now);
+    return { key: e, x: e.x, z: e.z, boss: e.isBoss, slowed: now < e.slowUntil, burn: b ? { dps: b.dps, left: b.until - now } : null };
+  }
+
+  /** Efeito mínimo dos avisos das mecânicas de relíquia (o efeito próprio fica para a fase 2). */
+  private onRelicEvent(ev: string, d: Record<string, unknown>): void {
+    const n = (k: string) => Number(d[k] ?? 0);
+    if (ev === "burn_spread") {
+      this.fx.burst(n("x"), 1, n("z"), 0xff7a2a, 12, 4, 0.12, 0.45, 2);
+    } else if (ev === "frost_deep_chill") {
+      this.fx.burst(n("x"), 1, n("z"), 0x9fdcff, 14, 4, 0.12, 0.5, 2);
+      this.fx.text(n("x"), 2.6, n("z"), "Frostbite", "frost");
+    }
   }
 
   /** Relíquias que podem entrar no sorteio: as abertas (unlocks.lua `filter`), que o herói ainda não tem e, as de spell, com a spell equipada. */
@@ -1039,7 +1068,7 @@ export class Game {
     if (crit) amount *= s.critDamage;
     // Brittle Chill (Iceball, somado) e o dano em lento das relíquias (pool): inimigo com Slow recebe dano extra (damage.lua §37)
     if (now < e.slowUntil) amount *= (1 + this.spells.brittle) * s.slowedDamage;
-    this.damageEnemy(e, amount, { crit, noKnock: hit?.noKnock });
+    this.damageEnemy(e, amount, { crit, noKnock: hit?.noKnock, school: spell ? hit?.element : undefined });
     if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount);
     if (back && e.dead) this.heal(s.maxHp * SHADOW.backstabKillHeal, true); // Umbra: matar pelas costas cura
     if (reaction) this.react(e, reaction);
@@ -1085,14 +1114,16 @@ export class Game {
     }
   }
 
-  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId } = {}): void {
+  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId; school?: string } = {}): void {
     if (e.dead) return;
     if (e.isBoss) amount *= this.stats.bossDamage; // damage.lua: Smite do Seraph (D-317)
     // EXECUTIONER (Varok): chefe abaixo de 30% da vida leva mais
     if (e.isBoss && this.stats.executioner > 0 && e.hp < e.maxHp * HERO_UPGRADES.executionerBelow) amount *= 1 + this.stats.executioner;
     if (this.stats.followThrough > 0 && this.time < this.player.followUntil) amount *= 1 + this.stats.followThrough;
     amount *= this.epics.damageMult();
-    amount *= this.relicHooks.damageMult(this.relicWorld, { source: opts.dot ?? this.hitSource, boss: e.isBoss });
+    // relic_mechanics.lua `schoolOf`: a escola da spell; a queimadura conta como fogo
+    const school = opts.school ?? (opts.dot === "burn" ? "fire" : undefined);
+    amount *= this.relicHooks.damageMult(this.relicWorld, { source: opts.dot ?? this.hitSource, school, boss: e.isBoss });
     amount = Math.max(1, Math.round(amount));
     this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
     e.hp -= amount;
@@ -1138,7 +1169,7 @@ export class Game {
     this.spreadOnKill(e);
     this.spells.onKill(e);
     this.epics.onKill();
-    this.relicHooks.onKill(this.relicWorld, { x: e.x, z: e.z, maxHp: e.maxHp, champion: e.champion, boss: e.isBoss });
+    this.relicHooks.onKill(this.relicWorld, { ...this.relicFoe(e), maxHp: e.maxHp, champion: e.champion });
     this.ach.enemyKilled({ key: e, id: e.boss?.id ?? e.def!.id, boss: e.isBoss, champion: e.champion, source,
       elapsed: this.run.statistics.elapsed, noReward: e.summoned });
     const color = e.boss?.color ?? e.def!.color;
@@ -1561,8 +1592,12 @@ export class Game {
     // a emboscada dá a relíquia de risco (falta, M12), não a escolha de chefe
     if (e.ambush) return;
     const pool = this.relicPool();
-    this.rng.get("relics").shuffle(pool);
-    const offer = pool.slice(0, BOSS.relicChoices);
+    const rr = this.rng.get("relics");
+    rr.shuffle(pool);
+    // boss_rewards.lua: até uma premium (35%), a da build do chefe antes (relíquias abertas que o herói não tem)
+    const open = new Set(filterOpen(this.ach.state, "relic", RELIC_IDS, TUNING.unlockAll));
+    const owned = RELIC_IDS.filter((id) => this.run.relics.includes(id) || !open.has(id));
+    const { offer } = bossRelicOffer(owned, e.boss?.relicBuild, pool, BOSS.relicChoices, rr.next(), BOSS.premiumChance, (n) => rr.int(0, n - 1));
     // a escolha de relíquia só depois que o corpo do chefe se desfaz (a escolha pausa o jogo)
     this.bossReward = () => {
       if (offer.length) this.events.relicChoice(offer, (id) => {

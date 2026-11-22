@@ -100,6 +100,8 @@ export interface BossDef {
   scale: number;
   projectileColor: number;
   xp: number;
+  /** bosses.lua `relicBuild`: as relíquias de chefe por build (§69) que este chefe dá; sem = só as universais */
+  relicBuild?: string;
 }
 
 /** Ordem dos 13 chefes em `bosses.lua` (`B.order`); o saco usa os que existem em `BOSSES` (M20-09, D6). */
@@ -128,6 +130,7 @@ export const BOSSES: Record<string, BossDef> = {
       { kind: "fan", warning: 0.5, damage: 0.9, count: 5, spreadDeg: 50, speed: 13 },
     ],
     body: "brute", color: 0xb8262e, accent: 0x3a1a1a, glow: 0xff3b3b, scale: 2.6, projectileColor: 0xff5a4a, xp: 50,
+    relicBuild: "berserker",
   },
   gravekeeper: {
     id: "gravekeeper", name: "Gravekeeper", title: "The Summoner", hp: 2100, damage: 12, speed: 2.6, radius: 1.4,
@@ -138,6 +141,7 @@ export const BOSSES: Record<string, BossDef> = {
       { kind: "nova", warning: 0.6, damage: 0.8, count: 14, speed: 10 },
     ],
     body: "robed", color: 0x5f7fa3, accent: 0xd9e6f2, glow: 0x9ad1ff, scale: 2.5, projectileColor: 0x9ad1ff, xp: 60,
+    relicBuild: "gravekeeper",
   },
   ember_matriarch: {
     id: "ember_matriarch", name: "Ember Matriarch", title: "The Artillerist", hp: 2400, damage: 13, speed: 2.8, radius: 1.5,
