@@ -59,4 +59,19 @@ describe("M21-09 detours", () => {
     expect(shrineCost(10, 100)).toBe(9);
     expect(shrineCost(1, 100)).toBe(0);
   });
+
+  it("M21-12: com as trilhas da bifurcação, cada desvio fica do lado de fora de uma trilha dos lados", () => {
+    const L = generateZone(ZONES.bosque, 5);
+    for (const f of L.forks) {
+      const anchors = [f.trails[0], f.trails[2]].map((t) => ({ x: t.lock.x, z: t.lock.z, nx: t.out.x, nz: t.out.z }));
+      const spots = detourSpots(new Rng(f.to + 3), ["chest", "shrine"], {
+        from: f.from < 0 ? L.spawn : L.segments[f.from], to: L.segments[f.to], clearings: L.segments,
+        bound: L.size / 2 - 16, blocked: () => false, anchors,
+      });
+      expect(spots).toHaveLength(2);
+      // cada um perto de uma trava diferente, do lado de fora dela
+      const near = spots.map((s) => anchors.findIndex((a) => Math.hypot(s.x - a.x, s.z - a.z) < 20 && (s.x - a.x) * a.nx + (s.z - a.z) * a.nz > 0));
+      expect(near.sort()).toEqual([0, 1]);
+    }
+  });
 });

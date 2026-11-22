@@ -10,7 +10,7 @@ import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, sa
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
 import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
-import { chooseCard, expireWaveScope, gateSpots, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
+import { chooseCard, expireWaveScope, forkGateSpots, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
   canHasten, hasten, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
   type WaveMods, type WaveSpawn, type WaveState,
@@ -1687,11 +1687,11 @@ export class Game {
     const cards = this.mapCards;
     this.mapResolved = !cards;
     if (!cards) return false;
-    const G = TUNING.world.gates;
-    const prev = index > 0 ? this.layout.segments[index - 1] : null;
-    const anchor = prev ?? this.layout.spawn;
-    const radius = prev ? prev.r - G.rimInset : G.spawnRadius;
-    this.gates.show(gateSpots(anchor, radius, this.segment, cards.length, G.spreadDeg), cards);
+    // M21-12: um portão na trava de cada trilha da bifurcação até esta clareira
+    const fork = this.layout.forks.find((f) => f.to === index);
+    if (!fork) return false;
+    const spots = forkGateSpots(fork, cards.length);
+    this.gates.show(spots, cards.slice(0, spots.length));
     return true;
   }
 
@@ -1705,7 +1705,10 @@ export class Game {
     if (near >= 0 && near !== this.nearGate && cards) this.audio.play(GATE_SIGNAL[cards[near].node].sound);
     this.nearGate = near;
     if (!this.playerAlive || this.shrineOpen || this.shopVisit || !this.mapCards) return;
-    const i = this.gates.hit(p.x, p.z);
+    let i = this.gates.hit(p.x, p.z);
+    // M21-12: quem cortou pelo mato e chegou à clareira sem passar por portão fica com o mais perto
+    const sg = this.segment;
+    if (i < 0 && sg && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r + TUNING.world.gates.fallbackReach) i = this.gates.nearest(p.x, p.z, Infinity);
     if (i >= 0) this.chooseMapCard(i);
   }
 
@@ -1739,6 +1742,8 @@ export class Game {
     const spots = detourSpots(rng, kinds, {
       from: index > 0 ? L.segments[index - 1] : L.spawn,
       to: L.segments[index],
+      // M21-12: ao lado das trilhas dos lados da bifurcação, para fora
+      anchors: L.forks.find((f) => f.to === index)?.trails.filter((_, k) => k !== 1).map((t) => ({ x: t.lock.x, z: t.lock.z, nx: t.out.x, nz: t.out.z })),
       clearings: L.segments,
       bound: L.size / 2 - TUNING.world.margin - 2,
       blocked: (x, z, r) => this.grid.hits(x, z, r),

@@ -75,20 +75,24 @@ export const TUNING = {
     size: 240,
     margin: 14,
     bossArenaRadius: 17,
-    /** raio das clareiras das ondas 1 a 4 de cada zona e onde ficam no caminho (fração do comprimento) */
+    /** raio das clareiras das ondas 1 a 4 de cada zona */
     segmentRadius: 16,
-    segmentAt: [0.17, 0.37, 0.57, 0.77],
-    /** M21-08: portões do mapa da partida, na borda da clareira vencida (ou em volta da fogueira, na zona nova) */
+    /**
+     * M21-12: as clareiras em zigue-zague, uma de cada lado do meio da zona (`zigzag`: distância do meio, x), e 3
+     * trilhas entre uma e a seguinte: a do meio e duas que se abrem `bulge` para os lados (encolhe até `minBulge` se
+     * chegar perto de outra clareira), saindo da borda a `departDeg` graus e voltando a se juntar `junction` antes
+     * da clareira seguinte. `spawnSide`, `bossSide`: distância do meio da fogueira e da arena, do lado oposto.
+     */
+    forks: { zigzag: [24, 34] as const, spawnSide: [14, 30] as const, bossSide: [14, 40] as const, zJitter: 3,
+      bulge: 15, minBulge: 8, departDeg: 40, junction: 5, samples: 14, clearance: 3 },
+    /** M21-08: portões do mapa da partida, na trava de cada trilha (M21-12) */
     gates: {
-      /** quanto o portão fica para dentro da borda da clareira, e o raio em volta da fogueira */
-      rimInset: 3,
-      spawnRadius: 7.5,
-      /** abertura (graus) entre um portão e o vizinho, em leque na direção da próxima clareira */
-      spreadDeg: 46,
-      /** distância do centro do portão que conta como passar por ele */
-      triggerRadius: 1.8,
-      /** vão entre as colunas (metros) */
-      width: 3.2,
+      /** distância do centro do portão que conta como passar por ele (a trilha tem ~6 de largura) */
+      triggerRadius: 3.4,
+      /** vão entre as colunas (metros): da largura da trilha */
+      width: 4.6,
+      /** M21-12: sem portão escolhido, chegar a esta distância da borda da clareira escolhe o portão mais perto */
+      fallbackReach: 2,
     },
   },
 } as const;

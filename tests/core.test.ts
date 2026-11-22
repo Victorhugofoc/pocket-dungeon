@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng, hashStr, makeNoise2D } from "../src/core/rng";
 import { killReward, survivorReward, waveMods } from "../src/core/wave";
 import { armorReduction, computeStats, effectiveRegen, stackChance, stackMultiplier } from "../src/core/stats";
-import { generateZone, ObstacleGrid, distToPath } from "../src/core/worldgen";
+import { generateZone, ObstacleGrid, distToPath, distToTrails, SPAWN_R } from "../src/core/worldgen";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { BOSSES, ENEMIES } from "../src/data/enemies";
 import { RELICS } from "../src/data/relics";
@@ -65,6 +65,53 @@ describe("dados", () => {
   it("zonas sobem de nível em ordem", () => {
     const levels = ZONE_ORDER.map((id) => ZONES[id].level);
     expect([...levels].sort((a, b) => a - b)).toEqual(levels);
+  });
+});
+
+describe("M21-12: zigue-zague e bifurcações", () => {
+  it("clareiras afastadas, 3 trilhas por bifurcação, travas separadas, trilhas livres", () => {
+    for (const zid of ZONE_ORDER) {
+      for (let seed = 1; seed <= 40; seed++) {
+        const L = generateZone(ZONES[zid], seed);
+        const circles = [{ ...L.spawn, r: SPAWN_R }, ...L.segments];
+        // vizinhas com espaço para a bifurcação
+        for (let i = 1; i < circles.length; i++) {
+          const a = circles[i - 1], b = circles[i];
+          expect(Math.hypot(a.x - b.x, a.z - b.z) - a.r - b.r, `${zid} ${seed} ${i}`).toBeGreaterThan(14);
+        }
+        // uma bifurcação até cada clareira das ondas; nenhuma até a arena
+        expect(L.forks.map((f) => [f.from, f.to])).toEqual([[-1, 0], [0, 1], [1, 2], [2, 3]]);
+        const grid = new ObstacleGrid(L.obstacles);
+        for (const f of L.forks) {
+          expect(f.trails).toHaveLength(3);
+          const locks = f.trails.map((t) => t.lock);
+          for (let a = 0; a < 3; a++) for (let b = a + 1; b < 3; b++)
+            expect(Math.hypot(locks[a].x - locks[b].x, locks[a].z - locks[b].z)).toBeGreaterThan(10);
+          const others = circles.filter((_, k) => k !== f.from + 1 && k !== f.to + 1);
+          let edge = 0, nearOther = Infinity, blocked = 0;
+          for (const t of f.trails) {
+            for (const p of t.points) {
+              edge = Math.max(edge, Math.abs(p.x));
+              for (const o of others) nearOther = Math.min(nearOther, Math.hypot(p.x - o.x, p.z - o.z) - o.r);
+              if (grid.hits(p.x, p.z, 1)) blocked++;
+            }
+          }
+          expect(edge, `${zid} ${seed}`).toBeLessThan(L.size / 2 - TUNING.world.margin);
+          expect(nearOther, `${zid} ${seed}`).toBeGreaterThan(0);
+          expect(blocked, `${zid} ${seed}`).toBe(0);
+          // as trilhas dos lados saem da clareira de antes e se juntam ao caminho antes da seguinte
+          const from = circles[f.from + 1], to = circles[f.to + 1];
+          for (const k of [0, 2]) {
+            const pts = f.trails[k].points;
+            expect(Math.hypot(pts[0].x - from.x, pts[0].z - from.z)).toBeCloseTo(from.r, 3);
+            const end = pts[pts.length - 1];
+            expect(distToPath(end.x, end.z, L.path)).toBeLessThan(1);
+            expect(Math.hypot(end.x - to.x, end.z - to.z)).toBeGreaterThan(to.r);
+          }
+        }
+        expect(distToTrails(L.forks[1].trails[0].lock.x, L.forks[1].trails[0].lock.z, L)).toBeCloseTo(0, 1);
+      }
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/core/rng";
 import { checkpoint, continueRun, newRun, RunRng } from "../src/core/run";
-import { chooseCard, expireWaveScope, gateSpots, generateMap, needsMap, nodePool, roomOf, type MapNodeId } from "../src/core/runmap";
+import { chooseCard, expireWaveScope, forkGateSpots, generateMap, needsMap, nodePool, roomOf, type MapNodeId } from "../src/core/runmap";
 import { startWave, stepWave, waveMods } from "../src/core/wave";
 import { ROOM_BY_ID } from "../src/data/rooms";
 import { startRoomFx, stepRoomFx, stormDps, tickCount } from "../src/core/roomfx";
@@ -111,15 +111,13 @@ describe("mapa da partida", () => {
 });
 
 describe("M21-08: portões do mapa", () => {
-  it("gateSpots abre o leque na direção da próxima clareira, da esquerda para a direita", () => {
-    const g = gateSpots({ x: 0, z: 0 }, 10, { x: 0, z: -50 }, 3, 45);
-    expect(g).toHaveLength(3);
-    for (const s of g) expect(Math.hypot(s.x, s.z)).toBeCloseTo(10);
-    expect(g[1].x).toBeCloseTo(0);
-    expect(g[1].z).toBeCloseTo(-10);
-    expect(g[0].x).toBeLessThan(0);
-    expect(g[2].x).toBeGreaterThan(0);
-    expect(gateSpots({ x: 0, z: 0 }, 10, { x: 0, z: -50 }, 2, 40).map((s) => Math.sign(s.x))).toEqual([-1, 1]);
+  it("M21-12: forkGateSpots põe um portão na trava de cada trilha (2 cartas: as dos lados; 1: a do meio)", () => {
+    const lock = (x: number) => ({ lock: { x, z: 0, angle: 1 } });
+    const fork = { trails: [lock(-10), lock(0), lock(10)] };
+    expect(forkGateSpots(fork, 3).map((s) => s.x)).toEqual([-10, 0, 10]);
+    expect(forkGateSpots(fork, 2).map((s) => s.x)).toEqual([-10, 10]);
+    expect(forkGateSpots(fork, 1).map((s) => s.x)).toEqual([0]);
+    expect(forkGateSpots(fork, 3)[0].angle).toBe(1);
   });
 
   it("needsMap: sem mapa na 1ª onda, na de chefe, depois da maldição e quando já sorteado", () => {
