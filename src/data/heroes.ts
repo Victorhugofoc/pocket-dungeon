@@ -2,6 +2,7 @@
 // Os efeitos de atributo vêm de lá; os de efeito seguem a separação da D14 (escola, queimadura, lentidão, veneno).
 import type { StatBlock } from "../core/stats";
 import type { SpellId } from "./spells";
+import type { AutoStyle } from "./autostyle";
 import { FROST, RICOCHET, SHADOW, SHIELD_THROW, TECHNIQUES, UNBREAKABLE, VENOM, type TechKind } from "./techniques";
 
 export type StatusKind = "slow" | "burn" | "poison" | "stun";
@@ -16,7 +17,7 @@ export interface StatusSpec {
 }
 
 export interface AutoAttack {
-  kind: "projectile" | "melee" | "fan";
+  kind: "projectile" | "melee";
   /** ataques por segundo */
   rate: number;
   damage: number; // multiplicador do dano do herói
@@ -68,6 +69,8 @@ export interface HeroDef {
   weaponName: string;
   stats: StatBlock;
   auto: AutoAttack;
+  /** H8: a forma do ataque e como Double, Cone, Pierce e Heavy Shot viram coisa do herói (`data/autostyle.ts`) */
+  style: AutoStyle;
   technique: Technique;
   /** as 4 spells que o herói pode escolher para começar (characters.lua `startingSpells`, mesma ordem) */
   startingSpells: readonly SpellId[];
@@ -113,6 +116,7 @@ export const HEROES: Record<string, HeroDef> = {
     id: "frostine", name: "Frostine", title: "Ice Warden", identity: "Ice, defense, control",
     color: 0x8fdcff, accent: 0xe8f8ff, weapon: "staff", weaponName: "Staff",
     stats: { maxHpPct: 0.22, icePct: 0.35, slowDurationPct: 0.12, armor: 12, firePct: -0.50 },
+    style: "frost",
     auto: { kind: "projectile", rate: 1.7, damage: 1.0, range: 15, speed: 24, color: 0x9be4ff,
       status: { kind: "slow", power: FROST.autoSlow, duration: FROST.autoSlowTime } },
     // os números da técnica vêm de TECHNIQUES (techniqueStats); aqui só o que a interface mostra
@@ -125,35 +129,41 @@ export const HEROES: Record<string, HeroDef> = {
     id: "kaelen", name: "Kaelen", title: "Storm Duelist", identity: "Lightning, crit, mobility",
     color: 0xffe066, accent: 0x6fa8ff, weapon: "sword", weaponName: "Blade",
     stats: { attackSpeedPct: 0.18, lightningPct: 0.10, moveSpeedPct: 0.10, critChance: 0.08, critDamagePct: 0.10, maxHpPct: -0.10, armor: -5 },
-    auto: { kind: "projectile", rate: 2.1, damage: 0.85, range: 13, speed: 34, color: 0xfff29a,
-      ricochet: 2, ricochetDamage: 0.6 },
+    // H8: um raio só; o Double faz saltar, o Cone ramifica (o salto natural de 2 era adaptação daqui)
+    style: "storm",
+    auto: { kind: "projectile", rate: 2.1, damage: 0.85, range: 13, speed: 34, color: 0xfff29a },
     technique: tech("storm_step"),
     startingSpells: ["chain_lightning", "fireball", "cyclone", "blade_orbit"],
-    passive: ["Every bolt jumps to up to 2 nearby enemies."],
+    passive: [],
   },
   aurelius: {
     id: "aurelius", name: "Aurelius", title: "Arcane Sage", identity: "Magic, cooldown, regeneration",
     color: 0xd08cff, accent: 0xffe9a8, weapon: "staff", weaponName: "Staff",
     stats: { spellDamagePct: 0.10, cdrPct: 0.04, regen: 0.4, maxHpPct: 0.08, autoDamagePct: -0.12, moveSpeedPct: -0.05 },
-    auto: { kind: "projectile", rate: 1.5, damage: 1.15, range: 16, speed: 22, color: 0xd9a0ff, pierce: 2, size: 1.3 },
+    // H8: o tiro normal, sem atravessar (o Pierce 2 de graça era adaptação daqui)
+    style: "normal",
+    auto: { kind: "projectile", rate: 1.5, damage: 1.15, range: 16, speed: 22, color: 0xd9a0ff, size: 1.3 },
     technique: tech("time_rift"),
     startingSpells: ["arcane_bolt", "iceball", "prism_beam", "rune_traps"],
-    passive: ["Arcane projectiles pierce up to 2 enemies."],
+    passive: [],
   },
   ignis: {
     id: "ignis", name: "Ignis", title: "Inferno", identity: "Fire, burn, pressure",
     color: 0xff7a1a, accent: 0xffd34d, weapon: "claws", weaponName: "Gauntlets",
     stats: { firePct: 0.25, burnPct: 0.30, burnStacks: 2, armor: 8, maxHpPct: 0.08, icePct: -0.10, moveSpeedPct: -0.08 },
-    auto: { kind: "fan", rate: 1.5, damage: 0.5, range: 8.5, speed: 20, count: 5, spreadDeg: 44, color: 0xff8a2a,
+    // H8 (K-01): leque de fogo em arco a 65% do alcance (o do Varok é 55%), 90° de abertura, ×1,5 do dano
+    style: "firefan",
+    auto: { kind: "melee", rate: 1.5, damage: 1.5, range: 4.0, arcDeg: 90, color: 0xff8a2a,
       status: { kind: "burn", power: 0.35, duration: 3, maxStacks: 3 } },
     technique: tech("inferno_charge"),
     startingSpells: ["fireball", "chain_lightning", "blade_orbit", "quake_totem"],
-    passive: ["Short-range fire fan; burns stack up to 3 times."],
+    passive: ["Fire fan: a short arc of fire that hits everything in it and burns; burns stack up to 3 times."],
   },
   zephyr: {
     id: "zephyr", name: "Zephyr", title: "Gunslinger", identity: "Shooting, speed, crit",
     color: 0xe6b366, accent: 0x8a5a2b, weapon: "guns", weaponName: "Revolvers",
     stats: { autoDamagePct: 0.38, attackSpeedPct: 0.16, critChance: 0.10, moveSpeedPct: 0.08, spellDamagePct: -0.05, maxHpPct: 0.20, armor: 16 },
+    style: "gunslinger",
     auto: { kind: "projectile", rate: 2.6, damage: 0.8, range: 16, speed: 42, color: 0xffe9b0,
       ricochet: 1, ricochetDamage: 0.7, size: 0.8 },
     technique: tech("fan_the_hammer"),
@@ -164,6 +174,7 @@ export const HEROES: Record<string, HeroDef> = {
     id: "varok", name: "Varok", title: "Boss Slayer", identity: "Mace, few enemies, giant bosses",
     color: 0xf2594a, accent: 0xb9c2cc, weapon: "mace", weaponName: "Mace",
     stats: { damagePct: 0.95, maxHpPct: 0.80, armor: 8 },
+    style: "hammer",
     auto: { kind: "melee", rate: 1.05, damage: 1.8, range: 3.4, arcDeg: 130, color: 0xffb3a8 },
     technique: tech("execution_leap"),
     startingSpells: ["quake_totem", "fireball", "iceball", "blade_orbit"],
@@ -182,6 +193,7 @@ export const HEROES: Record<string, HeroDef> = {
     id: "umbra", name: "Umbra", title: "Shadow Assassin", identity: "Dodge, crit, back hits",
     color: 0xb87aff, accent: 0x2a1a3d, weapon: "daggers", weaponName: "Daggers",
     stats: { dodge: 0.20, critChance: 0.15, critDamagePct: 0.25, moveSpeedPct: 0.12, armor: 6 },
+    style: "shadowblade",
     auto: { kind: "melee", rate: 2.4, damage: 1.05, range: 2.8, arcDeg: 80, color: 0xd9b3ff, backstab: 0.5 },
     technique: tech("shadow_step"),
     startingSpells: ["arcane_bolt", "blade_orbit", "venom_nova", "rune_traps"],
@@ -191,7 +203,9 @@ export const HEROES: Record<string, HeroDef> = {
     id: "seraph", name: "Seraph", title: "Paladin", identity: "Armor, healing, shield",
     color: 0xffdb73, accent: 0xffffff, weapon: "shield", weaponName: "Shield",
     stats: { maxHpPct: 0.35, armor: 18, regen: 0.3, healPct: 0.15, bossDamagePct: 0.25, attackSpeedPct: -0.10, moveSpeedPct: -0.08 },
-    auto: { kind: "projectile", rate: 1.3, damage: 1.25, range: 12, speed: 20, color: 0xfff0b0, pierce: 1,
+    // H8 (shield_throw.lua): o escudo voa até o primeiro inimigo e ricocheteia; não atravessa
+    style: "shieldthrow",
+    auto: { kind: "projectile", rate: 1.3, damage: 1.25, range: 12, speed: 20, color: 0xfff0b0,
       ricochet: 2, ricochetDamage: 0.8, size: 1.6 },
     technique: tech("aegis"),
     startingSpells: ["arcane_bolt", "blade_orbit", "prism_beam", "quake_totem"],
@@ -202,6 +216,7 @@ export const HEROES: Record<string, HeroDef> = {
     id: "vesper", name: "Vesper", title: "Venom Weaver", identity: "Poison, bees, area",
     color: 0x8cf273, accent: 0x3a2a55, weapon: "staff", weaponName: "Scepter",
     stats: { poisonPct: 0.30, poisonStacks: 1, areaPct: 0.10, maxHpPct: 0.08 },
+    style: "venom",
     auto: { kind: "projectile", rate: 1.9, damage: 0.7, range: 14, speed: 26, color: 0x9dff7a,
       status: { kind: "poison", power: VENOM.autoFraction, duration: VENOM.autoDuration, maxStacks: VENOM.autoStacks } },
     technique: tech("brood"),
