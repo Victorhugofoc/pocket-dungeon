@@ -207,4 +207,10 @@ export const UPGRADE_STAT: Readonly<Record<string, { key: StatKey; scale: number
   championGoldPct: { key: "championGoldPct", scale: 1 },
   survivorRewardPct: { key: "survivorRewardPct", scale: 1 },
   knockbackPct: { key: "knockbackPct", scale: 1 },
+  // M20-12 parte 2 (H8): cada estilo de ataque lê estes do seu jeito (`data/autostyle.ts`)
+  doubleShot: { key: "doubleShot", scale: 1 },
+  coneShot: { key: "coneShot", scale: 1 },
+  pierce: { key: "pierce", scale: 1 },
+  autoProjectileSpeedPct: { key: "autoProjectileSpeedPct", scale: 1 },
+  fanShots: { key: "fanShots", scale: 1 },
 };

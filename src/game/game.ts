@@ -1,6 +1,8 @@
 // Loop principal: herói, combate, progressão e as ondas da partida (cada zona = 5 ondas, D13).
 import * as THREE from "three";
 import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
+import { arcHalfAngle, autoPattern, autoReach, forkAngles, patternCounts } from "../core/autostyle";
+import { ARC_STYLES, AUTO_SHOT, STYLE_GUN, STYLE_SHIELD, STYLE_STORM, STYLE_VENOM } from "../data/autostyle";
 import { applyEvolution, declineEvolutions, pendingEvolutionOffer, type EvolutionOption } from "../core/evolution";
 import { addXp, applyUpgrade, draftLevelUp, draftTiers, rerollCost, rerollsLeft, upgradeSources, type UpgradeTier } from "../core/levelup";
 import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
@@ -144,7 +146,22 @@ interface Projectile {
   bounces?: number; bounceGain?: number; span?: number;
   /** M5-03: rastro do tiro (Fan the Hammer) */
   fx?: TrailHandle;
+  /** H8: tiro do ataque básico com as regras do estilo (o 2º alvo em diante fere menos) */
+  styled?: boolean;
+  /** já ricocheteou; `flatRicochet` = o ricochete fere `ricochetDamage` da base em vez de multiplicar a cada salto (Zephyr) */
+  bounced?: boolean; flatRicochet?: boolean;
+  /** Kaelen: saltos do Double e ramos do Cone; `chained` = já saltou (fere 70%) */
+  chainLeft?: number; chained?: boolean; forks?: number;
+  /** Vesper: aplicações de veneno por acerto (Double) e o respingo dos laterais do Cone, em m */
+  poisonHits?: number; splash?: number;
+  /** Frostine: o Double traz o pingente tantos acertos antes */
+  icicleSooner?: number;
+  /** Big Iron: dano a mais em quem está perto do Zephyr */
+  pointBlank?: number;
 }
+
+/** Golpe extra do Double Shot num estilo de arco, ou o escudo de luz do Seraph (H8). */
+interface ExtraSwing { at: number; angle: number; mult: number; shield: boolean }
 
 /** orbe de cura da onda caído no chão */
 interface Drop {
@@ -256,6 +273,7 @@ export class Game {
   private echoes: Echo[] = [];
   private pools: VenomPool[] = [];
   private icicle = new IcicleCounter();
+  private extraSwings: ExtraSwing[] = [];
   /** números da técnica do herói no nível atual (src/core/techniques.ts); null se ainda for a técnica antiga */
   tech: TechStats | null = null;
   /** spells nas teclas 1 e 2 (M6-02) */
@@ -461,7 +479,7 @@ export class Game {
     for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
     sources.push(...upgradeSources(this.run));
     sources.push(shopStats(this.run.shop));
-    this.stats = computeStats(sources);
+    this.stats = computeStats(sources, this.hero.style);
     this.epics.refresh(this.run.upgradesTaken);
     this.elements = this.buildElements();
     const tid = this.hero.technique.id;
@@ -729,22 +747,54 @@ export class Game {
       pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile" });
   }
 
-  private firePlayer(angle: number, auto: AutoAttack, mult: number, rangeMult = 1): void {
+  /**
+   * Um tiro do herói. `opt.styled` = tiro do ataque básico, com as regras do estilo (H8): Heavy Shot na velocidade,
+   * Pierce que atravessa (ou ricocheteia, no Zephyr e no Seraph), saltos e ramos do Kaelen, veneno da Vesper.
+   */
+  private firePlayer(angle: number, auto: AutoAttack, mult: number, rangeMult = 1,
+    opt: { styled?: boolean; side?: number; fan?: boolean; icicle?: boolean } = {}): void {
     const p = this.player;
-    const speed = auto.speed ?? 24;
-    const range = auto.range * this.stats.range * rangeMult;
+    const s = this.stats;
+    const st = this.hero.style;
+    const styled = opt.styled === true;
+    const speed = (auto.speed ?? 24) * (styled ? s.projectileSpeed : 1);
+    const base = auto.range * s.range * rangeMult;
+    const range = styled ? autoReach(st, base, s.pierce, s.coneShot) : base;
     const ice = this.hero.frost === true;
     // Pingente (Frostine): o tiro depois de 3 acertos seguidos no mesmo alvo sai maior e x3
-    const icicle = ice && this.icicle.take();
+    const icicle = opt.icicle === true;
     // Arcane Strike pronto: o tiro sai carregado, roxo e maior (D-215)
     const charged = this.spells.arcaneReady;
+    const bounce = styled && (st === "gunslinger" || st === "shieldthrow");
+    let status = auto.status;
+    if (styled && st === "venom" && status && s.doubleShot > 0) status = { ...status, maxStacks: (status.maxStacks ?? 1) + s.doubleShot };
+    const side = opt.side ?? 0;
+    const sx = Math.cos(angle) * side, sz = -Math.sin(angle) * side;
     this.addProjectile({
-      x: p.x + Math.sin(angle) * 0.7, z: p.z + Math.cos(angle) * 0.7, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed,
+      x: p.x + Math.sin(angle) * 0.7 + sx, z: p.z + Math.cos(angle) * 0.7 + sz, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed,
       r: 0.24 * (auto.size ?? 1) * (icicle ? 1.9 : 1) * (charged ? ARCANE_CHARGED.size : 1), dmg: mult * (icicle ? FROST.icicleMult : 1), life: range / speed, friendly: true,
-      pierce: auto.pierce ?? 0, ricochet: auto.ricochet ?? 0, ricochetDamage: auto.ricochetDamage ?? 1,
-      status: auto.status, color: icicle ? 0xf2fbff : charged ? ARCANE_CHARGED.color : auto.color, source: "auto", ice, icicle,
+      pierce: (auto.pierce ?? 0) + (styled && !bounce ? s.pierce : 0),
+      ricochet: (auto.ricochet ?? 0) + (bounce ? s.pierce : 0), ricochetDamage: auto.ricochetDamage ?? 1,
+      status, color: icicle ? 0xf2fbff : charged ? ARCANE_CHARGED.color : auto.color, source: "auto", ice, icicle,
       crit: this.autoMod?.crit || undefined, knock: this.autoMod?.knock || undefined,
+      styled: styled || undefined,
+      flatRicochet: (styled && st === "gunslinger") || undefined,
+      chainLeft: styled && st === "storm" && s.doubleShot > 0 ? s.doubleShot : undefined,
+      forks: styled && st === "storm" && s.coneShot > 0 ? s.coneShot : undefined,
+      poisonHits: styled && st === "venom" && s.doubleShot > 0 ? 1 + s.doubleShot : undefined,
+      splash: styled && st === "venom" && opt.fan ? px(STYLE_VENOM.splash) : undefined,
+      icicleSooner: styled && st === "frost" && s.doubleShot > 0 ? s.doubleShot : undefined,
+      pointBlank: styled && s.pointBlank > 0 ? s.pointBlank : undefined,
     });
+  }
+
+  /** A rajada do ataque básico (Auto.fire): Cone em leque, Double lado a lado, o pingente só no primeiro tiro. */
+  private volley(a: AutoAttack, dmg: number, angle: number): void {
+    const s = this.stats;
+    const n = patternCounts(this.hero.style, s.coneShot, s.doubleShot);
+    const icicle = this.hero.frost === true && this.icicle.take();
+    autoPattern(n.cone, n.double, angle).forEach((sh, i) =>
+      this.firePlayer(sh.angle, a, dmg, 1, { styled: true, side: sh.side, fan: sh.fan, icicle: icicle && i === 0 }));
   }
 
   /**
@@ -798,14 +848,22 @@ export class Game {
           const first = pr.hit.size === 0;
           pr.hit.add(e);
           if (pr.ice && first) {
-            this.icicle.onHit(e, pr.icicle === true);
+            this.icicle.onHit(e, pr.icicle === true, pr.icicleSooner ?? 0);
             if (pr.icicle) {
               this.fx.burst(e.x, 1.2, e.z, 0xe8f8ff, 18, 7, 0.14, 0.45, 6);
               this.fx.text(e.x, 2.4, e.z, "Icicle", "frost");
             }
           }
+          // H8 (§26): do 2º alvo em diante o tiro que atravessa fere 50%; o salto do Kaelen e o ricochete do Zephyr, 70%
+          let dmg = pr.dmg;
+          if (pr.styled && !first) {
+            dmg *= pr.chained ? STYLE_STORM.chainMult : pr.bounced ? (pr.flatRicochet ? pr.ricochetDamage : 1) : AUTO_SHOT.pierceFraction;
+          }
+          if (pr.pointBlank && (e.x - p.x) ** 2 + (e.z - p.z) ** 2 <= px(STYLE_GUN.pointBlankRange) ** 2) dmg *= 1 + pr.pointBlank;
           this.hitSource = pr.source === "auto" ? "auto" : "other";
-          this.hitEnemy(e, pr.dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined, crit: pr.crit && first ? true : undefined });
+          this.hitEnemy(e, dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined, crit: pr.crit && first ? true : undefined });
+          if (pr.status && (pr.poisonHits || pr.splash)) this.venomExtras(e, pr, dmg);
+          if (pr.forks && first) this.forkBolt(e, pr);
           if (pr.knock && first) this.epics.knock(e, pr.knock);
           this.hitSource = "other";
           if (pr.source === "auto") {
@@ -817,6 +875,21 @@ export class Game {
             e.kx += (pr.vx / sp) * pr.push * TUNING.enemy.knockback;
             e.kz += (pr.vz / sp) * pr.push * TUNING.enemy.knockback;
           }
+          // Kaelen (D-590): o Double faz o raio saltar para o mais perto não atingido, sem gastar o Pierce
+          if (pr.chainLeft && pr.chainLeft > 0) {
+            const reach = px(STYLE_STORM.chainRange);
+            const next = this.nearestEnemy(e.x, e.z, reach, pr.hit);
+            if (next) {
+              const sp = Math.hypot(pr.vx, pr.vz);
+              const a = Math.atan2(next.x - pr.x, next.z - pr.z);
+              pr.vx = Math.sin(a) * sp;
+              pr.vz = Math.cos(a) * sp;
+              pr.chainLeft--;
+              pr.chained = true;
+              pr.life = reach / sp;
+              break;
+            }
+          }
           if (pr.ricochet > 0) {
             const next = this.nearestEnemy(e.x, e.z, 9, pr.hit);
             if (next) {
@@ -824,7 +897,8 @@ export class Game {
               const a = Math.atan2(next.x - pr.x, next.z - pr.z);
               pr.vx = Math.sin(a) * sp;
               pr.vz = Math.cos(a) * sp;
-              pr.dmg *= pr.ricochetDamage;
+              if (!pr.flatRicochet) pr.dmg *= pr.ricochetDamage;
+              pr.bounced = true;
               pr.ricochet--;
               pr.life = Math.max(pr.life, 9 / sp + 0.1);
               break;
@@ -2092,52 +2166,108 @@ export class Game {
     this.epics.afterAutoAttack();
   }
 
-  /** O ataque básico em si (tiro, leque ou corte); `dmg` já leva as épicas. */
+  /** O ataque básico em si (tiro ou arco, no estilo do herói, H8); `dmg` já leva as épicas. */
   private swingAuto(a: AutoAttack, dmg: number): void {
     const p = this.player;
-    if (a.kind === "projectile") {
-      this.firePlayer(p.facing, a, dmg);
-      this.audio.play("shoot");
+    const st = this.hero.style;
+    const n = this.stats.doubleShot;
+    if (a.kind === "melee") {
+      this.autoArc(a, dmg, p.facing);
+      // Double Shot num arco: um golpe a mais por cópia, um pouco depois, com 60% do dano
+      const A = ARC_STYLES[st];
+      if (A) for (let k = 1; k <= n; k++) this.extraSwings.push({ at: this.time + A.extraDelay * k, angle: p.facing, mult: dmg * A.extraMult, shield: false });
+      return;
+    }
+    this.volley(a, dmg, p.facing);
+    this.audio.play("shoot");
+    if (st === "shieldthrow") {
       if (this.hero.shieldHeal && ++p.throws % SHIELD_THROW.healEvery === 0) this.heal(this.stats.maxHp * SHIELD_THROW.heal, true);
-    } else if (a.kind === "fan") {
-      const n = a.count ?? 5;
-      const spread = ((a.spreadDeg ?? 40) * Math.PI) / 180;
-      for (let i = 0; i < n; i++) this.firePlayer(p.facing - spread / 2 + (spread * i) / (n - 1), a, dmg);
-      this.audio.play("swing");
-    } else {
-      const range = a.range * (1 + (this.stats.range - 1) * 0.5) * (1 + (this.stats.area - 1) * 0.5);
-      const arc = (((a.arcDeg ?? 100) * Math.PI) / 180) / 2;
-      this.fx.slash(p.x, p.z, p.facing, range, a.arcDeg ?? 100, this.spells.arcaneReady ? ARCANE_CHARGED.color : a.color);
-      this.terrain.strikeArc(p.x, p.z, p.facing, range, arc);
-      this.audio.play("swing");
-      let hits = 0;
-      for (const e of this.enemies) {
-        if (e.dead) continue;
-        const d = Math.hypot(e.x - p.x, e.z - p.z);
-        if (d > range + e.radius) continue;
-        let da = Math.atan2(e.x - p.x, e.z - p.z) - p.facing;
+      // Double Shot do Seraph: um escudo de luz logo depois, com 60% do dano (não conta para a cura)
+      for (let k = 1; k <= n; k++) this.extraSwings.push({ at: this.time + STYLE_SHIELD.extraDelay * k, angle: p.facing, mult: dmg * STYLE_SHIELD.extraMult, shield: true });
+    }
+  }
+
+  /** Os golpes do Double Shot que esperam a vez (H8). */
+  private updateExtraSwings(): void {
+    for (let i = this.extraSwings.length - 1; i >= 0; i--) {
+      const x = this.extraSwings[i];
+      if (this.time < x.at) continue;
+      this.extraSwings.splice(i, 1);
+      if (!this.playerAlive) continue;
+      const a = this.hero.auto;
+      if (x.shield) {
+        this.volley(a, x.mult, x.angle);
+        this.audio.play("shoot");
+      } else this.autoArc(a, x.mult, x.angle);
+    }
+  }
+
+  /** Um golpe em arco (Auto.swing): Cone abre o arco, Pierce estica o alcance (H8). */
+  private autoArc(a: AutoAttack, dmg: number, angle: number): void {
+    const p = this.player;
+    const s = this.stats;
+    const st = this.hero.style;
+    const base = a.range * (1 + (s.range - 1) * 0.5) * (1 + (s.area - 1) * 0.5);
+    const range = autoReach(st, base, s.pierce, s.coneShot);
+    const arc = arcHalfAngle(st, (((a.arcDeg ?? 100) * Math.PI) / 180) / 2, s.coneShot);
+    const arcDeg = (arc * 2 * 180) / Math.PI;
+    this.fx.slash(p.x, p.z, angle, range, arcDeg, this.spells.arcaneReady ? ARCANE_CHARGED.color : a.color);
+    this.terrain.strikeArc(p.x, p.z, angle, range, arc);
+    this.audio.play("swing");
+    let hits = 0;
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - p.x, e.z - p.z);
+      if (d > range + e.radius) continue;
+      let da = Math.atan2(e.x - p.x, e.z - p.z) - angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      if (Math.abs(da) > arc && d > e.radius + 0.8) continue;
+      this.hitSource = "auto";
+      this.hitEnemy(e, dmg, a.status, this.autoMod?.crit ? { crit: true } : undefined);
+      this.hitSource = "other";
+      if (this.autoMod?.knock) this.epics.knock(e, this.autoMod.knock);
+      this.spells.onAutoHit(e);
+      this.autoKnock(e, e.x - p.x, e.z - p.z);
+      hits++;
+    }
+    if (hits) this.fx.addShake(0.08);
+    // Rune Traps (D-575): o golpe que passa por uma runa armada estoura a runa
+    if (this.spells.hasRunes) {
+      this.spells.shootRunes((x, z, trig) => {
+        const d = Math.hypot(x - p.x, z - p.z);
+        let da = Math.atan2(x - p.x, z - p.z) - angle;
         while (da > Math.PI) da -= Math.PI * 2;
         while (da < -Math.PI) da += Math.PI * 2;
-        if (Math.abs(da) > arc && d > e.radius + 0.8) continue;
-        this.hitSource = "auto";
-        this.hitEnemy(e, dmg, a.status, this.autoMod?.crit ? { crit: true } : undefined);
-        this.hitSource = "other";
-        if (this.autoMod?.knock) this.epics.knock(e, this.autoMod.knock);
-        this.spells.onAutoHit(e);
-        this.autoKnock(e, e.x - p.x, e.z - p.z);
-        hits++;
-      }
-      if (hits) this.fx.addShake(0.08);
-      // Rune Traps (D-575): o golpe que passa por uma runa armada estoura a runa
-      if (this.spells.hasRunes) {
-        this.spells.shootRunes((x, z, trig) => {
-          const d = Math.hypot(x - p.x, z - p.z);
-          let da = Math.atan2(x - p.x, z - p.z) - p.facing;
-          while (da > Math.PI) da -= Math.PI * 2;
-          while (da < -Math.PI) da += Math.PI * 2;
-          return d <= range + trig && Math.abs(da) <= arc;
-        });
-      }
+        return d <= range + trig && Math.abs(da) <= arc;
+      });
+    }
+  }
+
+  /** Vesper (D-590): o Double põe mais acúmulos por acerto; o lateral do Cone respinga o veneno em quem está perto. */
+  private venomExtras(e: Enemy, pr: Projectile, mult: number): void {
+    const st = pr.status!;
+    const base = this.stats.damage * this.stats.autoDamage * mult;
+    for (let k = 1; k < (pr.poisonHits ?? 1); k++) if (!e.dead) this.applyStatus(e, st, base);
+    if (!pr.splash) return;
+    const r2 = pr.splash ** 2;
+    for (const o of this.enemies) {
+      if (o === e || o.dead || (o.x - e.x) ** 2 + (o.z - e.z) ** 2 > r2) continue;
+      this.applyStatus(o, st, base);
+    }
+  }
+
+  /** Kaelen (D-590): o Cone ramifica o raio no primeiro acerto, um ramo curto por cópia, com 60% do dano. */
+  private forkBolt(e: Enemy, pr: Projectile): void {
+    const sp = Math.hypot(pr.vx, pr.vz) || 1;
+    const ang = Math.atan2(pr.vx, pr.vz);
+    for (const a of forkAngles(ang, pr.forks ?? 0, STYLE_STORM.forkSpread)) {
+      this.addProjectile({
+        x: pr.x, z: pr.z, vx: Math.sin(a) * sp, vz: Math.cos(a) * sp, r: pr.r * 0.8, dmg: pr.dmg * STYLE_STORM.forkMult,
+        life: px(STYLE_STORM.forkReach) / sp, friendly: true, pierce: 0, ricochet: 0, ricochetDamage: 1,
+        status: pr.status, color: pr.color, source: "auto",
+      });
+      this.projectiles[this.projectiles.length - 1].hit.add(e);
     }
   }
 
@@ -2247,7 +2377,7 @@ export class Game {
         // Zephyr: 5 tiros em cone de uma vez, com o dano e o crítico do ataque básico, empurrando
         const T = this.tech!;
         const a = this.hero.auto;
-        const n = T.shots ?? 5;
+        const n = (T.shots ?? 5) + s.fanShots; // QUICKDRAW: +2 tiros
         const spread = T.spread ?? 0.16;
         const rangeMult = Math.max(T.range, a.range * s.range) / (a.range * s.range);
         const fanAuto = { ...a, speed: (a.speed ?? 24) * 1.15 };
@@ -2606,6 +2736,7 @@ export class Game {
         const pl = IceWalls.place(p.x, p.z, this.aim.x, this.aim.z, T.minRange ?? 4, T.maxRange ?? 16);
         this.iceWalls.showGhost(p.techCd <= 0, pl.x, pl.z, pl.ax, pl.az, T.length ?? 12, T.thickness ?? 1.2);
       }
+      if (this.extraSwings.length) this.updateExtraSwings();
       if ((input.rmbPressed || input.wasPressed("KeyQ")) && p.techCd <= 0) this.useTechnique();
       else if (input.lmb && p.attackCd <= 0) this.autoAttack();
     }

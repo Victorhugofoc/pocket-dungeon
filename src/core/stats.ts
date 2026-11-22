@@ -1,6 +1,7 @@
 // Atributos derivados do herói: herói + melhorias de nível + relíquias.
 import { DR_SPELL_POWER } from "../data/techniques";
 import { STACKING, TUNING } from "../data/tuning";
+import { ARC_STYLES, AUTO_SHOT, type AutoStyle } from "../data/autostyle";
 
 export type StatKey =
   | "damage" // dano plano somado à base
@@ -41,7 +42,13 @@ export type StatKey =
   | "championXpPct"
   | "championGoldPct"
   | "survivorRewardPct" // ouro e XP de quem sobra no fim da onda
-  | "knockbackPct"; // empurrão do ataque básico em inimigo comum (lá, `knockbackPct`)
+  | "knockbackPct" // empurrão do ataque básico em inimigo comum (lá, `knockbackPct`)
+  // M20-12 parte 2 (H8): tiros extras e a velocidade do tiro, que cada estilo lê do seu jeito
+  | "doubleShot"
+  | "coneShot"
+  | "pierce"
+  | "autoProjectileSpeedPct"
+  | "fanShots"; // tiros a mais no Fan the Hammer (Quickdraw)
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -51,7 +58,7 @@ export const STAT_KEYS: StatKey[] = [
   "critDamagePct", "armor", "regen", "dodge", "cdrPct", "areaPct", "rangePct",
   "xpPct", "goldPct", "lifeOnKill", "healPct", "bossDamagePct", "burnStacks", "poisonStacks",
   "techniqueDamagePct", "followThroughPct", "deathHealChance", "championXpPct", "championGoldPct", "survivorRewardPct",
-  "knockbackPct",
+  "knockbackPct", "doubleShot", "coneShot", "pierce", "autoProjectileSpeedPct", "fanShots",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -94,9 +101,15 @@ export const STAT_LABEL: Record<StatKey, string> = {
   championGoldPct: "Champion Gold",
   survivorRewardPct: "Survivor Reward",
   knockbackPct: "Knockback",
+  doubleShot: "Double Shot",
+  coneShot: "Cone Shot",
+  pierce: "Pierce",
+  autoProjectileSpeedPct: "Projectile Speed",
+  fanShots: "Fan the Hammer shots",
 };
 
-const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true };
+const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true,
+  doubleShot: true, coneShot: true, pierce: true, fanShots: true };
 
 export function isFlat(k: StatKey): boolean {
   return FLAT[k] === true;
@@ -168,6 +181,15 @@ export interface FinalStats {
   survivor: number;
   /** empurrão do ataque básico (0 = nenhum; distância = `KNOCKBACK.px` × isto) */
   knockback: number;
+  /** H8: contagens com o teto de constants.lua `CAPS`; cada estilo lê do seu jeito (`data/autostyle.ts`) */
+  doubleShot: number;
+  coneShot: number;
+  pierce: number;
+  /** multiplicador da velocidade do tiro (Heavy Shot); 1 nos estilos que trocam o malus por outra coisa */
+  projectileSpeed: number;
+  /** Big Iron (Zephyr): dano a mais em quem está perto (0 = nenhum) */
+  pointBlank: number;
+  fanShots: number;
 }
 
 /** Escolas cujo dano tem bônus próprio (D14). As outras spells (cura, lâmina, veneno, vento...) usam 1. */
@@ -211,7 +233,7 @@ export function effectiveRegen(raw: number): number {
  * cada melhoria e a loja: cada fonte entra com um valor por atributo. Planos somam; percentuais vão para o pool com
  * retorno decrescente (`stackMultiplier`); chances (crítico, esquiva, cura ao matar) para `stackChance`.
  */
-export function computeStats(sources: StatBlock[]): FinalStats {
+export function computeStats(sources: StatBlock[], style: AutoStyle = "normal"): FinalStats {
   const t = TUNING.hero;
   const lists: Partial<Record<StatKey, number[]>> = {};
   for (const s of sources) {
@@ -231,10 +253,16 @@ export function computeStats(sources: StatBlock[]): FinalStats {
   // `cdrPct` positivo = mais rápido; lá `spellCooldownPct` negativo = mais rápido
   const cooldownValues = L("cdrPct").map((v) => -v);
   const areaValues = L("areaPct");
+  const count = (k: "doubleShot" | "coneShot" | "pierce") => Math.max(0, Math.min(AUTO_SHOT.caps[k], g(k)));
+  // stats.lua (G-06, P-04): o tiro lento do Heavy Shot vira -8% de ritmo nos arcos e no escudo, e Big Iron no Zephyr
+  const slow = L("autoProjectileSpeedPct").reduce((a, v) => (v < 0 ? a - v : a), 0);
+  const arcLike = ARC_STYLES[style] !== undefined || style === "shieldthrow";
+  const gun = style === "gunslinger" && slow > 0;
+  const speedMalus = arcLike && slow > 0 ? Math.max(0.3, 1 - slow * AUTO_SHOT.arcSpeedPerSlow) : 1;
   return {
     maxHp: Math.max(1, Math.round(baseHp * Math.max(0.2, m("maxHpPct")))),
     damage: baseDmg * Math.max(0.1, m("damagePct")),
-    attackSpeed: Math.max(0.3, m("attackSpeedPct")),
+    attackSpeed: Math.max(0.3, m("attackSpeedPct")) * speedMalus,
     moveSpeed: t.moveSpeed * Math.max(0.4, Math.min(1.8, m("moveSpeedPct"))),
     critChance: stackChance([t.baseCritChance, ...L("critChance")], STACKING.critCap),
     critDamage: t.baseCritDamage * m("critDamagePct"),
@@ -274,5 +302,11 @@ export function computeStats(sources: StatBlock[]): FinalStats {
     championGold: Math.max(0.1, m("championGoldPct")),
     survivor: Math.max(0.1, m("survivorRewardPct")),
     knockback: Math.max(0, m("knockbackPct") - 1),
+    doubleShot: count("doubleShot"),
+    coneShot: count("coneShot"),
+    pierce: count("pierce"),
+    projectileSpeed: arcLike || gun ? 1 : Math.max(0.3, m("autoProjectileSpeedPct")),
+    pointBlank: gun ? slow * AUTO_SHOT.pointBlankPerSlow : 0,
+    fanShots: Math.max(0, g("fanShots")),
   };
 }

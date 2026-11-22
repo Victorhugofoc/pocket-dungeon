@@ -17,7 +17,8 @@ import { wantedRelics } from "../core/evolution";
 import { effectsFor, rerollCost as levelRerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
 import { evaluateOffer, rerollCost, shopSlotOf, type ShopOffer } from "../core/shop";
 import { SHOP_ITEMS } from "../data/shop";
-import { PCT_STATS, UPGRADE_BY_ID, type UpgradeEffect } from "../data/upgrades";
+import { PCT_STATS, UPGRADE_BY_ID, type UpgradeDef, type UpgradeEffect } from "../data/upgrades";
+import { STYLE_GOOD, STYLE_NAMES, STYLE_TEXT, type AutoStyle } from "../data/autostyle";
 import { BOSSES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
 import { TECHNIQUES, TECH_MAX_LEVEL } from "../data/techniques";
@@ -60,7 +61,17 @@ const ROOM_MOD_LABEL: [keyof RoomMods, string][] = [
 /** Na recarga, negativo é bom (format.lua `INVERTED`). */
 const INVERTED: Record<string, true> = { spellCooldownPct: true, cdrPct: true, shopPricePct: true };
 
-function upgradeLine(e: UpgradeEffect): string {
+/** format.lua `upgradeName`: no estilo do herói algumas cartas têm outro nome (Ricochet, Big Iron, Frost Fan...). */
+function upgradeName(u: UpgradeDef, style: AutoStyle): string {
+  return STYLE_NAMES[style]?.[u.id] ?? u.name;
+}
+
+function upgradeLine(e: UpgradeEffect, style: AutoStyle = "normal"): string {
+  const own = STYLE_TEXT[style]?.[e.stat];
+  if (own) {
+    const good = STYLE_GOOD[style]?.[e.stat] ? true : INVERTED[e.stat] ? e.value < 0 : e.value > 0;
+    return `<div class="stat ${good ? "" : "neg"}">${own(e.value)}</div>`;
+  }
   const good = INVERTED[e.stat] ? e.value < 0 : e.value > 0;
   const n = PCT_STATS[e.stat] ? `${Math.round(e.value * 1000) / 10}%` : String(Math.round(e.value * 100) / 100);
   const txt = `${e.value >= 0 ? "+" : ""}${n} ${UPGRADE_LABEL[e.stat] ?? e.stat}`;
@@ -83,7 +94,7 @@ const DIFF_COLOR: Record<DifficultyId, string> = { easy: "#7ee08a", normal: "#9b
 function heroKit(h: HeroDef, cooldown: number): string {
   const cd = cooldown.toFixed(cooldown % 1 ? 1 : 0);
   return `<div class="kit">
-    <div class="kit-row"><b>Passive</b><ul>${h.passive.map((t) => `<li>${t}</li>`).join("")}</ul></div>
+    ${h.passive.length ? `<div class="kit-row"><b>Passive</b><ul>${h.passive.map((t) => `<li>${t}</li>`).join("")}</ul></div>` : ""}
     ${h.runModText ? `<div class="kit-row"><b>Run rules</b><ul>${h.runModText.map((t) => `<li>${t}</li>`).join("")}</ul></div>` : ""}
     <div class="kit-row"><b>Technique</b><div><span class="kit-name">${h.technique.name}</span>
       <span class="kit-meta">right click or Q · cooldown ${cd} s</span><p>${h.technique.text}</p></div></div>
@@ -810,7 +821,7 @@ export class Ui {
         <div class="section">Upgrades (${run.upgradesTaken.length})</div>
         <div class="relics">${run.upgradesTaken.length ? run.upgradesTaken.map((id, i) => {
           const t = run.upgradeTiers[i] ?? "common";
-          return `<div class="relic" style="border-color:${TIER_COLOR[t]}" title="${TIER_LABEL[t]}">${UPGRADE_BY_ID[id]?.name ?? id}</div>`;
+          return `<div class="relic" style="border-color:${TIER_COLOR[t]}" title="${TIER_LABEL[t]}">${UPGRADE_BY_ID[id] ? upgradeName(UPGRADE_BY_ID[id], this.game.hero.style) : id}</div>`;
         }).join("") : `<span style="color:var(--muted)">Level up and choose at the end of the wave.</span>`}</div>
         <div class="section">Relics (${run.relics.length})</div>
         <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic" data-relic="${id}" style="border-color:${hex(RELICS[id].color)}">${RELICS[id].name}</div>`).join("")
@@ -924,9 +935,9 @@ export class Ui {
       <div class="cards">${L.ids.map((id, i) => {
         const u = UPGRADE_BY_ID[id];
         const t = L.tiers[i];
-        const body = u.hideEffects ? "" : effectsFor(u, t).map(upgradeLine).join("");
+        const body = u.hideEffects ? "" : effectsFor(u, t).map((e) => upgradeLine(e, g.hero.style)).join("");
         return `<div class="card" data-up="${i}" style="--cc:${TIER_COLOR[t]}"><div class="meta">${TIER_LABEL[t]}</div>
-          <h3>${u.name}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}</div>`;
+          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}</div>`;
       }).join("")}</div>
       <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost} gold${left > 0 ? "" : " (already rerolled)"}</button></div>`;
     panel.onclick = (ev) => {
