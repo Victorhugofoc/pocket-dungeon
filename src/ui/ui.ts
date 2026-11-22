@@ -31,7 +31,12 @@ import type { Game } from "../game/game";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const QUALITY = ["low", "medium", "high"];
-const RELIC_RARITY: Record<string, string> = { incomum: "Uncommon", raro: "Rare", epico: "Epic" };
+/** Nome e cor de cada estado de relíquia na fileira do HUD (`updateRelicRow`). */
+const RELIC_STATUS: Record<string, { label: string; color: string; tip: string }> = {
+  momentum: { label: "Momentum", color: "#73e0ff", tip: "Momentum: damage bonus while moving" },
+  overshield: { label: "Shield", color: "#e0485a", tip: "Blood Engine: shield from overhealing" },
+};
+const RELIC_RARITY: Record<string, string> = { uncommon: "Uncommon", rare: "Rare", epic: "Epic", boss: "Boss", evolved: "Evolved" };
 const TIER_LABEL: Record<UpgradeTier, string> = { common: "Common", rare: "Rare", epic: "Epic" };
 const TIER_COLOR: Record<UpgradeTier, string> = { common: "#c9c4b8", rare: "#4fa3ff", epic: "#b36bff" };
 /** Nome dos atributos de lá que as melhorias oferecidas usam (o original diz "Auto Damage"; aqui vale para todo o dano). */
@@ -442,6 +447,7 @@ export class Ui {
       <div id="perf" class="hidden" data-r="perf"></div>
       <div id="toasts"></div>
       <div class="hud-bottom">
+        <div class="relic-row" data-r="relicRow"></div>
         <div class="skills">
           <div class="level-badge"><div><small>LEVEL</small><span data-r="level"></span></div></div>
           <div class="skill"><kbd>LMB</kbd>⚔️</div>
@@ -457,6 +463,21 @@ export class Ui {
     this.hud.querySelectorAll<HTMLElement>("[data-r]").forEach((e) => (this.r[e.dataset.r!] = e));
     this.toasts = this.hud.querySelector("#toasts")!;
     this.mapCtx = this.hud.querySelector<HTMLCanvasElement>("#minimap")!.getContext("2d")!;
+  }
+
+  /** relic_mechanics.lua `statuses`: os estados das relíquias com mecânica, sobre a barra de habilidades. */
+  private updateRelicRow(): void {
+    const list = this.game.relicHooks.statuses(this.game.relicWorld);
+    const key = list.map((st) => `${st.id}:${Math.round((st.left / Math.max(1e-6, st.total)) * 20)}:${Math.ceil(st.left)}`).join("|");
+    const row = this.r.relicRow;
+    if (row.dataset.key === key) return;
+    row.dataset.key = key;
+    row.innerHTML = list.map((st) => {
+      const f = Math.max(0, Math.min(1, st.left / Math.max(1e-6, st.total)));
+      const info = RELIC_STATUS[st.id] ?? { label: st.id, color: "#ffffff", tip: "" };
+      const value = st.id === "overshield" ? ` ${Math.ceil(st.left)}` : st.id === "momentum" ? ` +${Math.round(st.left * 100)}%` : "";
+      return `<span class="rs" title="${info.tip}" style="--c:${info.color};--f:${f}"><i></i>${info.label}${value}</span>`;
+    }).join("");
   }
 
   /** Espaços de spell nas teclas 1 e 2: ícone, nível, recarga e o aviso de spell que não saiu. */
@@ -516,6 +537,7 @@ export class Ui {
       r.techBox.title = `${tn} — ${evo?.text ?? g.hero.technique.text}`;
     }
     this.updateSpellHud();
+    this.updateRelicRow();
     r.dashCd.style.height = `${(Math.max(0, p.dashCd) / TUNING.hero.dashCooldown) * 100}%`;
     const pend = g.run.pendingLevelUps;
     r.points.classList.toggle("hidden", pend <= 0);

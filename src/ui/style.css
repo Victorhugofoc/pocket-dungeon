@@ -217,3 +217,11 @@ input.seed:focus { outline: none; border-color: var(--gold); }
 .g-grid button { padding: 4px 8px; font-size: 12px; text-align: left; }
 .g-desc { font-size: 12px; color: #cfd3e2; margin: 4px 0 6px; }
 .g-msg { min-height: 1.2em; color: var(--gold); font-size: 13px; margin-top: 10px; }
+
+/* M12-02: estados das relíquias com mecânica (relic_mechanics.lua `statuses`) */
+.relic-row { display: flex; gap: 6px; justify-content: center; min-height: 0; margin-bottom: 6px; flex-wrap: wrap; }
+.relic-row:empty { display: none; }
+.relic-row .rs { position: relative; overflow: hidden; padding: 2px 8px; border: 1px solid var(--c); border-radius: 10px;
+  font-size: 11px; color: #fff; background: rgba(10, 12, 20, 0.7); white-space: nowrap; }
+.relic-row .rs i { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--f) * 100%); background: var(--c); opacity: 0.35; z-index: -1; }
+.relic-row .rs { isolation: isolate; }

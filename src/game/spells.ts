@@ -5,6 +5,7 @@
 // tornado, totem, campo de cura, lâminas em órbita, runas, impacto, queimadura, lentidão, veneno, empurrão, atordoamento,
 // Eco e Volátil.
 import * as THREE from "three";
+import { relicSpellEffects } from "../core/relics";
 import { isAura, isSpellId, remainingTicks, spellContext, spellStats, type SpellStats } from "../core/spells";
 import { AURA_SPIKE, MAX_SPELLS, SPELL_CAST, SPELL_SCHOOL } from "../data/spells";
 import { REACTIONS } from "../data/reactions";
@@ -451,7 +452,7 @@ export class SpellCaster {
     const s = g.stats;
     this.stats = g.run.spells.slice(0, MAX_SPELLS).map((slot) =>
       isSpellId(slot.id)
-        ? spellStats(slot, spellContext(s))
+        ? spellStats(slot, spellContext(s), relicSpellEffects(g.run.relics, slot.id))
         : null);
     while (this.cooldown.length < this.stats.length) this.cooldown.push(0);
     this.cooldown.length = this.stats.length;
@@ -660,6 +661,7 @@ export class SpellCaster {
       return false;
     }
     this.cooldown[i] = st.cooldown;
+    this.game.relicHooks.onCast(this.game.relicWorld);
     // Overcharge (M21-07): depois da técnica, a spell da tecla sai sem gastar a recarga
     if (manual && this.game.epics.takeFreeSpell()) this.cooldown[i] = 0;
     // Eco (S16): chance de relançar igual e de graça 0,2 s depois

@@ -20,7 +20,8 @@ import {
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
 } from "../src/data/run";
 import { BOSS_ORDER, ENEMIES } from "../src/data/enemies";
-import { UPGRADE_CAPS, UPGRADES } from "../src/data/upgrades";
+import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
+import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
 import { newRun } from "../src/core/run";
 import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, POOL_TICK, ROOM_BIAS, ROOM_BY_ID, ROOMS, STORM } from "../src/data/rooms";
@@ -44,7 +45,7 @@ const MODULES = [
   "src.core.constants", "src.data.spells", "src.data.characters",
   "src.data.waves", "src.data.tuning", "src.data.run_map", "src.data.difficulties", "src.data.bosses",
   "src.progression.level_up", "src.data.enemies", "src.data.affixes", "src.data.upgrades", "src.data.rooms",
-  "src.data.achievements", "src.data.unlocks", "src.data.shop",
+  "src.data.achievements", "src.data.unlocks", "src.data.shop", "src.data.relics",
 ];
 /** Até que onda as fórmulas são comparadas (passa da 20 para cobrir o modo sem fim). */
 const WAVE_CHECK = 40;
@@ -1053,5 +1054,42 @@ describe.skipIf(!dr)("paridade da Magic Shop com o Dungeon Reign (M7-03)", () =>
         .filter(([, x]) => x !== undefined)));
       expect(got, `#${i}`).toEqual(L.rolls[i] ?? []);
     });
+  });
+});
+
+describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () => {
+  const RL: Lua = dr?.["src.data.relics"];
+
+  it("nome, categoria, raridade, tags e spell de cada relíquia iguais aos de relics.lua", () => {
+    for (const id of RELIC_IDS) {
+      const d = RELICS[id], L = RL[id];
+      expect(L, id).toBeTruthy();
+      expect(d.name.toUpperCase(), id).toBe(L.name.toUpperCase());
+      expect(d.category, id).toBe(L.category);
+      expect(d.rarity, id).toBe(L.rarity);
+      expect([...d.tags].sort(), id).toEqual([...(L.tags ?? [])].sort());
+      expect(d.spell, id).toBe(L.spell ?? undefined);
+      expect(d.needs, id).toBe(L.needs ?? undefined);
+      expect(d.spellEffect, id).toEqual(L.spellEffect ?? undefined);
+    }
+  });
+
+  it("efeitos iguais aos de relics.lua, menos as adaptadas (RELIC_ADAPTED)", () => {
+    for (const id of RELIC_IDS) {
+      const lua = (RL[id].effects ?? []).map((e: { stat: string; value: number }) => {
+        // o mesmo mapa das melhorias (lá `spellCooldownPct` negativo, aqui `cdrPct` positivo); mecânicas com o nome de lá
+        const m = UPGRADE_STAT[e.stat];
+        return m ? { stat: m.key, value: e.value * m.scale } : e;
+      });
+      if (RELIC_ADAPTED.includes(id)) expect(RELICS[id].effects, `${id} já igual: tirar de RELIC_ADAPTED`).not.toEqual(lua);
+      else expect(RELICS[id].effects, id).toEqual(lua);
+    }
+  });
+
+  it("números das mecânicas iguais aos de relic_mechanics.lua", () => {
+    const src = readFileSync(resolve(ROOT, "src/relics/relic_mechanics.lua"), "utf8");
+    const num = (k: string) => Number(src.match(new RegExp(String.raw`RM\.${k}\s*=\s*([\d.]+)`))![1]);
+    expect(RELIC_MECH.momentumRamp).toBe(num("MOMENTUM_RAMP"));
+    expect(RELIC_MECH.momentumFade).toBe(num("MOMENTUM_FADE"));
   });
 });
