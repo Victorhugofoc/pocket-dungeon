@@ -1,5 +1,6 @@
 // Envio do registro de partidas (core/runlog.ts): guarda no navegador e, no `npm run dev`, manda ao servidor,
 // que acrescenta uma linha em `logs/runs.jsonl` (vite.config.ts `/__runlog`).
+import { perfLine } from "../core/perflog";
 import { addRunLog, toJsonl, type RunLogEntry } from "../core/runlog";
 import { loadRunLog, writeRunLog, type Storage } from "../core/save";
 
@@ -11,6 +12,7 @@ export function storeRunLog(storage: Storage | undefined, e: RunLogEntry, beacon
   writeRunLog(storage, addRunLog(loadRunLog(storage), e));
   const mins = Math.floor(e.statistics.elapsed / 60), secs = Math.round(e.statistics.elapsed % 60);
   console.info(`[runlog] ${e.outcome} · ${e.heroId} · ${e.difficultyId} · wave ${e.wave} · level ${e.level} · ${e.statistics.kills} kills · ${mins}m${secs}s${e.killedBy ? ` · killed by ${e.killedBy}` : ""}${e.devUsed ? " · DEV" : ""}`);
+  if (e.perf) console.info(`[runlog] perf · ${perfLine(e.perf.total)} · ${e.perf.env.gpu}`);
   if (!import.meta.env.DEV) return;
   const body = JSON.stringify(e);
   if (beacon) navigator.sendBeacon?.("/__runlog", body);
