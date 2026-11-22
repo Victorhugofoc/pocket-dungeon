@@ -540,7 +540,7 @@ export class Game {
     this.clearWave();
     this.segment = this.layout.segments[z.index];
     this.wave = null;
-    this.mods = waveMods(wave, run.difficultyId, roomOf(run));
+    this.mods = waveMods(wave, run.difficultyId, roomOf(run), this.hero.runMods);
     this.shrineOpen = false;
     this.shopVisit = null;
     this.pendingShop = null;
@@ -1419,7 +1419,7 @@ export class Game {
       let alive = this.markers.length;
       for (const e of this.enemies) if (!e.dead) alive++;
       const bossAlive = this.markers.some((m) => m.boss) || (!!this.boss && !this.boss.dead);
-      const step = stepWave(w, dt, { alive, bossAlive }, this.rng.get("spawns"));
+      const step = stepWave(w, dt, { alive, bossAlive }, this.rng.get("spawns"), this.rng.get("champions"), this.mods.heroChampionShare);
       for (const sp of step.spawns) this.queueSpawn(sp);
       if (step.ambush) this.queueAmbush();
       if (step.completed) this.completeWave();
@@ -1807,7 +1807,7 @@ export class Game {
     this.nearGate = -1;
     const step = chooseCard(run, card);
     // a sala escolhida muda os números desta onda
-    this.mods = waveMods(run.wave, run.difficultyId, roomOf(run));
+    this.mods = waveMods(run.wave, run.difficultyId, roomOf(run), this.hero.runMods);
     this.audio.play("pickup");
     this.events.zoneChanged();
     if (step === "relic") {

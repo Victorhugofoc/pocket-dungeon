@@ -1,11 +1,12 @@
 // Ciclo de uma onda, puro (wave_system.lua, modifier_engine.lua, enemy.lua, boss.lua, rewards.lua do Dungeon Reign).
 // O jogo (game.ts) chama `stepWave` a cada quadro e põe no mapa o que ela pede; aqui não há three.js nem posição.
-// A sala do mapa da partida entra pela camada da onda (runmap.ts). Sem pactos, eventos, afixos e modificadores de
-// herói por enquanto (M9, M13 e o resto do M20-05): o que não existe vale 1.
+// A sala do mapa da partida entra pela camada da onda (runmap.ts). Sem pactos, eventos e afixos
+// por enquanto (M9, M13 e o resto do M20-05; os `runMods` do herói entraram na M19-08): o que não existe vale 1.
 import type { Rng } from "./rng";
 import { pacedCount, pacedDuration } from "./pace";
 import { waveLayer } from "./runmap";
 import { AMBUSH_DELAY, ENEMY_GROUPS, type RoomDef } from "../data/rooms";
+import type { HeroRunMods } from "../data/heroes";
 import {
   baseDuration, baseEnemyCount, bossGold, bossTier, bossXp, compositionFor, damageScale, endlessDamage, endlessHp, hpScale, isBossWave, waveGold, waveXp,
 } from "./waves";
@@ -14,7 +15,7 @@ import {
   TOTAL_WAVES, WAVES, type Difficulty, type DifficultyId,
 } from "../data/run";
 
-/** modifier_engine.lua `compute`, para uma partida sem pacto nem modificador de herói. */
+/** modifier_engine.lua `compute`, com a sala e os `runMods` do herói (sem pacto ainda). */
 export interface WaveMods {
   /** sala ou maldição da onda (viés, campeão da Toca, emboscada, pesados do Iron Pack) */
   room: RoomDef | null;
@@ -33,6 +34,16 @@ export interface WaveMods {
   crownHp: number;
   /** ouro do chefe ou campeão numa sala de risco (emboscada, Toca do Campeão), da dificuldade (Hard) */
   riskGold: number;
+  /** D-207 (Boss Killer, `runMods` do herói): recompensa por inimigo comum/campeão e por chefe */
+  killReward: number;
+  bossReward: number;
+  /** D-216: crescimento por onda dos poucos inimigos do herói */
+  heroEnemyHpGrowth: number | null;
+  heroEnemyDamagePerWave: number | null;
+  /** D-217: chefe mais leve no começo */
+  heroEarlyBoss: { upTo: number; mult: number } | null;
+  /** P-02: parte da onda comum que vem como campeão */
+  heroChampionShare: number | null;
 }
 
 function lateHp(d: Difficulty, wave: number): number {
@@ -41,24 +52,31 @@ function lateHp(d: Difficulty, wave: number): number {
 }
 
 /** A camada da onda (a sala) vezes a dificuldade; o chefe leva a mesma pressão da sala com a coluna de chefe. */
-export function waveMods(wave: number, difficultyId: DifficultyId, room: RoomDef | null = null): WaveMods {
+export function waveMods(wave: number, difficultyId: DifficultyId, room: RoomDef | null = null, hero: HeroRunMods = {}): WaveMods {
   const d = DIFFICULTIES[difficultyId];
   const w = waveLayer(room);
+  const h = hero;
   return {
     room,
-    enemyCount: w.enemyCount,
+    enemyCount: w.enemyCount * (h.enemyCount ?? 1),
     ambushHp: d.ambushHp ?? {},
     enemyHp: w.enemyHp * d.enemyHp * lateHp(d, wave),
     enemyDamage: w.enemyDamage * (d.earlyDamage?.[wave - 1] ?? d.enemyDamage),
     enemySpeed: w.enemySpeed * d.enemySpeed,
     projectileSpeed: w.projectileSpeed * d.projectileSpeed,
-    bossHp: w.enemyHp * d.bossHp,
-    bossDamage: w.enemyDamage * d.bossDamage,
+    bossHp: w.enemyHp * d.bossHp * (h.bossHp ?? 1),
+    bossDamage: w.enemyDamage * d.bossDamage * (h.bossDamage ?? 1),
     bossSpeed: w.enemySpeed * d.bossSpeed,
     reward: w.reward * d.reward,
     earlyBossCut: d.earlyBossCut === true,
-    crownHp: d.crownHp ?? 1,
+    crownHp: h.noCrownHp ? 1 : d.crownHp ?? 1,
     riskGold: d.riskGold ?? 1,
+    killReward: h.killReward ?? 1,
+    bossReward: h.bossReward ?? 1,
+    heroEnemyHpGrowth: h.enemyHpGrowth ?? null,
+    heroEnemyDamagePerWave: h.enemyDamagePerWave ?? null,
+    heroEarlyBoss: h.earlyBoss ?? null,
+    heroChampionShare: h.championShare ? h.championShare.byWave[wave - 1] ?? h.championShare.default : null,
   };
 }
 
@@ -186,7 +204,7 @@ export interface WaveStep {
 }
 
 /** wave_system.lua `update`: avança o relógio, pede os nascimentos do cronograma e diz quando a onda acaba. */
-export function stepWave(w: WaveState, dt: number, world: WaveWorld, spawns: Rng): WaveStep {
+export function stepWave(w: WaveState, dt: number, world: WaveWorld, spawns: Rng, champions?: Rng, championShare: number | null = null): WaveStep {
   const out: WaveStep = { spawns: [], ambush: false, completed: false };
   if (w.complete || !w.started) return out;
   w.elapsed += dt * w.timeMult;
@@ -197,7 +215,9 @@ export function stepWave(w: WaveState, dt: number, world: WaveWorld, spawns: Rng
   while (w.spawned < w.target && w.elapsed >= w.nextSpawn) {
     const id = spawns.weighted(w.composition);
     w.spawned++;
-    const champion = w.championAt === w.spawned || w.randomChampionAt === w.spawned || w.extraChampions.includes(w.spawned);
+    let champion = w.championAt === w.spawned || w.randomChampionAt === w.spawned || w.extraChampions.includes(w.spawned);
+    // P-02 (Varok): parte de toda onda comum vem como campeão (não na onda de chefe: o duelo fica limpo)
+    if (!champion && championShare && championShare > 0 && !w.isBossWave) champion = (champions ?? spawns).chance(championShare);
     out.spawns.push({ id, champion });
     w.nextSpawn += w.interval;
   }
@@ -280,8 +300,12 @@ export function enemyStats(def: { id?: string; hp: number; damage: number }, wav
     hp *= heavy.hp;
     damage *= heavy.damage;
   }
+  // D-216 (Boss Killer): cada onda deixa os poucos inimigos mais fortes (antes do campeão, como lá)
+  const heroHpK = mods.heroEnemyHpGrowth ? (1 + mods.heroEnemyHpGrowth) ** Math.max(0, wave - 1) : 1;
+  hp *= heroHpK;
+  if (mods.heroEnemyDamagePerWave) damage *= 1 + mods.heroEnemyDamagePerWave * Math.max(0, wave - 1);
   if (champion) {
-    hp = Math.max(hp, CHAMPION.hpBase + wave * CHAMPION.hpPerWave) * CHAMPION.hpMult;
+    hp = Math.max(hp, (CHAMPION.hpBase + wave * CHAMPION.hpPerWave) * heroHpK) * CHAMPION.hpMult;
     damage *= CHAMPION.damageMult;
     speed *= CHAMPION.speedMult;
   }
@@ -303,6 +327,7 @@ export function bossStats(bossId: string, wave: number, mods: WaveMods, final = 
     const band = BOSS.hpEarly.find((x) => wave <= x.upTo);
     if (band) hp *= band.mult;
   }
+  if (mods.heroEarlyBoss && wave <= mods.heroEarlyBoss.upTo) hp *= mods.heroEarlyBoss.mult; // D-217
   hp *= endlessHp(wave);
   damage *= endlessDamage(wave);
   if (final) {
@@ -361,9 +386,11 @@ export function killReward(t: KillTarget, mods: WaveMods, goldMult = 1): { gold:
   }
   const room = mods.room;
   const risky = !!room && (t.bossWave !== null || t.champion) && (!!room.ambush || (room.champions ?? 0) > 0);
+  // D-207 Boss Killer: a recompensa por morte acompanha as ondas menores
+  const k = t.bossWave !== null ? mods.bossReward : mods.killReward;
   return {
-    gold: Math.floor(g * mods.reward * goldMult * (risky ? mods.riskGold : 1)),
-    xp: Math.floor(x * mods.reward),
+    gold: Math.floor(g * mods.reward * goldMult * k * (risky ? mods.riskGold : 1)),
+    xp: Math.floor(x * mods.reward * k),
   };
 }
 
@@ -375,5 +402,6 @@ export function survivorReward(def: { gold: number; xp: number }, champion: bool
     g *= CHAMPION.rewardMult;
     x *= CHAMPION.rewardMult;
   }
-  return { gold: Math.floor(g * SURVIVOR_FACTOR * mods.reward * goldMult), xp: Math.floor(x * SURVIVOR_FACTOR * mods.reward) };
+  const k = mods.killReward; // D-207
+  return { gold: Math.floor(g * SURVIVOR_FACTOR * mods.reward * goldMult * k), xp: Math.floor(x * SURVIVOR_FACTOR * mods.reward * k) };
 }
