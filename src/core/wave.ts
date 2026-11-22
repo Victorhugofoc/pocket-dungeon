@@ -369,7 +369,10 @@ export interface KillTarget {
 }
 
 /** `Rewards.enemyKill` (§13.4): ouro e XP de um inimigo morto. O XP sai antes do multiplicador de XP do herói. */
-export function killReward(t: KillTarget, mods: WaveMods, goldMult = 1): { gold: number; xp: number } {
+/** Multiplicadores do herói para o campeão (`championGoldPct`, `championXpPct`). */
+export interface ChampionMults { gold: number; xp: number }
+
+export function killReward(t: KillTarget, mods: WaveMods, goldMult = 1, champ: ChampionMults = { gold: 1, xp: 1 }): { gold: number; xp: number } {
   if (t.noReward) return { gold: 0, xp: 0 };
   let g = t.gold;
   let x = t.xp;
@@ -381,8 +384,8 @@ export function killReward(t: KillTarget, mods: WaveMods, goldMult = 1): { gold:
   }
   if (t.champion) {
     const k = CHAMPION.rewardMult * (t.affixReward ?? 1);
-    g *= k;
-    x *= k;
+    g *= k * champ.gold;
+    x *= k * champ.xp;
   }
   const room = mods.room;
   const risky = !!room && (t.bossWave !== null || t.champion) && (!!room.ambush || (room.champions ?? 0) > 0);
@@ -395,13 +398,15 @@ export function killReward(t: KillTarget, mods: WaveMods, goldMult = 1): { gold:
 }
 
 /** `Rewards.survivor`: quem sobra no fim rende uma parte (invocados e filhos da gosma não rendem). */
-export function survivorReward(def: { gold: number; xp: number }, champion: boolean, mods: WaveMods, goldMult = 1): { gold: number; xp: number } {
+export function survivorReward(def: { gold: number; xp: number }, champion: boolean, mods: WaveMods, goldMult = 1,
+  champ: ChampionMults = { gold: 1, xp: 1 }, survivorMult = 1): { gold: number; xp: number } {
   let g = def.gold;
   let x = def.xp;
   if (champion) {
-    g *= CHAMPION.rewardMult;
-    x *= CHAMPION.rewardMult;
+    g *= CHAMPION.rewardMult * champ.gold;
+    x *= CHAMPION.rewardMult * champ.xp;
   }
   const k = mods.killReward; // D-207
-  return { gold: Math.floor(g * SURVIVOR_FACTOR * mods.reward * goldMult * k), xp: Math.floor(x * SURVIVOR_FACTOR * mods.reward * k) };
+  const f = SURVIVOR_FACTOR * survivorMult;
+  return { gold: Math.floor(g * f * mods.reward * goldMult * k), xp: Math.floor(x * f * mods.reward * k) };
 }

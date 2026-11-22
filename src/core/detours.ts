@@ -38,6 +38,11 @@ export interface DetourArea {
   bound: number;
   /** chão bloqueado por obstáculo sólido */
   blocked(x: number, z: number, r: number): boolean;
+  /**
+   * M21-12: as travas das trilhas dos lados da bifurcação e o lado de fora de cada uma: o desvio `i` fica ao lado
+   * da trilha `i`, para fora. Sem isto, os desvios ficam ao lado do meio do trecho.
+   */
+  anchors?: { x: number; z: number; nx: number; nz: number }[];
 }
 
 /**
@@ -53,6 +58,25 @@ export function detourSpots(rng: Rng, kinds: DetourKind[], area: DetourArea): De
   const nx = -dz, nz = dx;
   const firstSide = rng.chance(0.5) ? 1 : -1;
   const out: DetourSpot[] = [];
+  if (area.anchors && area.anchors.length > 0) {
+    const anchors = area.anchors;
+    const start = firstSide > 0 ? 0 : 1;
+    kinds.forEach((kind, i) => {
+      const an = anchors[(start + i) % anchors.length];
+      // ao longo da trilha (perpendicular ao lado de fora)
+      const tx = -an.nz, tz = an.nx;
+      for (let tries = 0; tries < 24; tries++) {
+        const off = rng.range(DETOUR.offset[0], DETOUR.offset[1]);
+        const along = rng.range(-4, 4);
+        const x = an.x + an.nx * off + tx * along;
+        const z = an.z + an.nz * off + tz * along;
+        if (!free(x, z, an.x, an.z, area) || out.some((o) => Math.hypot(o.x - x, o.z - z) < 6)) continue;
+        out.push({ x, z, kind, facing: Math.atan2(an.z - z, an.x - x) });
+        break;
+      }
+    });
+    return out;
+  }
   kinds.forEach((kind, i) => {
     const side = i % 2 === 0 ? firstSide : -firstSide;
     for (let tries = 0; tries < 24; tries++) {

@@ -43,7 +43,7 @@ describe("spellStats", () => {
   });
 
   it("a recarga tem piso de 35%", () => {
-    const st = spellStats(slot("arcane_bolt", 1, ["quick_bolt"]), { ...CTX, cooldownValue: -0.9 });
+    const st = spellStats(slot("arcane_bolt", 1, ["quick_bolt"]), { ...CTX, cooldownValues: [-0.9] });
     expect(st.cooldownMult).toBe(0.35);
   });
 

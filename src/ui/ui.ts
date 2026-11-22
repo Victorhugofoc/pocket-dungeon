@@ -1,4 +1,5 @@
 // Interface em DOM: título, HUD, status da partida, relíquias, melhorias, pausa.
+import { allTrails } from "../core/worldgen";
 import { MAP_NODE } from "../data/map-nodes";
 import { canHasten, hastenBonus } from "../core/wave";
 import { DIFFICULTIES, DIFFICULTY_ORDER, DIFFICULTY_TEXT, TOTAL_WAVES, type DifficultyId } from "../data/run";
@@ -579,9 +580,11 @@ export class Ui {
     ctx.strokeStyle = hex(g.zone.path);
     ctx.lineWidth = 3;
     ctx.lineJoin = "round";
-    ctx.beginPath();
-    L.path.forEach((pt, i) => (i ? ctx.lineTo(tx(pt.x), tx(pt.z)) : ctx.moveTo(tx(pt.x), tx(pt.z))));
-    ctx.stroke();
+    for (const line of allTrails(L.path, L.forks)) {
+      ctx.beginPath();
+      line.forEach((pt, i) => (i ? ctx.lineTo(tx(pt.x), tx(pt.z)) : ctx.moveTo(tx(pt.x), tx(pt.z))));
+      ctx.stroke();
+    }
     for (const e of g.enemies) {
       if (e.dead || e.summoned || e.isBoss) continue;
       ctx.fillStyle = e.champion ? "#ffc83d" : "#e0453f";

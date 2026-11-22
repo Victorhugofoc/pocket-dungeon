@@ -2,7 +2,7 @@
 // chão com shader procedural, grama com vento, flora instanciada em blocos (para o culling), fogueira, arena e portal.
 import * as THREE from "three";
 import { Rng } from "../core/rng";
-import { distToPath, type Obstacle, type ZoneLayout } from "../core/worldgen";
+import { allTrails, distToTrails, type Obstacle, type ZoneLayout } from "../core/worldgen";
 import type { DecorKind, ZoneDef } from "../data/zones";
 import { buildDecor, buildFlower, type MatKind } from "./flora";
 import { buildShafts } from "./air";
@@ -54,8 +54,12 @@ function buildMask(layout: ZoneLayout): THREE.CanvasTexture {
   ctx.lineJoin = "round";
   ctx.lineWidth = 6.2 * k;
   ctx.beginPath();
-  layout.path.forEach((p, i) => (i ? ctx.lineTo(tx(p.x), tx(p.z)) : ctx.moveTo(tx(p.x), tx(p.z))));
-  ctx.stroke();
+  // M21-12: o caminho do meio e as trilhas dos lados das bifurcações
+  for (const line of allTrails(layout.path, layout.forks)) {
+    ctx.beginPath();
+    line.forEach((p, i) => (i ? ctx.lineTo(tx(p.x), tx(p.z)) : ctx.moveTo(tx(p.x), tx(p.z))));
+    ctx.stroke();
+  }
   const disc = (x: number, z: number, r: number, alpha: number) => {
     ctx.globalAlpha = alpha;
     ctx.beginPath();
@@ -341,7 +345,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
       const fx0 = p.x + Math.cos(a) * d;
       const fz0 = p.z + Math.sin(a) * d;
       // nada de flor na terra batida
-      if (distToPath(fx0, fz0, layout.path) < 4.2 || Math.hypot(fx0 - layout.boss.x, fz0 - layout.boss.z) < layout.bossRadius + 1
+      if (distToTrails(fx0, fz0, layout) < 4.2 || Math.hypot(fx0 - layout.boss.x, fz0 - layout.boss.z) < layout.bossRadius + 1
         || Math.hypot(fx0 - layout.spawn.x, fz0 - layout.spawn.z) < 8 || layout.segments.some((c) => Math.hypot(fx0 - c.x, fz0 - c.z) < c.r * 0.6)) continue;
       inst.position.set(fx0, 0, fz0);
       inst.rotation.set(0, rng.range(0, 6.28), 0);

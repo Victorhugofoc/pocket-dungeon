@@ -147,17 +147,10 @@ export interface GateSpot {
 }
 
 /**
- * Os portões em leque na borda de um círculo (centro `anchor`, raio `radius`), abertos na direção de `toward`,
- * da esquerda para a direita de quem anda até lá (a ordem das cartas).
+ * M21-12: um portão na trava de cada trilha da bifurcação. Com 3 cartas, uma por trilha; com 2, as dos lados; com 1,
+ * a do meio. O portão fica de frente para quem anda pela trilha.
  */
-export function gateSpots(anchor: { x: number; z: number }, radius: number, toward: { x: number; z: number }, n: number, spreadDeg: number): GateSpot[] {
-  const base = Math.atan2(toward.z - anchor.z, toward.x - anchor.x);
-  const step = (spreadDeg * Math.PI) / 180;
-  const out: GateSpot[] = [];
-  for (let i = 0; i < n; i++) {
-    // com a câmera olhando para -z, o ângulo menor fica à esquerda na tela
-    const angle = base + (i - (n - 1) / 2) * step;
-    out.push({ x: anchor.x + Math.cos(angle) * radius, z: anchor.z + Math.sin(angle) * radius, angle });
-  }
-  return out;
+export function forkGateSpots(fork: { trails: readonly { lock: { x: number; z: number; angle: number } }[] }, n: number): GateSpot[] {
+  const pick = n >= 3 ? [0, 1, 2] : n === 2 ? [0, 2] : n === 1 ? [1] : [];
+  return pick.map((k) => ({ x: fork.trails[k].lock.x, z: fork.trails[k].lock.z, angle: fork.trails[k].lock.angle }));
 }

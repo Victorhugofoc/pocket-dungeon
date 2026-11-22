@@ -50,7 +50,114 @@ export interface ZoneLayout {
   path: Vec2[];
   /** os 5 trechos, do início ao chefe; o último é a arena do chefe */
   segments: Segment[];
+  /** M21-12: as bifurcações até as clareiras das ondas 1 a 4 (a da arena do chefe é só o caminho do meio) */
+  forks: Fork[];
   obstacles: Obstacle[];
+}
+
+/** Uma trilha da bifurcação e a trava dela (onde fica o portão da carta). */
+export interface Trail {
+  points: Vec2[];
+  /** trava: o meio da trilha; `angle` = direção de quem anda ali (radianos, plano xz) */
+  lock: Vec2 & { angle: number };
+  /** para fora da bifurcação (unitário; o do meio aponta para o mesmo lado da trilha 2) */
+  out: Vec2;
+}
+
+/** M21-12: as 3 trilhas de uma clareira (ou da fogueira, `from` = -1) até a seguinte. */
+export interface Fork {
+  from: number;
+  to: number;
+  /** um lado, o meio (o pedaço do caminho entre as duas) e o outro lado */
+  trails: Trail[];
+}
+
+/** Raio da fogueira (sem decoração em volta). */
+export const SPAWN_R = 9;
+const WAVES_IN_ZONE = 5;
+
+/** Distância ao longo do caminho até o ponto dele mais perto de `c`. */
+function distAlong(path: Vec2[], c: Vec2): number {
+  let best = Infinity, at = 0, acc = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    const l = Math.hypot(b.x - a.x, b.z - a.z) || 1e-6;
+    const t = Math.max(0, Math.min(1, ((c.x - a.x) * (b.x - a.x) + (c.z - a.z) * (b.z - a.z)) / (l * l)));
+    const d = Math.hypot(a.x + (b.x - a.x) * t - c.x, a.z + (b.z - a.z) * t - c.z);
+    if (d < best) { best = d; at = acc + l * t; }
+    acc += l;
+  }
+  return at;
+}
+
+/** O pedaço do caminho entre duas distâncias ao longo dele. */
+function subPath(path: Vec2[], d0: number, d1: number, step = 2): Vec2[] {
+  const out: Vec2[] = [];
+  for (let d = d0; d < d1; d += step) out.push(pointOnPath(path, d));
+  out.push(pointOnPath(path, d1));
+  return out;
+}
+
+/**
+ * As 3 trilhas de `a` até `b`: a do meio é o caminho; as dos lados saem da borda de `a` a `departDeg` graus, abrem
+ * até `bulge` do meio e voltam ao caminho `junction` antes de `b` (curva quadrática pela trava). Uma trilha que
+ * chegaria perto de outra clareira abre menos.
+ */
+function makeFork(from: number, to: number, a: Vec2 & { r: number }, b: Vec2 & { r: number }, path: Vec2[],
+  circles: (Vec2 & { r: number })[]): Fork {
+  const F = TUNING.world.forks;
+  const dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz) || 1;
+  const ux = dx / l, uz = dz / l, nx = -uz, nz = ux;
+  // junção: no caminho do meio, voltando de `b` até ficar `junction` fora da borda
+  let db = distAlong(path, b);
+  let join = pointOnPath(path, db);
+  while (db > 0 && Math.hypot(join.x - b.x, join.z - b.z) < b.r + F.junction) join = pointOnPath(path, (db -= 0.5));
+  // trilha do meio: o caminho da borda de `a` até a junção
+  const da = distAlong(path, a);
+  let d0 = da;
+  while (d0 < db) {
+    const q = pointOnPath(path, d0);
+    if (Math.hypot(q.x - a.x, q.z - a.z) >= a.r) break;
+    d0 += 0.5;
+  }
+  const mid = subPath(path, d0, db);
+  const midLock = pointOnPath(path, (d0 + db) / 2);
+  const ahead = pointOnPath(path, (d0 + db) / 2 + 1);
+  const others = circles.filter((c) => c !== a && c !== b);
+  const side = (s: number): Trail => {
+    const dep = ((F.departDeg * Math.PI) / 180) * s;
+    const c = Math.cos(dep), sn = Math.sin(dep);
+    const ox = ux * c - uz * sn, oz = ux * sn + uz * c;
+    const start = { x: a.x + ox * a.r, z: a.z + oz * a.r };
+    for (let bulge = F.bulge; ; bulge -= 1) {
+      const m = { x: (start.x + join.x) / 2 + nx * bulge * s, z: (start.z + join.z) / 2 + nz * bulge * s };
+      // curva quadrática que passa pela trava no meio: controle = 2 x trava - (início + fim) / 2
+      const cx = 2 * m.x - (start.x + join.x) / 2, cz = 2 * m.z - (start.z + join.z) / 2;
+      const pts: Vec2[] = [];
+      for (let i = 0; i <= F.samples; i++) {
+        const t = i / F.samples, w0 = (1 - t) * (1 - t), w1 = 2 * t * (1 - t), w2 = t * t;
+        pts.push({ x: w0 * start.x + w1 * cx + w2 * join.x, z: w0 * start.z + w1 * cz + w2 * join.z });
+      }
+      const ok = pts.every((p) => others.every((o) => Math.hypot(p.x - o.x, p.z - o.z) > o.r + F.clearance));
+      if (ok || bulge <= F.minBulge) {
+        return { points: pts, lock: { ...m, angle: Math.atan2(join.z - start.z, join.x - start.x) }, out: { x: nx * s, z: nz * s } };
+      }
+    }
+  };
+  const middle: Trail = { points: mid, lock: { ...midLock, angle: Math.atan2(ahead.z - midLock.z, ahead.x - midLock.x) }, out: { x: nx, z: nz } };
+  return { from, to, trails: [side(-1), middle, side(1)] };
+}
+
+/** Todas as trilhas da zona como polilinhas: o caminho do meio e as dos lados das bifurcações. */
+export function allTrails(path: Vec2[], forks: Fork[]): Vec2[][] {
+  return [path, ...forks.flatMap((f) => [f.trails[0].points, f.trails[2].points])];
+}
+
+/** Distância ao chão de trilha mais perto (caminho do meio ou trilha de bifurcação). */
+export function distToTrails(x: number, z: number, layout: { path: Vec2[]; forks: Fork[] }): number {
+  let best = distToPath(x, z, layout.path);
+  for (const f of layout.forks) for (const i of [0, 2]) best = Math.min(best, distToPath(x, z, f.trails[i].points));
+  return best;
 }
 
 const DECOR_RADIUS: Record<DecorKind, number> = {
@@ -101,54 +208,55 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
   const rLayout = Rng.of(seed, "layout");
   const rDecor = Rng.of(seed, "decor");
 
-  const spawn: Vec2 = { x: rLayout.range(-30, 30), z: inner - 8 };
-  const boss: Vec2 = { x: rLayout.range(-55, 55), z: -inner + W.bossArenaRadius + 4 };
-
-  // caminho sinuoso do início ao chefe
-  const path: Vec2[] = [spawn];
-  const steps = 6;
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    path.push({
-      x: spawn.x + (boss.x - spawn.x) * t + rLayout.range(-34, 34),
-      z: spawn.z + (boss.z - spawn.z) * t + rLayout.range(-8, 8),
-    });
+  // M21-12: clareiras em zigue-zague, uma de cada lado do meio, para caber a bifurcação entre elas
+  const F = W.forks;
+  const n = WAVES_IN_ZONE - 1;
+  const side0 = rLayout.chance(0.5) ? 1 : -1;
+  const spawn: Vec2 = { x: -side0 * rLayout.range(F.spawnSide[0], F.spawnSide[1]), z: inner - 8 };
+  const bossZ = -inner + W.bossArenaRadius + 4;
+  const centers: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const side = i % 2 === 0 ? side0 : -side0;
+    const z = spawn.z + ((bossZ - spawn.z) * (i + 1)) / (n + 1) + rLayout.range(-F.zJitter, F.zJitter);
+    const x = side * rLayout.range(F.zigzag[0], F.zigzag[1]);
+    centers.push({ x: Math.max(-inner + SEG_R + 6, Math.min(inner - SEG_R - 6, x)), z });
   }
-  path.push(boss);
+  const lastSide = (n - 1) % 2 === 0 ? side0 : -side0;
+  const boss: Vec2 = { x: -lastSide * rLayout.range(F.bossSide[0], F.bossSide[1]), z: bossZ };
+
+  // caminho do meio: fogueira, clareiras e arena, com uma curva leve entre cada par
+  const stops = [spawn, ...centers, boss];
+  const path: Vec2[] = [spawn];
+  for (let i = 1; i < stops.length; i++) {
+    const a = stops[i - 1], b = stops[i];
+    const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    const k = rLayout.range(-3, 3);
+    path.push({ x: (a.x + b.x) / 2 + (-(b.z - a.z) / l) * k, z: (a.z + b.z) / 2 + ((b.x - a.x) / l) * k }, b);
+  }
   for (const p of path) p.x = Math.max(-inner + 6, Math.min(inner - 6, p.x));
 
-  // os trechos: clareiras ao longo do caminho; o último é a arena do chefe
-  const len = pathLength(path);
-  // o caminho é sinuoso: do chefe para trás, cada clareira recua pelo caminho até não tocar a seguinte
-  const gap = 2;
-  const at = W.segmentAt.map((f) => len * f);
-  const centers: Vec2[] = [];
-  let next: Vec2 = boss;
-  let nextR: number = W.bossArenaRadius;
-  for (let i = at.length - 1; i >= 0; i--) {
-    let d = Math.min(at[i], (i + 1 < at.length ? at[i + 1] : len) - SEG_R - nextR - gap);
-    let c = pointOnPath(path, d);
-    while (d > 0 && Math.hypot(c.x - next.x, c.z - next.z) < SEG_R + nextR + gap) c = pointOnPath(path, (d -= 1));
-    at[i] = d;
-    centers[i] = c;
-    next = c;
-    nextR = SEG_R;
-  }
-  // entrada: o primeiro ponto do caminho, voltando da clareira, que fica 3 unidades fora dela
-  const entryOf = (c: Vec2, r: number, d: number): Vec2 => {
+  // entrada: o ponto do caminho do meio, voltando da clareira, 3 unidades fora dela
+  const entryOf = (c: Vec2, r: number): Vec2 => {
+    let d = distAlong(path, c);
     let e = pointOnPath(path, d);
-    while (d > 0 && Math.hypot(e.x - c.x, e.z - c.z) < r + 3) e = pointOnPath(path, (d -= 1));
+    while (d > 0 && Math.hypot(e.x - c.x, e.z - c.z) < r + 3) e = pointOnPath(path, (d -= 0.5));
     return e;
   };
-  const segments: Segment[] = centers.map((c, i) => ({ ...c, r: SEG_R, entry: entryOf(c, SEG_R, at[i]) }));
-  segments.push({ ...boss, r: W.bossArenaRadius, entry: entryOf(boss, W.bossArenaRadius, len) });
+  const segments: Segment[] = centers.map((c) => ({ ...c, r: SEG_R, entry: entryOf(c, SEG_R) }));
+  segments.push({ ...boss, r: W.bossArenaRadius, entry: entryOf(boss, W.bossArenaRadius) });
+
+  // as bifurcações: da fogueira à 1ª clareira e entre as clareiras das ondas (não até a arena do chefe)
+  const circles = [{ ...spawn, r: SPAWN_R }, ...segments];
+  const forks: Fork[] = [];
+  for (let to = 0; to < n; to++) forks.push(makeFork(to - 1, to, circles[to], circles[to + 1], path, circles));
+  const trails = allTrails(path, forks);
 
   // obstáculos e decoração
   const obstacles: Obstacle[] = [];
   const blocked = (x: number, z: number, r: number): boolean => {
-    if (Math.hypot(x - spawn.x, z - spawn.z) < 9 + r) return true;
+    if (Math.hypot(x - spawn.x, z - spawn.z) < SPAWN_R + r) return true;
     if (Math.hypot(x - boss.x, z - boss.z) < W.bossArenaRadius + 1 + r) return true;
-    if (distToPath(x, z, path) < 3.2 + r) return true;
+    if (trails.some((t) => distToPath(x, z, t) < 3.2 + r)) return true;
     // clareira das ondas: sem nada sólido; decoração baixa só na beirada
     for (const sg of segments.slice(0, -1)) if (Math.hypot(x - sg.x, z - sg.z) < (r > 0 ? sg.r + 1 + r : sg.r * 0.6)) return true;
     return false;
@@ -194,7 +302,7 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
     }
   }
 
-  return { seed, size: W.size, spawn, boss, bossRadius: W.bossArenaRadius, path, segments, obstacles };
+  return { seed, size: W.size, spawn, boss, bossRadius: W.bossArenaRadius, path, segments, forks, obstacles };
 }
 
 /**
