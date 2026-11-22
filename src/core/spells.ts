@@ -10,6 +10,7 @@ import { DR_BASE_DAMAGE, DR_BASE_HP, DR_SPELL_POWER } from "../data/techniques";
 import type { FinalStats } from "./stats";
 import { px, stackMultiplier } from "./techniques";
 import { PACE } from "../data/pace";
+import { relicDef } from "./relics";
 
 /** O que a spell precisa dos atributos do herói (subconjunto de FinalStats). */
 export interface SpellContext {
@@ -34,14 +35,24 @@ export interface SpellContext {
   poison?: number;
   /** acúmulos extras de veneno do herói (Vesper; stats `poisonStacks` de lá) */
   poisonStacks?: number;
+  /** M12-03 (stats.lua): alvos a mais nas spells com alvos (Storm Prism) */
+  lightningTargets?: number;
+  /** chances globais de Echo e Volatile, somadas ao pool da spell */
+  echoValues?: readonly number[];
+  volatileValues?: readonly number[];
+  /** Conduit Ring: dano a mais por salto do raio */
+  chainEscalate?: number;
+  /** relíquias do herói (a forma evoluída converte as de fora da receita, `relicConvert`) */
+  relics?: readonly string[];
 }
 
-/** O que as spells leem dos atributos finais do herói (D14). */
-export function spellContext(s: FinalStats): SpellContext {
+/** O que as spells leem dos atributos finais do herói (D14) e as relíquias dele. */
+export function spellContext(s: FinalStats, relics: readonly string[] = []): SpellContext {
   return {
     cooldownValues: s.cooldownValues, areaValues: s.areaValues, range: s.range, spellPower: s.spellPower,
     spellDamage: s.spellDamage, school: s.school, burn: s.burn, slowPoints: s.slowPoints,
-    slowDuration: s.slowDuration, poison: s.poison,
+    slowDuration: s.slowDuration, poison: s.poison, lightningTargets: s.lightningTargets, echoValues: s.echoValues,
+    volatileValues: s.volatileValues, chainEscalate: s.chainEscalate, relics,
   };
 }
 
@@ -83,6 +94,8 @@ export interface SpellStats {
   targets?: number;
   chainRange?: number;
   doubleHit?: number;
+  /** Conduit Ring: cada salto do raio leva 1 + isto × (salto - 1) do dano */
+  chainEscalate?: number;
   echo?: number;
   /** fração da vida máxima por tique */
   heal?: number;
@@ -252,7 +265,7 @@ export function spellStats(
     const burnBase = (def.burnDps + DR_SPELL_POWER * SPELL_TUNING.burnSpScale) * sp * (1 + SPELL_TUNING.burnLevelStep * (level - 1));
     st.burnDps = (burnBase / DR_BASE_DAMAGE) * burnMult * (evo?.burnDpsMult ?? 1);
     st.burnDuration = (evo?.burnDuration ?? def.burnDuration ?? 0) + F.burnDurationFlat;
-    st.volatile = stackChance(L.volatileChance);
+    st.volatile = stackChance([...(ctx.volatileValues ?? []), ...L.volatileChance]);
   }
   if (def.slow !== undefined) {
     st.slow = Math.max(0, Math.min(SPELL_TUNING.slowMax, def.slow + (ctx.slowPoints ?? 0) + F.slowPoints));
@@ -260,12 +273,13 @@ export function spellStats(
     st.brittle = F.brittle;
   }
   if (def.targets !== undefined) {
-    st.targets = def.targets + F.targets;
+    st.targets = def.targets + F.targets + (ctx.lightningTargets ?? 0);
     st.chainRange = px(def.chainRange ?? 0) * stackMultiplier(L.chainRangePct);
     st.doubleHit = stackChance(L.doubleHitChance);
+    st.chainEscalate = ctx.chainEscalate ?? 0;
   }
   if (def.kind === "projectile") st.projectiles = (def.projectiles ?? 1) + F.projectiles;
-  if (def.id === "arcane_bolt") st.echo = stackChance(L.echoChance);
+  if (def.id === "arcane_bolt") st.echo = stackChance([...(ctx.echoValues ?? []), ...L.echoChance]);
   if (def.heal !== undefined) {
     // como lá, o nível não escala a cura; só os marcos (D-029)
     st.heal = ((def.heal + F.healFlat) * (evo?.healMult ?? 1)) / DR_BASE_HP;
@@ -367,16 +381,16 @@ export function spellStats(
       // Sanctuary (D-318, D-354): o anel dourado fere quem está dentro a cada pulso, proporcional ao poder de magia
       st.fieldDamage = ((SPELL_TUNING.sanctuaryDamage + DR_SPELL_POWER * SPELL_TUNING.sanctuaryScale) * sp) / DR_BASE_DAMAGE;
     }
-    convertForEvolution(st, slot, evo);
+    convertForEvolution(st, slot, evo, ctx.relics ?? []);
   }
   return st;
 }
 
 /**
- * spell_stats.lua `convert` (D-437): a forma evoluída fica com o valor dos modificadores que não usa mais. A parte das
- * relíquias (`relicConvert`) espera as relíquias de spell (`M12`).
+ * spell_stats.lua `convert` (D-437): a forma evoluída fica com o valor dos modificadores que não usa mais, e as
+ * relíquias de fora da receita viram dano (`relicConvert`: por ponto do atributo, e pelos alvos da relíquia da spell).
  */
-function convertForEvolution(st: SpellStats, slot: SpellSlotLike, evo: EvolutionDef): void {
+function convertForEvolution(st: SpellStats, slot: SpellSlotLike, evo: EvolutionDef, relics: readonly string[]): void {
   let dmg = 0;
   let len = 0;
   let wid = 0;
@@ -386,6 +400,15 @@ function convertForEvolution(st: SpellStats, slot: SpellSlotLike, evo: Evolution
     dmg += c.damagePct ?? 0;
     len += c.lengthPct ?? 0;
     wid += c.widthPct ?? 0;
+  }
+  if (evo.relicConvert) {
+    const recipe = new Set<string>(evo.requires);
+    for (const id of relics) {
+      const r = recipe.has(id) ? undefined : relicDef(id);
+      if (!r) continue;
+      for (const e of r.effects) dmg += (evo.relicConvert[e.stat] ?? 0) * e.value;
+      if (r.spell === slot.id && r.spellEffect?.targets) dmg += (evo.relicConvert.lightningTargets ?? 0) * r.spellEffect.targets;
+    }
   }
   st.damage *= 1 + dmg;
   if (st.length !== undefined) st.length *= 1 + len;

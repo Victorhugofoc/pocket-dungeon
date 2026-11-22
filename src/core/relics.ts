@@ -57,6 +57,13 @@ export function relicTotals(relics: readonly string[]): StatBlock {
   return sum;
 }
 
+/** relic_system.lua `isDraftable` (D-050): relíquia de spell (§43) só entra no sorteio com a spell dela equipada. */
+export function relicDraftable(id: string, spells: readonly { id: string }[]): boolean {
+  const d = relicDef(id);
+  if (!d) return false;
+  return d.category !== "spell" || spells.some((s) => s.id === d.spell);
+}
+
 /** spell_stats.lua `collect`: os `spellEffect` das relíquias feitas para esta spell. */
 export function relicSpellEffects(relics: readonly string[], spellId: string): SpellEffect[] {
   const out: SpellEffect[] = [];

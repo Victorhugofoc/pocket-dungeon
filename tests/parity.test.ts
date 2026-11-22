@@ -1076,7 +1076,9 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
 
   it("efeitos iguais aos de relics.lua, menos as adaptadas (RELIC_ADAPTED)", () => {
     for (const id of RELIC_IDS) {
-      const lua = (RL[id].effects ?? []).map((e: { stat: string; value: number }) => {
+      // tabela vazia de lá (relíquia de spell) chega como objeto
+      const raw = Array.isArray(RL[id].effects) ? RL[id].effects : [];
+      const lua = raw.map((e: { stat: string; value: number }) => {
         // o mesmo mapa das melhorias (lá `spellCooldownPct` negativo, aqui `cdrPct` positivo); mecânicas com o nome de lá
         const m = UPGRADE_STAT[e.stat];
         return m ? { stat: m.key, value: e.value * m.scale } : e;

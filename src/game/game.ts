@@ -31,7 +31,7 @@ import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
-import { grantRelic, relicSources, relicTotals, removeRelic, RelicHooks, type RelicWorld } from "../core/relics";
+import { grantRelic, relicDraftable, relicSources, relicTotals, removeRelic, RelicHooks, type RelicWorld } from "../core/relics";
 import { HERO_UPGRADES, TUNING, UPGRADE_FX } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -542,9 +542,10 @@ export class Game {
     writeAchievements(this.storage, this.ach.state);
   }
 
-  /** Relíquias que podem entrar no sorteio: as abertas (unlocks.lua `filter`) e que o herói ainda não tem. */
+  /** Relíquias que podem entrar no sorteio: as abertas (unlocks.lua `filter`), que o herói ainda não tem e, as de spell, com a spell equipada. */
   private relicPool(): string[] {
-    return filterOpen(this.ach.state, "relic", RELIC_IDS, TUNING.unlockAll).filter((id) => !this.run.relics.includes(id));
+    return filterOpen(this.ach.state, "relic", RELIC_IDS, TUNING.unlockAll)
+      .filter((id) => !this.run.relics.includes(id) && relicDraftable(id, this.run.spells));
   }
 
   /** Avisa as conquistas liberadas e grava. */
@@ -1000,7 +1001,7 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- dano
-  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean; noKnock?: boolean; element?: string }): void {
+  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean; noKnock?: boolean; element?: string; spell?: boolean }): void {
     if (e.dead) return;
     const s = this.stats;
     const now = this.time;
@@ -1009,9 +1010,11 @@ export class Game {
     const behind = isBehind(e.facing, e.x, e.z, this.player.x, this.player.z, REACTIONS.execution.backCone);
     const reaction = reactionFor(e.reactState(now), { kind: "hit", element, behind }, now);
     if (element) this.spells.infuse(e, element);
-    const crit = hit?.crit === true || Math.random() < s.critChance;
+    // as spells só dão crítico com o Spell Crit (damage.lua `SPELL_SOURCES`, D-209); o ataque e as técnicas, com o da arma
+    const spell = hit?.spell === true;
+    const crit = hit?.crit === true || Math.random() < (spell ? s.spellCritChance : s.critChance);
     // ataque básico e técnicas levam o dano do ataque (autoDamagePct); as spells, não (D14)
-    let amount = s.damage * s.autoDamage * mult * (0.9 + Math.random() * 0.2);
+    let amount = s.damage * (spell ? 1 : s.autoDamage) * mult * (0.9 + Math.random() * 0.2);
     if (this.techDepth > 0) amount *= s.techniqueDamage; // SIGNATURE (D-309)
     const back = this.hero.auto.backstab !== undefined && this.isBackstab(e);
     if (back) amount *= 1 + this.hero.auto.backstab!;
@@ -1034,8 +1037,8 @@ export class Game {
       }
     }
     if (crit) amount *= s.critDamage;
-    // Brittle Chill (Iceball): inimigo com Slow recebe dano extra (damage.lua §37)
-    if (now < e.slowUntil) amount *= 1 + this.spells.brittle;
+    // Brittle Chill (Iceball, somado) e o dano em lento das relíquias (pool): inimigo com Slow recebe dano extra (damage.lua §37)
+    if (now < e.slowUntil) amount *= (1 + this.spells.brittle) * s.slowedDamage;
     this.damageEnemy(e, amount, { crit, noKnock: hit?.noKnock });
     if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount);
     if (back && e.dead) this.heal(s.maxHp * SHADOW.backstabKillHeal, true); // Umbra: matar pelas costas cura
@@ -2133,7 +2136,7 @@ export class Game {
    */
   spellHit(e: Enemy, mult: number, noKnock = false, element?: string): void {
     this.hitSource = "other";
-    this.hitEnemy(e, mult, undefined, { noKnock, element });
+    this.hitEnemy(e, mult, undefined, { noKnock, element, spell: true });
   }
 
   /** Elementos que a build aplica agora (ícone de reação pronta). */

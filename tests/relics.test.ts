@@ -1,8 +1,9 @@
 // Motor de relíquias (core/relics.ts): posse com tags, fontes de atributo, efeitos de spell e despacho dos ganchos.
 import { describe, expect, it } from "vitest";
-import { grantRelic, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
+import { grantRelic, relicDraftable, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
 import { newRun } from "../src/core/run";
 import { computeStats } from "../src/core/stats";
+import { spellContext, spellStats } from "../src/core/spells";
 import { HEROES } from "../src/data/heroes";
 import { RELIC_IDS, RELIC_MECH, RELICS, type RelicDef } from "../src/data/relics";
 
@@ -184,5 +185,61 @@ describe("relíquias: mecânicas do lote 1 (M12-02)", () => {
     const h = new RelicHooks();
     h.refresh(relicTotals(["momentum", "vital_spark", "blood_engine", "glass_cannon"]));
     expect(h.ids.sort()).toEqual(["level_heal", "momentum", "overshield"]);
+  });
+});
+
+describe("relíquias: lote 2 (M12-03)", () => {
+  const stats = (ids: string[]) => computeStats([HEROES.frostine.stats, ...relicSources(ids)]);
+  const ctx = (ids: string[]) => spellContext(stats(ids), ids);
+  const slot = (id: string, level = 1) => ({ id, level, modifiers: [] as string[] });
+
+  it("relíquia de spell só entra no sorteio com a spell equipada; componente e núcleo entram sempre", () => {
+    expect(relicDraftable("pyro_lens", [{ id: "iceball" }])).toBe(false);
+    expect(relicDraftable("pyro_lens", [{ id: "fireball" }])).toBe(true);
+    expect(relicDraftable("binding_chalk", [])).toBe(true);
+    expect(relicDraftable("storm_prism", [])).toBe(true);
+    expect(relicDraftable("nope", [])).toBe(false);
+  });
+
+  it("escolas novas multiplicam o dano das spells delas", () => {
+    for (const [rid, sid] of [["gale_feather", "cyclone"], ["binding_chalk", "rune_traps"], ["cut_crystal", "prism_beam"], ["geode_heart", "quake_totem"]] as const) {
+      const base = spellStats(slot(sid), ctx([]));
+      const up = spellStats(slot(sid), ctx([rid]), relicSpellEffects([rid], sid));
+      expect(up.damage / base.damage, rid).toBeCloseTo(1.08, 6);
+    }
+  });
+
+  it("Storm Prism e Storm Lens somam alvos; Conduit Ring escala; Echo e Volatile entram no pool da spell", () => {
+    const base = spellStats(slot("chain_lightning"), ctx([]));
+    const st = spellStats(slot("chain_lightning"), ctx(["storm_prism", "storm_lens", "conduit_ring"]),
+      relicSpellEffects(["storm_lens"], "chain_lightning"));
+    expect(st.targets).toBe((base.targets ?? 0) + 2);
+    expect(st.chainEscalate).toBeCloseTo(0.12, 9);
+    expect(st.cooldown).toBeCloseTo(base.cooldown * 0.92, 6);
+    const echo = spellStats(slot("arcane_bolt"), ctx(["echo_stone"]), relicSpellEffects(["aether_lens"], "arcane_bolt"));
+    expect(echo.echo).toBeCloseTo(1 - 0.92 * 0.92, 9);
+    const s = stats(["arcanum_sigil", "echo_stone"]);
+    expect(s.echoValues).toEqual([0.06, 0.08]);
+  });
+
+  it("forma evoluída converte as relíquias de fora da receita em dano (relicConvert)", () => {
+    const evo = { id: "chain_lightning", level: 5, modifiers: [] as string[], evolution: "lightning_strike" };
+    const plain = spellStats(evo, ctx(["storm_prism"]));
+    // Storm Prism está na receita: não conta; a Storm Lens (+1 alvo da spell) dá +8%
+    const lens = spellStats(evo, ctx(["storm_prism", "storm_lens"]), relicSpellEffects(["storm_lens"], "chain_lightning"));
+    expect(lens.damage / plain.damage).toBeCloseTo(1.08, 6);
+    const arc = { id: "arcane_bolt", level: 5, modifiers: [] as string[], evolution: "arcane_strike" };
+    const a0 = spellStats(arc, ctx([]));
+    const a1 = spellStats(arc, ctx(["echo_stone"]));
+    expect(a1.damage / a0.damage).toBeCloseTo(1.08 * 1.08, 6); // +8% arcano e +8% pelo Echo convertido
+  });
+
+  it("Spell Crit, dano em lento e risco das sigilas", () => {
+    expect(stats([]).spellCritChance).toBe(0);
+    expect(stats(["seers_monocle", "prismatic_core"]).spellCritChance).toBeCloseTo(1 - 0.88 * 0.95, 9);
+    expect(stats(["rime_charm"]).slowedDamage).toBeCloseTo(1.10, 9);
+    const p = stats(["pyre_sigil"]);
+    expect(p.school.fire / stats([]).school.fire).toBeCloseTo(1.2, 6); // o pool positivo multiplica o -50% da Frostine
+    expect(p.school.ice).toBeLessThan(stats([]).school.ice);
   });
 });

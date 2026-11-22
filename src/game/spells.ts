@@ -452,7 +452,7 @@ export class SpellCaster {
     const s = g.stats;
     this.stats = g.run.spells.slice(0, MAX_SPELLS).map((slot) =>
       isSpellId(slot.id)
-        ? spellStats(slot, spellContext(s), relicSpellEffects(g.run.relics, slot.id))
+        ? spellStats(slot, spellContext(s, g.run.relics), relicSpellEffects(g.run.relics, slot.id))
         : null);
     while (this.cooldown.length < this.stats.length) this.cooldown.push(0);
     this.cooldown.length = this.stats.length;
@@ -921,7 +921,8 @@ export class SpellCaster {
       const cx = e.x;
       const cz = e.z;
       this.arc(px, pz, cx, cz, count, (count - 1) * CHAIN_STEP);
-      g.spellHit(e, st.damage, false, schoolOf(st));
+      // Conduit Ring (D-438): cada salto bate mais forte que o anterior
+      g.spellHit(e, st.damage * (1 + (st.chainEscalate ?? 0) * (count - 1)), false, schoolOf(st));
       // Static Field: chance de acertar o primeiro alvo duas vezes
       if (count === 1 && st.doubleHit && !e.dead && Math.random() < st.doubleHit) {
         g.spellHit(e, st.damage, false, schoolOf(st));
