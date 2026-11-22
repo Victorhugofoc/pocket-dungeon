@@ -12,6 +12,7 @@ import { addModifier, addSpell, levelUpSpell } from "./spells";
 import { newSpellSlot } from "./run";
 import { MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELLS, modifierDef, type SpellEffect, type SpellId } from "../data/spells";
 import { RELICS } from "../data/relics";
+import { grantRelic } from "./relics";
 import {
   SHOP_CATEGORIES, SHOP_GENERAL, SHOP_ITEMS, SHOP_MODIFIER, SHOP_OFFERS, SHOP_REASONS, SHOP_RELIC, SHOP_REROLL, SHOP_SPELL,
   shopLevel, type GeneralKind, type ShopCategory,
@@ -66,7 +67,6 @@ export interface ShopRng {
 const GENERAL_KINDS: Readonly<Record<string, true>> = { sharpened_weapon: true, vitality: true, arcane_tome: true };
 const isGeneral = (k: OfferKind): k is GeneralKind => GENERAL_KINDS[k] === true;
 
-const RARITY_KEY = { incomum: "uncommon", raro: "rare", epico: "epic" } as const;
 
 // ---------------------------------------------------------------- preços
 
@@ -101,7 +101,8 @@ export function modifierCost(shop: ShopState, spellLevel: number, effect: SpellE
 export function relicCost(shop: ShopState, relicId: string, level: number): number {
   const R = SHOP_RELIC;
   const r = RELICS[relicId]?.rarity;
-  const base = r ? R.cost[RARITY_KEY[r]] : R.cost.rare;
+  // relíquias de chefe e evoluídas não saem na loja; se saírem, custam como raras
+  const base = r === "uncommon" || r === "epic" ? R.cost[r] : R.cost.rare;
   return Math.floor(base * (1 + R.perLevel * (level - 1)) * R.perPurchase ** shop.relicPurchases);
 }
 
@@ -269,7 +270,7 @@ export function buyOffer(run: RunState, visit: ShopVisit, index: number, hooks: 
     shop.modifierPurchases++;
   } else {
     if (hooks.grantRelic) hooks.grantRelic(o.relic!);
-    else if (!run.relics.includes(o.relic!)) { run.relics.push(o.relic!); run.relicVersion++; }
+    else grantRelic(run, o.relic!);
     shop.relicPurchases++;
   }
   shop.purchases++;

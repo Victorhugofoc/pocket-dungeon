@@ -31,7 +31,7 @@ import type { Game } from "../game/game";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const QUALITY = ["low", "medium", "high"];
-const RELIC_RARITY: Record<string, string> = { incomum: "Uncommon", raro: "Rare", epico: "Epic" };
+const RELIC_RARITY: Record<string, string> = { uncommon: "Uncommon", rare: "Rare", epic: "Epic", boss: "Boss", evolved: "Evolved" };
 const TIER_LABEL: Record<UpgradeTier, string> = { common: "Common", rare: "Rare", epic: "Epic" };
 const TIER_COLOR: Record<UpgradeTier, string> = { common: "#c9c4b8", rare: "#4fa3ff", epic: "#b36bff" };
 /** Nome dos atributos de lá que as melhorias oferecidas usam (o original diz "Auto Damage"; aqui vale para todo o dano). */

@@ -31,6 +31,7 @@ import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { RELICS, RELIC_IDS } from "../data/relics";
+import { grantRelic, relicSources, relicTotals, removeRelic, RelicHooks, type RelicWorld } from "../core/relics";
 import { HERO_UPGRADES, TUNING, UPGRADE_FX } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -296,6 +297,21 @@ export class Game {
   private hitstop = 0;
   /** épicas de comportamento (M21-07) */
   readonly epics = new EpicRuntime(this);
+  /** ganchos das relíquias que mudam o jogo (core/relics.ts) */
+  readonly relicHooks = new RelicHooks();
+  /** o mundo como as mecânicas de relíquia o veem (core/relics.ts `RelicWorld`) */
+  readonly relicWorld: RelicWorld = (() => {
+    const g = this; // eslint-disable-line @typescript-eslint/no-this-alias
+    return {
+      get time() { return g.time; },
+      get waveActive() { return g.inCombat; },
+      get hp() { return g.player.hp; },
+      get maxHp() { return g.stats.maxHp; },
+      get gold() { return g.run.gold; },
+      heal: (amount: number) => g.heal(amount, true),
+      emit: () => {},
+    };
+  })();
   /** recompensa do chefe, entregue quando o corpo dele some */
   private bossReward: (() => void) | null = null;
   /** escolha de melhoria aberta; o jogo fica pausado pela tela */
@@ -480,11 +496,12 @@ export class Game {
 
   recompute(): void {
     const sources: StatBlock[] = [this.hero.stats];
-    for (const id of this.run.relics) if (RELICS[id]) sources.push(RELICS[id].stats);
+    sources.push(...relicSources(this.run.relics));
     sources.push(...upgradeSources(this.run));
     sources.push(shopStats(this.run.shop));
     this.stats = computeStats(sources, this.hero.style);
     this.epics.refresh(this.run.upgradesTaken);
+    this.relicHooks.refresh(relicTotals(this.run.relics));
     this.elements = this.buildElements();
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
@@ -639,6 +656,7 @@ export class Game {
     p.dashT = 0;
     this.playerAlive = true;
     this.epics.reset();
+    this.relicHooks.reset();
     this.camTarget.set(p.x, 0, p.z);
   }
 
@@ -1070,6 +1088,7 @@ export class Game {
     if (e.isBoss && this.stats.executioner > 0 && e.hp < e.maxHp * HERO_UPGRADES.executionerBelow) amount *= 1 + this.stats.executioner;
     if (this.stats.followThrough > 0 && this.time < this.player.followUntil) amount *= 1 + this.stats.followThrough;
     amount *= this.epics.damageMult();
+    amount *= this.relicHooks.damageMult(this.relicWorld, { source: opts.dot ?? this.hitSource, boss: e.isBoss });
     amount = Math.max(1, Math.round(amount));
     this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
     e.hp -= amount;
@@ -1115,6 +1134,7 @@ export class Game {
     this.spreadOnKill(e);
     this.spells.onKill(e);
     this.epics.onKill();
+    this.relicHooks.onKill(this.relicWorld, { x: e.x, z: e.z, maxHp: e.maxHp, champion: e.champion, boss: e.isBoss });
     this.ach.enemyKilled({ key: e, id: e.boss?.id ?? e.def!.id, boss: e.isBoss, champion: e.champion, source,
       elapsed: this.run.statistics.elapsed, noReward: e.summoned });
     const color = e.boss?.color ?? e.def!.color;
@@ -1230,9 +1250,7 @@ export class Game {
   }
 
   addRelic(id: string): void {
-    if (this.run.relics.includes(id) || !RELICS[id]) return;
-    this.run.relics.push(id);
-    this.run.relicVersion += 1;
+    if (!RELICS[id] || !grantRelic(this.run, id)) return;
     this.ach.relicFound(id);
     this.recompute();
     this.events.toast(`Relic: ${RELICS[id].name}`, "#ffc83d");
@@ -1255,10 +1273,7 @@ export class Game {
 
   /** relic_system.lua `devRemove` */
   devRemoveRelic(id: string): void {
-    const i = this.run.relics.indexOf(id);
-    if (i < 0) return;
-    this.run.relics.splice(i, 1);
-    this.run.relicVersion += 1;
+    if (!removeRelic(this.run, id)) return;
     this.recompute();
     this.events.statusChanged();
   }
@@ -1293,8 +1308,11 @@ export class Game {
   heal(amount: number, show: boolean, full = false): void {
     const p = this.player;
     const before = p.hp;
+    // Berserker's Oath e afins: a cura é recusada durante a onda (relic_mechanics.lua `blocksHeal`)
+    if (!full && this.relicHooks.blocksHeal(this.relicWorld)) return;
     if (!full) amount *= this.stats.healing; // damage.lua `healPlayer`: armadura e `healPct`
     if (this.inCombat && !full) amount *= PACE.combatHealMult;
+    this.relicHooks.overheal(this.relicWorld, p.hp + amount - this.stats.maxHp);
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
     this.run.statistics.healed += p.hp - before;
     this.ach.healed(this.run.statistics.healed);
@@ -1307,7 +1325,9 @@ export class Game {
   /** xp.lua `addXp`: uma passagem de nível por ganho; a melhoria espera o fim da onda (R17). */
   gainXp(amount: number): void {
     const s = this.run;
+    const level0 = s.level;
     if (addXp(s, amount, this.stats.xp)) {
+      this.relicHooks.onLevelUp(this.relicWorld, s.level - level0);
       const p = this.player;
       this.fx.shockwave(p.x, p.z, 6, 0xffe066, 0.6);
       this.fx.burst(p.x, 1.5, p.z, 0xffe066, 40, 8, 0.16, 0.9, 6);
@@ -1434,8 +1454,12 @@ export class Game {
     amount = this.epics.incoming(amount);
     if (this.hero.maxHitFraction) amount = Math.min(amount, this.stats.maxHp * this.hero.maxHitFraction);
     amount = Math.max(1, Math.round(amount));
+    // escudo de relíquia come primeiro (relic_mechanics.lua `absorb`)
+    amount = Math.round(this.relicHooks.absorb(this.relicWorld, amount));
+    if (amount <= 0) return;
     this.run.statistics.damageTaken += Math.min(amount, p.hp);
     p.hp -= amount;
+    this.relicHooks.onPlayerHit(this.relicWorld, amount);
     this.ach.playerHit(amount, Math.max(0, p.hp) / this.stats.maxHp);
     p.flash = 1;
     if (p.rig) kickRig(p.rig, -Math.sin(p.facing), -Math.cos(p.facing), 0.7);
@@ -2233,7 +2257,7 @@ export class Game {
   private autoAttack(): void {
     const p = this.player;
     const a = this.hero.auto;
-    p.attackCd = 1 / (a.rate * this.stats.attackSpeed * this.epics.attackSpeedMult());
+    p.attackCd = 1 / (a.rate * this.stats.attackSpeed * this.epics.attackSpeedMult() * this.relicHooks.attackSpeedMult(this.relicWorld));
     p.attackAnim = 0;
     if (p.rig) nextShot(p.rig);
     // M21-07: Third Strike e Charged Step mudam este golpe; Kinetic solta o raio depois
@@ -2720,7 +2744,10 @@ export class Game {
     p.techCd -= dt;
     p.dashCd -= dt;
     p.iframes -= dt;
-    if (this.playerAlive) this.epics.update(dt);
+    if (this.playerAlive) {
+      this.epics.update(dt);
+      this.relicHooks.tick(this.relicWorld, dt);
+    }
     p.hurtT = Math.max(0, p.hurtT - dt * 2.5);
     p.moveAmt = 0;
 
@@ -2728,7 +2755,7 @@ export class Game {
       animateRig(rig, { t: this.time, move: 0, attack: -1, windup: 0, dead: 1 });
       return;
     }
-    if (s.regen > 0 && p.hp < s.maxHp) {
+    if (s.regen > 0 && p.hp < s.maxHp && !this.relicHooks.blocksHeal(this.relicWorld)) {
       const before = p.hp;
       p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? PACE.combatHealMult : 1));
       this.run.statistics.healed += p.hp - before;
