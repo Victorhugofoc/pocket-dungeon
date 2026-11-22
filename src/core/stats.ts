@@ -63,7 +63,18 @@ export type StatKey =
   // M12-02: mecânicas de relíquia (relic_mechanics.lua), ligadas pelo atributo; o efeito roda em `core/relics.ts`
   | "momentumPct"
   | "levelHealPct"
-  | "overhealShield";
+  | "overhealShield"
+  // M12-03: escolas das spells novas, e o que as relíquias de spell somam (nomes de stats.lua)
+  | "windPct"
+  | "runePct"
+  | "lightPct"
+  | "earthPct"
+  | "lightningTargets" // alvos a mais nas spells com alvos (Chain Lightning)
+  | "echoChance" // chance de Echo (Arcane Bolt), no pool da spell
+  | "volatileChance" // chance de Volatile (Fireball), no pool da spell
+  | "spellCritChance" // as spells só dão crítico com isto (damage.lua `SPELL_SOURCES`)
+  | "slowedDamagePct" // dano em inimigo com Slow (damage.lua §37)
+  | "chainEscalate"; // Conduit Ring: cada salto do raio, +isto de dano
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -76,6 +87,8 @@ export const STAT_KEYS: StatKey[] = [
   "knockbackPct", "doubleShot", "coneShot", "pierce", "autoProjectileSpeedPct", "fanShots",
   "permafrost", "staticCharge", "riftDurationFlat", "wildfire", "executionerPct", "nightfall", "judgement", "contagion",
   "shieldBoomerang", "shieldRicochet", "momentumPct", "levelHealPct", "overhealShield",
+  "windPct", "runePct", "lightPct", "earthPct", "lightningTargets", "echoChance", "volatileChance", "spellCritChance",
+  "slowedDamagePct", "chainEscalate",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -136,6 +149,16 @@ export const STAT_LABEL: Record<StatKey, string> = {
   momentumPct: "Momentum",
   levelHealPct: "Level-up heal",
   overhealShield: "Overheal shield",
+  windPct: "Wind Damage",
+  runePct: "Rune Damage",
+  lightPct: "Light Damage",
+  earthPct: "Earth Damage",
+  lightningTargets: "Lightning target(s)",
+  echoChance: "Echo chance",
+  volatileChance: "Volatile chance",
+  spellCritChance: "Spell Crit",
+  slowedDamagePct: "damage vs. Slowed targets",
+  chainEscalate: "Lightning jump damage",
 };
 
 /** format.lua `MECH`: as mecânicas de relíquia se leem como uma frase (texto de en.lua). */
@@ -143,12 +166,13 @@ const MECH_TEXT: Partial<Record<StatKey, (pct: number) => string>> = {
   momentumPct: (p) => `Up to +${p}% damage while moving (fills in 10 s, fades when still)`,
   levelHealPct: (p) => `Levelling up heals ${p}% HP`,
   overhealShield: (p) => `Healing past max HP becomes a shield (up to ${p}% HP)`,
+  chainEscalate: (p) => `Each Lightning jump: +${p}% damage`,
 };
 
 const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true,
   doubleShot: true, coneShot: true, pierce: true, fanShots: true,
   permafrost: true, staticCharge: true, riftDurationFlat: true, wildfire: true, nightfall: true, judgement: true, contagion: true,
-  shieldBoomerang: true, shieldRicochet: true };
+  shieldBoomerang: true, shieldRicochet: true, lightningTargets: true };
 
 export function isFlat(k: StatKey): boolean {
   return FLAT[k] === true;
@@ -243,10 +267,21 @@ export interface FinalStats {
   contagion: number;
   shieldBoomerang: number;
   shieldRicochet: number;
+  /** M12-03 (stats.lua): alvos a mais nas spells com alvos */
+  lightningTargets: number;
+  /** chances de Echo e Volatile no formato do pool, somadas ao pool da spell (stats.lua `echoValues`, `volatileValues`) */
+  echoValues: number[];
+  volatileValues: number[];
+  /** chance de crítico das spells (a arma não conta) */
+  spellCritChance: number;
+  /** multiplicador do dano em inimigo com Slow */
+  slowedDamage: number;
+  /** Conduit Ring: dano a mais por salto do raio */
+  chainEscalate: number;
 }
 
-/** Escolas cujo dano tem bônus próprio (D14). As outras spells (cura, lâmina, veneno, vento...) usam 1. */
-export type SpellSchoolMult = "fire" | "ice" | "lightning" | "arcane";
+/** Escolas cujo dano tem bônus próprio (D14; vento, runa, luz e terra no M12-03). As outras (cura, lâmina, veneno) usam 1. */
+export type SpellSchoolMult = "fire" | "ice" | "lightning" | "arcane" | "wind" | "rune" | "light" | "earth";
 
 export function armorReduction(armor: number): number {
   const a = Math.max(-80, armor);
@@ -332,6 +367,10 @@ export function computeStats(sources: StatBlock[], style: AutoStyle = "normal"):
       ice: Math.max(0.1, m("icePct")),
       lightning: Math.max(0.1, m("lightningPct")),
       arcane: Math.max(0.1, m("arcanePct")),
+      wind: Math.max(0.1, m("windPct")),
+      rune: Math.max(0.1, m("runePct")),
+      light: Math.max(0.1, m("lightPct")),
+      earth: Math.max(0.1, m("earthPct")),
     },
     burn: Math.max(0.1, m("burnPct")),
     slowPoints: g("slowPct"),
@@ -371,5 +410,11 @@ export function computeStats(sources: StatBlock[], style: AutoStyle = "normal"):
     contagion: Math.max(0, g("contagion")),
     shieldBoomerang: Math.max(0, g("shieldBoomerang")),
     shieldRicochet: Math.max(0, g("shieldRicochet")),
+    lightningTargets: Math.max(0, g("lightningTargets")),
+    echoValues: L("echoChance"),
+    volatileValues: L("volatileChance"),
+    spellCritChance: stackChance(L("spellCritChance")),
+    slowedDamage: Math.max(0.1, m("slowedDamagePct")),
+    chainEscalate: g("chainEscalate"),
   };
 }

@@ -9,7 +9,7 @@ import { RunRng, addRecord, continueRun, decodeSeed, newRun, newSpellSlot, recor
 import { addModifier, addSpell, levelUpSpell, type SlotResult } from "../core/spells";
 import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unlockCondition } from "../core/achievements";
 import { ACHIEVEMENTS } from "../data/achievements";
-import { formatStat, STAT_KEYS, type FinalStats, type StatBlock } from "../core/stats";
+import { formatStat, stackChance, STAT_KEYS, type FinalStats, type StatBlock } from "../core/stats";
 import {
   AURA_SPIKE_TEXT, EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
 } from "../data/spells";
@@ -22,7 +22,7 @@ import { STYLE_GOOD, STYLE_NAMES, STYLE_TEXT, type AutoStyle } from "../data/aut
 import { BOSSES } from "../data/enemies";
 import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
 import { TECHNIQUES, TECH_MAX_LEVEL } from "../data/techniques";
-import { RELICS, RELIC_IDS } from "../data/relics";
+import { RELICS, RELIC_IDS, type RelicDef } from "../data/relics";
 import { ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
 import type { MapCard } from "../core/runmap";
 import { TUNING } from "../data/tuning";
@@ -113,12 +113,47 @@ function spellBonusLines(s: FinalStats): string {
     ["Spell Damage", s.spellDamage - 1], ["Fire Damage", s.school.fire - 1], ["Ice Damage", s.school.ice - 1],
     ["Lightning Damage", s.school.lightning - 1], ["Arcane Damage", s.school.arcane - 1], ["Burn Damage", s.burn - 1],
     ["Slow", s.slowPoints], ["Slow Duration", s.slowDuration - 1], ["Poison Damage", s.poison - 1],
+    ["Wind Damage", s.school.wind - 1], ["Rune Damage", s.school.rune - 1], ["Light Damage", s.school.light - 1],
+    ["Earth Damage", s.school.earth - 1], ["Spell Crit", s.spellCritChance], ["damage vs. Slowed targets", s.slowedDamage - 1],
+    ["Echo chance", stackChance(s.echoValues)], ["Volatile chance", stackChance(s.volatileValues)],
+    ["Each Lightning jump", s.chainEscalate],
   ];
-  return rows.filter(([, v]) => Math.abs(v) > 1e-9).map(([k, v]) => `<span>${k}</span><b>${signed(v)}</b>`).join("");
+  const lines = rows.filter(([, v]) => Math.abs(v) > 1e-9).map(([k, v]) => `<span>${k}</span><b>${signed(v)}</b>`);
+  if (s.lightningTargets > 0) lines.push(`<span>Lightning target(s)</span><b>+${s.lightningTargets}</b>`);
+  return lines.join("");
 }
 
 function statLines(stats: StatBlock): string {
   return STAT_KEYS.filter((k) => stats[k]).map((k) => `<div class="st">${formatStat(k, stats[k]!)}</div>`).join("");
+}
+
+/** relic_view.lua `spellEffectLines`: o que a relíquia dá à spell dela (só vale com a spell equipada). */
+const SPELL_EFFECT_TEXT: Readonly<Record<string, (v: number) => string>> = {
+  damagePct: (v) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}% damage`,
+  areaPct: (v) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}% area`,
+  cooldownPct: (v) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}% cooldown`,
+  echoChance: (v) => `+${Math.round(v * 100)}% Echo`,
+  knockbackPct: (v) => `+${Math.round(v * 100)}% Knockback`,
+  burnDurationFlat: (v) => `+${v.toFixed(1)}s Burn`,
+  slowDurationFlat: (v) => `+${v.toFixed(1)}s Slow`,
+  targets: (v) => `+${v} target`,
+  healFlat: (v) => `+${v} heal per tick`,
+  rootFlat: (v) => `+${v.toFixed(1)}s held`,
+  runes: (v) => `+${v} rune`,
+  durationFlat: (v) => `+${v.toFixed(1)}s duration`,
+};
+
+/** Atributos da relíquia e, se ela é de uma spell, o efeito na spell. */
+function relicLines(d: RelicDef): string {
+  let out = statLines(d.stats);
+  if (d.spell && d.spellEffect) {
+    const name = SPELLS[d.spell as SpellId]?.name ?? d.spell;
+    for (const [k, v] of Object.entries(d.spellEffect)) {
+      if (v === undefined) continue;
+      out += `<div class="st">${name}: ${SPELL_EFFECT_TEXT[k]?.(v) ?? k}</div>`;
+    }
+  }
+  return out;
 }
 
 export class Ui {
@@ -862,7 +897,7 @@ export class Ui {
       const rel = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]");
       if (rel) {
         const d = RELICS[rel.dataset.relic!];
-        return this.showTip(`<h4 style="color:${hex(d.color)}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>${statLines(d.stats)}`, ev);
+        return this.showTip(`<h4 style="color:${hex(d.color)}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>${relicLines(d)}`, ev);
       }
       this.tip.classList.add("hidden");
     };
@@ -888,7 +923,7 @@ export class Ui {
         const d = RELICS[id];
         const evo = wanted[id] ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
         return `<div class="card" data-relic="${id}" style="--cc:${hex(d.color)}"><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${statLines(d.stats)}${evo}</div>`;
+          <h3>${d.name}</h3>${relicLines(d)}${evo}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
       const id = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]")?.dataset.relic;
@@ -1212,7 +1247,7 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     const d = RELICS[o.relic!];
     meta = `${RELIC_RARITY[d.rarity]} relic`;
     name = d.name;
-    body = statLines(d.stats);
+    body = relicLines(d);
     const evo = wantedRelics(g.run)[o.relic!];
     if (evo) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
     color = hex(d.color);
