@@ -87,6 +87,63 @@ const list: RelicDef[] = [
     effects: [e("areaPct", 0.20)], tags: ["magic", "area"], color: 0x6fa8ff }),
   relic({ id: "grave_locket", name: "Grave Locket", category: "component", rarity: "rare",
     effects: [e("lifeOnKill", 2), e("xpPct", 0.10)], tags: ["survival", "healing", "economy"], color: 0x9ad1ff }),
+  // M12-02, lote 1: as do sorteio normal que só somam atributo que o jogo já tem, mais Momentum, Vital Spark e Blood Engine
+  relic({ id: "veiled_step", name: "Veiled Step", category: "core", rarity: "rare",
+    effects: [e("dodge", 0.09)], tags: ["survival", "dodge"], color: 0xa9b8d9 }),
+  relic({ id: "phantom_ward", name: "Phantom Ward", category: "core", rarity: "rare",
+    effects: [e("dodge", 0.11), e("armor", 5)], tags: ["survival", "dodge", "magic"], color: 0xb8a9ff }),
+  relic({ id: "ember_spurs", name: "Ember Spurs", category: "component", rarity: "uncommon",
+    effects: [e("firePct", 0.08), e("moveSpeedPct", 0.06)], tags: ["fire", "speed"], color: 0xff9a4a }),
+  relic({ id: "glacial_shell", name: "Glacial Shell", category: "component", rarity: "uncommon",
+    effects: [e("armor", 10), e("maxHpPct", 0.08), e("slowDurationPct", 0.15)], tags: ["ice", "survival", "armor"], color: 0x9fd8f0 }),
+  relic({ id: "storm_step", name: "Storm Step", category: "component", rarity: "uncommon",
+    effects: [e("lightningPct", 0.08), e("moveSpeedPct", 0.07)], tags: ["lightning", "speed"], color: 0x8fb8ff }),
+  relic({ id: "aether_thread", name: "Aether Thread", category: "component", rarity: "uncommon",
+    effects: [e("spellDamagePct", 0.08), e("regen", 0.20)], tags: ["arcane", "magic", "healing"], color: 0xc59aff }),
+  relic({ id: "evasion_cloak", name: "Evasion Cloak", category: "component", rarity: "uncommon",
+    effects: [e("dodge", 0.08), e("moveSpeedPct", 0.05)], tags: ["survival", "dodge", "speed"], color: 0x7fd9b3 }),
+  relic({ id: "frost_heart", name: "Frost Heart", category: "component", rarity: "uncommon",
+    effects: [e("maxHpPct", 0.08), e("slowDurationPct", 0.15)], tags: ["ice", "slow", "survival"], color: 0x7fc8ff }),
+  relic({ id: "storm_coil", name: "Storm Coil", category: "component", rarity: "uncommon",
+    effects: [e("lightningPct", 0.08), e("cdrPct", 0.06)], tags: ["lightning", "spell_haste"], color: 0x5f9aff }),
+  relic({ id: "aether_focus", name: "Aether Focus", category: "component", rarity: "uncommon",
+    effects: [e("spellDamagePct", 0.08), e("rangePct", 0.12)], tags: ["arcane", "magic", "range"], color: 0xa98aff }),
+  relic({ id: "vital_spark", name: "Vital Spark", category: "component", rarity: "uncommon",
+    effects: [e("regen", 0.20), e("levelHealPct", 0.15)], tags: ["healing", "survival"], color: 0x9fff8f }),
+  relic({ id: "warding_mirror", name: "Warding Mirror", category: "component", rarity: "rare",
+    effects: [e("armor", 4), e("dodge", 0.06)], tags: ["survival", "dodge", "magic"], color: 0xd0dcff }),
+  relic({ id: "astral_prism", name: "Astral Prism", category: "component", rarity: "epic",
+    effects: [e("spellDamagePct", 0.12), e("rangePct", 0.08), e("cdrPct", 0.05)], tags: ["magic", "arcane", "range"], color: 0xe0a8ff }),
+  // §44 keystones
+  relic({ id: "war_machine_core", name: "War Machine Core", category: "keystone", rarity: "epic",
+    effects: [e("autoDamagePct", 0.25), e("spellDamagePct", -0.18)], tags: ["auto", "damage", "tradeoff"], color: 0xc87a4a }),
+  relic({ id: "blood_engine", name: "Blood Engine", category: "keystone", rarity: "epic",
+    effects: [e("regen", 0.80), e("damagePct", -0.10), e("overhealShield", 0.20)], tags: ["healing", "sustain", "tradeoff"], color: 0xc8283a }),
+  relic({ id: "elemental_convergence", name: "Elemental Convergence", category: "keystone", rarity: "epic",
+    effects: [e("firePct", 0.22), e("icePct", 0.22), e("lightningPct", 0.22), e("arcanePct", -0.15)], tags: ["fire", "ice", "lightning", "tradeoff"], color: 0xffb35f }),
+  // extensões de lá (core)
+  relic({ id: "smoldering_brand", name: "Smoldering Brand", category: "core", rarity: "uncommon",
+    effects: [e("firePct", 0.08), e("burnPct", 0.06)], tags: ["fire", "burn"], color: 0xe8642a }),
+  relic({ id: "glacier_sigil", name: "Glacier Sigil", category: "core", rarity: "rare",
+    effects: [e("icePct", 0.12), e("armor", 4)], tags: ["ice", "survival"], color: 0x6fc0e8 }),
+  relic({ id: "rune_charm", name: "Rune Charm", category: "core", rarity: "uncommon",
+    effects: [e("arcanePct", 0.08), e("armor", 3)], tags: ["arcane", "magic"], color: 0x9a6fe8 }),
+  relic({ id: "spellblade_sigil", name: "Spellblade Sigil", category: "core", rarity: "rare",
+    effects: [e("autoDamagePct", 0.10), e("spellDamagePct", 0.10)], tags: ["auto", "magic", "damage"], color: 0xd98aff }),
+  relic({ id: "runic_gauntlet", name: "Runic Gauntlet", category: "core", rarity: "rare",
+    effects: [e("spellPower", 3), e("attackSpeedPct", 0.08)], tags: ["auto", "magic", "speed"], color: 0x8a7ad9 }),
+  relic({ id: "arcane_conductor", name: "Arcane Conductor", category: "core", rarity: "uncommon",
+    effects: [e("cdrPct", 0.08), e("rangePct", 0.08)], tags: ["magic", "spell_haste", "range"], color: 0xb89aff }),
+  relic({ id: "kindling_charm", name: "Kindling Charm", category: "core", rarity: "uncommon",
+    effects: [e("firePct", 0.06), e("icePct", 0.06)], tags: ["fire", "ice", "magic"], color: 0xffc89a }),
+  relic({ id: "focus_crystal", name: "Focus Crystal", category: "core", rarity: "epic",
+    effects: [e("spellDamagePct", 0.20), e("cdrPct", 0.10), e("autoDamagePct", -0.15)], tags: ["magic", "spell_haste", "tradeoff"], color: 0xf0c8ff }),
+  relic({ id: "battlemage_plate", name: "Battlemage Plate", category: "core", rarity: "rare",
+    effects: [e("armor", 8), e("spellDamagePct", 0.08)], tags: ["survival", "armor", "magic"], color: 0x8a96b8 }),
+  relic({ id: "spellthief_ring", name: "Spellthief Ring", category: "core", rarity: "uncommon",
+    effects: [e("spellDamagePct", 0.06), e("goldPct", 0.10)], tags: ["magic", "economy"], color: 0xe8c86f }),
+  relic({ id: "momentum", name: "Momentum", category: "core", rarity: "rare",
+    effects: [e("momentumPct", 0.20)], tags: ["speed", "damage"], color: 0x73e0ff }),
 ];
 
 export const RELICS: Record<string, RelicDef> = Object.fromEntries(list.map((r) => [r.id, r]));
@@ -100,7 +157,9 @@ export const RELIC_ADAPTED: readonly string[] = [
   "frost_crown", "living_moss", "bulwark_core", "renewing_heart", "duelist_crown", "storm_vane", "grave_locket",
 ];
 
-/** Atributos daqui com outro nome lá (relics.lua): o valor de lá é multiplicado pelo sinal (`spellCooldownPct` negativo é recarga menor). */
-export const RELIC_STAT_FROM_LUA: Readonly<Record<string, { stat: StatKey; sign: number }>> = {
-  spellCooldownPct: { stat: "cdrPct", sign: -1 },
+/** relic_mechanics.lua: os números das mecânicas de relíquia (iguais aos de lá). */
+export const RELIC_MECH = {
+  /** Momentum: segundos andando até o bônus cheio, e parado até perder tudo */
+  momentumRamp: 10,
+  momentumFade: 2,
 };

@@ -308,6 +308,7 @@ export class Game {
       get hp() { return g.player.hp; },
       get maxHp() { return g.stats.maxHp; },
       get gold() { return g.run.gold; },
+      get moving() { return g.player.moveAmt > 0; },
       heal: (amount: number) => g.heal(amount, true),
       emit: () => {},
     };
@@ -2757,7 +2758,9 @@ export class Game {
     }
     if (s.regen > 0 && p.hp < s.maxHp && !this.relicHooks.blocksHeal(this.relicWorld)) {
       const before = p.hp;
-      p.hp = Math.min(s.maxHp, p.hp + s.regen * dt * (this.inCombat ? PACE.combatHealMult : 1));
+      const add = s.regen * dt * (this.inCombat ? PACE.combatHealMult : 1);
+      this.relicHooks.overheal(this.relicWorld, p.hp + add - s.maxHp);
+      p.hp = Math.min(s.maxHp, p.hp + add);
       this.run.statistics.healed += p.hp - before;
       this.ach.healed(this.run.statistics.healed);
     }

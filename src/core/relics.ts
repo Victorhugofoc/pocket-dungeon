@@ -5,7 +5,7 @@
 // - Ganchos: as relíquias que mudam o jogo (não só somam atributo) são mecânicas ligadas por um atributo próprio,
 //   como em relic_mechanics.lua; o jogo chama `RelicHooks` nos pontos de evento (quadro, abate, golpe sofrido,
 //   conjuração, nível, dano causado, cura) e elas respondem pelo `RelicWorld`.
-import { RELICS, type RelicDef } from "../data/relics";
+import { RELIC_MECH, RELICS, type RelicDef } from "../data/relics";
 import type { SpellEffect } from "../data/spells";
 import type { StatBlock, StatKey } from "./stats";
 import type { RunState } from "./run";
@@ -78,6 +78,8 @@ export interface RelicWorld {
   hp: number;
   maxHp: number;
   gold: number;
+  /** o herói andou neste quadro */
+  moving: boolean;
   /** cura que passa pelas regras de cura do jogo (`Game.heal`) */
   heal(amount: number): void;
   /** aviso para efeito e som (o nome é o do evento de lá, como `burn_spread`) */
@@ -136,8 +138,37 @@ export interface RelicMechanic<S = Record<string, number>> {
 
 type AnyMechanic = RelicMechanic<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-/** As mecânicas de relíquia ligadas pelo atributo; os lotes M12-02 a M12-05 põem as delas aqui. */
-export const RELIC_MECHANICS: AnyMechanic[] = [];
+/** relic_mechanics.lua MOMENTUM: o bônus enche andando (`momentumRamp` s) e esvazia parado (`momentumFade` s). */
+export const MOMENTUM: RelicMechanic<{ m: number }> = {
+  id: "momentum", stat: "momentumPct", init: () => ({ m: 0 }),
+  tick: (s, v, w, dt) => {
+    const m = s.m + (w.moving ? v / RELIC_MECH.momentumRamp : -v / RELIC_MECH.momentumFade) * dt;
+    s.m = Math.max(0, Math.min(v, m));
+  },
+  damageMult: (s) => 1 + s.m,
+  status: (s, v) => (s.m > 0.005 ? { id: "momentum", left: s.m, total: v } : null),
+};
+
+/** relic_mechanics.lua VITAL SPARK (D-438): cada nível ganho cura uma parte da vida máxima. */
+export const LEVEL_HEAL: RelicMechanic<Record<string, never>> = {
+  id: "level_heal", stat: "levelHealPct", init: () => ({}),
+  onLevelUp: (_s, v, w, levels) => w.heal(w.maxHp * v * levels),
+};
+
+/** relic_mechanics.lua BLOOD ENGINE (D-438): cura acima do máximo enche um escudo (até `v` × vida máxima), que come o golpe primeiro. */
+export const OVERHEAL_SHIELD: RelicMechanic<{ hp: number }> = {
+  id: "overshield", stat: "overhealShield", init: () => ({ hp: 0 }),
+  overheal: (s, v, w, extra) => { s.hp = Math.min(w.maxHp * v, s.hp + extra); },
+  absorb: (s, _v, _w, dealt) => {
+    const a = Math.min(s.hp, dealt);
+    s.hp -= a;
+    return dealt - a;
+  },
+  status: (s, v, w) => (s.hp > 0 ? { id: "overshield", left: s.hp, total: w.maxHp * v } : null),
+};
+
+/** As mecânicas de relíquia ligadas pelo atributo; cada lote do M12 põe as dele aqui. */
+export const RELIC_MECHANICS: AnyMechanic[] = [MOMENTUM, LEVEL_HEAL, OVERHEAL_SHIELD];
 
 /** O despacho dos ganchos: o jogo chama `refresh` ao recalcular os atributos e os métodos nos pontos de evento. */
 export class RelicHooks {

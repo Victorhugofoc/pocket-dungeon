@@ -59,7 +59,11 @@ export type StatKey =
   | "judgement"
   | "contagion"
   | "shieldBoomerang"
-  | "shieldRicochet";
+  | "shieldRicochet"
+  // M12-02: mecânicas de relíquia (relic_mechanics.lua), ligadas pelo atributo; o efeito roda em `core/relics.ts`
+  | "momentumPct"
+  | "levelHealPct"
+  | "overhealShield";
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -71,7 +75,7 @@ export const STAT_KEYS: StatKey[] = [
   "techniqueDamagePct", "followThroughPct", "deathHealChance", "championXpPct", "championGoldPct", "survivorRewardPct",
   "knockbackPct", "doubleShot", "coneShot", "pierce", "autoProjectileSpeedPct", "fanShots",
   "permafrost", "staticCharge", "riftDurationFlat", "wildfire", "executionerPct", "nightfall", "judgement", "contagion",
-  "shieldBoomerang", "shieldRicochet",
+  "shieldBoomerang", "shieldRicochet", "momentumPct", "levelHealPct", "overhealShield",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -129,6 +133,16 @@ export const STAT_LABEL: Record<StatKey, string> = {
   contagion: "Contagion",
   shieldBoomerang: "Boomerang",
   shieldRicochet: "Holy Ricochet",
+  momentumPct: "Momentum",
+  levelHealPct: "Level-up heal",
+  overhealShield: "Overheal shield",
+};
+
+/** format.lua `MECH`: as mecânicas de relíquia se leem como uma frase (texto de en.lua). */
+const MECH_TEXT: Partial<Record<StatKey, (pct: number) => string>> = {
+  momentumPct: (p) => `Up to +${p}% damage while moving (fills in 10 s, fades when still)`,
+  levelHealPct: (p) => `Levelling up heals ${p}% HP`,
+  overhealShield: (p) => `Healing past max HP becomes a shield (up to ${p}% HP)`,
 };
 
 const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true,
@@ -142,6 +156,8 @@ export function isFlat(k: StatKey): boolean {
 
 export function formatStat(k: StatKey, v: number): string {
   const sign = v >= 0 ? "+" : "";
+  const mech = MECH_TEXT[k];
+  if (mech) return mech(Math.round(v * 100));
   if (isFlat(k)) return `${sign}${Math.round(v * 10) / 10} ${STAT_LABEL[k]}`;
   return `${sign}${Math.round(v * 1000) / 10}% ${STAT_LABEL[k]}`;
 }

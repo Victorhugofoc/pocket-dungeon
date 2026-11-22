@@ -1,15 +1,15 @@
 // Motor de relíquias (core/relics.ts): posse com tags, fontes de atributo, efeitos de spell e despacho dos ganchos.
 import { describe, expect, it } from "vitest";
-import { grantRelic, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
+import { grantRelic, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
 import { newRun } from "../src/core/run";
 import { computeStats } from "../src/core/stats";
 import { HEROES } from "../src/data/heroes";
-import { RELIC_IDS, RELICS, type RelicDef } from "../src/data/relics";
+import { RELIC_IDS, RELIC_MECH, RELICS, type RelicDef } from "../src/data/relics";
 
 const run = () => newRun({ heroId: "frostine", difficultyId: "normal", startingSpell: HEROES.frostine.startingSpells[0], randomSeed: 7 });
 
 const world = (over: Partial<RelicWorld> = {}): RelicWorld => ({
-  time: 0, waveActive: true, hp: 50, maxHp: 100, gold: 0, heal: () => {}, emit: () => {}, ...over,
+  time: 0, waveActive: true, hp: 50, maxHp: 100, gold: 0, moving: false, heal: () => {}, emit: () => {}, ...over,
 });
 
 describe("relíquias: dados", () => {
@@ -135,5 +135,54 @@ describe("relíquias: ganchos", () => {
     expect(h.attackSpeedMult(w)).toBe(1);
     expect(h.absorb(w, 9)).toBe(9);
     expect(h.blocksHeal(w)).toBe(false);
+  });
+});
+
+describe("relíquias: mecânicas do lote 1 (M12-02)", () => {
+  it("Momentum enche em 10 s andando, esvazia em 2 s parado e multiplica o dano", () => {
+    const h = new RelicHooks([MOMENTUM]);
+    h.refresh(relicTotals(["momentum"]));
+    const run = world({ moving: true });
+    for (let i = 0; i < 50; i++) h.tick(run, 0.1);
+    expect(h.damageMult(run, { source: "auto", boss: false })).toBeCloseTo(1.1);
+    for (let i = 0; i < 60; i++) h.tick(run, 0.1);
+    expect(h.damageMult(run, { source: "auto", boss: false })).toBeCloseTo(1.2);
+    expect(h.statuses(run)).toEqual([{ id: "momentum", left: expect.closeTo(0.2), total: 0.2 }]);
+    const still = world({ moving: false });
+    for (let i = 0; i < 10; i++) h.tick(still, 0.1);
+    expect(h.damageMult(still, { source: "auto", boss: false })).toBeCloseTo(1.1);
+    for (let i = 0; i < 10; i++) h.tick(still, 0.1);
+    expect(h.damageMult(still, { source: "auto", boss: false })).toBe(1);
+    expect(h.statuses(still)).toEqual([]);
+    expect(RELIC_MECH.momentumRamp / RELIC_MECH.momentumFade).toBe(5);
+  });
+
+  it("Vital Spark cura 15% da vida máxima por nível ganho", () => {
+    const healed: number[] = [];
+    const h = new RelicHooks([LEVEL_HEAL]);
+    h.refresh(relicTotals(["vital_spark"]));
+    const w = world({ maxHp: 200, heal: (n) => healed.push(n) });
+    h.onLevelUp(w, 1);
+    h.onLevelUp(w, 2);
+    h.onLevelUp(w, 0);
+    expect(healed).toEqual([30, 60]);
+  });
+
+  it("Blood Engine: a sobrecura vira escudo até 20% da vida e come o golpe", () => {
+    const h = new RelicHooks([OVERHEAL_SHIELD]);
+    h.refresh(relicTotals(["blood_engine"]));
+    const w = world({ maxHp: 100 });
+    h.overheal(w, 12);
+    h.overheal(w, 12);
+    expect(h.statuses(w)).toEqual([{ id: "overshield", left: 20, total: 20 }]);
+    expect(h.absorb(w, 15)).toBe(0);
+    expect(h.absorb(w, 15)).toBe(10);
+    expect(h.statuses(w)).toEqual([]);
+  });
+
+  it("as mecânicas padrão ligam pelas relíquias certas", () => {
+    const h = new RelicHooks();
+    h.refresh(relicTotals(["momentum", "vital_spark", "blood_engine", "glass_cannon"]));
+    expect(h.ids.sort()).toEqual(["level_heal", "momentum", "overshield"]);
   });
 });
