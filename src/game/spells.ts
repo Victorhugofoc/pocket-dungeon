@@ -1587,6 +1587,7 @@ export class SpellCaster {
     const st = t.st;
     const r = st.radius;
     const kb = (st.knockback ?? 0) * KNOCK_DECAY;
+    g.terrain.strike(t.x, t.z, r);
     for (const e of g.enemies) {
       if (e.dead) continue;
       const dx = e.x - t.x;
@@ -2061,6 +2062,7 @@ export class SpellCaster {
     const g = this.game;
     const st = r.st;
     const blast = () => {
+      g.terrain.strike(r.x, r.z, st.radius);
       for (const e of g.enemies) {
         if (e.dead || (e.x - r.x) ** 2 + (e.z - r.z) ** 2 > (st.radius + e.radius) ** 2) continue;
         g.spellHit(e, st.damage, true, schoolOf(st));
@@ -2348,6 +2350,7 @@ export class SpellCaster {
       const x = target.x;
       const z = target.z;
       this.cooldown[i] = st.cooldown;
+      g.terrain.strike(x, z, st.radius);
       for (const e of this.inArea(x, z, st.radius)) g.spellHit(e, st.damage, false, schoolOf(st));
       g.fx.shockwave(x, z, st.radius, EVO_COLOR.arcane_strike, 0.4);
       g.fx.streak(x - st.radius * 0.7, z, x + st.radius * 0.7, z, 0.18, 0xe6d2ff, 0.3);
@@ -2419,6 +2422,7 @@ export class SpellCaster {
     const g = this.game;
     const st = pr.st;
     const r = st.radius;
+    g.terrain.strike(pr.x, pr.z, r);
     for (const e of g.enemies) {
       if (e.dead) continue;
       if ((e.x - pr.x) ** 2 + (e.z - pr.z) ** 2 > (r + e.radius) ** 2) continue;

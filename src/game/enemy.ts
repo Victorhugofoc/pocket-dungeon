@@ -84,6 +84,10 @@ export class Enemy {
   /** velocidade de empurrão (decai sozinha) */
   kx = 0;
   kz = 0;
+  /** M21-10: caiu no fosso (o corpo afunda no centro dele em vez de deitar) */
+  fell: { x: number; z: number } | null = null;
+  /** M21-10: lado do desvio quando pedra, fosso ou barril tapa o caminho (1 ou -1; 0 = livre) */
+  private steer = 0;
   slowUntil = 0;
   slowPower = 0;
   stunUntil = 0;
@@ -256,10 +260,30 @@ export class Enemy {
     const dz = tz - this.z;
     const d = Math.hypot(dx, dz);
     if (d < 0.01) return;
-    this.x += (dx / d) * speed * dt;
-    this.z += (dz / d) * speed * dt;
+    let ux = dx / d, uz = dz / d;
+    // M21-10: com pedra do gargalo, fosso ou barril na frente, gira para um lado (o mesmo enquanto tapado)
+    const look = this.radius + 0.9;
+    const blocked = (x: number, z: number) => game.grid.hits(x, z, this.radius) || game.terrain.blocks(x, z, this.radius * 0.8);
+    if (d > look && blocked(this.x + ux * look, this.z + uz * look)) {
+      if (this.steer === 0) this.steer = Math.random() < 0.5 ? 1 : -1;
+      // o lado de antes primeiro; tapado dos dois lados até 120°, segue reto (a colisão faz deslizar)
+      search: for (const side of [this.steer, -this.steer]) {
+        for (const deg of [35, 70, 105, 140]) {
+          const a = ((deg * Math.PI) / 180) * side;
+          const c = Math.cos(a), s = Math.sin(a);
+          const rx = ux * c - uz * s, rz = ux * s + uz * c;
+          if (!blocked(this.x + rx * look, this.z + rz * look)) {
+            ux = rx;
+            uz = rz;
+            this.steer = side;
+            break search;
+          }
+        }
+      }
+    } else this.steer = 0;
+    this.x += ux * speed * dt;
+    this.z += uz * speed * dt;
     this.moveAmt = 1;
-    void game;
   }
 
   private face(tx: number, tz: number): void {
@@ -281,6 +305,17 @@ export class Enemy {
       const kd = Math.exp(-dt * 6);
       this.kx *= kd;
       this.kz *= kd;
+      if (this.fell) {
+        // afunda e encolhe indo para o meio do fosso
+        const k = Math.min(1, dt * 5);
+        this.x += (this.fell.x - this.x) * k;
+        this.z += (this.fell.z - this.z) * k;
+        rig.root.position.set(this.x, -this.deadT * this.deadT * 3, this.z);
+        rig.root.scale.setScalar(Math.max(0.05, 1 - this.deadT * 0.6));
+        animateRig(rig, { t: now, move: 0, attack: -1, windup: 0, dead: 0 });
+        if (this.deadT >= 1.25) this.remove = true;
+        return;
+      }
       rig.root.position.set(this.x, 0, this.z);
       animateRig(rig, { t: now, move: 0, attack: -1, windup: 0, dead: this.deadT, bossDeath: this.isBoss });
       if (this.boss) this.dissolve(game, dt);
@@ -373,6 +408,12 @@ export class Enemy {
     this.kx *= kdec;
     this.kz *= kdec;
     game.grid.resolve(this, this.radius);
+    // M21-10: fosso e barris; empurrado com força para dentro do fosso, cai
+    const pit = game.terrain.step(this);
+    if (pit) {
+      game.fallEnemy(this, pit);
+      return;
+    }
     if (dt > 0) {
       this.vx = (this.x - vx0) / dt;
       this.vz = (this.z - vz0) / dt;
