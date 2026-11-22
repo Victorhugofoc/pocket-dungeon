@@ -4,7 +4,7 @@ import { bossStats, enemyStats } from "../core/wave";
 import { pacedFoe } from "../core/pace";
 import { circleInArc } from "../core/melee";
 import { reactionFor, type ReactionId, type ReactState } from "../core/reactions";
-import { BURN, CHILD_SCALE, MINION_SCALE, RUN_TUNING } from "../data/run";
+import { BURN, CHILD_SCALE, FIRST_TIMER, MINION_SCALE, RUN_TUNING, SUMMON_CAP } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
 import { CROWN_TITLE, ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
@@ -160,6 +160,11 @@ export class Enemy {
   strafe = Math.random() < 0.5 ? -1 : 1;
   summonCd = 3;
   chargeCd = 2.5;
+  mortarCd = 2;
+  /** ai.lua `berserker`: furioso (vida na metade ou menos), mais rápido e mais forte até morrer */
+  berserk = false;
+  /** cria do splitter (enemy.lua `splitChild`): sem recompensa, como o invocado, mas fora do teto de invocados */
+  child = false;
   /** chefe: os padrões que ele usa (os dele e, no rei coroado, o emprestado) */
   patterns: readonly BossPattern[] = [];
   crowned = false;
@@ -191,6 +196,7 @@ export class Enemy {
     this.level = wave;
     this.champion = opts.champion === true;
     this.summoned = opts.summoned === true;
+    this.child = opts.child === true;
     const isBoss = "patterns" in def;
     this.frost = newFrostTarget(isBoss, this.champion);
     this.boss = isBoss ? (def as BossDef) : null;
@@ -211,6 +217,12 @@ export class Enemy {
     this.radius = def.radius * (this.champion ? 1.2 : 1);
     this.noReward = this.summoned || opts.child === true;
     if (isBoss) this.windupDur = TUNING.enemy.telegraph.bossWindup;
+    else {
+      const d = def as EnemyDef;
+      if (d.summon) this.summonCd = d.summon.cooldown * FIRST_TIMER.summon;
+      if (d.charge) this.chargeCd = d.charge.cooldown * FIRST_TIMER.charge;
+      if (d.mortar) this.mortarCd = d.mortar.cooldown * FIRST_TIMER.mortar;
+    }
 
     this.rig = this.makeRig();
     this.rig.root.position.set(x, 0, z);
@@ -249,6 +261,12 @@ export class Enemy {
     this.rig.root.rotation.y = this.facing;
     this.rig.root.visible = visible;
     game.scene.add(this.rig.root);
+  }
+
+  /** dano do golpe e da investida: no berserker furioso, multiplicado (ai.lua `damageOf`) */
+  get hitDmg(): number {
+    const bz = this.def?.berserk;
+    return this.berserk && bz ? this.dmg * bz.damage : this.dmg;
   }
 
   get isBoss(): boolean {
@@ -360,8 +378,14 @@ export class Enemy {
       if (this.windupT >= 0) this.endSwing();
       this.aimT = -1;
     }
+    const bz = this.def?.berserk;
+    if (bz && !this.berserk && this.hp <= this.maxHp * bz.threshold) {
+      this.berserk = true;
+      game.fx.shockwave(this.x, this.z, 2.2, 0xff3b2a);
+      game.fx.text(this.x, this.rig.height + 0.3, this.z, "Berserk!", "crit");
+    }
     const slow = now < this.slowUntil ? 1 - this.slowPower : 1;
-    const speed = this.speed * slow * haste * (this.enraged ? 1.15 : 1);
+    const speed = this.speed * slow * haste * (this.enraged ? 1.15 : 1) * (this.berserk && bz ? bz.speed : 1);
     const dxp = p.x - this.x;
     const dzp = p.z - this.z;
     const dist = Math.hypot(dxp, dzp);
@@ -465,7 +489,7 @@ export class Enemy {
   setAggro(game: Game): void {
     if (this.aggro || this.dead) return;
     this.aggro = true;
-    this.cd = Math.max(this.cd, 0.4 + Math.random() * 0.5);
+    this.cd = Math.max(this.cd, this.def ? this.def.cooldown * FIRST_TIMER.attack : 0.4 + Math.random() * 0.5);
     if (this.isBoss) {
       game.onBossAggro(this);
       this.startRoar(TUNING.boss.roarTime);
@@ -580,7 +604,7 @@ export class Enemy {
         this.attackAnim = 0;
         const ward = this.boss ? null : game.spells.wardFor(this);
         if (ward) game.spells.hitWard(ward);
-        else if (this.swingHits(p.x, p.z, range)) game.hurtPlayer(this.dmg, this.name, this);
+        else if (this.swingHits(p.x, p.z, range)) game.hurtPlayer(this.hitDmg, this.name, this);
         this.cd = this.boss ? this.boss.attackCooldown : this.def!.cooldown;
       }
       return;
@@ -622,10 +646,11 @@ export class Enemy {
     game.fx.glow(w.x, w.y, w.z, color, (s0 + (s1 - s0) * kk * kk) * (0.9 + Math.random() * 0.2), 0.06);
   }
 
-  private shoot(game: Game, color: number, speedP: number, spreadErr = 0.06): void {
+  /** enemy_attacks.lua `fire`: mira exata no herói; a bomba do bombardier é maior (7 px contra 5). */
+  private shoot(game: Game, color: number, speedP: number, size = 1): void {
     const p = game.player;
-    const a = Math.atan2(p.x - this.x, p.z - this.z) + (Math.random() - 0.5) * spreadErr;
-    game.spawnEnemyProjectile(this.x + Math.sin(a) * this.radius, this.z + Math.cos(a) * this.radius, a, speedP * this.projK, this.dmg, color, 0.26, this);
+    const a = Math.atan2(p.x - this.x, p.z - this.z);
+    game.spawnEnemyProjectile(this.x + Math.sin(a) * this.radius, this.z + Math.cos(a) * this.radius, a, speedP * this.projK, this.dmg, color, 0.26 * size, this);
     this.attackAnim = 0;
   }
 
@@ -652,7 +677,7 @@ export class Enemy {
           const len = Math.min(c.range, dist + 5);
           game.fx.telegraphRect(this.x, this.z, a, len, this.radius * 2 + 0.8, c.windup, () => {
             if (this.dead || game.time < this.stunUntil) return;
-            this.charging = { t: 0, dur: len / c.speed, dx: Math.sin(a), dz: Math.cos(a), speed: c.speed, dmg: this.dmg * c.damage, hit: false };
+            this.charging = { t: 0, dur: len / c.speed, dx: Math.sin(a), dz: Math.cos(a), speed: c.speed, dmg: this.hitDmg * c.damage, hit: false };
           });
           return;
         }
@@ -662,50 +687,56 @@ export class Enemy {
       case "ranged":
       case "summoner":
       case "bombardier": {
+        // ai.lua `ranged`: parado enquanto mira; longe, chega até 0,85 do alcance; perto (metade), recua a 0,8
         const range = d.range ?? 12;
         this.face(p.x, p.z);
-        if (dist > range * 0.9) this.moveToward(game, p.x, p.z, speed, dt);
-        else if (dist < range * 0.4) this.moveToward(game, this.x - (p.x - this.x), this.z - (p.z - this.z), speed * 0.8, dt);
+        if (this.aimT >= 0) {
+          // M21-01 parte 2: a boca brilha e o tiro vai onde o herói estiver no fim da mira
+          this.aimT += dt;
+          const k = this.aimT / TUNING.enemy.telegraph.shotWindup;
+          this.glowWeapon(game, k, d.projectileColor ?? 0xffffff, true);
+          if (k >= 1) {
+            this.aimT = -1;
+            this.shoot(game, d.projectileColor ?? 0xffffff, d.projectileSpeed ?? 12, d.mortar ? 1.4 : 1);
+          }
+        } else if (dist > range * 0.85) this.moveToward(game, p.x, p.z, speed, dt);
+        else if (dist < range * 0.5) this.moveToward(game, this.x - (p.x - this.x), this.z - (p.z - this.z), speed * 0.8, dt);
         else {
-          // anda de lado para não ficar parado
+          // adaptado: anda de lado em vez de ficar parado (lá fica parado na faixa de tiro)
           const nx = -(p.z - this.z) / dist;
           const nz = (p.x - this.x) / dist;
           this.moveToward(game, this.x + nx * this.strafe, this.z + nz * this.strafe, speed * 0.45, dt);
           if (Math.random() < dt * 0.3) this.strafe *= -1;
         }
         if (d.summon) {
+          // ai.lua `summoner`: a recarga corre sempre; invoca até o teto global de invocados vivos
           this.summonCd -= dt;
           if (this.summonCd <= 0) {
             this.summonCd = d.summon.cooldown;
-            if (game.countSummons() < 10) {
-              for (let i = 0; i < d.summon.count; i++) {
-                const a = Math.random() * Math.PI * 2;
-                game.spawnEnemy(d.summon.id, this.level, this.x + Math.cos(a) * 1.6, this.z + Math.sin(a) * 1.6, { summoned: true, aggro: true });
-              }
-              game.fx.shockwave(this.x, this.z, 2.5, d.accent);
+            const n = Math.min(d.summon.count, SUMMON_CAP - game.countSummons());
+            for (let i = 0; i < n; i++) {
+              const a = Math.random() * Math.PI * 2;
+              const r = this.radius + 0.9;
+              game.spawnEnemy(d.summon.id, this.level, this.x + Math.cos(a) * r, this.z + Math.sin(a) * r, { summoned: true, aggro: true });
             }
+            if (n > 0) game.fx.shockwave(this.x, this.z, 2.5, d.accent);
           }
         }
-        if (this.cd <= 0 && dist <= range) {
-          this.cd = d.cooldown * (0.9 + Math.random() * 0.2);
-          if (d.mortar) {
-            const tx = p.x + game.playerVelX * 0.5;
-            const tz = p.z + game.playerVelZ * 0.5;
+        if (d.mortar) {
+          // ai.lua `bombardier`: além da bomba direta, a bomba no chão onde o herói está, com recarga própria
+          this.mortarCd -= dt;
+          if (this.mortarCd <= 0 && dist <= range * 1.2) {
+            this.mortarCd = d.mortar.cooldown;
+            const tx = p.x;
+            const tz = p.z;
             const r = d.mortar.radius;
             const dmg = this.dmg;
-            this.attackAnim = 0;
             game.fx.telegraphCircle(tx, tz, r, d.mortar.warning, () => game.explode(tx, tz, r, dmg, d.projectileColor ?? 0xff9a3c, this.name));
-          } else this.aimT = 0;
-        }
-        // M21-01 parte 2: o tiro comum mira antes de sair; a boca brilha e o tiro vai onde o herói estiver no fim
-        if (this.aimT >= 0) {
-          this.aimT += dt;
-          const k = this.aimT / TUNING.enemy.telegraph.shotWindup;
-          this.glowWeapon(game, k, d.projectileColor ?? 0xffffff, true);
-          if (k >= 1) {
-            this.aimT = -1;
-            this.shoot(game, d.projectileColor ?? 0xffffff, d.projectileSpeed ?? 12);
           }
+        }
+        if (this.cd <= 0 && dist <= range && this.aimT < 0) {
+          this.cd = d.cooldown;
+          this.aimT = 0;
         }
         break;
       }

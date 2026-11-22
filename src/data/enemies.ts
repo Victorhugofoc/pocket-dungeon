@@ -23,9 +23,12 @@ export interface EnemyDef {
   projectileSpeed?: number;
   projectileColor?: number;
   summon?: { id: string; count: number; cooldown: number };
+  /** ai.lua `berserker`: com a vida em `threshold` ou menos, fica furioso (velocidade e dano multiplicados) */
+  berserk?: { threshold: number; speed: number; damage: number };
   splitInto?: { id: string; count: number };
   charge?: { cooldown: number; range: number; speed: number; windup: number; damage: number };
-  mortar?: { radius: number; warning: number };
+  /** enemies.lua `mortarCooldown`, `mortarRadius`, `mortarWarning`: a bomba no chão, com recarga própria */
+  mortar?: { radius: number; warning: number; cooldown: number };
   body: BodyKind;
   color: number;
   accent: number;
@@ -48,14 +51,15 @@ export const ENEMIES: Record<string, EnemyDef> = {
     cooldown: 2.7, range: 14, projectileSpeed: 11, projectileColor: 0xc86bff,
     body: "robed", color: 0x5a3f9a, accent: 0xc86bff, scale: 0.95 },
   bombardier: { id: "bombardier", name: "Bombardier", hp: 48, speed: 1.7, damage: 10, behavior: "bombardier", radius: 0.53, xp: 55, gold: 13, category: "ranged",
-    cooldown: 3.6, range: 17, mortar: { radius: 3.2, warning: 1.25 }, projectileColor: 0xff9a3c,
+    cooldown: 3.6, range: 17, mortar: { radius: 3.2, warning: 1.25, cooldown: 4.2 }, projectileSpeed: 9.4, projectileColor: 0xff9a3c,
     body: "brute", color: 0x7a4a2a, accent: 0x2b2b2b, scale: 0.95 },
   summoner: { id: "summoner", name: "Summoner", hp: 58, speed: 1.6, damage: 6, behavior: "summoner", radius: 0.53, xp: 58, gold: 12, category: "special",
     cooldown: 3.4, range: 14, projectileSpeed: 11, projectileColor: 0x7affc8,
-    summon: { id: "swarm", count: 2, cooldown: 6.5 },
+    summon: { id: "swarm", count: 2, cooldown: 5.5 },
     body: "robed", color: 0x2f6a5a, accent: 0x7affc8, scale: 1.0 },
   berserker: { id: "berserker", name: "Berserker", hp: 52, speed: 3.4, damage: 9, behavior: "charger", radius: 0.69, xp: 46, gold: 10, category: "elite",
     cooldown: 1.3, attackRange: 1.5, charge: { cooldown: 6, range: 15, speed: 17, windup: 0.7, damage: 1.25 },
+    berserk: { threshold: 0.5, speed: 1.55, damage: 1.35 },
     body: "brute", color: 0xa83a2a, accent: 0xe8c8a0, scale: 1.1 },
   splitter: { id: "splitter", name: "Splitter", hp: 46, speed: 2.0, damage: 7, behavior: "melee", radius: 0.8, xp: 42, gold: 9, category: "special",
     cooldown: 1.3, attackRange: 1.9, splitInto: { id: "swarm", count: 2 },

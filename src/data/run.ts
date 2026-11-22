@@ -202,6 +202,13 @@ export const RANDOM_CHAMPION = { base: 0.02, perWave: 0.02, cap: 0.30 } as const
 /** enemies.lua: invocados e filhos da gosma (sem recompensa). */
 export const MINION_SCALE = { hp: 0.75, damage: 0.75, speed: 1.10 } as const;
 export const CHILD_SCALE = { hp: 0.72, damage: 0.78, speed: 1.18 } as const;
+/** enemies.lua `SUMMON_CAP`: invocados vivos no máximo, somando todos os invocadores (as crias do splitter não contam) */
+export const SUMMON_CAP = 30;
+/**
+ * enemies.lua (`enemy.lua` `create`): as recargas começam pela metade (a invocação em 0,6), para o primeiro golpe não
+ * sair junto com o aggro nem esperar a recarga inteira.
+ */
+export const FIRST_TIMER = { attack: 0.5, summon: 0.6, mortar: 0.5, charge: 0.5 } as const;
 /** constants.lua `SURVIVOR_FACTOR`: quem sobra no fim da onda rende 35% do ouro e do XP. */
 export const SURVIVOR_FACTOR = 0.35;
 
