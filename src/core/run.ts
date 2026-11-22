@@ -146,6 +146,10 @@ export interface RunState {
   mapHistory: string[];
   /** M21-08: o mapa da onda atual, sorteado ao preparar a onda e escolhido andando por um portão */
   mapOffer: MapOffer | null;
+  /** M21-09: desvios usados (onda e tipo), em ordem */
+  detours: { wave: number; kind: string }[];
+  /** M21-09: o atalho pula a próxima loja automática */
+  skipShop: boolean;
   /** saco de chefes (boss_bag.lua): o que falta sair, o último que saiu e a ordem de todos */
   bossBag: string[];
   lastBoss: string | null;
@@ -214,6 +218,8 @@ export function newRun(opts: NewRunOptions): RunState {
     curseContinues: false,
     mapHistory: [],
     mapOffer: null,
+    detours: [],
+    skipShop: false,
     bossBag: [],
     lastBoss: null,
     bossHistory: [],
@@ -272,6 +278,9 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.mapHistory ??= [];
   // checkpoints de antes do M21-08
   run.mapOffer ??= null;
+  // checkpoints de antes do M21-09
+  run.detours ??= [];
+  run.skipShop ??= false;
   // checkpoints de antes do M20-09
   run.bossBag ??= [];
   run.lastBoss ??= null;

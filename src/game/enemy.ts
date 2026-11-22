@@ -63,6 +63,8 @@ export class Enemy {
   rig: Rig;
   facing = 0;
   aggro = false;
+  /** raio em que acorda, no lugar do `TUNING.enemy.aggroRadius` (M21-09: o guarda do baú só acorda de perto) */
+  aggroRange: number | null = null;
   dead = false;
   deadT = 0;
   remove = false;
@@ -332,7 +334,7 @@ export class Enemy {
 
     if (!stunned) {
       if (!this.aggro) {
-        const r = this.isBoss ? game.layout.bossRadius : TUNING.enemy.aggroRadius;
+        const r = this.isBoss ? game.layout.bossRadius : this.aggroRange ?? TUNING.enemy.aggroRadius;
         const ref = this.isBoss ? Math.hypot(p.x - this.homeX, p.z - this.homeZ) : dist;
         if (alive && ref < r) this.setAggro(game);
         else if (Math.hypot(this.homeX - this.x, this.homeZ - this.z) > 1) {

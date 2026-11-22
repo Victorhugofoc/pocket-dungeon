@@ -64,6 +64,8 @@ export interface RunLogEntry {
   relics: string[];
   upgrades: { id: string; tier: string }[];
   mapHistory: string[];
+  /** M21-09: desvios usados (onda e tipo) */
+  detours: { wave: number; kind: string }[];
   bossHistory: string[];
   waves: WaveEntry[];
 }
@@ -108,7 +110,7 @@ export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string,
     technique: { id: run.technique.id, level: run.technique.level, modifiers: [...run.technique.modifiers] },
     relics: [...run.relics],
     upgrades: run.upgradesTaken.map((id, i) => ({ id, tier: run.upgradeTiers[i] ?? "common" })),
-    mapHistory: [...run.mapHistory], bossHistory: [...run.bossHistory],
+    mapHistory: [...run.mapHistory], detours: run.detours.map((d) => ({ ...d })), bossHistory: [...run.bossHistory],
     waves: last ? [...run.waveLog, last] : [...run.waveLog],
   };
 }

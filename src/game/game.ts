@@ -42,6 +42,9 @@ import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
 import { EnemyBars } from "./hpbars";
 import { MapGates } from "./gates";
+import { DetourField } from "./detours";
+import { detourGold, detourRng, detourSpots, rollDetours, shrineCost } from "../core/detours";
+import { DETOUR, DETOURS } from "../data/detours";
 import { GATE_SIGNAL } from "../data/map-nodes";
 import type { MoveHandle, TrailHandle } from "./vfx";
 import { LootView } from "./loot";
@@ -277,6 +280,11 @@ export class Game {
   /** os portões do mapa no chão e o mais perto do herói (a carta aparece no HUD), ou -1 */
   private gates!: MapGates;
   nearGate = -1;
+  /** M21-09: o desvio mais perto (a dica no HUD), ou -1 */
+  nearDetour = -1;
+  private detours!: DetourField;
+  /** o campeão que guarda o baú do desvio desta caminhada */
+  private detourGuard: Enemy | null = null;
   /** o santuário de relíquias está com a escolha aberta */
   private shrineOpen = false;
   /** Magic Shop aberta (shop_system.lua); null = fechada */
@@ -320,6 +328,7 @@ export class Game {
     this.probe = new FrameProbe(this.renderer);
     this.fx = new Fx(this.scene, textLayer);
     this.gates = new MapGates(this.scene, this.fx);
+    this.detours = new DetourField(this.scene, this.fx);
     this.hazards = new RoomHazards({
       scene: this.scene,
       fx: this.fx,
@@ -530,6 +539,7 @@ export class Game {
     const p = this.player;
     // na primeira onda da zona o herói começa na fogueira; nas outras, na entrada do trecho
     const gates = this.offerMap(z.index);
+    this.offerDetours(z.index);
     if (zoneChanged) {
       // continuar com o mapa por escolher: o herói volta para a clareira de antes, onde estão os portões
       const at = z.index === 0 ? this.layout.spawn : gates ? this.layout.segments[z.index - 1] : this.segment.entry;
@@ -601,6 +611,8 @@ export class Game {
     this.statusIcons.clear();
     this.hpBars.clear();
     this.gates.hide();
+    this.detours.hide();
+    this.detourGuard = null;
     for (const d of this.drops) d.mesh.removeFromParent();
     this.drops.length = 0;
     this.loot.clear();
@@ -967,7 +979,7 @@ export class Game {
     this.audio.play(e.isBoss ? "boss" : "kill");
     this.run.statistics.kills++;
     // D-147: matar um campeão abre a loja depois da onda (a relíquia de risco chega no M12)
-    if (e.champion && !e.isBoss && !e.summoned) this.pendingShop = "champion";
+    if (e.champion && !e.isBoss && !e.summoned && e !== this.detourGuard) this.pendingShop = "champion";
     if (this.stats.lifeOnKill > 0 && this.playerAlive) this.heal(this.stats.lifeOnKill, false);
     // rewards.lua `enemyKill`: ouro e XP pela sala e dificuldade, campeão ×4,5, chefe com o tier (M7-01)
     // loot.lua (M7-02): cai como orbe no chão; o prometido leva também um orbe do banco
@@ -1319,6 +1331,7 @@ export class Game {
       this.ring.visible = m.opacity > 0;
     }
     if (this.phase === "walk") {
+      this.walkDetours(dt);
       if (!this.mapResolved) {
         this.walkGates(dt);
         return;
@@ -1368,6 +1381,12 @@ export class Game {
       }
       // R19: a loja automática antes do mapa; ela nunca trava a onda (sair é sempre possível)
       if (this.shopVisit) return;
+      // M21-09: o atalho pula a próxima loja automática
+      if (this.pendingShop && this.run.skipShop && this.run.wave !== TOTAL_WAVES) {
+        this.run.skipShop = false;
+        this.pendingShop = null;
+        this.events.banner("Shop skipped", "You took the hidden path");
+      }
       if (this.pendingShop && this.playerAlive && this.run.wave !== TOTAL_WAVES) {
         this.openShop(this.pendingShop);
         this.pendingShop = null;
@@ -1383,6 +1402,7 @@ export class Game {
   /** O herói entrou na clareira: letreiro "Onda N" e a clareira fecha. */
   private beginWave(): void {
     const n = this.run.wave;
+    this.endDetours();
     this.wave = startWave(n, this.rng.get("champions"), (id) => id in ENEMIES, this.mods);
     this.ach.waveStart(n);
     this.phase = "intro";
@@ -1606,6 +1626,106 @@ export class Game {
     if (!this.playerAlive || this.shrineOpen || this.shopVisit || !this.mapCards) return;
     const i = this.gates.hit(p.x, p.z);
     if (i >= 0) this.chooseMapCard(i);
+  }
+
+  /** Os desvios no minimapa: posição e cor. */
+  get detourMarks(): { x: number; z: number; color: string }[] {
+    return this.phase === "walk" ? this.detours.marks : [];
+  }
+
+  /** A dica do desvio mais perto (HUD), ou "". */
+  get detourHint(): string {
+    const d = this.nearDetour >= 0 ? this.detours.list[this.nearDetour] : null;
+    if (!d) return "";
+    if (d.spot.kind === "chest" && this.detourGuard && !this.detourGuard.dead) return "Defeat the guardian to open the chest";
+    return DETOURS[d.spot.kind].hint;
+  }
+
+  /**
+   * M21-09: os desvios da caminhada até o trecho `index`, ao lado do meio do caminho. A seed da zona e a onda
+   * decidem tudo (continuar dá os mesmos). O baú ganha o guarda: um campeão da zona, parado até o herói chegar.
+   */
+  private offerDetours(index: number): void {
+    this.detours.hide();
+    this.nearDetour = -1;
+    if (this.detourGuard && !this.detourGuard.dead) this.detourGuard.remove = true;
+    this.detourGuard = null;
+    const run = this.run;
+    const rng = detourRng(this.layout.seed, run.wave);
+    const kinds = rollDetours(rng, { shopAhead: index < WAVES_PER_ZONE - 1 && !run.skipShop && run.wave < TOTAL_WAVES });
+    if (!kinds.length) return;
+    const L = this.layout;
+    const spots = detourSpots(rng, kinds, {
+      from: index > 0 ? L.segments[index - 1] : L.spawn,
+      to: L.segments[index],
+      clearings: L.segments,
+      bound: L.size / 2 - TUNING.world.margin - 2,
+      blocked: (x, z, r) => this.grid.hits(x, z, r),
+    });
+    this.detours.show(spots);
+    const chest = spots.find((s) => s.kind === "chest");
+    if (chest) {
+      const pool = this.zone.enemies.filter(([id]) => id in ENEMIES);
+      const id = rng.weighted(pool.map(([e, w]) => [e, w] as const));
+      const d = DETOUR.chest.guardDistance;
+      const a = chest.facing + Math.PI / 2;
+      this.detourGuard = this.spawnEnemy(id, run.wave, chest.x + Math.cos(a) * d, chest.z + Math.sin(a) * d, { champion: true });
+      this.detourGuard.aggroRange = DETOUR.chest.guardAggro;
+    }
+  }
+
+  /** A onda começou: os desvios somem; o guarda que já luta entra na onda, o parado vai embora. */
+  private endDetours(): void {
+    this.detours.hide();
+    this.nearDetour = -1;
+    const g = this.detourGuard;
+    if (g && !g.dead && !g.aggro) {
+      g.dead = true;
+      g.remove = true;
+    }
+    this.detourGuard = null;
+  }
+
+  /** Caminhada: o desvio mais perto e o E que o usa. */
+  private walkDetours(dt: number): void {
+    const p = this.player;
+    this.detours.update(this.time, dt);
+    this.nearDetour = this.playerAlive ? this.detours.nearest(p.x, p.z, DETOUR.useRadius) : -1;
+    if (this.nearDetour >= 0 && this.input.wasPressed("KeyE") && !this.shrineOpen && !this.shopVisit) this.useDetour(this.nearDetour);
+  }
+
+  /** Usa o desvio `i`: baú (com o guarda morto), santuário de sangue ou atalho. */
+  useDetour(i: number): boolean {
+    const d = this.detours.list[i];
+    if (!d || d.used) return false;
+    const run = this.run;
+    const p = this.player;
+    const kind = d.spot.kind;
+    if (kind === "chest") {
+      if (this.detourGuard && !this.detourGuard.dead) return false;
+      const gold = detourGold("chest", run.wave);
+      this.loot.drop(d.spot.x, d.spot.z, gold, 0, null);
+      this.audio.play("rare");
+    } else if (kind === "shrine") {
+      const cost = shrineCost(p.hp, this.stats.maxHp);
+      p.hp -= cost;
+      run.statistics.damageTaken += cost;
+      this.fx.text(p.x, 2.4, p.z, `-${cost}`, "hurt");
+      p.flash = 1;
+      const gold = detourGold("shrine", run.wave);
+      run.gold += gold;
+      run.statistics.goldEarned += gold;
+      this.fx.text(d.spot.x, 2.8, d.spot.z, `+${gold}g`, "gold");
+      this.audio.play("coin");
+    } else {
+      run.skipShop = true;
+      for (let n = 0; n < DETOUR.shortcut.levels; n++) this.gainXp(Math.ceil((run.xpToNext - run.xp) / Math.max(1e-6, this.stats.xp)) + 1);
+      this.audio.play("tech");
+    }
+    this.detours.markUsed(i);
+    run.detours.push({ wave: run.wave, kind });
+    this.events.zoneChanged();
+    return true;
   }
 
   /** run_map_flow.lua `chooseMapCard`: a sala vale para esta onda; o santuário abre 1 de 3 relíquias. */

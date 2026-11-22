@@ -542,6 +542,7 @@ export class Ui {
     r.boss.style.top = "64px";
     const cards = g.mapCards;
     const hint = g.nearPortal ? "E — go on to the next zone"
+      : g.phase === "walk" && g.playerAlive && g.detourHint ? g.detourHint
       : g.phase === "walk" && g.playerAlive ? (cards ? `Walk through a gate to choose wave ${n}` : `Step into the circle to start wave ${n}`) : "";
     if (r.hint.textContent !== hint) r.hint.textContent = hint;
     r.hint.classList.toggle("hidden", !hint || !!this.overlay);
@@ -596,7 +597,7 @@ export class Ui {
       ctx.stroke();
     });
     // M21-08: os portões do mapa, na cor da carta
-    for (const m of g.gateMarks) {
+    for (const m of [...g.gateMarks, ...g.detourMarks]) {
       ctx.fillStyle = m.color;
       ctx.strokeStyle = "#000";
       ctx.lineWidth = 1;
