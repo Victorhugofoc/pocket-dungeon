@@ -17,7 +17,7 @@ import {
   BOSS, DEPTHS_FROM, DEPTHS_STEP, DIFFICULTIES, DIFFICULTY_ORDER, ENDLESS, ENEMY_WEIGHT, LEVEL_UP_CHOICES,
   LEVELUP_REROLL, RUN_MAP, RUN_START, RUN_TUNING, TOTAL_WAVES, UPGRADE_TIER_WEIGHTS, UPGRADE_TIERS, WAVE_STAGES, WAVES,
   XP_GROWTH,
-  ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SURVIVOR_FACTOR,
+  ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
 } from "../src/data/run";
 import { BOSS_ORDER, ENEMIES } from "../src/data/enemies";
 import { UPGRADE_CAPS, UPGRADES } from "../src/data/upgrades";
@@ -899,6 +899,26 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     expect(RUN_TUNING.hasten).toEqual(TU.HASTEN);
   });
 
+  it("inimigos: tempos, contagens e multiplicadores do comportamento iguais aos de lá (M9-08)", () => {
+    // as distâncias (alcance, raio, velocidade) são adaptadas à escala daqui (docs/paridade.md, E2)
+    for (const [id, d] of Object.entries(ENEMIES)) {
+      const o = EN[id];
+      if (d.summon) expect({ id: d.summon.id, count: d.summon.count, cooldown: d.summon.cooldown }, id)
+        .toEqual({ id: o.summonType, count: o.summonCount, cooldown: o.summonCooldown });
+      else expect(o.summonType, id).toBeUndefined();
+      if (d.mortar) expect({ cooldown: d.mortar.cooldown, warning: d.mortar.warning }, id)
+        .toEqual({ cooldown: o.mortarCooldown, warning: o.mortarWarning });
+      else expect(o.mortarCooldown, id).toBeUndefined();
+      if (d.charge) expect({ cooldown: d.charge.cooldown, windup: d.charge.windup, damage: d.charge.damage }, id)
+        .toEqual({ cooldown: o.chargeCooldown, windup: o.chargeWindup, damage: o.chargeDamage });
+      else expect(o.chargeCooldown, id).toBeUndefined();
+      if (d.berserk) expect(d.berserk, id).toEqual({ threshold: o.berserkThreshold, speed: o.berserkSpeed, damage: o.berserkDamage });
+      else expect(o.berserkThreshold, id).toBeUndefined();
+      if (d.splitInto) expect(d.splitInto, id).toEqual({ id: o.splitInto, count: o.splitCount });
+      else expect(o.splitInto, id).toBeUndefined();
+    }
+  });
+
   it("inimigos que existem aqui: vida, dano, XP, ouro e categoria iguais aos de lá", () => {
     for (const [id, d] of Object.entries(ENEMIES)) {
       const o = EN[id];
@@ -909,6 +929,7 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     expect(CHAMPION).toEqual({ hpBase: EN.CHAMPION.hpBase, hpPerWave: EN.CHAMPION.hpPerWave, hpMult: EN.CHAMPION.hpMult,
       damageMult: EN.CHAMPION.damageMult, speedMult: EN.CHAMPION.speedMult, rewardMult: EN.CHAMPION.rewardMult });
     expect(MINION_SCALE).toEqual(EN.MINION_SCALE);
+    expect(SUMMON_CAP).toBe(EN.SUMMON_CAP);
     expect(CHILD_SCALE).toEqual(EN.CHILD_SCALE);
     expect(RANDOM_CHAMPION).toEqual(AF.RANDOM);
     expect(SURVIVOR_FACTOR).toBe(C.SURVIVOR_FACTOR);

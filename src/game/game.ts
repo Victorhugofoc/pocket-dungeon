@@ -24,7 +24,7 @@ import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { buildElements, executes, isBehind, primedReactions, reactionFor, type ReactionId } from "../core/reactions";
 import { REACTIONS } from "../data/reactions";
-import { SPELL_SCHOOL, type SpellId } from "../data/spells";
+import { SPELL_CAST, SPELL_SCHOOL, type SpellId } from "../data/spells";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, type BossPattern } from "../data/enemies";
 import { crownAttack, drawBoss } from "../core/bossbag";
@@ -718,7 +718,7 @@ export class Game {
 
   countSummons(): number {
     let n = 0;
-    for (const e of this.enemies) if (e.summoned && !e.dead) n++;
+    for (const e of this.enemies) if (e.summoned && !e.child && !e.dead) n++;
     return n;
   }
 
@@ -1041,13 +1041,17 @@ export class Game {
     // D14: a queimadura e o veneno do ataque têm atributo próprio; a lentidão do ataque é fixa, como lá
     const potency = st.kind === "burn" ? this.stats.burn : st.kind === "poison" ? this.stats.poison : 1;
     if (st.kind === "slow") {
+      // status.lua `applySlow`: não acumula (fica a mais forte); chefes levam 20%, ou até o teto da Frostine
+      const v = st.power;
+      const weak = v * SPELL_CAST.bossSlowEffect;
+      const amount = e.isBoss ? (this.hero.frost ? Math.max(weak, Math.min(v, FROST.bossSlowCap)) : weak) : v;
+      e.slowPower = now < e.slowUntil ? Math.max(e.slowPower, amount) : amount;
       e.slowUntil = Math.max(e.slowUntil, now + st.duration);
-      const v = Math.min(0.85, st.power);
-      // chefes: o gelo da Frostine deixa lento até FROST.bossSlowCap; o resto vale 40%
-      e.slowPower = e.isBoss ? (this.hero.frost ? Math.min(FROST.bossSlowCap, v) : v * 0.4) : v;
       if (this.hero.frost) e.chillUntil = Math.max(e.chillUntil, now + st.duration);
     } else if (st.kind === "stun") {
-      e.stunUntil = Math.max(e.stunUntil, now + st.duration * (e.isBoss ? 0.3 : 1));
+      // status.lua `applyStun`: chefes não são atordoados; renova, não acumula
+      if (e.isBoss) return;
+      e.stunUntil = Math.max(e.stunUntil, now + st.duration);
       e.windupT = -1;
     } else if (st.kind === "poison") {
       // S23: um veneno só por inimigo, dividido com a Venom Nova (status.lua `applyPoison`)
@@ -1129,8 +1133,9 @@ export class Game {
     this.loot.drop(e.x, e.z, r.gold, r.xp, e.lootBonus ? this.run.lootBank : null);
     const split = e.def?.splitInto;
     if (split) {
+      // ai.lua `onKill`: as crias saem em volta, em ângulos iguais
       for (let i = 0; i < split.count; i++) {
-        const a = Math.random() * Math.PI * 2;
+        const a = ((i + 1) / split.count) * Math.PI * 2;
         this.spawnEnemy(split.id, e.level, e.x + Math.cos(a) * 0.8, e.z + Math.sin(a) * 0.8, { summoned: true, child: true, aggro: true });
       }
     }
