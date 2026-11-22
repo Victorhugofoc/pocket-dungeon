@@ -3,6 +3,7 @@
 import { Rng } from "./rng";
 import { TUNING } from "../data/tuning";
 import { pacedClearing } from "./pace";
+import { TERRAIN } from "../data/terrain";
 import type { DecorKind, ZoneDef } from "../data/zones";
 
 export interface Vec2 {
@@ -16,6 +17,19 @@ export interface Obstacle extends Vec2 {
   scale: number;
   rot: number;
   solid: boolean;
+  /** M21-10: pedra do gargalo dentro da clareira (fica fora da regra "clareira sem nada sólido") */
+  choke?: boolean;
+}
+
+/** M21-10: fosso na clareira; a beirada dele mata o inimigo comum empurrado. */
+export interface Pit extends Vec2 {
+  r: number;
+}
+
+/** M21-10: o terreno de luta de uma clareira de onda (a arena do chefe não tem). */
+export interface ClearingTerrain {
+  pit: Pit;
+  barrels: Vec2[];
 }
 
 /** Trecho da zona: a clareira onde uma onda acontece (D13: cada zona = 5 ondas). */
@@ -23,6 +37,8 @@ export interface Segment extends Vec2 {
   r: number;
   /** ponto do caminho logo antes da clareira: onde o herói fica ao continuar a partida nesta onda */
   entry: Vec2;
+  /** M21-10: fosso, gargalo (as pedras estão em `obstacles`, com `choke`) e barris; só nas ondas 1 a 4 */
+  terrain?: ClearingTerrain;
 }
 
 export interface ZoneLayout {
@@ -147,6 +163,20 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
     if (blocked(x, z, solid ? r : 0)) continue;
     obstacles.push({ x, z, r, kind, scale, rot, solid });
   }
+  // M21-10: terreno de luta nas clareiras das ondas (stream próprio: a decoração de antes não muda)
+  const rTerrain = Rng.of(seed, "terrain");
+  for (const sg of segments.slice(0, -1)) {
+    const rocks: Obstacle[] = [];
+    sg.terrain = clearingTerrain(sg, rTerrain, rocks);
+    obstacles.push(...rocks);
+  }
+  // decoração baixa em cima do fosso sai
+  const pits = segments.flatMap((sg) => (sg.terrain ? [sg.terrain.pit] : []));
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const o = obstacles[i];
+    if (!o.solid && pits.some((pt) => Math.hypot(o.x - pt.x, o.z - pt.z) < pt.r + 0.6 + o.r)) obstacles.splice(i, 1);
+  }
+
   // borda: muralha de obstáculos sólidos
   const borderKind = zone.decor.find((d) => d[2])![0];
   const rBorder = Rng.of(seed, "border");
@@ -165,6 +195,43 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
   }
 
   return { seed, size: W.size, spawn, boss, bossRadius: W.bossArenaRadius, path, segments, obstacles };
+}
+
+/**
+ * M21-10: fosso de um lado da clareira, gargalo (duas fileiras de pedras com um vão) do lado oposto e barris
+ * espalhados longe dos dois. As pedras vão para `rocks`.
+ */
+function clearingTerrain(sg: Segment, rng: Rng, rocks: Obstacle[]): ClearingTerrain {
+  const T = TERRAIN;
+  const a = rng.range(0, Math.PI * 2);
+  const pd = sg.r * rng.range(T.pit.dist[0], T.pit.dist[1]);
+  const pit: Pit = { x: sg.x + Math.cos(a) * pd, z: sg.z + Math.sin(a) * pd, r: rng.range(T.pit.radius[0], T.pit.radius[1]) };
+  // gargalo: no lado oposto, as fileiras seguem a direção radial; o vão fica de frente para o centro
+  const b = a + Math.PI + rng.range(-0.6, 0.6);
+  const cd = sg.r * rng.range(T.choke.dist[0], T.choke.dist[1]);
+  const cx = sg.x + Math.cos(b) * cd, cz = sg.z + Math.sin(b) * cd;
+  // fileiras perpendiculares ao raio: o vão abre caminho entre a beira e o meio da clareira
+  const tx = -Math.sin(b), tz = Math.cos(b);
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < T.choke.rocksPerSide; i++) {
+      const scale = rng.range(T.choke.scale[0], T.choke.scale[1]);
+      const r = DECOR_RADIUS.rock * scale;
+      const off = T.choke.gap / 2 + DECOR_RADIUS.rock * T.choke.scale[1] + i * T.choke.spacing;
+      rocks.push({ x: cx + tx * off * side, z: cz + tz * off * side, r, kind: "rock", scale, rot: rng.range(0, Math.PI * 2), solid: true, choke: true });
+    }
+  }
+  const barrels: Vec2[] = [];
+  const want = rng.weighted(T.barrel.count.map(([n, w]) => [n, w] as const));
+  for (let tries = 0; tries < 60 && barrels.length < want; tries++) {
+    const ang = rng.range(0, Math.PI * 2);
+    const d = sg.r * rng.range(T.barrel.dist[0], T.barrel.dist[1]);
+    const x = sg.x + Math.cos(ang) * d, z = sg.z + Math.sin(ang) * d;
+    if (Math.hypot(x - pit.x, z - pit.z) < pit.r + T.barrel.clear + T.barrel.radius) continue;
+    if (rocks.some((o) => Math.hypot(x - o.x, z - o.z) < o.r + T.barrel.clear)) continue;
+    if (barrels.some((q) => Math.hypot(x - q.x, z - q.z) < T.barrel.spacing)) continue;
+    barrels.push({ x, z });
+  }
+  return { pit, barrels };
 }
 
 /** Grade espacial para colisão com obstáculos sólidos. */

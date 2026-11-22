@@ -67,6 +67,8 @@ function buildMask(layout: ZoneLayout): THREE.CanvasTexture {
   disc(layout.spawn.x, layout.spawn.z, 6.5, 1);
   // clareiras das ondas 1 a 4: chão gasto, mais claro no meio
   for (const sg of layout.segments.slice(0, -1)) disc(sg.x, sg.z, sg.r * 0.7, 0.45);
+  // M21-10: o fosso é terra (sem grama por cima)
+  for (const sg of layout.segments) if (sg.terrain) disc(sg.terrain.pit.x, sg.terrain.pit.z, sg.terrain.pit.r + 0.9, 1);
   // sombra de contato: discos verdes somados (não mexem no vermelho), com desfoque menor
   ctx.filter = "blur(2.5px)";
   ctx.globalCompositeOperation = "lighter";

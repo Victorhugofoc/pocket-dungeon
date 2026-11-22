@@ -25,7 +25,7 @@ import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } 
 import { newRun } from "../src/core/run";
 import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, POOL_TICK, ROOM_BIAS, ROOM_BY_ID, ROOMS, STORM } from "../src/data/rooms";
 import { generateMap, type MapRng } from "../src/core/runmap";
-import { ambushFor, biasedComposition, bossStats, killReward, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, targetCount, waveMods } from "../src/core/wave";
+import { ambushFor, biasedComposition, bossStats, killReward, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, stepWave, survivorReward, targetCount, waveMods } from "../src/core/wave";
 import { Rng } from "../src/core/rng";
 import { generalCost, modifierCost, newShopState, rollShop, spellCost } from "../src/core/shop";
 import { SHOP_CATEGORIES, SHOP_GENERAL, SHOP_ITEMS, SHOP_MODIFIER, SHOP_OFFERS, SHOP_RELIC, SHOP_REROLL, SHOP_SPELL, shopLevel } from "../src/data/shop";
@@ -197,6 +197,39 @@ const ROOM_LIFE = `=(function()
   return out
 end)()`;
 
+/** M19-08: o Boss Killer do Varok (`runMods`) pela modifier_engine, nos inimigos, chefes e recompensas. */
+const HERO_WAVES = [1, 3, 5, 7, 10, 12, 20, 24];
+const HERO_LIFE = `=(function()
+  local E, WS, DF = require("src.run.modifier_engine"), require("src.run.wave_system"), require("src.data.difficulties")
+  local Boss, Enemy = require("src.bosses.boss"), require("src.enemies.enemy")
+  local Rw, B = require("src.progression.rewards"), require("src.data.bosses")
+  local run = { stats = { compute = function() return { goldMult = 1.2, championGoldMult = 1, championXpMult = 1, survivorMult = 1 } end } }
+  local out = {}
+  for _, hero in ipairs({ "varok", "kaelen" }) do
+    out[hero] = {}
+    for _, did in ipairs({ "normal", "hard" }) do
+      for _, w in ipairs({ ${HERO_WAVES.join(", ")} }) do
+        local m = E.compute({ difficulty = DF[did], wave = w, pacts = {}, characterId = hero })
+        local orc = Enemy.create("orc", w, m, 0, 0)
+        local champ = Enemy.create("orc", w, m, 0, 0, { champion = true })
+        champ.isChampion, champ.affixReward = true, nil
+        local b = Boss.stats("gravekeeper", w, m, {})
+        local king = Boss.stats("hollow_king", w, m, { final = true, crowned = true })
+        local boss = { isBoss = true, build = true, tier = B.tier(w), wave = w, def = { gold = 0, xp = 0 } }
+        local og, ox = Rw.enemyKill(run, orc, m)
+        local cg, cx = Rw.enemyKill(run, champ, m)
+        local bg, bx = Rw.enemyKill(run, boss, m)
+        local sg, sx = Rw.survivor(run, orc, m)
+        out[hero][did .. w] = { target = WS.targetCount(w, m), enemyCount = m.enemyCount, bossHp = m.bossHp, bossDamage = m.bossDamage,
+          share = m.heroChampionShare or false, orcHp = orc.hp, orcDamage = orc.damage, champHp = champ.hp, champDamage = champ.damage,
+          bossHpStat = b.hp, bossDamageStat = b.damage, kingHp = king.hp,
+          kill = { orc = { og, ox }, champion = { cg, cx }, boss = { bg, bx }, survivor = { sg, sx } } }
+      end
+    end
+  end
+  return out
+end)()`;
+
 /** M19-07: o que a evolução muda em cada técnica, nos níveis 4 e 5 (spell_stats.lua `extra`). */
 const TECH_EVO_FIELDS = ["evolved", "bounces", "maxHpFraction", "trail", "shock", "stun", "fireTrail", "eclipse", "sanctum", "spiders", "pools", "shatter"];
 const TECH_LIFE = `=(function()
@@ -229,7 +262,7 @@ function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
   // expressões longas vão por arquivo (`@caminho`): a linha de comando do Windows tem limite
   const dir = mkdtempSync(join(tmpdir(), "dr-dump-"));
-  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE].map((code, i) => {
+  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE, HERO_LIFE].map((code, i) => {
     if (code.length < 2000) return code;
     const f = join(dir, `arg${i}.lua`);
     writeFileSync(f, code);
@@ -539,6 +572,65 @@ describe.skipIf(!dr)("paridade com o Dungeon Reign", () => {
   it("queimadura num efeito só, com acúmulos (status.lua `applyBurn`)", () => {
     expect(BURN.tick).toBe(0.5); // status.lua `BURN_TICK` (D-015)
     expect(BURN.stackBonus).toBe(TU.BURN_STACK_BONUS);
+  });
+
+  it("Boss Killer do Varok (M19-08, H9): `runMods` iguais e o efeito na onda, nos inimigos, chefes e recompensas", () => {
+    const r = CH.varok.runMods, h = HEROES.varok.runMods!;
+    expect({ ...h, championShare: undefined }).toEqual({ ...r, championShare: undefined });
+    const share = r.championShare as Record<string, number> & { default: number };
+    expect(h.championShare!.default).toBe(share.default);
+    expect(h.championShare!.byWave).toEqual(Object.keys(share).filter((k) => k !== "default").sort((a, b) => +a - +b).map((k) => share[k]));
+    expect(HEROES.varok.runModText!.length).toBe(CH.varok.runModText.length);
+    const L = dr![HERO_LIFE];
+    for (const hero of ["varok", "kaelen"] as const) {
+      for (const did of ["normal", "hard"] as const) {
+        for (const w of HERO_WAVES) {
+          const o = L[hero][did + w], m = waveMods(w, did, null, HEROES[hero].runMods), ctx = `${hero} ${did} ${w}`;
+          expect(m.enemyCount, ctx).toBeCloseTo(o.enemyCount, 10);
+          expect(m.bossHp, ctx).toBeCloseTo(o.bossHp, 10);
+          expect(m.bossDamage, ctx).toBeCloseTo(o.bossDamage, 10);
+          expect(m.heroChampionShare ?? false, ctx).toBe(o.share);
+          // targetCount de lá não tem o corte da onda de chefe (vem depois, no `start`)
+          if (!(w % 5 === 0)) expect(targetCount(w, m.enemyCount), ctx).toBe(o.target);
+          const orc = enemyStats(ENEMIES.orc, w, m), champ = enemyStats(ENEMIES.orc, w, m, true);
+          expect(orc.hp, ctx).toBeCloseTo(o.orcHp, 8);
+          expect(orc.damage, ctx).toBeCloseTo(o.orcDamage, 8);
+          expect(champ.hp, ctx).toBeCloseTo(o.champHp, 8);
+          expect(champ.damage, ctx).toBeCloseTo(o.champDamage, 8);
+          const b = bossStats("gravekeeper", w, m, false);
+          expect(b.hp, ctx).toBeCloseTo(o.bossHpStat, 6);
+          expect(b.damage, ctx).toBeCloseTo(o.bossDamageStat, 8);
+          expect(bossStats("hollow_king", w, m, true).hp, ctx).toBeCloseTo(o.kingHp, 4);
+          const kill = (t: { champion?: boolean; boss?: boolean }) => {
+            const k = killReward({ gold: ENEMIES.orc.gold, xp: ENEMIES.orc.xp, champion: !!t.champion, bossWave: t.boss ? w : null, noReward: false }, m, 1.2);
+            return [k.gold, k.xp];
+          };
+          expect(kill({}), `${ctx} orc`).toEqual(o.kill.orc);
+          expect(kill({ champion: true }), `${ctx} campeão`).toEqual(o.kill.champion);
+          expect(kill({ boss: true }), `${ctx} chefe`).toEqual(o.kill.boss);
+          const sv = survivorReward(ENEMIES.orc, false, m, 1.2);
+          expect([sv.gold, sv.xp], `${ctx} sobrevivente`).toEqual(o.kill.survivor);
+        }
+      }
+    }
+  });
+
+  it("Varok: parte da onda comum vem como campeão; a onda de chefe não", () => {
+    const m = waveMods(4, "normal", null, HEROES.varok.runMods);
+    const w = startWave(4, new Rng(3), () => true, m);
+    w.started = true;
+    const spawns = new Rng(5), champs = new Rng(7);
+    let n = 0, c = 0;
+    for (let i = 0; i < 400 && !w.complete; i++) {
+      for (const sp of stepWave(w, 0.25, { alive: 1, bossAlive: false }, spawns, champs, m.heroChampionShare).spawns) { n++; if (sp.champion) c++; }
+    }
+    expect(n).toBe(w.target);
+    expect(c).toBeGreaterThan(0);
+    const bw = startWave(5, new Rng(3), () => true, waveMods(5, "normal", null, HEROES.varok.runMods));
+    bw.started = true;
+    let bc = 0;
+    for (let i = 0; i < 400; i++) for (const sp of stepWave(bw, 0.25, { alive: 1, bossAlive: true }, spawns, champs, 0.5).spawns) if (sp.champion) bc++;
+    expect(bc).toBe(0);
   });
 
   it("Inquebrável do Varok", () => {

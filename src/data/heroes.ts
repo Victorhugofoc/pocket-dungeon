@@ -81,6 +81,29 @@ export interface HeroDef {
   nest?: boolean;
   /** dano máximo de um golpe, em fração da vida (Varok) */
   maxHitFraction?: number;
+  /** characters.lua `runMods` (D-207, Boss Killer do Varok): agem na partida como uma camada de sala ou pacto */
+  runMods?: HeroRunMods;
+  /** characters.lua `runModText` ("Run rules" na escolha do herói) */
+  runModText?: string[];
+}
+
+/** characters.lua `runMods`, lido por `modifier_engine.lua` `heroMods`. O que falta vale 1 (ou não age). */
+export interface HeroRunMods {
+  enemyCount?: number;
+  bossHp?: number;
+  bossDamage?: number;
+  /** recompensa de inimigo comum e campeão (`killReward`), e do chefe (`bossReward`) */
+  killReward?: number;
+  bossReward?: number;
+  /** parte da onda comum que vem como campeão, pela onda (1 a 5) e depois (`default`) */
+  championShare?: { byWave: readonly number[]; default: number };
+  /** vida dos inimigos ×(1+x)^(onda−1) e dano ×(1 + x·(onda−1)) (D-216) */
+  enemyHpGrowth?: number;
+  enemyDamagePerWave?: number;
+  /** chefe até a onda `upTo` com a vida ×`mult` (D-217) */
+  earlyBoss?: { upTo: number; mult: number };
+  /** o rei coroado da onda 20 não leva a vida extra da dificuldade (D-644) */
+  noCrownHp?: boolean;
 }
 
 export const HERO_ORDER = ["frostine", "kaelen", "aurelius", "ignis", "zephyr", "varok", "umbra", "seraph", "vesper"] as const;
@@ -138,7 +161,7 @@ export const HEROES: Record<string, HeroDef> = {
     passive: [...RICOCHET.passiveText],
   },
   varok: {
-    id: "varok", name: "Varok", title: "Boss Slayer", identity: "Mace, heavy blows, toughness",
+    id: "varok", name: "Varok", title: "Boss Slayer", identity: "Mace, few enemies, giant bosses",
     color: 0xf2594a, accent: 0xb9c2cc, weapon: "mace", weaponName: "Mace",
     stats: { damagePct: 0.95, maxHpPct: 0.80, armor: 8 },
     auto: { kind: "melee", rate: 1.05, damage: 1.8, range: 3.4, arcDeg: 130, color: 0xffb3a8 },
@@ -146,6 +169,14 @@ export const HEROES: Record<string, HeroDef> = {
     startingSpells: ["quake_totem", "fireball", "iceball", "blade_orbit"],
     passive: [...UNBREAKABLE.passiveText],
     maxHitFraction: UNBREAKABLE.maxHitFraction,
+    runMods: {
+      enemyCount: 0.30, bossHp: 4.3, killReward: 0.6, bossReward: 2.0,
+      championShare: { byWave: [0, 0.10, 0.20, 0.30, 0.40], default: 0.50 },
+      enemyHpGrowth: 0.03, enemyDamagePerWave: 0.03,
+      bossDamage: 2.1, earlyBoss: { upTo: 5, mult: 0.6 },
+      noCrownHp: true,
+    },
+    runModText: ["-70% enemies, half Champions", "Bosses: +330% HP, x2.1 damage", "Enemies +3% per wave", "Bosses: x2 gold and XP"],
   },
   umbra: {
     id: "umbra", name: "Umbra", title: "Shadow Assassin", identity: "Dodge, crit, back hits",

@@ -7,6 +7,7 @@ import { BOSSES, ENEMIES } from "../src/data/enemies";
 import { RELICS } from "../src/data/relics";
 import { ZONES, ZONE_ORDER } from "../src/data/zones";
 import { TUNING } from "../src/data/tuning";
+import { TERRAIN } from "../src/data/terrain";
 
 describe("rng", () => {
   it("é determinístico por seed", () => {
@@ -124,10 +125,48 @@ describe("geração de zona", () => {
     const L = generateZone(ZONES.cripta, 77);
     const inner = L.size / 2 - TUNING.world.margin;
     for (const o of L.obstacles) {
-      if (!o.solid || Math.abs(o.x) > inner || Math.abs(o.z) > inner) continue;
+      if (!o.solid || o.choke || Math.abs(o.x) > inner || Math.abs(o.z) > inner) continue;
       expect(distToPath(o.x, o.z, L.path)).toBeGreaterThan(o.r);
       for (const s of L.segments) expect(Math.hypot(o.x - s.x, o.z - s.z)).toBeGreaterThan(s.r);
     }
+  });
+  it("M21-10: cada clareira de onda tem fosso, gargalo e barris; a arena do chefe não; tudo dentro e sem se tocar", () => {
+    for (const id of ZONE_ORDER) {
+      for (let seed = 1; seed <= 200; seed += 13) {
+        const L = generateZone(ZONES[id], seed * 104729);
+        expect(L.segments[4].terrain).toBeUndefined();
+        for (const sg of L.segments.slice(0, -1)) {
+          const t = sg.terrain!;
+          expect(t).toBeDefined();
+          const { pit, barrels } = t;
+          // fosso dentro da clareira, longe da borda onde os inimigos nascem
+          expect(Math.hypot(pit.x - sg.x, pit.z - sg.z) + pit.r).toBeLessThan(sg.r - 4);
+          // o centro fica livre para o herói
+          expect(Math.hypot(pit.x - sg.x, pit.z - sg.z)).toBeGreaterThan(pit.r + 2);
+          const rocks = L.obstacles.filter((o) => o.choke && Math.hypot(o.x - sg.x, o.z - sg.z) < sg.r);
+          expect(rocks.length).toBe(TERRAIN.choke.rocksPerSide * 2);
+          for (const o of rocks) {
+            expect(o.solid).toBe(true);
+            expect(Math.hypot(o.x - sg.x, o.z - sg.z) + o.r).toBeLessThan(sg.r - 4);
+            expect(Math.hypot(o.x - pit.x, o.z - pit.z)).toBeGreaterThan(o.r + pit.r + 1);
+          }
+          expect(barrels.length).toBeGreaterThanOrEqual(2);
+          for (const b of barrels) {
+            expect(Math.hypot(b.x - sg.x, b.z - sg.z)).toBeLessThan(sg.r - 2);
+            expect(Math.hypot(b.x - pit.x, b.z - pit.z)).toBeGreaterThan(pit.r + TERRAIN.barrel.radius);
+            for (const o of rocks) expect(Math.hypot(b.x - o.x, b.z - o.z)).toBeGreaterThan(o.r + TERRAIN.barrel.radius);
+          }
+          // o vão do gargalo passa: um herói (raio 0,5) cabe entre as duas fileiras
+          const grid = new ObstacleGrid(rocks);
+          const mid = { x: (rocks[0].x + rocks[TERRAIN.choke.rocksPerSide].x) / 2, z: (rocks[0].z + rocks[TERRAIN.choke.rocksPerSide].z) / 2 };
+          expect(grid.hits(mid.x, mid.z, 0.5)).toBe(false);
+        }
+      }
+    }
+  });
+  it("a decoração do terreno não muda a decoração de antes (stream próprio)", () => {
+    const L = generateZone(ZONES.bosque, 99);
+    expect(L.obstacles.filter((o) => o.choke).length).toBe(4 * TERRAIN.choke.rocksPerSide * 2);
   });
   it("a grade empurra para fora dos obstáculos", () => {
     const grid = new ObstacleGrid([{ x: 0, z: 0, r: 1, kind: "rock", scale: 1, rot: 0, solid: true }]);

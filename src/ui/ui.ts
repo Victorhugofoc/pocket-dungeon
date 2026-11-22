@@ -83,6 +83,7 @@ function heroKit(h: HeroDef, cooldown: number): string {
   const cd = cooldown.toFixed(cooldown % 1 ? 1 : 0);
   return `<div class="kit">
     <div class="kit-row"><b>Passive</b><ul>${h.passive.map((t) => `<li>${t}</li>`).join("")}</ul></div>
+    ${h.runModText ? `<div class="kit-row"><b>Run rules</b><ul>${h.runModText.map((t) => `<li>${t}</li>`).join("")}</ul></div>` : ""}
     <div class="kit-row"><b>Technique</b><div><span class="kit-name">${h.technique.name}</span>
       <span class="kit-meta">right click or Q · cooldown ${cd} s</span><p>${h.technique.text}</p></div></div>
   </div>`;

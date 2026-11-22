@@ -33,11 +33,13 @@ import { TUNING } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
 import { Audio } from "./audio";
-import { Enemy, enemyDef } from "./enemy";
+import { Enemy, enemyDef, KNOCK_DECAY } from "./enemy";
 import { Fx } from "./fx";
 import { IceWalls, type IceWall } from "./icewall";
 import { Rifts, type Rift } from "./rift";
 import { RoomHazards } from "./roomhazards";
+import { Terrain } from "./terrain";
+import { TERRAIN } from "../data/terrain";
 import { ARCANE_CHARGED, SpellCaster } from "./spells";
 import { StatusIcons } from "./status-icons";
 import { EnemyBars } from "./hpbars";
@@ -247,6 +249,7 @@ export class Game {
   private rifts = new Rifts(this.scene);
   /** raios e poças de cura da sala (M20-08) */
   hazards!: RoomHazards;
+  terrain!: Terrain;
   private trails: Trail[] = [];
   private echoes: Echo[] = [];
   private pools: VenomPool[] = [];
@@ -340,6 +343,11 @@ export class Game {
       heal: (n) => this.heal(n, true),
       maxHp: () => this.stats.maxHp,
       zap: () => this.audio.play("zap"),
+    });
+    this.terrain = new Terrain({
+      scene: this.scene,
+      blast: (x, z) => this.barrelBlast(x, z),
+      fuseTick: () => this.audio.play("fuse"),
     });
     this.input = new Input(canvas);
 
@@ -532,7 +540,7 @@ export class Game {
     this.clearWave();
     this.segment = this.layout.segments[z.index];
     this.wave = null;
-    this.mods = waveMods(wave, run.difficultyId, roomOf(run));
+    this.mods = waveMods(wave, run.difficultyId, roomOf(run), this.hero.runMods);
     this.shrineOpen = false;
     this.shopVisit = null;
     this.pendingShop = null;
@@ -567,6 +575,7 @@ export class Game {
     this.layout = generateZone(zone, seed);
     this.grid = new ObstacleGrid(this.layout.obstacles);
     this.world = buildWorld(this.scene, zone, this.layout);
+    this.terrain.build(this.layout);
     this.pipeline.setGrade(zone);
     this.hemi.color.set(zone.ambient);
     this.hemi.groundColor.set(zone.ground[2]);
@@ -637,6 +646,7 @@ export class Game {
     for (const v of this.pools) this.disposePool(v);
     this.pools.length = 0;
     this.fx.clear();
+    this.terrain.clear();
     this.world?.dispose();
     this.world = null;
     this.boss = null;
@@ -771,7 +781,7 @@ export class Game {
         pr.z += pr.vz * dt;
       }
       if (pr.friendly && pr.bounces && pr.bounces > 0) this.trickShot(pr);
-      let dead = pr.life <= 0 || this.grid.hits(pr.x, pr.z, pr.r * 0.5);
+      let dead = pr.life <= 0 || this.grid.hits(pr.x, pr.z, pr.r * 0.5) || this.terrain.shot(pr.x, pr.z, pr.r);
       // Rune Traps (D-575): o tiro do ataque básico estoura a runa armada que cruza
       if (!dead && pr.friendly && pr.source === "auto" && this.spells.hasRunes) {
         this.spells.shootRunes((x, z, trig) => (x - pr.x) ** 2 + (z - pr.z) ** 2 <= (pr.r + trig) ** 2);
@@ -1282,6 +1292,52 @@ export class Game {
     }
   }
 
+  /**
+   * M21-10: barril explodindo. Fere todos no raio por fração da vida máxima (inimigo comum, campeão, chefe), o herói
+   * também, empurra para fora do centro (pode jogar no fosso) e acende os barris vizinhos.
+   */
+  private barrelBlast(x: number, z: number): void {
+    const B = TERRAIN.barrel;
+    const r = B.blastRadius;
+    this.fx.shockwave(x, z, r, 0xff7a2a, 0.4);
+    this.fx.burst(x, 0.7, z, 0xffa040, 34, 10, 0.2, 0.6, 8);
+    this.fx.burst(x, 0.5, z, 0x5a3a22, 14, 6, 0.16, 0.7, 14);
+    this.fx.flashLight(x, 1.5, z, 0xff8a3a, 90, 0.45);
+    this.fx.addShake(0.35);
+    this.audio.play("boom");
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const dx = e.x - x, dz = e.z - z, d = Math.hypot(dx, dz);
+      if (d > r + e.radius) continue;
+      const frac = e.isBoss ? B.bossDamage : e.champion ? B.championDamage : B.damage;
+      this.hitSource = "other";
+      this.damageEnemy(e, e.maxHp * frac, { noKnock: true });
+      if (e.isBoss) continue;
+      const nx = d > 0.05 ? dx / d : Math.random() - 0.5, nz = d > 0.05 ? dz / d : Math.random() - 0.5;
+      const nl = Math.hypot(nx, nz) || 1;
+      e.kx += (nx / nl) * B.knock * TUNING.enemy.knockback;
+      e.kz += (nz / nl) * B.knock * TUNING.enemy.knockback;
+    }
+    const p = this.player;
+    if (Math.hypot(p.x - x, p.z - z) < r + 0.3) this.hurtPlayer(this.stats.maxHp * B.playerDamage, "Explosive Barrel");
+    this.terrain.strike(x, z, r);
+  }
+
+  /** M21-10: o inimigo empurrado passou da beirada do fosso: cai e morre (o loot fica na beirada). */
+  fallEnemy(e: Enemy, pit: { x: number; z: number; r: number }): void {
+    const dx = e.x - pit.x, dz = e.z - pit.z, d = Math.hypot(dx, dz) || 1;
+    const x = e.x, z = e.z;
+    e.x = pit.x + (dx / d) * (pit.r + 0.8);
+    e.z = pit.z + (dz / d) * (pit.r + 0.8);
+    this.fx.text(e.x, e.rig.height + 0.3, e.z, "Fell!", "crit");
+    this.killEnemy(e, "other");
+    e.x = x;
+    e.z = z;
+    e.fell = { x: pit.x, z: pit.z };
+    e.kx = e.kz = 0;
+    this.fx.burst(x, 0.2, z, 0x3a2c20, 10, 3, 0.14, 0.5, 6);
+  }
+
   explode(x: number, z: number, r: number, dmg: number, color: number, source: string): void {
     this.fx.shockwave(x, z, r, color);
     this.fx.burst(x, 0.4, z, color, 16, 7, 0.18, 0.5);
@@ -1363,7 +1419,7 @@ export class Game {
       let alive = this.markers.length;
       for (const e of this.enemies) if (!e.dead) alive++;
       const bossAlive = this.markers.some((m) => m.boss) || (!!this.boss && !this.boss.dead);
-      const step = stepWave(w, dt, { alive, bossAlive }, this.rng.get("spawns"));
+      const step = stepWave(w, dt, { alive, bossAlive }, this.rng.get("spawns"), this.rng.get("champions"), this.mods.heroChampionShare);
       for (const sp of step.spawns) this.queueSpawn(sp);
       if (step.ambush) this.queueAmbush();
       if (step.completed) this.completeWave();
@@ -1751,7 +1807,7 @@ export class Game {
     this.nearGate = -1;
     const step = chooseCard(run, card);
     // a sala escolhida muda os números desta onda
-    this.mods = waveMods(run.wave, run.difficultyId, roomOf(run));
+    this.mods = waveMods(run.wave, run.difficultyId, roomOf(run), this.hero.runMods);
     this.audio.play("pickup");
     this.events.zoneChanged();
     if (step === "relic") {
@@ -1974,15 +2030,17 @@ export class Game {
 
   private areaHit(x: number, z: number, r: number, mult: number, status?: StatusSpec, knock = 0): number {
     let n = 0;
+    this.terrain.strike(x, z, r);
     for (const e of this.enemies) {
       if (e.dead) continue;
       const d = Math.hypot(e.x - x, e.z - z);
       if (d > r + e.radius) continue;
       this.hitEnemy(e, mult, status);
       n++;
+      // M21-10: o empurrão vira velocidade (desliza `knock` metros), para poder levar o inimigo ao fosso
       if (knock > 0 && !e.isBoss && d > 0.01) {
-        e.x += ((e.x - x) / d) * knock;
-        e.z += ((e.z - z) / d) * knock;
+        e.kx += ((e.x - x) / d) * knock * KNOCK_DECAY;
+        e.kz += ((e.z - z) / d) * knock * KNOCK_DECAY;
       }
     }
     return n;
@@ -2033,6 +2091,7 @@ export class Game {
       const range = a.range * (1 + (this.stats.range - 1) * 0.5) * (1 + (this.stats.area - 1) * 0.5);
       const arc = (((a.arcDeg ?? 100) * Math.PI) / 180) / 2;
       this.fx.slash(p.x, p.z, p.facing, range, a.arcDeg ?? 100, this.spells.arcaneReady ? ARCANE_CHARGED.color : a.color);
+      this.terrain.strikeArc(p.x, p.z, p.facing, range, arc);
       this.audio.play("swing");
       let hits = 0;
       for (const e of this.enemies) {
@@ -2101,6 +2160,7 @@ export class Game {
         p.x = dest.x;
         p.z = dest.z;
         this.grid.resolve(p, 0.5);
+        this.terrain.resolve(p, 0.5);
         p.iframes = Math.max(p.iframes, T.invuln ?? 0.3);
         this.addTrail(x0, z0, p.x, p.z, hw, T.trail ?? 2, T.trailTick ?? 0.4, T.damage * (T.trailFraction ?? 0.35), color);
         // M5-03: o herói vira raio; relâmpago do ponto de saída ao de chegada, estalo na saída e descarga na chegada
@@ -2243,6 +2303,7 @@ export class Game {
         p.x = target.x + (dx / len) * back;
         p.z = target.z + (dz / len) * back;
         this.grid.resolve(p, 0.5);
+        this.terrain.resolve(p, 0.5);
         p.facing = Math.atan2(target.x - p.x, target.z - p.z);
         p.iframes = Math.max(p.iframes, T.invuln ?? 0.6);
         p.shadowUntil = this.time + SHADOW.afterStep;
@@ -2435,6 +2496,7 @@ export class Game {
         p.leap = null;
         const T = this.tech!;
         this.grid.resolve(p, 0.5);
+        this.terrain.resolve(p, 0.5);
         this.executionLanding(T.radius ?? 5.8, T);
         this.audio.play("kill");
       }
@@ -2504,7 +2566,10 @@ export class Game {
     }
 
 
-    if (!p.leap) this.grid.resolve(p, 0.5);
+    if (!p.leap) {
+      this.grid.resolve(p, 0.5);
+      this.terrain.resolve(p, 0.5);
+    }
     const lim = this.layout.size / 2 - TUNING.world.margin + 1;
     p.x = Math.max(-lim, Math.min(lim, p.x));
     p.z = Math.max(-lim, Math.min(lim, p.z));
@@ -2965,6 +3030,7 @@ export class Game {
     this.updateZonesOfTech(dt);
     this.updateEvolvedTech(dt);
     this.hazards.update(dt, this.time);
+    this.terrain.update(dt, this.time);
   }
 
   private updateCamera(dt: number): void {
