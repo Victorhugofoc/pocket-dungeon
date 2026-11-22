@@ -109,3 +109,26 @@ export const STACKING = { regenSoftcap: 2.0, dodgeCap: 0.6, cooldownFloor: 0.35,
  * FOLLOW_THROUGH_TIME (segundos depois da técnica); `tuning.lua` KNOCKBACK_PX (px empurrados a +100% de Knockback).
  */
 export const UPGRADE_FX = { deathHeal: 10, followThroughTime: 3, knockbackPx: 48 };
+
+/**
+ * M20-12 parte 3: as exclusivas de herói, com os números do original (`techniques.lua`, `damage.lua`,
+ * `spell_stats.lua`, `shield_throw.lua`). Raios e alcances em px de lá (12 px = 1 m).
+ */
+export const HERO_UPGRADES = {
+  /** PERMAFROST: +1 s de congelamento e +2 s de parede por acúmulo */
+  permafrostFreeze: 1, permafrostDuration: 2,
+  /** STATIC CHARGE: +1 s de rastro por acúmulo e o dano do rastro ×2 */
+  staticTrail: 1, staticTrailMult: 2,
+  /** EXECUTIONER: vale em chefe abaixo de 30% da vida */
+  executionerBelow: 0.30,
+  /** NIGHTFALL: s tirados da recarga da técnica a cada esquiva, por acúmulo */
+  nightfallCdr: 0.5,
+  /** JUDGEMENT: o Aegis devolve 200% do golpe bloqueado, por acúmulo */
+  judgementMult: 2,
+  /** WILDFIRE: raio do contágio da queimadura e a duração mínima dela */
+  wildfireRadiusPx: 80, wildfireMinTime: 1.5,
+  /** CONTAGION: alcance até o mais perto; passa metade dos acúmulos (no mínimo 1) */
+  contagionRangePx: 120,
+  /** HOLY RICOCHET: +2 ricochetes que guardam 90% do dano (lá, 70% sem ela) */
+  holyBounces: 2, holyMult: 0.9,
+};

@@ -397,7 +397,7 @@ export class Enemy {
       this.moveAmt = 1;
       if (!c.hit && Math.hypot(p.x - this.x, p.z - this.z) < this.radius + 0.9) {
         c.hit = true;
-        game.hurtPlayer(c.dmg, this.name);
+        game.hurtPlayer(c.dmg, this.name, this);
       }
       if (c.t >= c.dur) this.charging = null;
     }
@@ -580,7 +580,7 @@ export class Enemy {
         this.attackAnim = 0;
         const ward = this.boss ? null : game.spells.wardFor(this);
         if (ward) game.spells.hitWard(ward);
-        else if (this.swingHits(p.x, p.z, range)) game.hurtPlayer(this.dmg, this.name);
+        else if (this.swingHits(p.x, p.z, range)) game.hurtPlayer(this.dmg, this.name, this);
         this.cd = this.boss ? this.boss.attackCooldown : this.def!.cooldown;
       }
       return;
@@ -625,7 +625,7 @@ export class Enemy {
   private shoot(game: Game, color: number, speedP: number, spreadErr = 0.06): void {
     const p = game.player;
     const a = Math.atan2(p.x - this.x, p.z - this.z) + (Math.random() - 0.5) * spreadErr;
-    game.spawnEnemyProjectile(this.x + Math.sin(a) * this.radius, this.z + Math.cos(a) * this.radius, a, speedP * this.projK, this.dmg, color, 0.26);
+    game.spawnEnemyProjectile(this.x + Math.sin(a) * this.radius, this.z + Math.cos(a) * this.radius, a, speedP * this.projK, this.dmg, color, 0.26, this);
     this.attackAnim = 0;
   }
 
@@ -732,7 +732,7 @@ export class Enemy {
         s.left--;
         s.angle += 0.52;
         for (let arm = 0; arm < 3; arm++) {
-          game.spawnEnemyProjectile(this.x, this.z, s.angle + (arm * Math.PI * 2) / 3, (s.p.speed ?? 10) * this.projK, this.dmg * s.p.damage, b.projectileColor, 0.3);
+          game.spawnEnemyProjectile(this.x, this.z, s.angle + (arm * Math.PI * 2) / 3, (s.p.speed ?? 10) * this.projK, this.dmg * s.p.damage, b.projectileColor, 0.3, this);
         }
       }
       if (s.left <= 0) this.spiral = null;
@@ -793,7 +793,7 @@ export class Enemy {
           if (!ok()) return;
           const off = Math.random() * Math.PI;
           for (let i = 0; i < n; i++) {
-            game.spawnEnemyProjectile(this.x, this.z, off + (i / n) * Math.PI * 2, (pt.speed ?? 10) * this.projK, this.dmg * pt.damage, b.projectileColor, 0.32);
+            game.spawnEnemyProjectile(this.x, this.z, off + (i / n) * Math.PI * 2, (pt.speed ?? 10) * this.projK, this.dmg * pt.damage, b.projectileColor, 0.32, this);
           }
           fx.shockwave(this.x, this.z, 4, b.glow);
         });
@@ -807,7 +807,7 @@ export class Enemy {
           const a = Math.atan2(p.x - this.x, p.z - this.z);
           this.attackAnim = 0;
           for (let i = 0; i < n; i++) {
-            game.spawnEnemyProjectile(this.x, this.z, a - spread / 2 + (spread * i) / (n - 1), (pt.speed ?? 13) * this.projK, this.dmg * pt.damage, b.projectileColor, 0.34);
+            game.spawnEnemyProjectile(this.x, this.z, a - spread / 2 + (spread * i) / (n - 1), (pt.speed ?? 13) * this.projK, this.dmg * pt.damage, b.projectileColor, 0.34, this);
           }
         });
         break;
