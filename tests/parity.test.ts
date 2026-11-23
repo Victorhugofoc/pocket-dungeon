@@ -984,6 +984,9 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
       if (d.shield) expect(d.shield, id).toEqual({ arcDeg: o.shieldArcDeg, damageMult: o.shieldDamageMult, turnRate: o.shieldTurnRate });
       else expect(o.shieldArcDeg, id).toBeUndefined();
       expect(d.armor, id).toBe(o.armor);
+      // M9-02: maldição do Hexer
+      if (d.hex) expect(d.hex, id).toEqual({ duration: o.hexDuration, damageMult: o.hexDamageMult });
+      else expect(o.hexDuration, id).toBeUndefined();
     }
     expect({ ...SHIELD_CYCLE }).toEqual(TU.SHIELD_CYCLE);
   });

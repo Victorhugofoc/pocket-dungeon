@@ -308,6 +308,16 @@ export const ENEMIES: Record<string, Spec> = {
     b.dims = { hipY: 0.98, headY: 0.56, shoulderY: 0.48, shoulderX: 0.36, arm: 0.34, hipX: 0.15, thigh: 0.47 };
     addModel(b, "shieldbearer");
   },
+  hexer: (b) => {
+    // velha bruxa curvada modelada no Blender (tools/blender/hexer.py, brief em docs/briefs/hexer.md); flutua de manto, sem pernas.
+    // Cajado de espiral em pé na mão esquerda (foreL) e lanterna-gaiola pendurada na direita (foreR). Poses iguais a POSE_R/POSE_L,
+    // LEAN e OUT do script: braço direito esticado à frente com a mão caída, o esquerdo com o cajado à frente; corcunda pelo lean
+    b.form = "robed"; b.scale = 1.1; b.style = "cast"; b.rough = 0.75; b.glowColor = 0x9cff6a;
+    b.lean = 0.9; b.armOut = 0.1;
+    b.poseR = [-1.2, -1.0]; b.poseL = [-0.9, -0.7];
+    b.dims = { hipY: 0.84, headY: 0.42, shoulderY: 0.4, shoulderX: 0.19, arm: 0.3, hipX: 0.12, thigh: 0.42 };
+    addModel(b, "hexer");
+  },
 
 
 };

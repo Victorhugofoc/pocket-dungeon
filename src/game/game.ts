@@ -27,6 +27,7 @@ import { REACTIONS } from "../data/reactions";
 import { SPELL_CAST, SPELL_SCHOOL, type SpellId } from "../data/spells";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, type BossPattern } from "../data/enemies";
+import { applyHex, hexMult, type HexState } from "../core/hex";
 import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
@@ -175,6 +176,8 @@ interface Projectile {
   pointBlank?: number;
   /** tiro inimigo: quem atirou (JUDGEMENT) */
   owner?: Enemy;
+  /** M9-02: tiro de maldição do Hexer (`EnemyDef.hex`) */
+  hex?: { duration: number; damageMult: number };
   /** BOOMERANG (Seraph): o escudo vai até o alcance e volta, acertando todos nos dois sentidos; `back` = voltando */
   boomerang?: { back: boolean };
 }
@@ -230,6 +233,8 @@ export interface PlayerState {
   /** M9-06: golpe do campeão Frozen deixa o herói a `chillMult` da velocidade até `chillUntil` */
   chillUntil: number;
   chillMult: number;
+  /** M9-02: maldição do Hexer (`core/hex.ts`): o herói causa menos dano até ela acabar */
+  hex: HexState | null;
   rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number; x0: number; z0: number; fire?: TrailHandle } | null;
 }
 
@@ -261,7 +266,7 @@ export class Game {
   player: PlayerState = {
     x: 0, z: 0, facing: 0, hp: 1, rig: null, moveAmt: 0, attackAnim: -1, attackCd: 0, techCd: 0, techMax: 1, followUntil: 0,
     dashCd: 0, dashT: 0, dashDx: 0, dashDz: 0, iframes: 0, shadowUntil: 0, aegis: null, throws: 0, nestT: VENOM.broodEvery,
-    flash: 0, hurtT: 0, leap: null, rush: null, chillUntil: 0, chillMult: 1,
+    flash: 0, hurtT: 0, leap: null, rush: null, chillUntil: 0, chillMult: 1, hex: null,
   };
   playerAlive = true;
   playerVelX = 0;
@@ -796,6 +801,7 @@ export class Game {
     this.endAegis(false);
     p.shadowUntil = 0;
     p.chillUntil = 0;
+    p.hex = null;
     p.dashT = 0;
     this.playerAlive = true;
     this.epics.reset();
@@ -913,7 +919,7 @@ export class Game {
 
   spawnEnemyProjectile(x: number, z: number, angle: number, speed: number, dmg: number, color: number, r: number, owner?: Enemy): void {
     this.addProjectile({ x, z, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed, r, dmg, life: 26 / speed, friendly: false,
-      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile", owner });
+      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile", owner, hex: owner?.def?.hex });
   }
 
   /**
@@ -1115,7 +1121,8 @@ export class Game {
       } else if (!dead && this.playerAlive) {
         const rr = 0.55 + pr.r;
         if ((p.x - pr.x) ** 2 + (p.z - pr.z) ** 2 < rr * rr && p.iframes <= 0) {
-          this.hurtPlayer(pr.dmg, pr.source, pr.owner);
+          // enemy_attacks.lua: a maldição só pega se o tiro não foi esquivado
+          if (this.hurtPlayer(pr.dmg, pr.source, pr.owner) && pr.hex) this.hexPlayer(pr.hex.duration, pr.hex.damageMult);
           dead = true;
         }
       }
@@ -1238,6 +1245,8 @@ export class Game {
     if (e.isBoss && this.stats.executioner > 0 && e.hp < e.maxHp * HERO_UPGRADES.executionerBelow) amount *= 1 + this.stats.executioner;
     if (this.stats.followThrough > 0 && this.time < this.player.followUntil) amount *= 1 + this.stats.followThrough;
     amount *= this.epics.damageMult();
+    // M9-02 (damage.lua): herói amaldiçoado pelo Hexer causa menos dano, também por tempo
+    amount *= hexMult(this.player.hex, this.time);
     // relic_mechanics.lua `schoolOf`: a escola da spell; a queimadura conta como fogo
     const school = opts.school ?? (opts.dot === "burn" ? "fire" : undefined);
     amount *= this.relicHooks.damageMult(this.relicWorld, { source: opts.dot ?? this.hitSource, school, boss: e.isBoss });
@@ -1596,13 +1605,14 @@ export class Game {
   }
 
   /** `attacker`: quem bateu (JUDGEMENT devolve o golpe bloqueado pelo Aegis). */
-  hurtPlayer(amount: number, source: string, attacker?: Enemy): void {
+  /** Devolve se o golpe pegou (não esquivado, não bloqueado pelo Aegis). */
+  hurtPlayer(amount: number, source: string, attacker?: Enemy): boolean {
     void source;
     const p = this.player;
-    if (!this.playerAlive) return;
+    if (!this.playerAlive) return false;
     if (p.iframes > 0) {
       if (p.dashT > 0) this.epics.onAvoided();
-      return;
+      return false;
     }
     if (Math.random() < this.stats.dodge) {
       this.fx.text(p.x, 2.6, p.z, "Dodge", "dodge");
@@ -1610,7 +1620,7 @@ export class Game {
       this.ach.dodge();
       // NIGHTFALL (Umbra): cada esquiva tira 0,5 s da recarga da técnica
       if (this.stats.nightfall > 0 && p.techCd > 0) p.techCd = Math.max(0, p.techCd - HERO_UPGRADES.nightfallCdr * this.stats.nightfall);
-      return;
+      return false;
     }
     if (p.aegis?.block) {
       // Aegis: o escudo come o golpe inteiro
@@ -1634,7 +1644,7 @@ export class Game {
         this.damageEnemy(attacker, amount * HERO_UPGRADES.judgementMult * this.stats.judgement);
         this.fx.lib.burst(attacker.x, 1.4, attacker.z, { radius: 1.4, color: TECH_FX.holy, core: TECH_FX.holyCore, rays: 6, sparks: 12, light: 1.4, dur: 0.18, wave: 0 });
       }
-      return;
+      return false;
     }
     amount *= this.stats.damageTaken;
     amount = this.epics.incoming(amount);
@@ -1642,7 +1652,7 @@ export class Game {
     amount = Math.max(1, Math.round(amount));
     // escudo de relíquia come primeiro (relic_mechanics.lua `absorb`)
     amount = Math.round(this.relicHooks.absorb(this.relicWorld, amount));
-    if (amount <= 0) return;
+    if (amount <= 0) return true;
     this.run.statistics.damageTaken += Math.min(amount, p.hp);
     p.hp -= amount;
     this.relicHooks.onPlayerHit(this.relicWorld, amount);
@@ -1670,6 +1680,18 @@ export class Game {
       this.run.killedBy = source;
       this.events.died();
     }
+    return true;
+  }
+
+  /** M9-02 (enemy_attacks.lua `applyHex`): o herói amaldiçoado causa `mult` do dano por `duration` s; renova sem acumular. */
+  hexPlayer(duration: number, mult: number): void {
+    const p = this.player;
+    if (!this.playerAlive) return;
+    const fresh = !p.hex || p.hex.until <= this.time;
+    p.hex = applyHex(p.hex, this.time, duration, mult);
+    if (fresh) this.fx.text(p.x, 2.2, p.z, "Hexed", "poison");
+    this.fx.burst(p.x, 1.6, p.z, ENEMIES.hexer.accent, 10, 3, 0.12, 0.5);
+    this.audio.play("hex");
   }
 
   /**

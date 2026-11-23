@@ -36,6 +36,11 @@ export interface EnemyDef {
    * o dano que vem de dentro do arco é multiplicado por `damageMult` (ai.lua `behaviors.shield`, damage.lua `shieldBlocks`)
    */
   shield?: { arcDeg: number; damageMult: number; turnRate: number };
+  /**
+   * enemies.lua `hexDuration`, `hexDamageMult`: o tiro que acerta amaldiçoa o herói, que causa `damageMult` do dano por `duration` s
+   * (enemy_attacks.lua `applyHex`: renova sem acumular, fica o tempo maior e o multiplicador menor)
+   */
+  hex?: { duration: number; damageMult: number };
   body: BodyKind;
   color: number;
   accent: number;
@@ -75,6 +80,10 @@ export const ENEMIES: Record<string, EnemyDef> = {
   shieldbearer: { id: "shieldbearer", name: "Shieldbearer", hp: 94, speed: 1.7, damage: 11, behavior: "shield", radius: 0.66, xp: 52, gold: 11,
     category: "elite", cooldown: 1.6, attackRange: 1.6, armor: 20, shield: { arcDeg: 70, damageMult: 0.2, turnRate: 0.7 },
     body: "brute", color: 0x8a96aa, accent: 0x4a5a78, scale: 1.1 },
+  // M9-02: bruxa curvada do tiro de maldição (hex_bolt verde); corpo no Blender (tools/blender/hexer.py)
+  hexer: { id: "hexer", name: "Hexer", hp: 40, speed: 1.95, damage: 7, behavior: "ranged", radius: 0.47, xp: 48, gold: 10, category: "ranged",
+    cooldown: 2.8, range: 15, projectileSpeed: 10.5, projectileColor: 0x7ad94a, hex: { duration: 3, damageMult: 0.88 },
+    body: "robed", color: 0x5a2f5e, accent: 0x7ad94a, scale: 0.95 },
 };
 
 /** tuning.lua `SHIELD_CYCLE` (D-178): o escudo do Shieldbearer fica erguido `up` s, pisca `warn` s e cai `down` s */
