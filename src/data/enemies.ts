@@ -36,6 +36,21 @@ export interface EnemyDef {
    * o dano que vem de dentro do arco é multiplicado por `damageMult` (ai.lua `behaviors.shield`, damage.lua `shieldBlocks`)
    */
   shield?: { arcDeg: number; damageMult: number; turnRate: number };
+  /**
+   * enemies.lua `hexDuration`, `hexDamageMult`: o tiro que acerta amaldiçoa o herói, que causa `damageMult` do dano por `duration` s
+   * (enemy_attacks.lua `applyHex`: renova sem acumular, fica o tempo maior e o multiplicador menor)
+   */
+  hex?: { duration: number; damageMult: number };
+  /**
+   * enemies.lua `hazardRadius`, `hazardDuration` e ai.lua `onKill` (§54, D-069): ao morrer deixa uma poça de peste de raio
+   * `radius` (m; px × TUNING.enemy.pxToUnit) por `duration` s, que fere o herói em `dpsBase + dpsPerWave × onda` por segundo
+   */
+  plague?: { radius: number; duration: number; dpsBase: number; dpsPerWave: number };
+  /**
+   * enemies.lua `supportRadius`, `supportDamageMult` (§54, D-071): aliados a até `radius` m (px × TUNING.enemy.pxToUnit) levam
+   * `damageMult` do dano (damage.lua `wardenNearby`; um Warden não protege outro)
+   */
+  support?: { radius: number; damageMult: number };
   body: BodyKind;
   color: number;
   accent: number;
@@ -75,7 +90,22 @@ export const ENEMIES: Record<string, EnemyDef> = {
   shieldbearer: { id: "shieldbearer", name: "Shieldbearer", hp: 94, speed: 1.7, damage: 11, behavior: "shield", radius: 0.66, xp: 52, gold: 11,
     category: "elite", cooldown: 1.6, attackRange: 1.6, armor: 20, shield: { arcDeg: 70, damageMult: 0.2, turnRate: 0.7 },
     body: "brute", color: 0x8a96aa, accent: 0x4a5a78, scale: 1.1 },
+  // M9-02: bruxa curvada do tiro de maldição (hex_bolt verde); corpo no Blender (tools/blender/hexer.py)
+  hexer: { id: "hexer", name: "Hexer", hp: 40, speed: 1.95, damage: 7, behavior: "ranged", radius: 0.47, xp: 48, gold: 10, category: "ranged",
+    cooldown: 2.8, range: 15, projectileSpeed: 10.5, projectileColor: 0x7ad94a, hex: { duration: 3, damageMult: 0.88 },
+    body: "robed", color: 0x5a2f5e, accent: 0x7ad94a, scale: 0.95 },
+  // M9-03: zumbi inchado com barril nas costas; ao morrer vira uma poça de peste; corpo no Blender (tools/blender/plaguebearer.py)
+  plaguebearer: { id: "plaguebearer", name: "Plaguebearer", hp: 57, speed: 2.1, damage: 8, behavior: "melee", radius: 0.56, xp: 50, gold: 12,
+    category: "special", cooldown: 1.4, attackRange: 1.5, plague: { radius: 3, duration: 3.8, dpsBase: 5, dpsPerWave: 0.45 },
+    body: "brute", color: 0xb8a868, accent: 0x8c2a22, scale: 1.05 },
+  // M9-04: golem lento que protege os aliados por perto (aura azul); corpo no Blender (tools/blender/warden.py)
+  warden: { id: "warden", name: "Warden", hp: 72, speed: 1.75, damage: 7, behavior: "melee", radius: 0.63, xp: 64, gold: 15,
+    category: "elite", cooldown: 1.6, attackRange: 1.55, support: { radius: 7, damageMult: 0.65 },
+    body: "brute", color: 0x6a7a8a, accent: 0x66b8ff, scale: 1.2 },
 };
+
+/** enemy_attacks.lua `EA.hazard`: tique padrão das poças no chão, em s */
+export const HAZARD_TICK = 0.5;
 
 /** tuning.lua `SHIELD_CYCLE` (D-178): o escudo do Shieldbearer fica erguido `up` s, pisca `warn` s e cai `down` s */
 export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;

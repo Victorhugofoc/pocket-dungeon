@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { ACHIEVEMENT_RULES, ACHIEVEMENTS, COSMETIC_NAMES, UNLOCK_REWARDS } from "../src/data/achievements";
 import { EVOLUTION_ORDER, EVOLUTIONS, MAX_SPELLS, SPELL_CAST, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TUNING, SPELLS } from "../src/data/spells";
+import { TUNING } from "../src/data/tuning";
 import { spellStats } from "../src/core/spells";
 import { techniqueStats } from "../src/core/techniques";
 import { DR_PX_PER_M } from "../src/data/techniques";
@@ -984,6 +985,17 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
       if (d.shield) expect(d.shield, id).toEqual({ arcDeg: o.shieldArcDeg, damageMult: o.shieldDamageMult, turnRate: o.shieldTurnRate });
       else expect(o.shieldArcDeg, id).toBeUndefined();
       expect(d.armor, id).toBe(o.armor);
+      // M9-02: maldição do Hexer
+      if (d.hex) expect(d.hex, id).toEqual({ duration: o.hexDuration, damageMult: o.hexDamageMult });
+      else expect(o.hexDuration, id).toBeUndefined();
+      // M9-03: poça de peste do Plaguebearer (raio em px de lá)
+      if (d.plague) expect({ radius: d.plague.radius / TUNING.enemy.pxToUnit, duration: d.plague.duration }, id)
+        .toEqual({ radius: o.hazardRadius, duration: o.hazardDuration });
+      else expect(o.hazardRadius, id).toBeUndefined();
+      // M9-04: aura do Warden (raio em px de lá)
+      if (d.support) expect({ radius: d.support.radius / TUNING.enemy.pxToUnit, damageMult: d.support.damageMult }, id)
+        .toEqual({ radius: o.supportRadius, damageMult: o.supportDamageMult });
+      else expect(o.supportRadius, id).toBeUndefined();
     }
     expect({ ...SHIELD_CYCLE }).toEqual(TU.SHIELD_CYCLE);
   });

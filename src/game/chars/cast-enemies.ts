@@ -308,6 +308,34 @@ export const ENEMIES: Record<string, Spec> = {
     b.dims = { hipY: 0.98, headY: 0.56, shoulderY: 0.48, shoulderX: 0.36, arm: 0.34, hipX: 0.15, thigh: 0.47 };
     addModel(b, "shieldbearer");
   },
+  hexer: (b) => {
+    // velha bruxa curvada modelada no Blender (tools/blender/hexer.py, brief em docs/briefs/hexer.md); flutua de manto, sem pernas.
+    // Cajado de espiral em pé na mão esquerda (foreL) e lanterna-gaiola pendurada na direita (foreR). Poses iguais a POSE_R/POSE_L,
+    // LEAN e OUT do script: braço direito esticado à frente com a mão caída, o esquerdo com o cajado à frente; corcunda pelo lean
+    b.form = "robed"; b.scale = 1.1; b.style = "cast"; b.rough = 0.75; b.glowColor = 0x9cff6a;
+    b.lean = 0.55; b.armOut = 0.1;
+    b.poseR = [-1.2, -1.0]; b.poseL = [-0.9, -0.7];
+    b.dims = { hipY: 0.84, headY: 0.42, shoulderY: 0.4, shoulderX: 0.19, arm: 0.3, hipX: 0.12, thigh: 0.42 };
+    addModel(b, "hexer");
+  },
+  plaguebearer: (b) => {
+    // zumbi inchado e enfaixado com barril de peste nas costas, modelado no Blender (tools/blender/plaguebearer.py, brief em
+    // docs/briefs/plaguebearer.md); barril, correias e gosma no osso do tronco. Dims iguais ao RIG do script
+    b.scale = 1.25; b.style = "swing"; b.rough = 0.7; b.glowColor = 0xc8e050;
+    b.lean = 0.42; b.crouch = 0.3; b.armOut = 0.2;
+    b.poseR = [-0.35, -0.45]; b.poseL = [-0.3, -0.4];
+    b.dims = { hipY: 0.66, headY: 0.46, shoulderY: 0.44, shoulderX: 0.36, arm: 0.3, hipX: 0.17, thigh: 0.3 };
+    addModel(b, "plaguebearer");
+  },
+  warden: (b) => {
+    // golem de pedras empilhadas com runas douradas acesas, modelado no Blender (tools/blender/warden.py, brief em docs/briefs/warden.md);
+    // a aura azul no chão é de game/ward.ts. Dims iguais ao RIG do script
+    b.scale = 1.4; b.style = "swing"; b.rough = 0.9; b.glowColor = 0xffa83a;
+    b.lean = 0.4; b.crouch = 0.2; b.armOut = 0.14;
+    b.poseR = [-0.35, -0.75]; b.poseL = [-0.2, -0.55];
+    b.dims = { hipY: 0.7, headY: 0.5, shoulderY: 0.54, shoulderX: 0.47, arm: 0.36, hipX: 0.24, thigh: 0.33 };
+    addModel(b, "warden");
+  },
 
 
 };

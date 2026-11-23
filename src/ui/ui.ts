@@ -35,6 +35,7 @@ const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const QUALITY = ["low", "medium", "high"];
 /** Nome e cor de cada estado de relíquia na fileira do HUD (`updateRelicRow`). */
 const RELIC_STATUS: Record<string, { label: string; color: string; tip: string }> = {
+  hex: { label: "Hex", color: "#7ad94a", tip: "Hex: you deal less damage" },
   momentum: { label: "Momentum", color: "#73e0ff", tip: "Momentum: damage bonus while moving" },
   overshield: { label: "Shield", color: "#e0485a", tip: "Blood Engine: shield from overhealing" },
   glass_throne: { label: "Throne", color: "#e8f4ff", tip: "Glass Throne: bonus damage while untouched; a hit removes it for 5 s" },
@@ -544,6 +545,9 @@ export class Ui {
   /** relic_mechanics.lua `statuses`: os estados das relíquias com mecânica, sobre a barra de habilidades. */
   private updateRelicRow(): void {
     const list = this.game.relicHooks.statuses(this.game.relicWorld);
+    // M9-02: a maldição do Hexer entra na mesma fileira (status_icons.lua "hex")
+    const hx = this.game.player.hex;
+    if (hx && hx.until > this.game.time) list.unshift({ id: "hex", left: hx.until - this.game.time, total: hx.total });
     const key = list.map((st) => `${st.id}:${Math.round((st.left / Math.max(1e-6, st.total)) * 20)}:${Math.ceil(st.left)}:${st.count ?? ""}`).join("|");
     const row = this.r.relicRow;
     if (row.dataset.key === key) return;
@@ -551,10 +555,12 @@ export class Ui {
     row.innerHTML = list.map((st) => {
       const f = Math.max(0, Math.min(1, st.left / Math.max(1e-6, st.total)));
       const info = RELIC_STATUS[st.id] ?? { label: st.id, color: "#ffffff", tip: "" };
+      const tip = st.id === "hex" ? `Hex: you deal ${Math.round((1 - (this.game.player.hex?.mult ?? 1)) * 100)}% less damage.` : info.tip;
       const value = st.id === "overshield" ? ` ${Math.ceil(st.left)}`
         : st.id === "momentum" || st.id === "hoard" || st.id === "oath" ? ` +${Math.round(st.left * 100)}%`
+        : st.id === "hex" ? ` -${Math.round((1 - (this.game.player.hex?.mult ?? 1)) * 100)}%`
         : st.count !== undefined ? ` x${st.count}` : "";
-      return `<span class="rs" title="${info.tip}" style="--c:${info.color};--f:${f}"><i></i>${info.label}${value}</span>`;
+      return `<span class="rs" title="${tip}" style="--c:${info.color};--f:${f}"><i></i>${info.label}${value}</span>`;
     }).join("");
   }
 

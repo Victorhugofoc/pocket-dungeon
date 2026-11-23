@@ -1,6 +1,6 @@
 // Efeitos sonoros sintetizados (WebAudio), sem arquivos.
 
-type Sfx = "shoot" | "swing" | "hit" | "crit" | "kill" | "hurt" | "level" | "pickup" | "rare" | "tech" | "dash" | "boss" | "heal" | "warn" | "zap" | "coin" | "bank" | "boom" | "fuse" | "block";
+type Sfx = "shoot" | "swing" | "hit" | "crit" | "kill" | "hurt" | "level" | "pickup" | "rare" | "tech" | "dash" | "boss" | "heal" | "warn" | "zap" | "coin" | "bank" | "boom" | "fuse" | "block" | "hex" | "plague";
 
 const SPEC: Record<Sfx, { type: OscillatorType; f0: number; f1: number; dur: number; vol: number; noise?: number }> = {
   shoot: { type: "square", f0: 720, f1: 260, dur: 0.07, vol: 0.05 },
@@ -9,6 +9,8 @@ const SPEC: Record<Sfx, { type: OscillatorType; f0: number; f1: number; dur: num
   crit: { type: "square", f0: 900, f1: 300, dur: 0.12, vol: 0.09, noise: 0.4 },
   // M9-01: golpe no escudo do Shieldbearer, metálico e seco (synth.lua `shield_block`)
   block: { type: "square", f0: 1400, f1: 700, dur: 0.1, vol: 0.06, noise: 0.25 },
+  hex: { type: "sine", f0: 260, f1: 140, dur: 0.4, vol: 0.08, noise: 0.15 },
+  plague: { type: "sawtooth", f0: 120, f1: 50, dur: 0.45, vol: 0.09, noise: 0.5 },
   kill: { type: "triangle", f0: 180, f1: 50, dur: 0.18, vol: 0.12, noise: 0.7 },
   hurt: { type: "sawtooth", f0: 160, f1: 70, dur: 0.2, vol: 0.14, noise: 0.5 },
   level: { type: "triangle", f0: 440, f1: 1320, dur: 0.5, vol: 0.14 },
