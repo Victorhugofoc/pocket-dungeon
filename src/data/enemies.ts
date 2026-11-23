@@ -1,7 +1,7 @@
 // Inimigos e chefes, a partir de dungeon-idle/src/data/enemies.lua e bosses.lua.
 // hp/damage/xp são os valores canônicos; distâncias já convertidas (px / 16).
 
-export type EnemyBehavior = "melee" | "ranged" | "charger" | "summoner" | "bombardier";
+export type EnemyBehavior = "melee" | "ranged" | "charger" | "summoner" | "bombardier" | "shield";
 export type BodyKind = "humanoid" | "brute" | "bug" | "robed" | "slime";
 
 export interface EnemyDef {
@@ -29,6 +29,13 @@ export interface EnemyDef {
   charge?: { cooldown: number; range: number; speed: number; windup: number; damage: number };
   /** enemies.lua `mortarCooldown`, `mortarRadius`, `mortarWarning`: a bomba no chão, com recarga própria */
   mortar?: { radius: number; warning: number; cooldown: number };
+  /** enemies.lua `armor`: a fórmula de armadura do herói (`armorReduction`) no dano que leva */
+  armor?: number;
+  /**
+   * enemies.lua `shieldArcDeg`, `shieldDamageMult`, `shieldTurnRate` (rad/s): escudo de frente que gira devagar para o herói;
+   * o dano que vem de dentro do arco é multiplicado por `damageMult` (ai.lua `behaviors.shield`, damage.lua `shieldBlocks`)
+   */
+  shield?: { arcDeg: number; damageMult: number; turnRate: number };
   body: BodyKind;
   color: number;
   accent: number;
@@ -64,7 +71,14 @@ export const ENEMIES: Record<string, EnemyDef> = {
   splitter: { id: "splitter", name: "Splitter", hp: 46, speed: 2.0, damage: 7, behavior: "melee", radius: 0.8, xp: 42, gold: 9, category: "special",
     cooldown: 1.3, attackRange: 1.9, splitInto: { id: "swarm", count: 2 },
     body: "slime", color: 0x7ad94a, accent: 0xc8ffa0, scale: 1.1 },
+  // M9-01: corpo provisório por código (D17); a arte do Blender fica para a fase 2
+  shieldbearer: { id: "shieldbearer", name: "Shieldbearer", hp: 94, speed: 1.7, damage: 11, behavior: "shield", radius: 0.66, xp: 52, gold: 11,
+    category: "elite", cooldown: 1.6, attackRange: 1.6, armor: 20, shield: { arcDeg: 70, damageMult: 0.2, turnRate: 0.7 },
+    body: "brute", color: 0x8a96aa, accent: 0x4a5a78, scale: 1.1 },
 };
+
+/** tuning.lua `SHIELD_CYCLE` (D-178): o escudo do Shieldbearer fica erguido `up` s, pisca `warn` s e cai `down` s */
+export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
 export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral";
 

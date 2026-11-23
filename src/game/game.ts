@@ -1,6 +1,6 @@
 // Loop principal: herói, combate, progressão e as ondas da partida (cada zona = 5 ondas, D13).
 import * as THREE from "three";
-import { computeStats, type FinalStats, type StatBlock } from "../core/stats";
+import { armorReduction, computeStats, type FinalStats, type StatBlock } from "../core/stats";
 import { arcHalfAngle, autoPattern, autoReach, forkAngles, patternCounts } from "../core/autostyle";
 import { ARC_STYLES, AUTO_SHOT, STYLE_GUN, STYLE_SHIELD, STYLE_STORM, STYLE_VENOM } from "../data/autostyle";
 import { applyEvolution, declineEvolutions, pendingEvolutionOffer, type EvolutionOption } from "../core/evolution";
@@ -142,6 +142,9 @@ interface SpawnMarker {
   x: number; z: number; t: number; dur: number;
   mesh: THREE.Mesh;
 }
+
+/** De onde vem o golpe (damage.lua `fromX`/`fromY`, para o escudo de frente); sem = o herói; "none" = sem direção (`noDirection`). */
+export type HitFrom = { x: number; z: number } | "none";
 
 interface Projectile {
   x: number; z: number; vx: number; vz: number; r: number;
@@ -1058,7 +1061,9 @@ export class Game {
           }
           if (pr.pointBlank && (e.x - p.x) ** 2 + (e.z - p.z) ** 2 <= px(STYLE_GUN.pointBlankRange) ** 2) dmg *= 1 + pr.pointBlank;
           this.hitSource = pr.source === "auto" ? "auto" : "other";
-          this.hitEnemy(e, dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined, crit: pr.crit && first ? true : undefined });
+          const sp = Math.hypot(pr.vx, pr.vz) || 1;
+          const from = { x: pr.x - (pr.vx / sp) * 1.2, z: pr.z - (pr.vz / sp) * 1.2 };
+          this.hitEnemy(e, dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined, crit: pr.crit && first ? true : undefined, from });
           if (pr.status && (pr.poisonHits || pr.splash)) this.venomExtras(e, pr, dmg);
           if (pr.forks && first) this.forkBolt(e, pr);
           if (pr.knock && first) this.epics.knock(e, pr.knock);
@@ -1142,7 +1147,7 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- dano
-  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean; noKnock?: boolean; element?: string; spell?: boolean }): void {
+  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean; noKnock?: boolean; element?: string; spell?: boolean; from?: HitFrom }): void {
     if (e.dead) return;
     const s = this.stats;
     const now = this.time;
@@ -1180,7 +1185,7 @@ export class Game {
     if (crit) amount *= s.critDamage;
     // Brittle Chill (Iceball, somado) e o dano em lento das relíquias (pool): inimigo com Slow recebe dano extra (damage.lua §37)
     if (now < e.slowUntil) amount *= (1 + this.spells.brittle) * s.slowedDamage;
-    this.damageEnemy(e, amount, { crit, noKnock: hit?.noKnock, school: spell ? hit?.element : undefined });
+    this.damageEnemy(e, amount, { crit, noKnock: hit?.noKnock, school: spell ? hit?.element : undefined, from: hit?.from });
     if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount);
     if (back && e.dead) this.heal(s.maxHp * SHADOW.backstabKillHeal, true); // Umbra: matar pelas costas cura
     if (reaction) this.react(e, reaction);
@@ -1226,7 +1231,7 @@ export class Game {
     }
   }
 
-  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId; school?: string } = {}): void {
+  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId; school?: string; from?: HitFrom } = {}): void {
     if (e.dead) return;
     if (e.isBoss) amount *= this.stats.bossDamage; // damage.lua: Smite do Seraph (D-317)
     // EXECUTIONER (Varok): chefe abaixo de 30% da vida leva mais
@@ -1236,6 +1241,17 @@ export class Game {
     // relic_mechanics.lua `schoolOf`: a escola da spell; a queimadura conta como fogo
     const school = opts.school ?? (opts.dot === "burn" ? "fire" : undefined);
     amount *= this.relicHooks.damageMult(this.relicWorld, { source: opts.dot ?? this.hitSource, school, boss: e.isBoss });
+    // M9-01 (damage.lua): armadura do inimigo (Shieldbearer 20) e o escudo de frente; o dano por tempo não tem direção
+    const armor = e.def?.armor ?? 0;
+    if (armor) amount *= 1 - armorReduction(armor);
+    let guarded = false;
+    if (e.def?.shield && !opts.dot && opts.from !== "none") {
+      const p = this.player;
+      const f = opts.from ?? p;
+      const k = e.guardMult(f.x, f.z, p.x, p.z);
+      guarded = k < 1;
+      amount *= k;
+    }
     // M9-06 (damage.lua): Armored corta, o Arcane Shield come primeiro; qualquer dano zera a pausa do Regenerating
     amount *= e.dmgTakenMult;
     amount = Math.max(1, Math.round(amount));
@@ -1280,9 +1296,9 @@ export class Game {
         e.kz += kdz * power * TUNING.enemy.knockback;
       }
       this.fx.impact(e.x - kdx * e.radius, e.rig.height * 0.55, e.z - kdz * e.radius, opts.crit ? 0xffe066 : this.hero.auto.color, opts.crit ? 1.5 : 1);
-      this.fx.text(e.x, top, e.z, String(amount) + (opts.crit ? "!" : ""), opts.crit ? "crit" : "dmg");
-      this.fx.burst(e.x, e.rig.height * 0.6, e.z, opts.crit ? 0xffe066 : 0xffffff, opts.crit ? 9 : 4, 5, 0.13, 0.3);
-      this.audio.play(opts.crit ? "crit" : "hit");
+      this.fx.text(e.x, top, e.z, String(amount) + (opts.crit ? "!" : ""), guarded ? "frost" : opts.crit ? "crit" : "dmg");
+      this.fx.burst(e.x, e.rig.height * 0.6, e.z, guarded ? 0x9ad1ff : opts.crit ? 0xffe066 : 0xffffff, opts.crit ? 9 : 4, 5, 0.13, 0.3);
+      this.audio.play(guarded ? "block" : opts.crit ? "crit" : "hit");
       if (opts.crit) {
         this.hitstop = Math.max(this.hitstop, 0.035);
         this.fx.addShake(0.12);
@@ -2455,9 +2471,9 @@ export class Game {
    * Golpe de spell: mesmo caminho do dano do herói (crítico, Frostine), contado como "other" nas conquistas. `noKnock`:
    * sem o empurrão para longe do herói (Cyclone puxa para o centro; o Quake Totem empurra a partir dele).
    */
-  spellHit(e: Enemy, mult: number, noKnock = false, element?: string): void {
+  spellHit(e: Enemy, mult: number, noKnock = false, element?: string, from?: HitFrom): void {
     this.hitSource = "other";
-    this.hitEnemy(e, mult, undefined, { noKnock, element, spell: true });
+    this.hitEnemy(e, mult, undefined, { noKnock, element, spell: true, from });
   }
 
   /** Elementos que a build aplica agora (ícone de reação pronta). */
