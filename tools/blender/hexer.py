@@ -14,7 +14,7 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 RIG = Rig(hipY=0.84, headY=0.42, shoulderY=0.4, shoulderX=0.19, arm=0.3, hipX=0.12, thigh=0.42)
 HAND = 0.25
 # a mesma pose da receita (cast-enemies.ts): braço direito esticado à frente com a mão caída, o esquerdo com o cajado à frente
-POSE_R, POSE_L, LEAN, OUT = (-1.2, -1.0), (-0.9, -0.7), 0.9, 0.1
+POSE_R, POSE_L, LEAN, OUT = (-1.2, -1.0), (-0.9, -0.7), 0.55, 0.1
 HEAD_LIFT, HEAD_SCALE, HEAD_FWD = 0.12, 1.4, 0.1
 
 SKIN, SKIN_D, SKIN_L, NOSE = hexc(0xd88a52), hexc(0x8a4028), hexc(0xeeb27a), hexc(0xb0482e)
