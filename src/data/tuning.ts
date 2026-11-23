@@ -103,10 +103,11 @@ export const TUNING = {
       fallbackReach: 2,
       /**
        * M21-14: os portões ficam dentro da clareira vencida (ou em volta da fogueira), em arco virado para a seguinte:
-       * a `ring` do raio, `spread` graus entre um e o vizinho; E perto (`useRadius`, o mesmo raio que mostra a carta) escolhe e leva até a seguinte.
-       * Os desvios ficam do lado de trás, em arco de `detourSpread` graus, a `detourRing` do raio.
+       * a `ring` do raio (pelo menos `minRing` m do centro), `spread` graus entre um e o vizinho ou mais, para ficarem a
+       * `minGap` m um do outro (o brilho de cada um tem ~7 m); E perto (`useRadius`, o mesmo raio que mostra a carta)
+       * escolhe e leva até a seguinte. Os desvios ficam do lado de trás, a `detourRing` do raio.
        */
-      ring: 0.55, spread: 36, useRadius: 6, detourRing: 0.6, detourSpread: 70,
+      ring: 0.62, minRing: 9, spread: 50, minGap: 12.5, useRadius: 5.5, detourRing: 0.6, detourSpread: 70,
       /** onde o herói chega na clareira seguinte: fração do raio, do centro para o lado de onde veio */
       arrive: 0.35,
     },

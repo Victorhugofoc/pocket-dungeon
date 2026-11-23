@@ -142,15 +142,16 @@ describe("M21-08: portões do mapa", () => {
 });
 
 describe("M21-14: portões e desvios em arco dentro da clareira", () => {
-  it("arco virado para a seguinte, dentro do raio, espaçado; offset π vai para trás", () => {
-    const from = { x: 10, z: 20, r: 18 }, to = { x: -30, z: -20 };
+  it("arco virado para a seguinte, no raio pedido, com folga mínima entre vizinhos; offset π vai para trás", () => {
+    const from = { x: 10, z: 20 }, to = { x: -30, z: -20 };
     const ahead = Math.atan2(to.z - from.z, to.x - from.x);
-    const g = arcSpots(from, to, 3, 0.55, (36 * Math.PI) / 180);
+    const g = arcSpots(from, to, 3, 11, (20 * Math.PI) / 180, 0, 12.5);
     expect(g).toHaveLength(3);
-    for (const s of g) expect(Math.hypot(s.x - from.x, s.z - from.z)).toBeCloseTo(18 * 0.55, 6);
+    for (const s of g) expect(Math.hypot(s.x - from.x, s.z - from.z)).toBeCloseTo(11, 6);
     expect(g[1].angle).toBeCloseTo(ahead, 9);
-    expect(Math.hypot(g[0].x - g[1].x, g[0].z - g[1].z)).toBeGreaterThan(5);
-    const back = arcSpots(from, to, 1, 0.6, 1, Math.PI)[0];
+    // o passo de 20° daria ~3,8 m; a folga mínima manda
+    for (let i = 1; i < 3; i++) expect(Math.hypot(g[i].x - g[i - 1].x, g[i].z - g[i - 1].z)).toBeGreaterThanOrEqual(12.5 - 1e-6);
+    const back = arcSpots(from, to, 1, 9, 1, Math.PI)[0];
     expect(Math.hypot(back.x - to.x, back.z - to.z)).toBeGreaterThan(Math.hypot(from.x - to.x, from.z - to.z));
   });
 });

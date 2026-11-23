@@ -2114,7 +2114,9 @@ export class Game {
     if (!cards) return false;
     // M21-14: os portões dentro da clareira vencida (ou em volta da fogueira), virados para a seguinte
     const G = TUNING.world.gates;
-    const spots = arcSpots(this.fromCircle(index), this.layout.segments[index], Math.min(3, cards.length), G.ring, (G.spread * Math.PI) / 180);
+    const from = this.fromCircle(index);
+    const spots = arcSpots(from, this.layout.segments[index], Math.min(3, cards.length), Math.max(G.minRing, from.r * G.ring),
+      (G.spread * Math.PI) / 180, 0, G.minGap);
     this.gates.show(spots, cards.slice(0, spots.length));
     return true;
   }
@@ -2198,7 +2200,8 @@ export class Game {
     // M21-14: do lado de trás da clareira vencida (ou da fogueira), longe dos portões, virados para o meio
     const G = TUNING.world.gates;
     const from = this.fromCircle(index);
-    const spots = arcSpots(from, this.layout.segments[index], kinds.length, G.detourRing, (G.detourSpread * Math.PI) / 180, Math.PI)
+    const spots = arcSpots(from, this.layout.segments[index], kinds.length, Math.max(G.minRing * 0.8, from.r * G.detourRing),
+      (G.detourSpread * Math.PI) / 180, Math.PI, G.minGap * 0.7)
       .map((a, i) => ({ x: a.x, z: a.z, kind: kinds[i], facing: a.angle + Math.PI }));
     this.detours.show(spots);
     const chest = spots.find((s) => s.kind === "chest");

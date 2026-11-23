@@ -147,17 +147,18 @@ export interface GateSpot {
 }
 
 /**
- * M21-14: `n` pontos em arco dentro do círculo `from` (a `ring` do raio), centrados na direção de `to` girada de
- * `offset` radianos, `spread` radianos entre vizinhos. `angle` = do centro para o ponto. Para os portões (de frente
- * para a clareira seguinte) e os desvios (do lado de trás).
+ * M21-14: `n` pontos em arco em volta de `from`, a `radius` do centro, centrados na direção de `to` girada de
+ * `offset` radianos. O passo entre vizinhos é `spread` radianos, ou mais, para que fiquem a pelo menos `minGap`
+ * um do outro. `angle` = do centro para o ponto. Para os portões (de frente para a clareira seguinte) e os desvios.
  */
-export function arcSpots(from: { x: number; z: number; r: number }, to: { x: number; z: number }, n: number,
-  ring: number, spread: number, offset = 0): GateSpot[] {
+export function arcSpots(from: { x: number; z: number }, to: { x: number; z: number }, n: number,
+  radius: number, spread: number, offset = 0, minGap = 0): GateSpot[] {
+  const step = Math.max(spread, 2 * Math.asin(Math.min(1, minGap / (2 * radius))));
   const base = Math.atan2(to.z - from.z, to.x - from.x) + offset;
   const out: GateSpot[] = [];
   for (let i = 0; i < n; i++) {
-    const a = base + (i - (n - 1) / 2) * spread;
-    out.push({ x: from.x + Math.cos(a) * from.r * ring, z: from.z + Math.sin(a) * from.r * ring, angle: a });
+    const a = base + (i - (n - 1) / 2) * step;
+    out.push({ x: from.x + Math.cos(a) * radius, z: from.z + Math.sin(a) * radius, angle: a });
   }
   return out;
 }
