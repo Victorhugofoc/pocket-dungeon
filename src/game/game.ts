@@ -272,6 +272,9 @@ export class Game {
   private phaseT = 0;
   /** o trecho (clareira) da onda atual */
   segment!: Segment;
+  /** M21-13: s andando até a clareira (fase "walk"), e o da onda atual, para o registro */
+  private travelT = 0;
+  private waveTravel = 0;
   private markers: SpawnMarker[] = [];
   private ring: THREE.Mesh | null = null;
   private projectiles: Projectile[] = [];
@@ -570,7 +573,10 @@ export class Game {
     const w = this.wave, run = this.run;
     const midWave = !!w && w.started && !(run.waveLog.at(-1)?.wave === run.wave);
     const last = midWave ? waveEntry(run, w, this.playerAlive ? this.player.hp / this.stats.maxHp : 0, false) : null;
-    if (last) last.perf = this.perfLog.takeWave();
+    if (last) {
+      last.perf = this.perfLog.takeWave();
+      last.travel = Math.round(this.waveTravel * 10) / 10;
+    }
     const env = { gpu: gpuName(this.renderer), width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio, quality: this.quality };
     storeRunLog(this.storage, runLogEntry(run, outcome, new Date().toISOString(), BUILD, last, this.perfLog.run(env)), beacon);
   }
@@ -672,6 +678,7 @@ export class Game {
    * A onda começa quando o herói entra na clareira (Q2: como no Dungeon Reign, mas no mapa aberto).
    */
   prepareWave(wave: number, fresh = false): void {
+    if (fresh) this.travelT = 0;
     // a relíquia do chefe nunca se perde: se o corpo ainda não sumiu, a escolha abre agora
     const reward = this.bossReward;
     this.bossReward = null;
@@ -1700,6 +1707,7 @@ export class Game {
       this.ring.visible = m.opacity > 0;
     }
     if (this.phase === "walk") {
+      this.travelT += raw;
       this.walkDetours(dt);
       if (!this.mapResolved) {
         this.walkGates(dt);
@@ -1726,7 +1734,10 @@ export class Game {
       for (const e of this.enemies) if (!e.dead) alive++;
       const bossAlive = this.markers.some((m) => m.boss) || (!!this.boss && !this.boss.dead);
       const step = stepWave(w, dt, { alive, bossAlive }, this.rng.get("spawns"), this.rng.get("champions"), this.mods.heroChampionShare);
-      for (const sp of step.spawns) this.queueSpawn(sp);
+      // M21-13: quem nasce no mesmo passo é um grupo, perto do herói
+      const pack = step.spawns.length ? this.packPoint() : null;
+      for (const sp of step.spawns) this.queueSpawn(sp, false, pack);
+      if (w.spawned >= w.target && !this.markers.length && alive <= PACE.straggler.count) this.rushStragglers();
       if (step.ambush) this.queueAmbush();
       if (step.completed) this.completeWave();
       return;
@@ -1778,6 +1789,8 @@ export class Game {
   /** O herói entrou na clareira: letreiro "Onda N" e a clareira fecha. */
   private beginWave(): void {
     const n = this.run.wave;
+    this.waveTravel = this.travelT;
+    this.travelT = 0;
     this.endDetours();
     this.wave = startWave(n, this.rng.get("champions"), (id) => id in ENEMIES, this.mods);
     this.ach.waveStart(n);
@@ -1821,8 +1834,65 @@ export class Game {
     return best;
   }
 
-  private queueSpawn(spawn: WaveSpawn, boss = false): void {
-    const at = boss ? this.bossPoint() : this.edgePoint();
+  /**
+   * M21-13: o centro de um grupo: a `PACE.packDistance` m do herói, dentro da clareira (16 tentativas; sem lugar,
+   * o ponto da borda longe do herói, como antes).
+   */
+  private packPoint(): { x: number; z: number } {
+    const sg = this.segment, p = this.player;
+    const [d0, d1] = PACE.packDistance;
+    for (let i = 0; i < 16; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = d0 + Math.random() * (d1 - d0);
+      const x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
+      if (Math.hypot(x - sg.x, z - sg.z) < sg.r - 1.5 && !this.grid.hits(x, z, 0.8)) return { x, z };
+    }
+    return this.edgePoint();
+  }
+
+  /**
+   * M21-13: setas na borda da tela para as sobras da onda fora dela: posição em px (já presa à borda, `pad` px para
+   * dentro) e ângulo da seta. Vazio fora da luta ou sem sobras.
+   */
+  stragglerArrows(w: number, h: number, pad: number): { x: number; y: number; angle: number }[] {
+    if (this.phase !== "fight") return [];
+    const out: { x: number; y: number; angle: number }[] = [];
+    const v = Game.arrowV;
+    for (const e of this.enemies) {
+      if (e.dead || !e.straggler) continue;
+      v.set(e.x, 1, e.z).project(this.camera);
+      const behind = v.z > 1;
+      let sx = v.x, sy = -v.y;
+      if (behind) { sx = -sx; sy = -sy; }
+      if (!behind && Math.abs(sx) < 0.95 && Math.abs(sy) < 0.95) continue;
+      // da tela ao centro: prende na borda
+      const k = 1 / Math.max(Math.abs(sx), Math.abs(sy), 1e-6);
+      const ex = sx * k, ey = sy * k;
+      out.push({
+        x: Math.max(pad, Math.min(w - pad, ((ex + 1) / 2) * w)),
+        y: Math.max(pad, Math.min(h - pad, ((ey + 1) / 2) * h)),
+        angle: Math.atan2(sy * h, sx * w),
+      });
+    }
+    return out;
+  }
+  private static arrowV = new THREE.Vector3();
+
+  /** M21-13: os últimos vivos correm até o herói, sem voltar para casa. */
+  private rushStragglers(): void {
+    for (const e of this.enemies) {
+      if (e.dead || e.isBoss || e.straggler) continue;
+      e.straggler = true;
+      e.hunter = true;
+      if (!e.aggro) e.setAggro(this);
+    }
+  }
+
+  private queueSpawn(spawn: WaveSpawn, boss = false, pack: { x: number; z: number } | null = null): void {
+    const S = PACE.packSpread;
+    const at = boss ? this.bossPoint()
+      : pack ? { x: pack.x + (Math.random() - 0.5) * 2 * S, z: pack.z + (Math.random() - 0.5) * 2 * S }
+      : this.edgePoint();
     const mesh = new THREE.Mesh(MARKER_GEO, new THREE.MeshBasicMaterial({
       color: boss ? 0xff5a3a : spawn.champion ? 0xffc83d : 0xb06aff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false,
     }));
@@ -1939,6 +2009,7 @@ export class Game {
     }
     if (this.playerAlive) {
       const entry = waveEntry(run, w, this.player.hp / this.stats.maxHp, true);
+      entry.travel = Math.round(this.waveTravel * 10) / 10;
       // a onda leva os quadros desde o fim da anterior (o caminho até ela, as telas sem pausa e o combate)
       entry.perf = this.perfLog.takeWave();
       run.waveLog.push(entry);

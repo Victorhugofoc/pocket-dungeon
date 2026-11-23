@@ -78,13 +78,17 @@ export const TUNING = {
     /** raio das clareiras das ondas 1 a 4 de cada zona */
     segmentRadius: 16,
     /**
-     * M21-12: as clareiras em zigue-zague, uma de cada lado do meio da zona (`zigzag`: distância do meio, x), e 3
-     * trilhas entre uma e a seguinte: a do meio e duas que se abrem `bulge` para os lados (encolhe até `minBulge` se
-     * chegar perto de outra clareira), saindo da borda a `departDeg` graus e voltando a se juntar `junction` antes
-     * da clareira seguinte. `spawnSide`, `bossSide`: distância do meio da fogueira e da arena, do lado oposto.
+     * M21-12: as 3 trilhas entre uma clareira e a seguinte: a do meio e duas que se abrem `bulge` para os lados
+     * (encolhe até `minBulge` se chegar perto de outra clareira), saindo da borda a `departDeg` graus e voltando a se
+     * juntar `junction` antes da clareira seguinte. Curtas desde a M21-13.
      */
-    forks: { zigzag: [24, 34] as const, spawnSide: [14, 30] as const, bossSide: [14, 40] as const, zJitter: 3,
-      bulge: 15, minBulge: 8, departDeg: 40, junction: 5, samples: 14, clearance: 3 },
+    forks: { bulge: 7, minBulge: 4, departDeg: 38, junction: 2, samples: 10, clearance: 2 },
+    /**
+     * M21-13: a zona é uma corrente de arenas em linha reta (substitui o zigue-zague da M21-12): `gap` = vão entre a
+     * borda de uma clareira e a da seguinte (as trilhas da bifurcação cabem nele, ~2 s andando), `xJitter` = quanto o
+     * centro sai do meio, `bend` = curva do caminho do meio entre duas paradas.
+     */
+    chain: { gap: [9, 11] as const, xJitter: 4, bend: 1.5 },
     /** M21-08: portões do mapa da partida, na trava de cada trilha (M21-12) */
     gates: {
       /** distância do centro do portão que conta como passar por ele (a trilha tem ~6 de largura) */

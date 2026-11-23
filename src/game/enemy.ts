@@ -1,4 +1,5 @@
 // Inimigos e chefes: estado, IA por comportamento e padrões de ataque telegrafados.
+import { PACE } from "../data/pace";
 import { newFrostTarget, type FrostTarget } from "../core/frost";
 import { bossStats, enemyStats } from "../core/wave";
 import { pacedFoe } from "../core/pace";
@@ -51,6 +52,8 @@ export class Enemy {
   summoned: boolean;
   /** nasceu de uma onda: persegue o herói pela clareira e nunca volta para casa */
   hunter = false;
+  /** M21-13: sobra da onda: corre até o herói (`PACE.straggler`) */
+  straggler = false;
   maxHp: number;
   hp: number;
   dmg: number;
@@ -385,7 +388,7 @@ export class Enemy {
       game.fx.text(this.x, this.rig.height + 0.3, this.z, "Berserk!", "crit");
     }
     const slow = now < this.slowUntil ? 1 - this.slowPower : 1;
-    const speed = this.speed * slow * haste * (this.enraged ? 1.15 : 1) * (this.berserk && bz ? bz.speed : 1);
+    const speed = this.speed * slow * haste * (this.enraged ? 1.15 : 1) * (this.berserk && bz ? bz.speed : 1) * (this.straggler ? PACE.straggler.speed : 1);
     const dxp = p.x - this.x;
     const dzp = p.z - this.z;
     const dist = Math.hypot(dxp, dzp);

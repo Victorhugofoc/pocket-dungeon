@@ -500,6 +500,7 @@ export class Ui {
   private buildHud(): void {
     this.hud.innerHTML = `
       <div id="vignette"></div>
+      <div id="arrows" data-r="arrows"></div>
       <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold"><span data-r="gold"></span><span class="bank hidden" data-r="bank" title="BANKED LOOT: orbs left on the floor were banked. Enemies with the coin under them drop double until it runs out."></span></p><div class="points hidden" data-r="points"></div></div>
       <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
       <div id="banner" data-r="banner"></div>
@@ -527,6 +528,17 @@ export class Ui {
     this.hud.querySelectorAll<HTMLElement>("[data-r]").forEach((e) => (this.r[e.dataset.r!] = e));
     this.toasts = this.hud.querySelector("#toasts")!;
     this.mapCtx = this.hud.querySelector<HTMLCanvasElement>("#minimap")!.getContext("2d")!;
+  }
+
+  /** M21-13: setas na borda da tela para as sobras da onda fora dela. */
+  private updateArrows(): void {
+    const box = this.r.arrows;
+    const list = this.game.stragglerArrows(window.innerWidth, window.innerHeight, 36);
+    while (box.children.length < list.length) box.appendChild(document.createElement("i"));
+    while (box.children.length > list.length) box.lastChild!.remove();
+    list.forEach((a, i) => {
+      (box.children[i] as HTMLElement).style.transform = `translate(${a.x}px, ${a.y}px) rotate(${a.angle}rad)`;
+    });
   }
 
   /** relic_mechanics.lua `statuses`: os estados das relíquias com mecânica, sobre a barra de habilidades. */
@@ -587,6 +599,7 @@ export class Ui {
     const p = g.player;
     const s = g.stats;
     const r = this.r;
+    this.updateArrows();
     r.hpFill.style.width = `${(p.hp / s.maxHp) * 100}%`;
     r.hpText.textContent = `${Math.ceil(p.hp)} / ${s.maxHp}`;
     r.xpFill.style.width = `${Math.min(100, (g.run.xp / g.run.xpToNext) * 100)}%`;

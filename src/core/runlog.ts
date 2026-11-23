@@ -34,6 +34,8 @@ export interface WaveEntry {
   clearedEarly: boolean;
   /** false só na última entrada de uma partida que acabou no meio da onda */
   cleared: boolean;
+  /** M21-13: segundos andando desde o fim da onda anterior (ou da fogueira) até entrar na clareira; posto pelo jogo */
+  travel?: number;
   /** fps e travadinhas da onda (core/perflog.ts); posto pelo jogo, ausente nos testes e nas partidas antigas */
   perf?: FrameStats;
 }

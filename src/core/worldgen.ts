@@ -208,21 +208,24 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
   const rLayout = Rng.of(seed, "layout");
   const rDecor = Rng.of(seed, "decor");
 
-  // M21-12: clareiras em zigue-zague, uma de cada lado do meio, para caber a bifurcação entre elas
-  const F = W.forks;
+  // M21-13: corrente de arenas em linha reta subindo a tela na diagonal (fogueira embaixo, chefe em cima; para a
+  // esquerda ou a direita, pela seed), com vão curto entre uma clareira e a seguinte, centrada no mapa
+  const C = W.chain;
   const n = WAVES_IN_ZONE - 1;
-  const side0 = rLayout.chance(0.5) ? 1 : -1;
-  const spawn: Vec2 = { x: -side0 * rLayout.range(F.spawnSide[0], F.spawnSide[1]), z: inner - 8 };
-  const bossZ = -inner + W.bossArenaRadius + 4;
+  const radii = [SPAWN_R, ...Array.from({ length: n }, () => SEG_R), W.bossArenaRadius];
+  const steps = radii.slice(1).map((r, i) => radii[i] + r + rLayout.range(C.gap[0], C.gap[1]));
+  const total = steps.reduce((a, b) => a + b, 0);
+  const lean = rLayout.chance(0.5) ? 1 : -1;
+  const ux = lean * Math.SQRT1_2, uz = -Math.SQRT1_2;
+  const at = (t: number): Vec2 => {
+    const j = rLayout.range(-C.xJitter, C.xJitter);
+    return { x: ux * t - uz * j, z: uz * t + ux * j };
+  };
+  let t = -total / 2;
+  const spawn = at(t);
   const centers: Vec2[] = [];
-  for (let i = 0; i < n; i++) {
-    const side = i % 2 === 0 ? side0 : -side0;
-    const z = spawn.z + ((bossZ - spawn.z) * (i + 1)) / (n + 1) + rLayout.range(-F.zJitter, F.zJitter);
-    const x = side * rLayout.range(F.zigzag[0], F.zigzag[1]);
-    centers.push({ x: Math.max(-inner + SEG_R + 6, Math.min(inner - SEG_R - 6, x)), z });
-  }
-  const lastSide = (n - 1) % 2 === 0 ? side0 : -side0;
-  const boss: Vec2 = { x: -lastSide * rLayout.range(F.bossSide[0], F.bossSide[1]), z: bossZ };
+  for (let i = 0; i < n; i++) centers.push(at((t += steps[i])));
+  const boss = at(t + steps[n]);
 
   // caminho do meio: fogueira, clareiras e arena, com uma curva leve entre cada par
   const stops = [spawn, ...centers, boss];
@@ -230,7 +233,7 @@ export function generateZone(zone: ZoneDef, seed: number): ZoneLayout {
   for (let i = 1; i < stops.length; i++) {
     const a = stops[i - 1], b = stops[i];
     const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
-    const k = rLayout.range(-3, 3);
+    const k = rLayout.range(-C.bend, C.bend);
     path.push({ x: (a.x + b.x) / 2 + (-(b.z - a.z) / l) * k, z: (a.z + b.z) / 2 + ((b.x - a.x) / l) * k }, b);
   }
   for (const p of path) p.x = Math.max(-inner + 6, Math.min(inner - 6, p.x));
