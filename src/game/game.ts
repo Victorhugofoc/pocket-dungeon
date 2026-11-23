@@ -3669,10 +3669,13 @@ export class Game {
       if (!e.dead) active.push(e);
     }
     // separação simples entre inimigos próximos
+    // (ai.lua: quem está no ar não separa nem é separado; o Leaper no salto segue a linha dele)
     for (let i = 0; i < active.length; i++) {
       const a = active[i];
+      if (a.airborne) continue;
       for (let j = i + 1; j < active.length; j++) {
         const b = active[j];
+        if (b.airborne) continue;
         const dx = b.x - a.x;
         const dz = b.z - a.z;
         const min = a.radius + b.radius;
@@ -3692,7 +3695,7 @@ export class Game {
       const dz = a.z - p.z;
       const min = a.radius + 0.45;
       const d2 = dx * dx + dz * dz;
-      if (d2 < min * min && d2 > 1e-6 && !a.charging) {
+      if (d2 < min * min && d2 > 1e-6 && !a.charging && !a.leap) {
         const d = Math.sqrt(d2);
         a.x = p.x + (dx / d) * min;
         a.z = p.z + (dz / d) * min;

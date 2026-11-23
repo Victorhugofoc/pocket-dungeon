@@ -336,6 +336,13 @@ export const ENEMIES: Record<string, Spec> = {
     b.dims = { hipY: 0.7, headY: 0.5, shoulderY: 0.54, shoulderX: 0.47, arm: 0.36, hipX: 0.24, thigh: 0.33 };
     addModel(b, "warden");
   },
+  leaper: (b) => {
+    // sapo dourado de chifres modelado no Blender (tools/blender/leaper.py, brief em docs/briefs/leaper.md); forma "toad":
+    // corpo no quadril, cabeça e 4 patas rígidas. Dims iguais ao RIG do script (sentido próprio da forma, ver kit.ts `Form`)
+    b.form = "toad"; b.scale = 1.7; b.style = "bite"; b.rough = 0.85; b.glowColor = 0xffd84a;
+    b.dims = { hipY: 0.42, headY: 0.3, shoulderY: -0.02, shoulderX: 0.25, arm: 0.3, hipX: 0.36, thigh: 0.14 };
+    addModel(b, "leaper");
+  },
 
 
 };

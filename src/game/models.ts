@@ -229,6 +229,8 @@ export interface AnimState {
   rage?: number;
   roar?: number;
   bossDeath?: boolean;
+  /** M9-05: voo do salto 0..1 (patas esticadas, corpo inclinado) */
+  air?: number;
 }
 
 export function animateRig(rig: Rig, a: AnimState): void {

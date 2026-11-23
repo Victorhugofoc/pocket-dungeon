@@ -208,7 +208,7 @@ export const SUMMON_CAP = 30;
  * enemies.lua (`enemy.lua` `create`): as recargas começam pela metade (a invocação em 0,6), para o primeiro golpe não
  * sair junto com o aggro nem esperar a recarga inteira.
  */
-export const FIRST_TIMER = { attack: 0.5, summon: 0.6, mortar: 0.5, charge: 0.5 } as const;
+export const FIRST_TIMER = { attack: 0.5, summon: 0.6, mortar: 0.5, charge: 0.5, leap: 0.5 } as const;
 /** constants.lua `SURVIVOR_FACTOR`: quem sobra no fim da onda rende 35% do ouro e do XP. */
 export const SURVIVOR_FACTOR = 0.35;
 
