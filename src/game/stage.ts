@@ -14,6 +14,8 @@ const ATTACK_LEN = 0.55;
 /** ângulo de descanso (3/4 de frente) e quanto tempo depois de soltar o mouse ele volta */
 const HOME_YAW = -0.38;
 const RETURN_AFTER = 2.2;
+/** retrato: altura enquadrada e quanto o centro sobe acima do pescoço, em frações da altura do herói */
+const PORTRAIT = { span: 0.36, lift: 0.07 };
 
 function floorTexture(): THREE.CanvasTexture {
   const c = document.createElement("canvas");
@@ -167,6 +169,82 @@ export class HeroStage {
     }
     this.locked = locked;
     this.shaded = this.heroId;
+  }
+
+  private faces: Record<string, { face: string; locked: string }> | null = null;
+
+  /**
+   * Retratos da grade (M14-08 parte 3): o rosto de cada herói renderizado do próprio modelo, uma vez, em pose de espera
+   * e 3/4 de frente, enquadrado pela caixa do osso da cabeça (os 9 com o rosto do mesmo tamanho). Fundo na cor do herói;
+   * a versão trancada é a silhueta preta do mesmo retrato sobre cinza.
+   */
+  portraits(): Record<string, { face: string; locked: string }> {
+    if (this.faces) return this.faces;
+    this.warm();
+    const r = this.renderer;
+    const S = 128;
+    const pr = r.getPixelRatio();
+    const px = Math.floor(S * pr);
+    const out = document.createElement("canvas");
+    out.width = out.height = px;
+    const g = out.getContext("2d")!;
+    const cam = new THREE.PerspectiveCamera(24, 1, 0.1, 40);
+    const bg = this.scene.background;
+    const fog = this.scene.fog;
+    const props = [this.glow, this.ring];
+    props.forEach((p) => (p.visible = false));
+    this.scene.fog = null;
+    // canvas do jogo ainda sem tamanho (janela oculta ao abrir): cresce só o bastante para o retrato e depois volta
+    const size0 = r.getSize(new THREE.Vector2());
+    const grow = r.domElement.width < px || r.domElement.height < px;
+    if (grow) r.setSize(Math.max(size0.x, S), Math.max(size0.y, S), false);
+    r.getViewport(this.viewport);
+    r.setViewport(0, 0, S, S);
+    const mid = new THREE.Vector3();
+    const rimColor = this.rim.color.clone();
+    this.faces = {};
+    for (const [id, rig] of this.rigs) {
+      for (const [k, other] of this.rigs) other.root.visible = k === id;
+      rig.root.position.set(0, 0, 0);
+      rig.root.rotation.y = -0.32;
+      rig.inner.scale.setScalar(1);
+      animateRig(rig, { t: 0, move: 0, attack: -1, windup: 0, dead: 0 });
+      rig.root.updateMatrixWorld(true);
+      // enquadra pelo pescoço (origem do osso da cabeça) e pela altura do herói: chapéu, coroa e chifres ficam fora
+      // da conta, e os 9 saem com o rosto do mesmo tamanho
+      const head = rig.char?.bones.head ?? rig.head;
+      head.getWorldPosition(mid);
+      const span = rig.height * PORTRAIT.span;
+      const look = new THREE.Vector3(mid.x, mid.y + rig.height * PORTRAIT.lift, mid.z);
+      const dist = span / (2 * Math.tan((cam.fov * Math.PI) / 360));
+      cam.position.set(look.x + Math.sin(0.12) * dist, look.y + span * 0.1, look.z + Math.cos(0.12) * dist);
+      cam.lookAt(look);
+      cam.updateProjectionMatrix();
+      this.rim.color.set(HEROES[id].color).lerp(new THREE.Color(0xffffff), 0.35);
+      const shot = (locked: boolean): string => {
+        this.heroId = id;
+        this.shade(locked);
+        this.scene.background = new THREE.Color(locked ? 0x2a2d3a : HEROES[id].color).multiplyScalar(locked ? 1 : 0.55);
+        r.render(this.scene, cam);
+        const src = r.domElement;
+        g.clearRect(0, 0, px, px);
+        g.drawImage(src, 0, src.height - px, px, px, 0, 0, px, px);
+        return out.toDataURL("image/png");
+      };
+      this.faces[id] = { face: shot(false), locked: shot(true) };
+      this.shade(false);
+    }
+    r.setViewport(this.viewport);
+    if (grow) r.setSize(size0.x, size0.y, false);
+    this.scene.background = bg;
+    this.scene.fog = fog;
+    props.forEach((p) => (p.visible = true));
+    this.rim.color.copy(rimColor);
+    // o próximo `show` volta a pôr o herói escolhido em cena
+    this.heroId = "";
+    this.shaded = "";
+    for (const rig of this.rigs.values()) rig.root.visible = false;
+    return this.faces;
   }
 
   hide(): void {

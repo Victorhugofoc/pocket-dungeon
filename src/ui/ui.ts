@@ -29,7 +29,7 @@ import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game, RelicBan } from "../game/game";
 import { relicBansLeft } from "../core/relics";
-import { attackLine, barsHtml, initials } from "./heroselect";
+import { attackLine, barsHtml } from "./heroselect";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const QUALITY = ["low", "medium", "high"];
@@ -337,12 +337,13 @@ export class Ui {
       const records = rec.runs
         ? `${rec.runs} runs · ${rec.wins} wins · best wave ${rec.highestWave}${rec.bestEndless ? ` · endless to wave ${rec.bestEndless}` : ""} · ${rec.kills} kills · ${achievementCount(ach)} of ${ACHIEVEMENTS.length} achievements`
         : "Action RPG · procedural maps, one hero, waves and bosses";
+      const faces = this.game.stage.portraits();
       const roster = HERO_ORDER.map((id) => {
         const d = HEROES[id];
         const lk = !open(id);
         const tip = lk ? `Locked · ${lockText(id)}` : `${d.name} · ${d.title}`;
         return `<button class="hs-portrait ${id === h.id ? "sel" : ""} ${lk ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}" title="${tip}">
-          <span class="face">${lk ? "🔒" : initials(d)}</span><span class="nm">${lk ? "???" : d.name}</span>
+          <span class="face"><img src="${lk ? faces[id].locked : faces[id].face}" alt="">${lk ? `<i class="lock">🔒</i>` : ""}</span><span class="nm">${lk ? "???" : d.name}</span>
           ${isNew(ach, "hero", id) ? `<em class="new">NEW</em>` : ""}</button>`;
       }).join("");
       const info = locked ? `<p class="note">This hero is still locked.</p>` : `

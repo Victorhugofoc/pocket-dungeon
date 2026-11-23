@@ -68,8 +68,3 @@ export function attackLine(h: HeroDef): string {
   if (a.backstab) extra.push("bonus from behind");
   return `${h.weaponName} · ${kind} · ${a.rate.toFixed(1)} attacks/s · ${a.range} m${extra.length ? ` · ${extra.join(" · ")}` : ""}`;
 }
-
-/** Iniciais para o retrato provisório (a parte 3 troca pelo retrato renderizado do modelo). */
-export function initials(h: HeroDef): string {
-  return h.name.slice(0, 2).toUpperCase();
-}
