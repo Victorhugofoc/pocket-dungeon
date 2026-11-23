@@ -40,6 +40,9 @@ import { Enemy, enemyDef, KNOCK_DECAY } from "./enemy";
 import { Fx } from "./fx";
 import { IceWalls, type IceWall } from "./icewall";
 import { Rifts, type Rift } from "./rift";
+import { AffixField } from "./affixes";
+import { rollAffixes } from "../core/affixes";
+import type { AffixId } from "../data/affixes";
 import { RoomHazards } from "./roomhazards";
 import { Terrain } from "./terrain";
 import { TERRAIN } from "../data/terrain";
@@ -221,6 +224,9 @@ export interface PlayerState {
   nestT: number;
   flash: number; hurtT: number;
   leap: { t: number; dur: number; x0: number; z0: number; x1: number; z1: number; fx?: TrailHandle } | null;
+  /** M9-06: golpe do campeão Frozen deixa o herói a `chillMult` da velocidade até `chillUntil` */
+  chillUntil: number;
+  chillMult: number;
   rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number; x0: number; z0: number; fire?: TrailHandle } | null;
 }
 
@@ -252,7 +258,7 @@ export class Game {
   player: PlayerState = {
     x: 0, z: 0, facing: 0, hp: 1, rig: null, moveAmt: 0, attackAnim: -1, attackCd: 0, techCd: 0, techMax: 1, followUntil: 0,
     dashCd: 0, dashT: 0, dashDx: 0, dashDz: 0, iframes: 0, shadowUntil: 0, aegis: null, throws: 0, nestT: VENOM.broodEvery,
-    flash: 0, hurtT: 0, leap: null, rush: null,
+    flash: 0, hurtT: 0, leap: null, rush: null, chillUntil: 0, chillMult: 1,
   };
   playerAlive = true;
   playerVelX = 0;
@@ -288,6 +294,8 @@ export class Game {
   private rifts = new Rifts(this.scene);
   /** raios e poças de cura da sala (M20-08) */
   hazards!: RoomHazards;
+  /** M9-06: afixos de campeão (poças do rastro, explosão, ganchos do golpe) */
+  affixes = new AffixField(this);
   terrain!: Terrain;
   private trails: Trail[] = [];
   private echoes: Echo[] = [];
@@ -784,6 +792,7 @@ export class Game {
     p.leap = p.rush = null;
     this.endAegis(false);
     p.shadowUntil = 0;
+    p.chillUntil = 0;
     p.dashT = 0;
     this.playerAlive = true;
     this.epics.reset();
@@ -816,6 +825,7 @@ export class Game {
     this.iceWalls.clear();
     this.rifts.clear();
     this.hazards.clear();
+    this.affixes.clear();
     for (const t of this.trails) this.disposeTrail(t);
     this.trails.length = 0;
     this.echoes.length = 0;
@@ -829,8 +839,10 @@ export class Game {
   }
 
   spawnEnemy(id: string, wave: number, x: number, z: number,
-    opts: { champion?: boolean; summoned?: boolean; child?: boolean; aggro?: boolean } = {}): Enemy {
-    const e = new Enemy(this, enemyDef(id), wave, x, z, opts);
+    opts: { champion?: boolean; summoned?: boolean; child?: boolean; aggro?: boolean; affixes?: readonly AffixId[] } = {}): Enemy {
+    // M9-06: todo campeão tem afixo; o da onda já vem sorteado, os outros (guarda do baú) sorteiam aqui
+    const affixes = opts.champion ? opts.affixes ?? rollAffixes(this.rng.get("champions"), wave) : opts.affixes;
+    const e = new Enemy(this, enemyDef(id), wave, x, z, { ...opts, affixes });
     // D-637: o banco promete seus orbes aos inimigos que nascem (moeda sob os pés)
     if (!e.noReward && promisesBank(this.run.lootBank, this.lootReserved())) e.lootBonus = true;
     if (opts.aggro) {
@@ -1224,7 +1236,26 @@ export class Game {
     // relic_mechanics.lua `schoolOf`: a escola da spell; a queimadura conta como fogo
     const school = opts.school ?? (opts.dot === "burn" ? "fire" : undefined);
     amount *= this.relicHooks.damageMult(this.relicWorld, { source: opts.dot ?? this.hitSource, school, boss: e.isBoss });
+    // M9-06 (damage.lua): Armored corta, o Arcane Shield come primeiro; qualquer dano zera a pausa do Regenerating
+    amount *= e.dmgTakenMult;
     amount = Math.max(1, Math.round(amount));
+    e.idle = 0;
+    if (e.shield > 0) {
+      const absorbed = Math.min(e.shield, amount);
+      e.shield -= absorbed;
+      amount -= absorbed;
+      if (e.shield <= 0) {
+        this.fx.shockwave(e.x, e.z, e.radius * 2.4, 0xbf8cff, 0.3);
+        this.fx.burst(e.x, e.rig.height * 0.5, e.z, 0xbf8cff, 14, 6, 0.16, 0.4);
+        this.audio.play("crit");
+      }
+      if (amount <= 0) {
+        e.flash = 0.5;
+        if (!e.aggro) e.setAggro(this);
+        if (!opts.dot) this.fx.text(e.x, e.rig.height + 0.3, e.z, String(absorbed), "frost");
+        return;
+      }
+    }
     this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
     e.hp -= amount;
     if (!e.aggro) e.setAggro(this);
@@ -1287,7 +1318,7 @@ export class Game {
     // rewards.lua `enemyKill`: ouro e XP pela sala e dificuldade, campeão ×4,5, chefe com o tier (M7-01)
     // loot.lua (M7-02): cai como orbe no chão; o prometido leva também um orbe do banco
     const r = killReward({ gold: e.def?.gold ?? 0, xp: e.def?.xp ?? 0, champion: e.champion, bossWave: e.isBoss ? e.level : null,
-      noReward: e.noReward }, this.mods, this.stats.gold, { gold: this.stats.championGold, xp: this.stats.championXp });
+      noReward: e.noReward, affixReward: e.affixK }, this.mods, this.stats.gold, { gold: this.stats.championGold, xp: this.stats.championXp });
     this.loot.drop(e.x, e.z, r.gold, r.xp, e.lootBonus ? this.run.lootBank : null);
     const split = e.def?.splitInto;
     if (split) {
@@ -1298,6 +1329,7 @@ export class Game {
       }
     }
     if (!e.summoned) this.rollHealOrb(e);
+    if (e.hasAffix("explosive")) this.affixes.explode(e);
     if (e.isBoss) this.onBossKilled(e);
   }
 
@@ -1598,6 +1630,11 @@ export class Game {
     this.run.statistics.damageTaken += Math.min(amount, p.hp);
     p.hp -= amount;
     this.relicHooks.onPlayerHit(this.relicWorld, amount);
+    if (attacker?.affixes.length) this.affixes.onHit(attacker, (mult, time) => {
+      p.chillUntil = this.time + time;
+      p.chillMult = mult;
+      this.fx.text(p.x, 2.2, p.z, "Chilled", "frost");
+    });
     this.ach.playerHit(amount, Math.max(0, p.hp) / this.stats.maxHp);
     p.flash = 1;
     if (p.rig) kickRig(p.rig, -Math.sin(p.facing), -Math.cos(p.facing), 0.7);
@@ -2011,7 +2048,7 @@ export class Game {
         this.enemies.push(e);
         e.setAggro(this);
       } else {
-        const e = this.spawnEnemy(m.spawn.id, this.run.wave, m.x, m.z, { champion: m.spawn.champion, aggro: true });
+        const e = this.spawnEnemy(m.spawn.id, this.run.wave, m.x, m.z, { champion: m.spawn.champion, affixes: m.spawn.affixes, aggro: true });
         e.cd = Math.max(e.cd, 0.5);
       }
       this.fx.burst(m.x, 0.6, m.z, mat.color.getHex(), m.boss ? 40 : 10, m.boss ? 8 : 4, 0.14, 0.4);
@@ -2028,7 +2065,7 @@ export class Game {
       if (e.dead) continue;
       if (e.def && !e.summoned) {
         const r = survivorReward(e.def, e.champion, this.mods, this.stats.gold,
-          { gold: this.stats.championGold, xp: this.stats.championXp }, this.stats.survivor);
+          { gold: this.stats.championGold, xp: this.stats.championXp }, this.stats.survivor, e.affixK);
         gold += r.gold;
         xp += r.xp;
         survivors++;
@@ -3113,7 +3150,7 @@ export class Game {
       } else {
         const ax = input.axis();
         // atacar corpo a corpo ou atirar reduz um pouco a velocidade
-        const slow = p.attackAnim >= 0 && this.hero.auto.kind === "melee" ? 0.55 : 1;
+        const slow = (p.attackAnim >= 0 && this.hero.auto.kind === "melee" ? 0.55 : 1) * (this.time < p.chillUntil ? p.chillMult : 1);
         p.x += ax.x * s.moveSpeed * slow * dt;
         p.z += ax.z * s.moveSpeed * slow * dt;
         if (ax.x || ax.z) p.moveAmt = 1;
@@ -3607,6 +3644,7 @@ export class Game {
       this.updateEvolvedTech(dt);
     });
     this.hazards.update(dt, this.time);
+    this.affixes.updateWorld(dt);
     this.terrain.update(dt, this.time);
   }
 

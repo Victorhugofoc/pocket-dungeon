@@ -20,6 +20,7 @@ import {
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
 } from "../src/data/run";
 import { BOSS_ORDER, BOSSES, ENEMIES } from "../src/data/enemies";
+import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
 import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
@@ -960,6 +961,19 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
       if (d.splitInto) expect(d.splitInto, id).toEqual({ id: o.splitInto, count: o.splitCount });
       else expect(o.splitInto, id).toBeUndefined();
     }
+  });
+
+  it("afixos de campeão: os 10, números, pares proibidos, segundo afixo e recompensa iguais aos de lá (M9-06)", () => {
+    expect([...AFFIX_ORDER]).toEqual(AF.order);
+    for (const id of AFFIX_ORDER) {
+      const { id: _id, name: _n, text: _t, ...mine } = AFFIXES[id];
+      const { id: _i, name: _m, text: _x, icon: _c, fx: _f, back: _b, ...theirs } = AF.list[id];
+      void _id; void _n; void _t; void _i; void _m; void _x; void _c; void _f; void _b;
+      expect({ ...mine, color: [...mine.color] }, id).toEqual(theirs);
+    }
+    expect(AFFIX_FORBIDDEN.map((p) => [...p])).toEqual(AF.FORBIDDEN);
+    expect(AFFIX_SECOND).toEqual(AF.SECOND);
+    expect(AFFIX_REWARD_PER).toBe(AF.REWARD_PER_AFFIX);
   });
 
   it("inimigos que existem aqui: vida, dano, XP, ouro e categoria iguais aos de lá", () => {

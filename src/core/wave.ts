@@ -1,7 +1,9 @@
 // Ciclo de uma onda, puro (wave_system.lua, modifier_engine.lua, enemy.lua, boss.lua, rewards.lua do Dungeon Reign).
 // O jogo (game.ts) chama `stepWave` a cada quadro e põe no mapa o que ela pede; aqui não há three.js nem posição.
-// A sala do mapa da partida entra pela camada da onda (runmap.ts). Sem pactos, eventos e afixos
-// por enquanto (M9, M13 e o resto do M20-05; os `runMods` do herói entraram na M19-08): o que não existe vale 1.
+// A sala do mapa da partida entra pela camada da onda (runmap.ts). Sem pactos e eventos
+// por enquanto (M13 e o resto do M20-05; os `runMods` do herói entraram na M19-08): o que não existe vale 1.
+import { rollAffixes } from "./affixes";
+import type { AffixId } from "../data/affixes";
 import type { Rng } from "./rng";
 import { pacedCount, pacedDuration, pacedPack, pacedSpawnWindow } from "./pace";
 import { waveLayer } from "./runmap";
@@ -107,6 +109,8 @@ export function endlessChampions(wave: number, target: number): Set<number> {
 export interface WaveSpawn {
   id: string;
   champion: boolean;
+  /** M9-06: afixos do campeão (affix_system.lua `roll`, fluxo `champions`) */
+  affixes?: AffixId[];
 }
 
 export interface WaveState {
@@ -124,6 +128,8 @@ export interface WaveState {
   isBossWave: boolean;
   /** Toca dos Campeões: posição no cronograma do campeão da sala */
   championAt: number | null;
+  /** Toca dos Campeões: o campeão da sala sai com pelo menos tantos afixos (D-211) */
+  minAffixes?: number;
   /** Emboscada: corte de vida e dano do chefe que entra na onda normal */
   ambush: { hp: number; damage: number } | null;
   ambushAt: number;
@@ -186,7 +192,7 @@ export function startWave(wave: number, champions: Rng, known: (id: string) => b
     interval: (duration * pacedSpawnWindow()) / Math.ceil(target / pacedPack()),
     nextSpawn: WAVES.firstSpawnDelay,
     pack: pacedPack(),
-    composition, isBossWave: boss, randomChampionAt, championAt,
+    composition, isBossWave: boss, randomChampionAt, championAt, minAffixes: room?.minAffixes,
     ambush, ambushAt: AMBUSH_DELAY, ambushSpawned: false,
     extraChampions: [...endlessChampions(wave, target)],
     started: false, complete: false, heldByBoss: false, bossesDefeated: false, clearedEarly: false, timeSaved: 0,
@@ -250,7 +256,12 @@ function spawnOne(w: WaveState, out: WaveStep, spawns: Rng, champions: Rng | und
   let champion = w.championAt === w.spawned || w.randomChampionAt === w.spawned || w.extraChampions.includes(w.spawned);
   // P-02 (Varok): parte de toda onda comum vem como campeão (não na onda de chefe: o duelo fica limpo)
   if (!champion && championShare && championShare > 0 && !w.isBossWave) champion = (champions ?? spawns).chance(championShare);
-  out.spawns.push({ id, champion });
+  if (!champion) {
+    out.spawns.push({ id, champion });
+    return;
+  }
+  const min = w.championAt === w.spawned ? w.minAffixes ?? 1 : 1;
+  out.spawns.push({ id, champion, affixes: rollAffixes(champions ?? spawns, w.number, min) });
 }
 
 function complete(w: WaveState, out: WaveStep): void {
@@ -410,12 +421,12 @@ export function killReward(t: KillTarget, mods: WaveMods, goldMult = 1, champ: C
 
 /** `Rewards.survivor`: quem sobra no fim rende uma parte (invocados e filhos da gosma não rendem). */
 export function survivorReward(def: { gold: number; xp: number }, champion: boolean, mods: WaveMods, goldMult = 1,
-  champ: ChampionMults = { gold: 1, xp: 1 }, survivorMult = 1): { gold: number; xp: number } {
+  champ: ChampionMults = { gold: 1, xp: 1 }, survivorMult = 1, affixK = 1): { gold: number; xp: number } {
   let g = def.gold;
   let x = def.xp;
   if (champion) {
-    g *= CHAMPION.rewardMult * champ.gold;
-    x *= CHAMPION.rewardMult * champ.xp;
+    g *= CHAMPION.rewardMult * affixK * champ.gold;
+    x *= CHAMPION.rewardMult * affixK * champ.xp;
   }
   const k = mods.killReward; // D-207
   const f = SURVIVOR_FACTOR * survivorMult;
