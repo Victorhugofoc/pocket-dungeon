@@ -15,6 +15,9 @@ import { characterRig } from "./rigs";
 import * as THREE from "three";
 import { type BossRing, type ChampionAura, type GroundArc, makeBossRing, makeChampionAura } from "./fx";
 import type { Game } from "./game";
+import { AFFIXES, type AffixId } from "../data/affixes";
+import { affixReward } from "../core/affixes";
+import { makeShieldBubble, type ShieldBubble } from "./affixes";
 
 /** cor do aviso do golpe, a mesma da marca no chão */
 const WARN_COLOR = 0xff5a4a;
@@ -190,10 +193,28 @@ export class Enemy {
   private emberT = 0;
   private ring: BossRing | null = null;
   private aura: ChampionAura | null = null;
+  /** M9-06: afixos do campeão (affix_system.lua `apply`) e o estado deles */
+  affixes: AffixId[] = [];
+  /** Swift: recargas de ataque, investida, bomba, invocação e padrões de chefe multiplicadas por isto */
+  cdMult = 1;
+  /** Armored: dano recebido multiplicado por isto */
+  dmgTakenMult = 1;
+  /** Arcane Shield: bolha que come o dano antes da vida */
+  shield = 0;
+  shieldMax = 0;
+  /** segundos desde o último dano (Regenerating e Arcane Shield esperam uma pausa) */
+  idle = 0;
+  regenOn = false;
+  summonT = 0;
+  blinkT = 0;
+  trailT = 0;
+  /** multiplicador de ouro e XP do campeão (+25% por afixo) */
+  affixK = 1;
+  bubble: ShieldBubble | null = null;
 
   constructor(game: Game, def: EnemyDef | BossDef, wave: number, x: number, z: number,
     opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean; ambush?: { hp: number; damage: number } | null;
-      crownAttack?: BossPattern | null } = {}) {
+      crownAttack?: BossPattern | null; affixes?: readonly AffixId[] } = {}) {
     this.x = this.homeX = x;
     this.z = this.homeZ = z;
     this.level = wave;
@@ -227,6 +248,8 @@ export class Enemy {
       if (d.mortar) this.mortarCd = d.mortar.cooldown * FIRST_TIMER.mortar;
     }
 
+    if (opts.affixes?.length) this.applyAffixes(game, opts.affixes);
+
     this.rig = this.makeRig();
     this.rig.root.position.set(x, 0, z);
     game.scene.add(this.rig.root);
@@ -240,8 +263,35 @@ export class Enemy {
     }
   }
 
+  /** affix_system.lua `apply`, depois dos multiplicadores do campeão. */
+  private applyAffixes(game: Game, ids: readonly AffixId[]): void {
+    this.affixes = [...ids];
+    for (const id of ids) {
+      const a = AFFIXES[id];
+      if (id === "swift") {
+        this.speed *= a.speedMult!;
+        this.cdMult *= a.cooldownMult!;
+        this.summonCd *= a.cooldownMult!;
+        this.chargeCd *= a.cooldownMult!;
+        this.mortarCd *= a.cooldownMult!;
+      } else if (id === "armored") this.dmgTakenMult *= a.damageTakenMult!;
+      else if (id === "shielded") {
+        this.shieldMax = this.shield = this.maxHp * a.shieldPct!;
+        this.bubble = makeShieldBubble(game.scene, a.color);
+      } else if (id === "summoner") this.summonT = a.interval! * 0.5;
+      else if (id === "shadow") this.blinkT = a.interval!;
+    }
+    this.affixK = affixReward(ids.length);
+  }
+
+  hasAffix(id: AffixId): boolean {
+    return this.affixes.includes(id);
+  }
+
   /** tira da cena tudo o que é deste inimigo */
   dispose(): void {
+    this.bubble?.dispose();
+    this.bubble = null;
     this.endSwing();
     disposeRig(this.rig);
     this.ring?.dispose();
@@ -341,6 +391,7 @@ export class Enemy {
       animateRig(rig, { t: now, move: 0, attack: -1, windup: 0, dead: this.deadT, bossDeath: this.isBoss });
       if (this.boss) this.dissolve(game, dt);
       this.aura?.update(this.x, this.z, this.radius, now, Math.max(0, 1 - this.deadT * 1.6));
+      this.bubble?.update(this.x, this.z, this.radius, this.rig.height, 0, now);
       if (this.deadT >= 1.25) this.remove = true;
       return;
     }
@@ -367,6 +418,11 @@ export class Enemy {
       const r = this.pendingReaction;
       this.pendingReaction = null;
       if (now >= this.reactUntil) game.react(this, r);
+      if (this.dead) return;
+    }
+
+    if (this.affixes.length && this.aggro) {
+      game.affixes.update(this, dt);
       if (this.dead) return;
     }
 
@@ -467,6 +523,7 @@ export class Enemy {
       rage: this.rage, roar: this.roarT,
     });
     this.aura?.update(this.x, this.z, this.radius, now + this.rig.phase, 1);
+    this.bubble?.update(this.x, this.z, this.radius, this.rig.height, this.shieldMax > 0 ? this.shield / this.shieldMax : 0, now);
     if (this.boss) {
       this.rage += ((this.enraged ? 1 : 0) - this.rage) * Math.min(1, dt * 3);
       this.ring?.update(this.x, this.z, this.radius * 1.9, now, this.rage, this.aggro ? 1 : 0.45);
@@ -494,7 +551,7 @@ export class Enemy {
   setAggro(game: Game): void {
     if (this.aggro || this.dead) return;
     this.aggro = true;
-    this.cd = Math.max(this.cd, this.def ? this.def.cooldown * FIRST_TIMER.attack : 0.4 + Math.random() * 0.5);
+    this.cd = Math.max(this.cd, this.def ? this.def.cooldown * FIRST_TIMER.attack * this.cdMult : 0.4 + Math.random() * 0.5);
     if (this.isBoss) {
       game.onBossAggro(this);
       this.startRoar(TUNING.boss.roarTime);
@@ -610,7 +667,7 @@ export class Enemy {
         const ward = this.boss ? null : game.spells.wardFor(this);
         if (ward) game.spells.hitWard(ward);
         else if (this.swingHits(p.x, p.z, range)) game.hurtPlayer(this.hitDmg, this.name, this);
-        this.cd = this.boss ? this.boss.attackCooldown : this.def!.cooldown;
+        this.cd = (this.boss ? this.boss.attackCooldown : this.def!.cooldown) * this.cdMult;
       }
       return;
     }
@@ -675,7 +732,7 @@ export class Enemy {
           return;
         }
         if (this.chargeCd <= 0 && dist > 5 && dist < c.range && this.windupT < 0) {
-          this.chargeCd = c.cooldown;
+          this.chargeCd = c.cooldown * this.cdMult;
           this.face(p.x, p.z);
           const a = this.facing;
           this.casting = c.windup;
@@ -717,7 +774,7 @@ export class Enemy {
           // ai.lua `summoner`: a recarga corre sempre; invoca até o teto global de invocados vivos
           this.summonCd -= dt;
           if (this.summonCd <= 0) {
-            this.summonCd = d.summon.cooldown;
+            this.summonCd = d.summon.cooldown * this.cdMult;
             const n = Math.min(d.summon.count, SUMMON_CAP - game.countSummons());
             for (let i = 0; i < n; i++) {
               const a = Math.random() * Math.PI * 2;
@@ -731,7 +788,7 @@ export class Enemy {
           // ai.lua `bombardier`: além da bomba direta, a bomba no chão onde o herói está, com recarga própria
           this.mortarCd -= dt;
           if (this.mortarCd <= 0 && dist <= range * 1.2) {
-            this.mortarCd = d.mortar.cooldown;
+            this.mortarCd = d.mortar.cooldown * this.cdMult;
             const tx = p.x;
             const tz = p.z;
             const r = d.mortar.radius;
@@ -740,7 +797,7 @@ export class Enemy {
           }
         }
         if (this.cd <= 0 && dist <= range && this.aimT < 0) {
-          this.cd = d.cooldown;
+          this.cd = d.cooldown * this.cdMult;
           this.aimT = 0;
         }
         break;
@@ -781,7 +838,7 @@ export class Enemy {
     if (this.charging) return;
     this.patternCd -= dt;
     if (this.patternCd <= 0 && this.windupT < 0) {
-      this.patternCd = b.patternCooldown * (this.enraged ? TUNING.boss.enrageCooldownMult : 1);
+      this.patternCd = b.patternCooldown * (this.enraged ? TUNING.boss.enrageCooldownMult : 1) * this.cdMult;
       const list = this.patterns;
       let idx = Math.floor(Math.random() * list.length);
       if (idx === this.lastPattern) idx = (idx + 1) % list.length;

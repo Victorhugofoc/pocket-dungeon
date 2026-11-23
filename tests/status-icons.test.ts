@@ -3,12 +3,17 @@ import { enemyStatuses, StatusTimers } from "../src/game/status-icons";
 import type { Enemy } from "../src/game/enemy";
 
 const enemy = (over: Partial<Record<string, unknown>> = {}): Enemy => ({
-  dots: [], stunUntil: 0, slowUntil: 0, slowPower: 0,
+  dots: [], affixes: [], stunUntil: 0, slowUntil: 0, slowPower: 0,
   frost: { frostStacks: 0, brittleUntil: 0 }, ...over,
 }) as unknown as Enemy;
 const ctx = { now: 10, volatile: 0, brittleChill: 0 };
 
 describe("enemyStatuses (M5-05)", () => {
+  it("afixos do campeão (M9-06) primeiro e sem relógio", () => {
+    expect(enemyStatuses(enemy({ affixes: ["swift", "armored"], stunUntil: 11 }), ctx))
+      .toEqual([{ kind: "affix_swift" }, { kind: "affix_armored" }, { kind: "stun", until: 11 }]);
+  });
+
   it("moeda do banco (D-637) por último", () => {
     expect(enemyStatuses(enemy({ lootBonus: true, stunUntil: 11 }), ctx)).toMatchObject([{ kind: "stun" }, { kind: "loot" }]);
   });

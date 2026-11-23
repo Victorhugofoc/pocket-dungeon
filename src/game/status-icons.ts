@@ -3,10 +3,14 @@
 import * as THREE from "three";
 import type { Enemy } from "./enemy";
 import type { ReactionId } from "../core/reactions";
+import { AFFIXES, AFFIX_ORDER, type AffixId } from "../data/affixes";
+import { TUNING } from "../data/tuning";
+
+const HP_BAR = TUNING.enemy.hpBar;
 
 export type StatusIconKind =
   | "burn" | "volatile" | "poison" | "slow" | "brittleChill" | "stun" | "frost" | "shatter" | "loot"
-  | "shatterReady" | "plagueReady";
+  | "shatterReady" | "plagueReady" | `affix_${AffixId}`;
 
 /** Um estado de um inimigo, já pronto para desenhar. `n` aparece como número no canto (acúmulos); `until` é quando o estado
  * acaba (o contorno do ícone esvazia até lá). Sem `until` (acúmulos de gelo), o contorno fica cheio. */
@@ -27,6 +31,8 @@ export interface StatusContext {
 export function enemyStatuses(e: Enemy, ctx: StatusContext): StatusBadge[] {
   const out: StatusBadge[] = [];
   const now = ctx.now;
+  // M9-06: os afixos do campeão vêm primeiro e ficam o tempo todo (affix chips do Dungeon Reign)
+  for (const a of e.affixes) out.push({ kind: `affix_${a}` });
   // M21-05: reação pronta vai na frente, é o convite para fechar o combo
   for (const r of ctx.primed?.(e) ?? []) {
     if (r === "shatter") out.push({ kind: "shatterReady", until: e.chillUntil });
@@ -78,6 +84,8 @@ const ICON_SIZE = 0.9; // metros
 const ICON_GAP = 0.08;
 const ENDING = 1; // segundos finais em que o ícone pulsa
 const RING_W = 6;
+/** folga entre a barra de vida e a fileira de ícones (m, no plano da tela) */
+const ICON_BAR_GAP = 0.1;
 const RING_STEPS = 48;
 
 /** Cor do contorno de cada estado: a parte acesa é o relógio (`drawRing`), que esvazia até o estado acabar. */
@@ -85,7 +93,119 @@ const RING: Record<StatusIconKind, string> = {
   burn: "#ff7a1a", volatile: "#fff2b0", poison: "#5fd35f", slow: "#8fdcff",
   brittleChill: "#ff6a6a", stun: "#ffd94a", frost: "#8fdcff", shatter: "#ffffff", loot: "#ffc83d",
   shatterReady: "#ffe066", plagueReady: "#ffe066",
+  ...(Object.fromEntries(AFFIX_ORDER.map((id) => [`affix_${id}`, css(AFFIXES[id].color)])) as Record<`affix_${AffixId}`, string>),
 };
+
+function css(c: readonly [number, number, number], k = 1): string {
+  return `rgb(${Math.round(c[0] * 255 * k)},${Math.round(c[1] * 255 * k)},${Math.round(c[2] * 255 * k)})`;
+}
+
+/** M9-06: o desenho de cada afixo, no disco escuro da cor dele. */
+function affixGlyph(c: CanvasRenderingContext2D, id: AffixId): void {
+  const col = AFFIXES[id].color;
+  const fg = css(col);
+  disc(c, css(col, 0.22), fg);
+  c.fillStyle = fg;
+  c.strokeStyle = fg;
+  c.lineCap = "round";
+  c.lineJoin = "round";
+  const drop = (x: number, y: number, s: number) => {
+    c.beginPath();
+    c.moveTo(x, y - 18 * s);
+    c.bezierCurveTo(x + 12 * s, y - 2 * s, x + 13 * s, y + 6 * s, x + 11 * s, y + 10 * s);
+    c.bezierCurveTo(x + 7 * s, y + 18 * s, x - 7 * s, y + 18 * s, x - 11 * s, y + 10 * s);
+    c.bezierCurveTo(x - 13 * s, y + 6 * s, x - 12 * s, y - 2 * s, x, y - 18 * s);
+    c.fill();
+  };
+  switch (id) {
+    case "vampiric":
+      drop(32, 34, 1);
+      c.fillStyle = "#ffd0d6";
+      c.beginPath();
+      c.arc(27, 38, 3.5, 0, Math.PI * 2);
+      c.fill();
+      break;
+    case "swift":
+      c.lineWidth = 6;
+      for (const x of [20, 34]) {
+        c.beginPath();
+        c.moveTo(x, 18);
+        c.lineTo(x + 11, 32);
+        c.lineTo(x, 46);
+        c.stroke();
+      }
+      break;
+    case "armored":
+      c.beginPath();
+      c.moveTo(32, 12);
+      c.lineTo(48, 18);
+      c.bezierCurveTo(48, 36, 42, 46, 32, 53);
+      c.bezierCurveTo(22, 46, 16, 36, 16, 18);
+      c.closePath();
+      c.fill();
+      c.strokeStyle = "#3a404c";
+      c.lineWidth = 3;
+      c.beginPath();
+      c.moveTo(32, 18);
+      c.lineTo(32, 46);
+      c.stroke();
+      break;
+    case "explosive":
+      c.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const r = i % 2 ? 9 : 21;
+        const a = (i / 16) * Math.PI * 2;
+        c.lineTo(32 + Math.cos(a) * r, 32 + Math.sin(a) * r);
+      }
+      c.closePath();
+      c.fill();
+      c.fillStyle = "#fff2b0";
+      c.beginPath();
+      c.arc(32, 32, 6, 0, Math.PI * 2);
+      c.fill();
+      break;
+    case "frozen":
+      snowflake(c, fg);
+      break;
+    case "regenerating":
+      c.fillRect(27, 14, 10, 36);
+      c.fillRect(14, 27, 36, 10);
+      break;
+    case "shielded":
+      c.lineWidth = 5;
+      c.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        c.lineTo(32 + Math.cos(a) * 18, 32 + Math.sin(a) * 18);
+      }
+      c.closePath();
+      c.stroke();
+      c.globalAlpha = 0.4;
+      c.fill();
+      c.globalAlpha = 1;
+      break;
+    case "summoner":
+      for (const [x, y, r] of [[32, 22, 7], [20, 40, 6], [44, 40, 6]] as const) {
+        c.beginPath();
+        c.arc(x, y, r, 0, Math.PI * 2);
+        c.fill();
+      }
+      break;
+    case "shadow":
+      c.beginPath();
+      c.arc(32, 32, 18, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = css(col, 0.22);
+      c.beginPath();
+      c.arc(40, 27, 16, 0, Math.PI * 2);
+      c.fill();
+      break;
+    case "venomous":
+      drop(26, 30, 0.75);
+      drop(40, 38, 0.6);
+      break;
+  }
+}
 
 /** Fundo do ícone. O contorno aqui é só o trilho apagado; a parte acesa vem por cima, do relógio. */
 function disc(c: CanvasRenderingContext2D, fill: string, ring: string): void {
@@ -227,6 +347,10 @@ function drawIcon(kind: StatusIconKind, n: number | undefined): HTMLCanvasElemen
   const cv = document.createElement("canvas");
   cv.width = cv.height = PX;
   const c = cv.getContext("2d")!;
+  if (kind.startsWith("affix_")) {
+    affixGlyph(c, kind.slice(6) as AffixId);
+    return cv;
+  }
   switch (kind) {
     case "burn":
       disc(c, "#3a1408", "#ff7a1a");
@@ -352,6 +476,8 @@ export class StatusIcons {
   private pool: THREE.Sprite[] = [];
   private used = 0;
   private right = new THREE.Vector3();
+  /** o "para cima" da tela no mundo: o ícone sobe por ele a partir da barra, sem a câmera inclinada encurtar a folga */
+  private up = new THREE.Vector3();
   private emberT = new WeakMap<Enemy, number>();
 
   constructor(private scene: THREE.Scene) {}
@@ -394,17 +520,22 @@ export class StatusIcons {
   update(enemies: readonly Enemy[], ctx: StatusContext, camera: THREE.Camera, fx: Fx, dt: number): void {
     this.used = 0;
     this.right.setFromMatrixColumn(camera.matrixWorld, 0).setY(0).normalize();
+    this.up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
     for (const e of enemies) {
       if (e.dead) continue;
       const list = enemyStatuses(e, ctx);
       if (!list.length) continue;
-      const y = e.rig.root.position.y + e.rig.height + 0.55;
+      // acima da barra de vida (hpbars.ts), que fica em altura + lift (M9-06: campeão sempre tem ícone)
+      // o centro da barra, e daí, no plano da tela, meia barra + folga + meio ícone para cima
+      const lift = HP_BAR.height / 2 + HP_BAR.border + ICON_BAR_GAP + ICON_SIZE / 2;
+      const y = e.rig.root.position.y + e.rig.height + HP_BAR.lift + this.up.y * lift;
+      const ux = this.up.x * lift, uz = this.up.z * lift;
       const w = list.length * ICON_SIZE + (list.length - 1) * ICON_GAP;
       for (let i = 0; i < list.length; i++) {
         const b = list[i];
         const off = -w / 2 + ICON_SIZE / 2 + i * (ICON_SIZE + ICON_GAP);
-        const x = e.x + this.right.x * off;
-        const z = e.z + this.right.z * off;
+        const x = e.x + ux + this.right.x * off;
+        const z = e.z + uz + this.right.z * off;
         const left = b.until === undefined ? 1 : this.timers.left(e, b.kind, b.until, ctx.now);
         // no último segundo o ícone pulsa: o estado está para acabar
         const ending = b.until !== undefined && b.until - ctx.now < ENDING;

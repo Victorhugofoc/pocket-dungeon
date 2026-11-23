@@ -27,7 +27,7 @@ export const TUNING = {
   enemy: {
     /** barra de vida sobre o inimigo ferido (entity_renderer.lua: largura max(18 px, raio × 1,6); chefe usa a do HUD).
      * Unidades em metros; `lift` é a altura acima da cabeça, abaixo da fileira de ícones de estado. */
-    hpBar: { minWidth: 1.1, radiusMult: 1.6, height: 0.12, border: 0.04, lift: 0.22, fill: 0xd9293a, back: 0x000000, backOpacity: 0.7 },
+    hpBar: { minWidth: 1.1, radiusMult: 1.6, height: 0.12, border: 0.04, lift: 0.22, fill: 0xd9293a, back: 0x000000, backOpacity: 0.7, shield: 0xc9a2ff },
     hpPerLevel: 1.17,
     damagePerLevel: 1.11,
     aggroRadius: 15,
