@@ -8,6 +8,7 @@ import type { Rng } from "./rng";
 import { pacedCount, pacedDuration, pacedPack, pacedSpawnWindow } from "./pace";
 import { waveLayer } from "./runmap";
 import { AMBUSH_DELAY, ENEMY_GROUPS, type RoomDef } from "../data/rooms";
+import { CAMP_ROLES, CAMPS, CHAMPION_CAMP, type CampDef, type CampRank, type CampRole } from "../data/camps";
 import type { HeroRunMods } from "../data/heroes";
 import {
   baseDuration, baseEnemyCount, bossGold, bossTier, bossXp, compositionFor, damageScale, endlessDamage, endlessHp, hpScale, isBossWave, waveGold, waveXp,
@@ -111,6 +112,9 @@ export interface WaveSpawn {
   champion: boolean;
   /** M9-06: afixos do campeão (affix_system.lua `roll`, fluxo `champions`) */
   affixes?: AffixId[];
+  /** M9-07: onde nasce dentro do grupo (frente, meio, atrás) e a forma do grupo */
+  rank?: CampRank;
+  camp?: string;
 }
 
 export interface WaveState {
@@ -225,8 +229,9 @@ export function stepWave(w: WaveState, dt: number, world: WaveWorld, spawns: Rng
     out.ambush = true;
   }
   while (w.spawned < w.target && w.elapsed >= w.nextSpawn) {
-    for (let k = 0; k < w.pack && w.spawned < w.target; k++) spawnOne(w, out, spawns, champions, championShare);
-    w.nextSpawn += w.interval;
+    spawnCamp(w, out, spawns, champions, championShare);
+    // o relógio conta por inimigo: grupos de tamanhos diferentes não passam da janela de nascimento
+    w.nextSpawn = WAVES.firstSpawnDelay + (w.spawned * w.interval) / w.pack;
   }
   if (w.isBossWave) {
     // a onda de chefe acaba quando ele cai; quem sobra some
@@ -250,8 +255,52 @@ export function stepWave(w: WaveState, dt: number, world: WaveWorld, spawns: Rng
   return out;
 }
 
-function spawnOne(w: WaveState, out: WaveStep, spawns: Rng, champions: Rng | undefined, championShare: number | null): void {
-  const id = spawns.weighted(w.composition);
+/** M9-07: quem da onda pode ocupar o papel, com o peso de lá */
+function roleCandidates(composition: readonly [string, number][], role: CampRole): [string, number][] {
+  if (role === "any") return composition.filter(([, wt]) => wt > 0);
+  const ids = CAMP_ROLES[role];
+  return composition.filter(([id, wt]) => wt > 0 && ids.includes(id));
+}
+
+/** M9-07: as formas que a onda consegue montar (todo papel tem alguém) */
+export function campsFor(composition: readonly [string, number][]): CampDef[] {
+  return CAMPS.filter((c) => c.slots.every((sl) => roleCandidates(composition, sl.role).length > 0));
+}
+
+/** os números do cronograma que caem no próximo grupo trazem campeão? */
+function packHasChampion(w: WaveState, size: number): boolean {
+  for (let i = w.spawned + 1; i <= w.spawned + size; i++) {
+    if (w.championAt === i || w.randomChampionAt === i || w.extraChampions.includes(i)) return true;
+  }
+  return false;
+}
+
+/** M9-07: um grupo com forma (linha, escolta, ninho, enxame, misto); o campeão da onda vai na 1ª vaga da escolta. */
+function spawnCamp(w: WaveState, out: WaveStep, spawns: Rng, champions: Rng | undefined, championShare: number | null): void {
+  const camps = campsFor(w.composition);
+  let camp = camps.find((c) => c.id === CHAMPION_CAMP);
+  if (!camp || !packHasChampion(w, camp.slots.length)) camp = spawns.weighted(camps.map((c) => [c, c.weight] as [CampDef, number]));
+  const first = out.spawns.length;
+  let champSlot = -1;
+  for (const sl of camp.slots) {
+    if (w.spawned >= w.target) break;
+    const id = spawns.weighted(roleCandidates(w.composition, sl.role));
+    spawnOne(w, out, spawns, champions, championShare, id);
+    const sp = out.spawns[out.spawns.length - 1];
+    sp.rank = sl.rank;
+    sp.camp = camp.id;
+    if (sp.champion && champSlot < 0) champSlot = out.spawns.length - 1;
+  }
+  // o campeão troca de vaga com a 1ª (a elite da escolta), mantendo o inimigo que saiu nela
+  if (camp.id === CHAMPION_CAMP && champSlot > first) {
+    const a = out.spawns[first], b = out.spawns[champSlot];
+    [a.champion, b.champion] = [b.champion, a.champion];
+    [a.affixes, b.affixes] = [b.affixes, a.affixes];
+  }
+}
+
+function spawnOne(w: WaveState, out: WaveStep, spawns: Rng, champions: Rng | undefined, championShare: number | null,
+  id = spawns.weighted(w.composition)): void {
   w.spawned++;
   let champion = w.championAt === w.spawned || w.randomChampionAt === w.spawned || w.extraChampions.includes(w.spawned);
   // P-02 (Varok): parte de toda onda comum vem como campeão (não na onda de chefe: o duelo fica limpo)
