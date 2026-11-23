@@ -22,7 +22,7 @@ Leia antes de qualquer coisa. Aqui fica só o estado atual; o histórico de cada
 - **Modo de teste:** o `testBoost` (dano ×2, velocidade ×4) saiu em 2026-11-16, a pedido do usuário. `TUNING.unlockAll` continua deixando os 9 heróis abertos (desligar ao balancear).
 - **Ícones de estado têm relógio** (2026-11-16, pedido do usuário: quer feedback visual de tudo): o contorno esvazia até o estado acabar e o ícone pulsa no último segundo. Estado novo com duração precisa pôr `until` no `StatusBadge`. A vida dos chefes ainda leva o corte antigo de 0,55 (`TUNING.boss.hpMult`) até haver spells.
 
-- **Pedidos do usuário em 2026-11-22 (anotados, ainda sem lugar na ordem):** `M14-08` tela de seleção de herói muito melhor (palco 3D, retratos do modelo, tudo numa tela), `M14-09` pente-fino de UI/UX em todas as telas, `M13-07` efeito Founder do Dungeon Reign (asas e mantos por herói, liga e desliga; para depois). Perguntar quando entram.
+- **Pedidos do usuário em 2026-11-22 (anotados, ainda sem lugar na ordem):** `M14-08` tela de seleção de herói muito melhor (palco 3D, retratos do modelo, tudo numa tela), `M14-09` pente-fino de UI/UX em todas as telas, `M13-07` efeito Founder do Dungeon Reign (asas e mantos por herói, liga e desliga; para depois). Ordem (usuário, 2026-11-22): a `M14-08` entra logo depois da `M12-10`; `M14-09` e `M13-07` sem lugar ainda.
 
 ## Atalhos de teste (console do jogo)
 - Registro de partidas: `JSON.parse(localStorage['dungeon-reign-rpg.runlog.v1'])`; `__game.logRunEnd('quit')` grava a partida atual.
