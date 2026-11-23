@@ -210,8 +210,10 @@ export function animateChar(rig: Rig, a: AnimState): void {
 
   // braços: balanço oposto às pernas, com o antebraço atrasado (mola)
   const armLag = P.armLag.step(sw, 90, 9, dt);
-  const freeR = c.poseR[0] > -0.8 && !c.weapon ? 1 : 0.18;
-  const freeL = c.poseL[0] > -0.8 ? 1 : 0.18;
+  // escudo e lança (`spear`): braços firmes, quase sem balanço
+  const held = c.style === "spear" ? 0.12 : 1;
+  const freeR = (c.poseR[0] > -0.8 && !c.weapon ? 1 : 0.18) * held;
+  const freeL = (c.poseL[0] > -0.8 ? 1 : 0.18) * held;
   const out = c.armOut + rage * (0.1 + breathe * 0.04);
   // base de luta: o quadril gira e as pernas abrem; parado inteira, andando quase some
   const hold = 1 - 0.8 * move;
@@ -365,6 +367,14 @@ export function animateChar(rig: Rig, a: AnimState): void {
         break;
       }
       case "bite":
+        break;
+      case "spear":
+        // estocada: o braço da lança recua no preparo e avança esticando o cotovelo; o do escudo fica firme na frente
+        // ombro sobe e cotovelo estica na mesma medida: a lança avança quase na horizontal, sem mergulhar
+        armR.rotation.x = c.poseR[0] + 0.5 * prep01 - 0.9 * hit;
+        foreR.rotation.x = c.poseR[1] - 0.3 * prep01 + 0.5 * hit;
+        torso.rotation.y += 0.3 * prep01 - 0.4 * hit;
+        torso.rotation.x += -0.08 * prep01 + 0.24 * hit;
         break;
     }
   }

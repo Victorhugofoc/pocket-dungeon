@@ -299,32 +299,16 @@ export const ENEMIES: Record<string, Spec> = {
     addModel(b, "splitter");
   },
   shieldbearer: (b) => {
-    // M9-01: corpo provisório por código (D17: a arte do Blender fica para a fase 2). Do sprite: cavaleiro de placas com pluma
-    // vermelha, escudo pipa branco com faixa vermelha à frente do lado esquerdo e lança na direita
-    const STEEL_L = 0xc2c8d2, STEEL_M = 0x8a92a0, STEEL_D = 0x434a58, RED = 0xb8282a, RED_D = 0x5e1214, WHITE = 0xe6e2da, SKIN = 0xc89878;
-    body(b, { skin: SKIN, top: STEEL_M, bottom: STEEL_D, boots: STEEL_D, sleeve: STEEL_M, hands: STEEL_D, bulk: 1.2, eyes: null });
-    b.scale = 1.1; b.style = "thrust"; b.rough = 0.45; b.glowColor = 0xffd27a;
-    b.poseL = [-0.55, -1.25, -0.1]; b.poseR = [-0.35, -0.75];
-    // elmo fechado com viseira e pluma vermelha
-    b.add("head", at(sph(0.245, STEEL_L, 1, 1.05, 1.05, STEEL_D), 0, 0.22, 0), at(bx(0.3, 0.045, 0.06, 0x14161c), 0, 0.23, 0.225));
-    b.add("head", at(sph(0.1, RED, 0.55, 1.5, 1.6, RED_D), 0, 0.5, -0.06, -0.5));
-    // ombreiras e saia de placas
-    for (const s2 of [-1, 1]) b.add("torso", at(sph(0.16, STEEL_L, 1.1, 0.7, 1.05, STEEL_D), s2 * 0.31, 0.5, 0, 0, 0, -s2 * 0.35));
-    b.add("hips", at(cyl(0.27, 0.32, 0.22, STEEL_M, 12, STEEL_D), 0, -0.04, 0));
-    // escudo pipa: borda reta em cima, ponta embaixo; erguido à frente do lado esquerdo, pouco virado para fora
-    const kite = new THREE.Shape();
-    kite.moveTo(-0.27, 0.3);
-    kite.quadraticCurveTo(0, 0.36, 0.27, 0.3);
-    kite.quadraticCurveTo(0.29, -0.05, 0, -0.5);
-    kite.quadraticCurveTo(-0.29, -0.05, -0.27, 0.3);
-    const sg = prep(new THREE.ExtrudeGeometry(kite, { depth: 0.04, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02, bevelSegments: 1, curveSegments: 8 }), false);
-    paint(sg, 0xb8b2a8, WHITE, -0.5, 0.34);
-    const stripe = bx(0.13, 0.86, 0.02, RED, RED_D).rotateZ(0.62);
-    b.add("torso", at(sg, -0.14, 0.26, 0.34, 0, -0.25, 0), at(stripe, -0.14 + 0.01, 0.24, 0.395, 0, -0.25, 0));
-    // lança na mão direita, ponta para a frente
-    b.add("foreR", at(cyl(0.025, 0.025, 1.7, WOOD, 6, 0x4a301a), 0, -0.36, 0.45, Math.PI / 2));
-    b.add("foreR", at(cone(0.05, 0.24, STEEL_L, 6, STEEL_M), 0, -0.36, 1.4, Math.PI / 2));
+    // cavaleiro de escudo e lança modelado no Blender (tools/blender/shieldbearer.py, brief em docs/briefs/shieldbearer.md); escudo e
+    // lança também vêm de lá, presos aos antebraços. Pose do sprite: antebraço do escudo atravessado à frente do peito, lança baixa
+    // junto ao quadril apontando para a frente. As poses têm de bater com POSE_L, POSE_R, LEAN e OUT do script
+    b.scale = 1.0; b.style = "spear"; b.rough = 0.4; b.glowColor = 0xffd27a;
+    b.lean = 0.12; b.crouch = 0.18; b.armOut = 0.15;
+    b.poseL = [-0.65, -1.05, 0, -0.7]; b.poseR = [0.05, -0.95, 0, -0.6];
+    b.dims = { hipY: 0.98, headY: 0.56, shoulderY: 0.48, shoulderX: 0.36, arm: 0.34, hipX: 0.15, thigh: 0.47 };
+    addModel(b, "shieldbearer");
   },
+
 
 };
 

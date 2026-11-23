@@ -8,7 +8,8 @@ export type Bone =
   | "hips" | "torso" | "head" | "armL" | "armR" | "foreL" | "foreR" | "thighL" | "thighR" | "shinL" | "shinR"
   | "cape" | "tail" | "wingL" | "wingR" | "skirt" | "weapon";
 /** `throwL` = arremesso com o braço esquerdo (escudo) */
-export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "throwL" | "bite";
+/** `spear`: escudo e lança (M9-01): os braços não balançam ao andar e só o direito estoca, ao longo da haste */
+export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "throwL" | "bite" | "spear";
 export type Form = "biped" | "robed" | "bat" | "slime" | "spider";
 
 // ---------------------------------------------------------------- primitivas (já pintadas por vértice)
