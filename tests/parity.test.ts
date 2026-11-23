@@ -3,7 +3,7 @@
 // Se um número mudar de um lado só, este teste quebra. Tabela de regras: docs/paridade.md.
 // Pula sozinho se o repo do original ou o luajit não estiverem na máquina (DUNGEON_IDLE e LUAJIT mudam os caminhos).
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -41,7 +41,27 @@ import {
   TECHNIQUE_ORDER, TECHNIQUES, UNBREAKABLE, VENOM, RICOCHET,
 } from "../src/data/techniques";
 
-const ROOT = resolve(process.env.DUNGEON_IDLE ?? resolve(import.meta.dirname, "../../GitHub/dungeon-idle"));
+/**
+ * A paridade é com o jogo base do Dungeon Reign como estava quando o porte começou, não com o que ele virar depois
+ * (decisão do usuário, 2026-11-22): o balanceamento daqui segue o caminho dele. O teste lê esta versão do repo
+ * (`git archive`, extraída uma vez numa pasta temporária); `DUNGEON_BASE=HEAD` lê o repo como está.
+ * Último commit antes do passe de balanceamento D-674 do original.
+ */
+const BASE_REF = process.env.DUNGEON_BASE ?? "e2e8fafc312a380d3567d090adcb5b576c655773";
+const REPO = resolve(process.env.DUNGEON_IDLE ?? resolve(import.meta.dirname, "../../GitHub/dungeon-idle"));
+const ROOT = baseSnapshot(REPO, BASE_REF);
+
+/** O `src` do original na versão `ref`; sem git ou sem o commit, o repo como está. */
+function baseSnapshot(repo: string, ref: string): string {
+  if (ref === "HEAD" || !existsSync(resolve(repo, ".git"))) return repo;
+  const dir = join(tmpdir(), `dr-base-${ref.slice(0, 12)}`);
+  if (existsSync(resolve(dir, "src/data/spells.lua"))) return dir;
+  const tar = spawnSync("git", ["-C", repo, "archive", "--format=tar", ref, "src"], { maxBuffer: 256 << 20 });
+  if (tar.status !== 0) return repo;
+  mkdirSync(dir, { recursive: true });
+  const x = spawnSync("tar", ["-x", "-f", "-"], { cwd: dir, input: tar.stdout });
+  return x.status === 0 && existsSync(resolve(dir, "src/data/spells.lua")) ? dir : repo;
+}
 const LUAJIT = process.env.LUAJIT ?? "luajit";
 const MODULES = [
   "src.core.constants", "src.data.spells", "src.data.characters",

@@ -11,6 +11,8 @@ Uma tarefa do M6 ou do M19 só fica pronta quando as linhas dela estão em "igua
 
 **D18 (2026-11-20): paridade de conteúdo, não de regra de combate.** Nomes, identidades, receitas, relíquias, salas e a estrutura da partida seguem iguais. Números de combate e de ritmo (contagem e vida dos inimigos, duração das ondas, cura, áreas) passam a ser "adaptado" por padrão, ajustados jogando no marco `M21`; o valor do original continua aqui e no `tests/parity.test.ts` como referência, e o ajuste fica numa camada própria em `src/data`. Uma linha "adaptado" pela D17 não precisa de aceite caso a caso: o motivo é a D17.
 
+**Versão base (decisão do usuário, 2026-11-22):** a paridade é com o jogo base do Dungeon Reign como estava quando o porte começou, não com o que ele virar depois. O `tests/parity.test.ts` lê o original no commit `e2e8faf` (`BASE_REF`, o último antes do passe de balanceamento D-674), extraído por `git archive` numa pasta temporária; `DUNGEON_BASE=HEAD` lê o repo como está. Mudanças posteriores do original (D-674 em diante) não entram por paridade: o balanceamento daqui terá rodadas próprias (`M17`).
+
 ## Como a conferência funciona
 1. **Dados:** `tests/parity.test.ts` roda `tools/dr-dump.lua` no LuaJIT. Ele carrega os módulos de dados do original (`src.core.constants`, `src.data.spells`, `src.data.characters`) e devolve JSON, que o teste compara com `src/data`. Se um número mudar de um lado só, o `npm test` quebra. O teste pula se o repo (`DUNGEON_IDLE`, padrão `../GitHub/dungeon-idle`) ou o `luajit` (`LUAJIT`) não estiverem na máquina.
 2. **Regras:** as funções do núcleo daqui têm o nome e os retornos das de lá (`addSpell`, `levelUp`, `addModifier`, `candidates`), cada uma com teste do mesmo caso. Entra no `M6-01`.
