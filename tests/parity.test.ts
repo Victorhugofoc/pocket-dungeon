@@ -24,6 +24,7 @@ import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
 import { newRun } from "../src/core/run";
+import { relicDraft, relicDraftPool, relicDraftWeight } from "../src/core/relics";
 import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, POOL_TICK, ROOM_BIAS, ROOM_BY_ID, ROOMS, STORM } from "../src/data/rooms";
 import { generateMap, type MapRng } from "../src/core/runmap";
 import { ambushFor, biasedComposition, bossStats, killReward, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, stepWave, survivorReward, targetCount, waveMods } from "../src/core/wave";
@@ -263,7 +264,7 @@ function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
   // expressões longas vão por arquivo (`@caminho`): a linha de comando do Windows tem limite
   const dir = mkdtempSync(join(tmpdir(), "dr-dump-"));
-  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE, HERO_LIFE].map((code, i) => {
+  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE, HERO_LIFE, RELIC_LIFE].map((code, i) => {
     if (code.length < 2000) return code;
     const f = join(dir, `arg${i}.lua`);
     writeFileSync(f, code);
@@ -355,6 +356,47 @@ const SPELL_LIFE = `=(function()
     for _, k in ipairs(fields) do if type(st[k]) == "number" then o[k] = st[k] end end
     if st.spread then o.spreadRadius, o.spreadStacks = st.spread.radius, st.spread.stacks end
     out[i] = o
+  end
+  return out
+end)()`;
+
+/** Cenários do sorteio de relíquia (M12-10): herói, spells, relíquias que tem e banidas, tags e os números do sorteio. */
+const RELIC_SCEN = (() => {
+  let x = 4242;
+  const rnd = () => { x = (x * 16807) % 2147483647; return x / 2147483647; };
+  const normal = RELIC_IDS.filter((id) => ["core", "component", "spell", "keystone"].includes(RELICS[id].category));
+  const some = (list: readonly string[], p: number) => list.filter(() => rnd() < p);
+  const els = ["fire", "ice", "lightning", "arcane", "auto", "dodge"];
+  return Array.from({ length: 60 }, (_, k) => {
+    const hero = HERO_ORDER[k % HERO_ORDER.length];
+    const a = SPELL_ORDER[Math.floor(rnd() * SPELL_ORDER.length)], b = SPELL_ORDER[Math.floor(rnd() * SPELL_ORDER.length)];
+    const spells = (k % 3 === 0 ? [a] : a === b ? [a] : [a, b]).map((id) => ({ id,
+      evolution: k % 5 === 4 ? (SPELLS[id].evolutions[0] ?? null) : null }));
+    const owned = some(normal, k % 4 === 3 ? 0.6 : 0.15);
+    const banned = some(normal.filter((id) => !owned.includes(id)), 0.03);
+    const tags = Object.fromEntries(some(els, 0.3).map((t) => [t, 1 + Math.floor(rnd() * 3)]));
+    return { hero, spells, owned, banned, tags, n: k % 6 === 5 ? 8 : 3, u: Array.from({ length: 24 }, rnd) };
+  });
+})();
+const RELIC_LIFE = `=(function()
+  package.loaded["src.relics.relic_system"] = nil -- o cenário da loja troca o \`draft\` por um vazio
+  local RS, R = require("src.relics.relic_system"), require("src.core.rng")
+  require("src.core.unlocks").ALL = true
+  local out = { order = {}, draws = {} }
+  for i, d in ipairs(require("src.data.relics").list) do out.order[i] = d.id end
+  for i, sc in ipairs({${RELIC_SCEN.map((c) => `{ hero = ${luaStr(c.hero)}, n = ${c.n}, u = {${c.u.join(",")}},
+    tech = ${luaStr(HEROES[c.hero].technique.id)},
+    spells = {${c.spells.map((sp) => `{ id = ${luaStr(sp.id)}${sp.evolution ? `, evolution = ${luaStr(sp.evolution)}` : ""} }`).join(",")}},
+    relics = {${c.owned.map(luaStr).join(",")}}, banned = {${c.banned.map(luaStr).join(",")}},
+    tags = {${Object.entries(c.tags).map(([t, v]) => `${t} = ${v}`).join(",")}} }`).join(",")}}) do
+    local j = 0
+    local rng = setmetatable({ random = function() j = j + 1 return sc.u[((j - 1) % #sc.u) + 1] end }, { __index = R })
+    local banned = {}
+    for _, id in ipairs(sc.banned) do banned[id] = true end
+    local spells = { [0] = { id = sc.tech } }
+    for k, sp in ipairs(sc.spells) do spells[k] = sp end
+    local run = { characterId = sc.hero, relics = sc.relics, bannedRelics = banned, spells = spells, tags = sc.tags }
+    out.draws[i] = RS.draft(run, rng, sc.n)
   end
   return out
 end)()`;
@@ -1049,7 +1091,7 @@ describe.skipIf(!dr)("paridade da Magic Shop com o Dungeon Reign (M7-03)", () =>
       const run = newRun({ heroId: HERO_ORDER[0], difficultyId: "normal", startingSpell: HEROES[HERO_ORDER[0]].startingSpells[0], randomSeed: 1 });
       run.spells = sc.spells.map((s) => ({ id: s.id, level: s.level, modifiers: [...s.mods], evolution: null }));
       run.technique.level = sc.tech;
-      const v = rollShop(run, scripted(sc.u), 7, [], sc.size);
+      const v = rollShop(run, scripted(sc.u), 7, () => undefined, sc.size);
       const got = v.offers.map((o) => Object.fromEntries(Object.entries({ kind: o.kind, spell: o.spell, modifier: o.modifier })
         .filter(([, x]) => x !== undefined)));
       expect(got, `#${i}`).toEqual(L.rolls[i] ?? []);
@@ -1059,6 +1101,29 @@ describe.skipIf(!dr)("paridade da Magic Shop com o Dungeon Reign (M7-03)", () =>
 
 describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () => {
   const RL: Lua = dr?.["src.data.relics"];
+
+  it("a ordem das relíquias é a de relics.lua (o sorteio percorre a lista nessa ordem)", () => {
+    expect(RELIC_IDS).toEqual((dr![RELIC_LIFE].order as string[]).filter((id) => RELICS[id]));
+  });
+
+  it(`sorteio de relíquia igual ao de relic_system.lua draft em ${RELIC_SCEN.length} cenários (M12-10)`, () => {
+    const L = dr![RELIC_LIFE];
+    const seen = new Set<number>();
+    RELIC_SCEN.forEach((sc, i) => {
+      const run = newRun({ heroId: sc.hero, difficultyId: "normal", startingSpell: HEROES[sc.hero].startingSpells[0], randomSeed: 1 });
+      run.spells = sc.spells.map((sp) => ({ id: sp.id, level: 1, modifiers: [], evolution: sp.evolution }));
+      run.relics = [...sc.owned];
+      run.bannedRelics = [...sc.banned];
+      run.tags = { ...sc.tags };
+      let j = 0;
+      const got = relicDraft(run, () => true, () => sc.u[j++ % sc.u.length], sc.n);
+      const lua = L.draws[i];
+      expect(got, `#${i}`).toEqual(Array.isArray(lua) ? lua : []);
+      for (const id of relicDraftPool(run, () => true)) seen.add(relicDraftWeight(run, id));
+    });
+    // os cenários passam pelos pesos: receita (3), fora da build (0,25), peça sem a spell (1/3 e 0)
+    for (const w of [3, 0.25, 1 / 3, 0]) expect(seen.has(w), String(w)).toBe(true);
+  });
 
   it("nome, categoria, raridade, tags e spell de cada relíquia iguais aos de relics.lua", () => {
     for (const id of RELIC_IDS) {

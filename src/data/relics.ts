@@ -294,6 +294,29 @@ const list: RelicDef[] = [
     effects: [e("arcanePct", 0.20), e("echoChance", 0.15)], tags: ["arcane", "magic"], color: 0x7a3aff }),
 ];
 
+/**
+ * A ordem de `R.list` em relics.lua (só as que existem aqui): o sorteio percorre a lista nessa ordem, então ela
+ * precisa ser a mesma para a mesma seed dar as mesmas ofertas (M12-10; `parity.test.ts` confere).
+ */
+const LUA_ORDER: readonly string[] = [
+  "blood_pact", "arcane_core", "hunters_eye", "ember_heart", "frost_crown", "storm_prism", "greedy_soul", "glass_cannon", "living_moss",
+  "mirror_veil", "aegis_heart", "veiled_step", "phantom_ward", "bulwark_core", "renewing_heart", "evasion_circuit", "ember_spurs",
+  "glacial_shell", "storm_step", "aether_thread", "duelist_seal", "evasion_cloak", "grave_locket", "cinder_lens", "frost_heart",
+  "storm_coil", "aether_focus", "vital_spark", "duelist_gloves", "warding_mirror", "scavenger_badge", "astral_prism", "titan_sigil",
+  "duelist_crown", "gale_feather", "storm_vane", "binding_chalk", "scribes_quill", "cut_crystal", "sunstone", "geode_heart",
+  "tremor_boots", "pyro_lens", "frost_lens", "storm_lens", "aether_lens", "sanctuary_lens", "glass_throne", "arcane_dominion",
+  "war_machine_core", "blood_engine", "elemental_convergence", "warlords_fang", "hunters_mark", "kingbreaker", "infernal_crown",
+  "frost_throne", "tempest_crown", "royal_arcane_core", "blood_crown", "berserkers_brand", "bloodrush_medallion", "deadeye_sigil",
+  "predator_lens", "tempest_core", "storm_lens_boss", "earthheart", "breaker_core", "venom_eye", "brood_heart", "soulward_crown",
+  "gravebound_core", "smoldering_brand", "pyre_sigil", "rime_charm", "glacier_sigil", "conduit_ring", "thunder_sigil", "rune_charm",
+  "arcanum_sigil", "spellblade_sigil", "runic_gauntlet", "arcane_conductor", "echo_stone", "kindling_charm", "stormglass",
+  "mana_battery", "focus_crystal", "battlemage_plate", "spellthief_ring", "seers_monocle", "prismatic_core", "momentum", "prism_cycle",
+  "merchants_ledger", "pilgrims_charm", "gamblers_coin", "wanderers_map", "champions_trophy", "ambushers_fang", "warlords_plate",
+  "stormbreaker_sigil", "kill_streak", "last_rites", "bleeding_crown", "hollow_hourglass", "hoarders_crown", "berserkers_oath",
+  "glass_aegis", "starved_grimoire", "oathbound_blade", "covenant_heart", "infernal_contract", "void_covenant",
+];
+list.sort((a, b) => LUA_ORDER.indexOf(a.id) - LUA_ORDER.indexOf(b.id));
+
 export const RELICS: Record<string, RelicDef> = Object.fromEntries(list.map((r) => [r.id, r]));
 export const RELIC_IDS: string[] = list.map((r) => r.id);
 
@@ -335,6 +358,19 @@ export const RELIC_MECH = {
 
 /** run_drafts.lua `openPoolDraft`: a escolha da exclusiva é 1 de 2 */
 export const POOL_RELIC_CHOICES = 2;
+
+/**
+ * relic_system.lua `draft` e `ban` (§40, D-053, D-148, D-197, D-570): pesos da raridade no sorteio normal, peso das
+ * relíquias da receita de uma spell equipada, peso da peça de uma spell que o herói não tem (com espaço livre; sem
+ * espaço, zero), quantas relíquias se bane por partida e quantas o sorteio de reposição tira para achar uma nova.
+ */
+export const RELIC_DRAFT = {
+  rarityWeights: { uncommon: 65, rare: 30, epic: 5 } as Readonly<Partial<Record<RelicRarity, number>>>,
+  recipeWeight: 3,
+  missingSpellWeight: 1 / 3,
+  banLimit: 2,
+  replaceDraw: 8,
+} as const;
 /** relics.lua `POOL_NAMES` (en.lua): título da escolha de cada pool */
 export const POOL_TITLE: Readonly<Record<RelicPool, string>> = {
   event: "Event Relic", risk: "Risk Relic", curse: "Curse Relic", pact: "Pact Relic",

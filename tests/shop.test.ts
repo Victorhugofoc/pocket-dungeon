@@ -17,7 +17,7 @@ describe("Magic Shop (M7-03)", () => {
     const run = run0();
     const rng = new RunRng(run.seed).get("shop");
     for (let i = 0; i < 50; i++) {
-      const v = rollShop(run, rng, 6, ["blood_pact", "arcane_core"]);
+      const v = rollShop(run, rng, 6, () => "blood_pact");
       expect(v.level).toBe(2);
       expect(v.offers.length).toBe(4);
       expect(v.offers[0].kind).toBe("spell_upgrade");
@@ -30,8 +30,8 @@ describe("Magic Shop (M7-03)", () => {
 
   it("mesma seed, mesmas ofertas", () => {
     const a = run0(), b = run0();
-    const va = rollShop(a, new RunRng(a.seed).get("shop"), 3, ["blood_pact"]);
-    const vb = rollShop(b, new RunRng(b.seed).get("shop"), 3, ["blood_pact"]);
+    const va = rollShop(a, new RunRng(a.seed).get("shop"), 3, () => "blood_pact");
+    const vb = rollShop(b, new RunRng(b.seed).get("shop"), 3, () => "blood_pact");
     expect(va.offers).toEqual(vb.offers);
   });
 
@@ -112,15 +112,15 @@ describe("Magic Shop (M7-03)", () => {
   it("troca: 25 × nível, dobrando na visita; troca tudo e não conta visita", () => {
     const run = run0();
     const rng = new RunRng(run.seed).get("shop");
-    const v = rollShop(run, rng, 11, ["blood_pact"]);
+    const v = rollShop(run, rng, 11, () => "blood_pact");
     expect(rerollCost(v)).toBe(75);
     v.offers[0].bought = true;
-    expect(rerollShop(run, v, rng, ["blood_pact"])).toEqual({ ok: true, cost: 75 });
+    expect(rerollShop(run, v, rng, () => "blood_pact")).toEqual({ ok: true, cost: 75 });
     expect(v.offers.every((o) => !o.bought)).toBe(true);
     expect(rerollCost(v)).toBe(150);
     expect(run.shop.visits).toBe(1);
     run.gold = 100;
-    expect(rerollShop(run, v, rng, ["blood_pact"])).toEqual({ ok: false, reason: SHOP_REASONS.noGold });
+    expect(rerollShop(run, v, rng, () => "blood_pact")).toEqual({ ok: false, reason: SHOP_REASONS.noGold });
   });
 
   it("técnica (M7-05, S19): entra como melhoria, sobe até o 5 (evolução) e sai das ofertas", () => {

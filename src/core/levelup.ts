@@ -84,7 +84,7 @@ export function hasElement(run: RunState, el: string): boolean {
 }
 
 /** build_fit.lua `elementsOf`: elementos que a melhoria empurra (efeito positivo de elemento, ou tag de elemento). */
-export function elementsOf(u: UpgradeDef): string[] {
+export function elementsOf(u: { effects: readonly { stat: string; value: number }[]; tags: readonly string[] }): string[] {
   const out: string[] = [];
   for (const e of u.effects) {
     for (const [el, stat] of Object.entries(BUILD_FIT.elements)) if (e.stat === stat && e.value > 0) out.push(el);

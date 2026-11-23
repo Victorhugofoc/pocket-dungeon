@@ -27,7 +27,9 @@ import { ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
 import type { MapCard } from "../core/runmap";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
-import type { Game } from "../game/game";
+import type { Game, RelicBan } from "../game/game";
+import { relicBansLeft } from "../core/relics";
+import { attackLine, barsHtml, initials } from "./heroselect";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const QUALITY = ["low", "medium", "high"];
@@ -177,6 +179,8 @@ export class Ui {
   private selectedDifficulty: DifficultyId = "normal";
   private selectedSpell = "";
   private seedText = "";
+  /** o teclado da tela de seleção (setas, 1 a 4, Enter, Esc), enquanto ela está aberta */
+  private titleKeys: ((code: string) => void) | null = null;
   private storage = safeStorage();
   private r: Record<string, HTMLElement> = {};
 
@@ -187,7 +191,7 @@ export class Ui {
     this.buildHud();
     game.events = {
       toast: (m, c) => this.toast(m, c),
-      relicChoice: (ids, pick, title) => this.showRelicChoice(ids, pick, title),
+      relicChoice: (ids, pick, title, ban) => this.showRelicChoice(ids, pick, title, ban),
       levelUp: () => this.showLevelUp(),
       evolution: () => this.showEvolution(),
       shop: () => this.showShop(),
@@ -237,7 +241,13 @@ export class Ui {
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (!this.game.started || e.repeat) return;
+    if (e.repeat) return;
+    if (this.overlayKind === "title" && this.titleKeys) {
+      if (e.code.startsWith("Arrow") || e.code === "Enter") e.preventDefault();
+      this.titleKeys(e.code);
+      return;
+    }
+    if (!this.game.started) return;
     const k = e.code;
     // a loja: Esc sai, R troca as ofertas (shop.lua); o resto fica preso como nas outras escolhas
     if (this.overlayKind === "shop") {
@@ -283,7 +293,11 @@ export class Ui {
   }
 
   // ---------------------------------------------------------------- título e início da partida (run_setup.lua)
-  /** Passo 1 de 3: herói (e continuar a partida salva). */
+  /**
+   * Tela de seleção (M14-08 parte 1): herói, dificuldade, spell inicial e seed numa tela só, e o atalho de continuar.
+   * Esquerda, os 9 retratos; centro, o palco (o 3D chega na parte 2); direita, papel, barras, ataque, técnica e
+   * recordes. Teclado: setas trocam o herói, 1 a 4 a spell, Enter começa, Esc desfaz a confirmação.
+   */
   private showTitle(): void {
     this.game.stop();
     this.hud.classList.add("hidden");
@@ -297,164 +311,163 @@ export class Ui {
     const runLog = loadRunLog(this.storage).length;
     const ach = this.game.ach.state;
     const open = (id: string) => isOpen(ach, "hero", id, TUNING.unlockAll);
-    if (!open(this.selectedHero)) this.selectedHero = HERO_ORDER.find(open) ?? HERO_ORDER[0];
+    if (!(HERO_ORDER as readonly string[]).includes(this.selectedHero)) this.selectedHero = HERO_ORDER.find(open) ?? HERO_ORDER[0];
+    this.confirmNew = "";
+    let seedErr = "";
     /** unlocks.lua `condition`: o que falta para liberar ("???" se a conquista é secreta) */
     const lockText = (id: string) => {
       const a = unlockCondition("hero", id);
       if (!a) return "";
-      if (isSecret(ach, "hero", id)) return "Locked · ???";
+      if (isSecret(ach, "hero", id)) return "???";
       const p = progress(ach, a, rec.kills);
-      return `Locked · ${a.text}${p ? ` (${Math.min(p.current, p.goal).toLocaleString("en-US")} / ${p.goal.toLocaleString("en-US")})` : ""}`;
+      return `${a.text}${p ? ` (${Math.min(p.current, p.goal).toLocaleString("en-US")} / ${p.goal.toLocaleString("en-US")})` : ""}`;
     };
+    const MEDAL = ["", "Easy", "Normal", "Hard"];
     const render = () => {
       const h = HEROES[this.selectedHero];
+      if (!h.startingSpells.includes(this.selectedSpell as SpellId)) this.selectedSpell = h.startingSpells[0];
+      const locked = !open(h.id);
       const best = DIFFICULTY_ORDER.flatMap((d) => {
         const b = rec.best[`${h.id}/${d}`];
-        return b ? [`${DIFFICULTIES[d].name}: wave ${b.wave}${b.victory ? " (victory)" : ""}`] : [];
+        return b ? [`<li><b>${DIFFICULTIES[d].name}</b> wave ${b.wave}${b.victory ? " · victory" : ""}</li>`] : [];
       });
+      const medal = ach.medals[h.id] ?? 0;
+      const confirming = this.confirmNew === h.id;
+      const records = rec.runs
+        ? `${rec.runs} runs · ${rec.wins} wins · best wave ${rec.highestWave}${rec.bestEndless ? ` · endless to wave ${rec.bestEndless}` : ""} · ${rec.kills} kills · ${achievementCount(ach)} of ${ACHIEVEMENTS.length} achievements`
+        : "Action RPG · procedural maps, one hero, waves and bosses";
+      const roster = HERO_ORDER.map((id) => {
+        const d = HEROES[id];
+        const lk = !open(id);
+        const tip = lk ? `Locked · ${lockText(id)}` : `${d.name} · ${d.title}`;
+        return `<button class="hs-portrait ${id === h.id ? "sel" : ""} ${lk ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}" title="${tip}">
+          <span class="face">${lk ? "🔒" : initials(d)}</span><span class="nm">${lk ? "???" : d.name}</span>
+          ${isNew(ach, "hero", id) ? `<em class="new">NEW</em>` : ""}</button>`;
+      }).join("");
+      const info = locked ? `<p class="note">This hero is still locked.</p>` : `
+        <div class="hs-role">${h.identity}</div>
+        ${barsHtml(h.id)}
+        <div class="section">Attack</div><p class="hs-line">${attackLine(h)}</p>
+        ${heroKit(h, h.technique.cooldown)}
+        <div class="section">Records</div>
+        <ul class="hs-rec">${best.length ? best.join("") : `<li class="note">No runs with this hero yet</li>`}
+          ${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}</ul>`;
+      const diffs = DIFFICULTY_ORDER.map((id) => {
+        const d = DIFFICULTIES[id];
+        const tip = `${DIFFICULTY_TEXT[id]} Enemy HP x${d.enemyHp.toFixed(2)} · enemy damage x${d.enemyDamage.toFixed(2)} · reward x${d.reward.toFixed(2)}`;
+        return `<button class="${id === this.selectedDifficulty ? "sel" : ""}" data-diff="${id}" style="--cc:${DIFF_COLOR[id]}" title="${tip}">${d.name}</button>`;
+      }).join("");
+      const spells = h.startingSpells.map((id, i) => `<button class="${id === this.selectedSpell ? "sel" : ""}" data-spell="${id}"
+        title="${SPELL_TEXT[id]}"><span>${SPELL_ICON[id] ?? "✦"}</span>${spellName(id)}<kbd>${i + 1}</kbd></button>`).join("");
       panel.innerHTML = `
-        <h1>DUNGEON REIGN</h1>
-        <p class="tag">Action RPG · prototype 0.3 · procedural maps, one hero, waves and bosses</p>
-        ${save ? `<div class="continue"><button class="primary" data-act="continue" style="padding:12px 30px;font-size:16px">
-          Continue — ${HEROES[save.run.heroId]?.name ?? "?"} · ${DIFFICULTIES[save.run.difficultyId].name} · wave ${save.wave} · level ${save.run.level} · seed ${save.run.seedCode}</button></div>` : ""}
-        ${rec.runs ? `<p class="tag" style="margin:-8px 0 14px">${rec.runs} runs · ${rec.wins} wins · best wave ${rec.highestWave}${rec.bestEndless ? ` · endless to wave ${rec.bestEndless}` : ""} · ${rec.kills} kills · ${achievementCount(ach)} of ${ACHIEVEMENTS.length} achievements</p>` : ""}
-        ${runLog ? `<p class="tag" style="margin:-8px 0 14px"><button data-act="runlog">Export run log (${runLog} ${runLog === 1 ? "run" : "runs"})</button></p>` : ""}
-        <div class="section">Step 1 of 3 · ${save ? "choose the hero for a new run (ends the current one)" : "choose your hero"}</div>
-        <div class="heroes">${HERO_ORDER.map((id) => {
-          const d = HEROES[id];
-          const locked = !open(id);
-          return `<div class="hero-card ${id === this.selectedHero ? "sel" : ""} ${locked ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}">
-            <div class="swatch"></div><b>${d.name}${isNew(ach, "hero", id) ? ` <em class="new">NEW</em>` : ""}</b><i>${d.title}</i>
-            <span>${locked ? lockText(id) : d.identity}</span></div>`;
-        }).join("")}</div>
-        <div class="hero-detail" style="--hc:${hex(h.color)}">
-          <h3 style="color:${hex(h.color)}">${h.name} — ${h.title}</h3>
-          ${heroKit(h, h.technique.cooldown)}
-          <p style="color:var(--muted)">${statLines(h.stats).replace(/<div class="st">/g, "").replace(/<\/div>/g, " · ").replace(/ · $/, "")}</p>
-          ${best.length ? `<p style="color:var(--gold)">Best: ${best.join(" · ")}</p>` : ""}
+        <header class="hs-top">
+          <div><h1>DUNGEON REIGN</h1><p class="tag">${records}</p></div>
+          <div class="hs-top-actions">
+            ${save ? `<button class="primary" data-act="continue">Continue · ${HEROES[save.run.heroId]?.name ?? "?"} · ${DIFFICULTIES[save.run.difficultyId].name} · wave ${save.wave} · Lv ${save.run.level}</button>` : ""}
+            ${runLog ? `<button data-act="runlog">Export run log (${runLog})</button>` : ""}
+          </div>
+        </header>
+        <div class="hs-main">
+          <div class="hs-roster">${roster}</div>
+          <div class="hs-stage ${locked ? "locked" : ""}" style="--hc:${hex(h.color)}">
+            <div class="hs-name"><h2>${locked ? "Locked" : h.name}</h2><p>${locked ? "" : h.title}</p></div>
+            <div class="hs-floor" data-r="stage"></div>
+            ${locked ? `<p class="hs-lock">Unlock: ${lockText(h.id)}</p>` : ""}
+          </div>
+          <div class="hs-info" style="--hc:${hex(h.color)}">${info}</div>
         </div>
-        <div class="title-actions"><button class="primary" data-act="next">Continue with ${h.name} ›</button></div>`;
+        <footer class="hs-setup ${locked ? "off" : ""}">
+          <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div></div>
+          <div class="hs-group"><div class="section">Starting spell <small>· others come from the shop and upgrades</small></div>
+            <div class="hs-spells">${spells}</div></div>
+          <div class="hs-group"><div class="section">Seed</div>
+            <input class="seed" data-r="seed" maxlength="24" placeholder="Random" value="${this.seedText}" spellcheck="false"
+              title="Same seed = same map, rooms, relics and bosses. Paste a run's 7-letter code or type any word. Empty = random.">
+            ${seedErr ? `<p class="bad">${seedErr}</p>` : ""}</div>
+          <div class="hs-go"><button class="primary ${confirming ? "danger" : ""}" data-act="go" ${locked ? "disabled" : ""}>${
+            confirming ? "This ends the current run. Start again to confirm" : "Start the run"}</button></div>
+        </footer>
+        <p class="hs-keys">Arrows: hero · 1-4: starting spell · Enter: start · Esc: cancel</p>`;
+      const input = panel.querySelector<HTMLInputElement>("[data-r=seed]")!;
+      input.oninput = () => (this.seedText = input.value.toUpperCase());
+      input.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") go();
+        else if (e.key === "Escape") input.blur();
+      };
+    };
+    const select = (id: string) => {
+      if (id === this.selectedHero) return;
+      this.selectedHero = id;
+      this.confirmNew = "";
+      seedErr = "";
+      if (open(id) && markFreshSeen(ach, "hero", id)) this.game.saveAchievements();
+      render();
+    };
+    const go = () => {
+      const h = HEROES[this.selectedHero];
+      if (!open(h.id)) return;
+      const code = this.seedText.trim();
+      if (code && decodeSeed(code) === null) {
+        seedErr = "Invalid seed: use letters and numbers.";
+        render();
+        return;
+      }
+      // confirmação em dois cliques (sem confirm(): alguns ambientes bloqueiam diálogos)
+      if (save && this.confirmNew !== h.id) {
+        this.confirmNew = h.id;
+        render();
+        return;
+      }
+      this.confirmNew = "";
+      this.titleKeys = null;
+      this.newRunWith({ heroId: h.id, difficultyId: this.selectedDifficulty, startingSpell: this.selectedSpell },
+        code ? decodeSeed(code)! : undefined);
     };
     render();
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
-      const card = t.closest<HTMLElement>("[data-hero]");
-      if (card) {
-        const id = card.dataset.hero!;
-        if (!open(id)) return;
-        this.selectedHero = id;
-        if (markFreshSeen(ach, "hero", id)) this.game.saveAchievements();
-        this.confirmNew = "";
-        render();
-        return;
+      const hero = t.closest<HTMLElement>("[data-hero]")?.dataset.hero;
+      if (hero) return select(hero);
+      const diff = t.closest<HTMLElement>("[data-diff]")?.dataset.diff;
+      if (diff) {
+        this.selectedDifficulty = diff as DifficultyId;
+        return render();
+      }
+      const spell = t.closest<HTMLElement>("[data-spell]")?.dataset.spell;
+      if (spell) {
+        this.selectedSpell = spell;
+        return render();
       }
       const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
       if (act === "runlog") {
         const n = downloadRunLog(this.storage);
         this.toast(`Run log exported (${n} runs)`, "#9be4ff");
       } else if (act === "continue" && save) {
+        this.titleKeys = null;
         const c = continueRun(save);
         this.begin(c.run, c.rng);
-      } else if (act === "next") {
-        // confirmação em dois cliques (sem confirm(): alguns ambientes bloqueiam diálogos)
-        if (save && this.confirmNew !== this.selectedHero) {
-          this.confirmNew = this.selectedHero;
-          const b = t.closest<HTMLElement>("[data-act]")!;
-          b.textContent = "This ends the current run. Click again to confirm";
-          b.classList.add("danger");
-          return;
+      } else if (act === "go") go();
+    };
+    // setas andam na grade de 3 colunas dos retratos
+    this.titleKeys = (k) => {
+      const i = (HERO_ORDER as readonly string[]).indexOf(this.selectedHero);
+      const n = HERO_ORDER.length;
+      const step: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 };
+      if (step[k] !== undefined) return select(HERO_ORDER[(i + step[k] + n) % n]);
+      const num = /^(?:Digit|Numpad)([1-4])$/.exec(k);
+      if (num) {
+        const id = HEROES[this.selectedHero].startingSpells[Number(num[1]) - 1];
+        if (id && open(this.selectedHero)) {
+          this.selectedSpell = id;
+          render();
         }
+        return;
+      }
+      if (k === "Enter" || k === "NumpadEnter") go();
+      else if (k === "Escape" && this.confirmNew) {
         this.confirmNew = "";
-        this.seedText = "";
-        this.showDifficulty();
-      }
-    };
-  }
-
-  /** Passo 2 de 3: dificuldade e seed (vazia = aleatória). */
-  private showDifficulty(): void {
-    const panel = this.open("title", "title");
-    const h = HEROES[this.selectedHero];
-    const x = (v: number) => `x${v.toFixed(2)}`;
-    const render = (err = "") => {
-      panel.innerHTML = `
-        <div class="section">Step 2 of 3 · difficulty · hero: ${h.name}</div>
-        <div class="cards">${DIFFICULTY_ORDER.map((id) => {
-          const d = DIFFICULTIES[id];
-          const sel = id === this.selectedDifficulty;
-          return `<div class="card" data-diff="${id}" style="--cc:${DIFF_COLOR[id]};${sel ? "border-color:var(--cc)" : ""}">
-            <h3>${d.name}</h3><p>${DIFFICULTY_TEXT[id]}</p>
-            <p class="note">Enemy HP ${x(d.enemyHp)} · enemy damage ${x(d.enemyDamage)} · enemy speed ${x(d.enemySpeed)}</p>
-            <p class="note">Boss HP ${x(d.bossHp)} · reward ${x(d.reward)}</p>
-            ${sel ? `<div class="meta" style="margin-top:6px">[ selected ]</div>` : ""}</div>`;
-        }).join("")}</div>
-        <div class="section">Seed</div>
-        <p class="note" style="color:var(--muted)">Same seed = same map, rooms, relics and bosses. Paste the 7-letter code of a run (pause or results) or type any word. Empty = random.</p>
-        <input class="seed" data-r="seed" maxlength="24" placeholder="Random" value="${this.seedText}" spellcheck="false">
-        ${err ? `<p style="color:var(--bad)">${err}</p>` : ""}
-        <div class="title-actions"><button data-act="back">‹ Back</button><button class="primary" data-act="next">Continue ›</button></div>`;
-      const input = panel.querySelector<HTMLInputElement>("[data-r=seed]")!;
-      input.oninput = () => (this.seedText = input.value.toUpperCase());
-      input.onkeydown = (e) => {
-        e.stopPropagation();
-        if (e.key === "Enter") next();
-      };
-    };
-    const next = () => {
-      const code = this.seedText.trim();
-      if (code && decodeSeed(code) === null) {
-        render("Invalid seed: use letters and numbers.");
-        return;
-      }
-      this.showStartingSpell();
-    };
-    render();
-    panel.onclick = (ev) => {
-      const t = ev.target as HTMLElement;
-      const card = t.closest<HTMLElement>("[data-diff]");
-      if (card) {
-        this.selectedDifficulty = card.dataset.diff as DifficultyId;
         render();
-        return;
-      }
-      const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
-      if (act === "back") this.showTitle();
-      else if (act === "next") next();
-    };
-  }
-
-  /** Passo 3 de 3: spell inicial, 1 das 4 do herói (spell_select.lua). */
-  private showStartingSpell(): void {
-    const panel = this.open("title", "title");
-    const h = HEROES[this.selectedHero];
-    if (!h.startingSpells.includes(this.selectedSpell as SpellId)) this.selectedSpell = h.startingSpells[0];
-    const render = () => {
-      panel.innerHTML = `
-        <div class="section">Step 3 of 3 · starting spell · ${h.name} · ${DIFFICULTIES[this.selectedDifficulty].name}</div>
-        <p class="note" style="color:var(--muted)">Other spells come from the shop and from upgrades.</p>
-        <div class="cards">${h.startingSpells.map((id) => {
-          const sel = id === this.selectedSpell;
-          return `<div class="card" data-spell="${id}" style="--cc:${hex(h.color)};${sel ? "border-color:var(--cc)" : ""}">
-            <h3>${spellName(id)}</h3><p>${SPELL_TEXT[id]}</p>
-            ${sel ? `<div class="meta" style="margin-top:6px">[ selected ]</div>` : ""}</div>`;
-        }).join("")}</div>
-        <div class="title-actions"><button data-act="back">‹ Back</button><button class="primary" data-act="go">Start the run</button></div>`;
-    };
-    render();
-    panel.onclick = (ev) => {
-      const t = ev.target as HTMLElement;
-      const card = t.closest<HTMLElement>("[data-spell]");
-      if (card) {
-        this.selectedSpell = card.dataset.spell!;
-        render();
-        return;
-      }
-      const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
-      if (act === "back") this.showDifficulty();
-      else if (act === "go") {
-        const code = this.seedText.trim();
-        this.newRunWith({ heroId: h.id, difficultyId: this.selectedDifficulty, startingSpell: this.selectedSpell },
-          code ? decodeSeed(code)! : undefined);
       }
     };
   }
@@ -923,20 +936,37 @@ export class Ui {
   }
 
   // ---------------------------------------------------------------- relíquia / pausa / morte
-  private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!"): void {
-    const panel = this.open("relic", "relic");
+  private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!", ban?: RelicBan): void {
+    const panel = this.overlayKind === "relic" ? (this.overlay!.firstChild as HTMLElement) : this.open("relic", "relic");
     panel.style.width = "min(820px, 96vw)";
     // D-197: a relíquia que evolui uma spell equipada (com a spell no nível 5)
     const wanted = wantedRelics(this.game.run);
-    panel.innerHTML = `<h2>${title}</h2><p class="sub">Choose a relic. The bonus is permanent.</p>
-      <div class="cards">${ids.map((id) => {
+    // D-148: banir tira a relíquia da partida e põe outra da mesma fonte no lugar (2 por partida)
+    const left = ban ? relicBansLeft(this.game.run) : 0;
+    const hint = ban ? ` · Ban removes the relic from the run · ${left} left` : "";
+    panel.innerHTML = `<h2>${title}</h2><p class="sub">Choose a relic. The bonus is permanent.${hint}</p>
+      <div class="cards relics">${ids.map((id, i) => {
         const d = RELICS[id];
         const evo = wanted[id] ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
+        const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
         return `<div class="card" data-relic="${id}" style="--cc:${hex(d.color)}"><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${relicLines(d)}${evo}</div>`;
+          <h3>${d.name}</h3>${relicLines(d)}${evo}${b}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
-      const id = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]")?.dataset.relic;
+      const t = ev.target as HTMLElement;
+      const bi = t.closest<HTMLElement>("[data-ban]")?.dataset.ban;
+      if (bi !== undefined) {
+        const next = ban?.(Number(bi), ids);
+        if (!next) return;
+        if (!next.length) {
+          // sem nada para pôr no lugar: a escolha acaba sem relíquia
+          this.close();
+          return;
+        }
+        this.showRelicChoice(next, pick, title, ban);
+        return;
+      }
+      const id = t.closest<HTMLElement>("[data-relic]")?.dataset.relic;
       if (!id) return;
       this.close();
       pick(id);
@@ -966,6 +996,11 @@ export class Ui {
       if (t.closest("[data-act=leave]")) return this.leaveShop();
       if (t.closest("[data-act=reroll]")) {
         g.rerollShop();
+        return;
+      }
+      const bi = t.closest<HTMLElement>("[data-ban]")?.dataset.ban;
+      if (bi !== undefined) {
+        if (g.banShopRelic(Number(bi))) this.toast("Relic banned for the rest of the run", "#ffd34d");
         return;
       }
       const i = t.closest<HTMLElement>("[data-offer]")?.dataset.offer;
@@ -1260,6 +1295,8 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     body = relicLines(d);
     const evo = wantedRelics(g.run)[o.relic!];
     if (evo) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
+    const left = relicBansLeft(g.run);
+    if (!o.bought) body += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
     color = hex(d.color);
   } else {
     const item = SHOP_ITEMS[o.kind];
