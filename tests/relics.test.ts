@@ -1,8 +1,10 @@
 // Motor de relíquias (core/relics.ts): posse com tags, fontes de atributo, efeitos de spell e despacho dos ganchos.
 import { describe, expect, it } from "vitest";
-import { bossRelicOffer, BURN_SPREAD, CAST_HEAL, FROSTBITE, GLASS_THRONE, grantRelic, prismSchool, PRISM_CYCLE, relicDraftable, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, type RelicFoe, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
+import { bossRelicOffer, hoardBonus, HOARD, KILL_STREAK, LAST_RITES, NO_COMBAT_HEAL, OATH, oathBonus, poolRelicDraft, BURN_SPREAD, CAST_HEAL, FROSTBITE, GLASS_THRONE, grantRelic, prismSchool, PRISM_CYCLE, relicDraftable, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, type RelicFoe, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
 import { newRun } from "../src/core/run";
 import { computeStats } from "../src/core/stats";
+import { evaluateOffer, type ShopVisit } from "../src/core/shop";
+import { enemyStats, waveMods } from "../src/core/wave";
 import { spellContext, spellStats } from "../src/core/spells";
 import { HEROES } from "../src/data/heroes";
 import { RELIC_IDS, RELIC_MECH, RELICS, type RelicDef } from "../src/data/relics";
@@ -11,7 +13,7 @@ const run = () => newRun({ heroId: "frostine", difficultyId: "normal", startingS
 
 const world = (over: Partial<RelicWorld> = {}): RelicWorld => ({
   time: 0, waveActive: true, hp: 50, maxHp: 100, gold: 0, moving: false, heal: () => {}, emit: () => {},
-  foes: () => [], stun: () => true, burn: () => {}, ...over,
+  foes: () => [], stun: () => true, burn: () => {}, areaHit: () => {}, ...over,
 });
 
 describe("relíquias: dados", () => {
@@ -337,5 +339,96 @@ describe("relíquias: lote 3 (M12-04)", () => {
     const u = bossRelicOffer(owned, "berserker", normal, 3, 0.1, 0.35, () => 0);
     expect(RELICS[u.premium!].category).toBe("boss");
     expect(RELICS[bossRelicOffer([], undefined, normal, 3, 0.1, 0.35, () => 0).premium!].category).toBe("boss");
+  });
+});
+
+describe("relíquias: lote 4, as exclusivas (M12-05)", () => {
+  const stats = (ids: string[]) => computeStats([HEROES.frostine.stats, ...relicSources(ids)]);
+  const foe = (over: Partial<RelicFoe> = {}): RelicFoe => ({ key: {}, x: 0, z: 0, boss: false, slowed: false, burn: null, ...over });
+  const POOLS = { event: 4, risk: 6, curse: 6, pact: 4 } as const;
+
+  it("20 exclusivas nos 4 pools, fora do sorteio normal e da loja", () => {
+    const ex = RELIC_IDS.filter((id) => RELICS[id].category === "exclusive");
+    expect(ex.length).toBe(20);
+    for (const [pool, n] of Object.entries(POOLS)) expect(ex.filter((id) => RELICS[id].pool === pool).length, pool).toBe(n);
+    for (const id of ex) expect(relicDraftable(id, []), id).toBe(false);
+    expect(RELIC_IDS.length).toBe(114);
+  });
+
+  it("sorteio do pool: só do pool, sem as que tem nem as fechadas; acabou, completa com raras e épicas", () => {
+    const pick = () => 0;
+    expect(poolRelicDraft("risk", [], () => true, [], 2, pick)).toEqual(["champions_trophy", "ambushers_fang"]);
+    expect(poolRelicDraft("risk", ["champions_trophy"], (id) => id !== "ambushers_fang", [], 2, pick)).toEqual(["warlords_plate", "stormbreaker_sigil"]);
+    const curse = RELIC_IDS.filter((id) => RELICS[id].pool === "curse");
+    const got = poolRelicDraft("curse", curse.slice(1), () => true, ["hunters_eye", "blood_pact", "glass_cannon"], 2, pick);
+    expect(got).toEqual([curse[0], "blood_pact"]);
+    expect(poolRelicDraft("pact", RELIC_IDS, () => true, [], 2, pick)).toEqual([]);
+  });
+
+  it("Kill Streak: +3% de ataque por abate, até 10; cai em 2,5 s sem abate ou ao levar golpe", () => {
+    const h = new RelicHooks([KILL_STREAK]);
+    h.refresh({ killStreak: 1 });
+    const w = world();
+    const kill = () => h.onKill(w, { ...foe(), maxHp: 10, champion: false });
+    for (let i = 0; i < 12; i++) kill();
+    expect(h.attackSpeedMult(w)).toBeCloseTo(1 + RELIC_MECH.streakStep * RELIC_MECH.streakMax);
+    expect(h.statuses(w)[0]).toMatchObject({ id: "streak", count: 10 });
+    h.tick(w, RELIC_MECH.streakWindow - 0.1);
+    expect(h.attackSpeedMult(w)).toBeGreaterThan(1);
+    h.tick(w, 0.2);
+    expect(h.attackSpeedMult(w)).toBe(1);
+    kill();
+    kill();
+    h.onPlayerHit(w, 0);
+    expect(h.attackSpeedMult(w)).toBeCloseTo(1.06);
+    h.onPlayerHit(w, 3);
+    expect(h.attackSpeedMult(w)).toBe(1);
+  });
+
+  it("Last Rites: o campeão explode com 30% da vida dele em volta, os comuns não", () => {
+    const hits: { dmg: number; except: object }[] = [];
+    const w = world({ areaHit: (_x, _z, _r, dmg, except) => { hits.push({ dmg, except }); } });
+    const h = new RelicHooks([LAST_RITES]);
+    h.refresh({ lastRites: 0.3 });
+    const champ = { ...foe(), maxHp: 200, champion: true };
+    h.onKill(w, { ...foe(), maxHp: 200, champion: false });
+    h.onKill(w, champ);
+    expect(hits).toEqual([{ dmg: 60, except: champ.key }]);
+  });
+
+  it("Hoarder's Crown: +1% a cada 100 de ouro, até 30%; a loja fica 20% mais cara", () => {
+    expect(hoardBonus(0.3, 99)).toBe(0);
+    expect(hoardBonus(0.3, 1250)).toBeCloseTo(0.12);
+    expect(hoardBonus(0.3, 9000)).toBe(0.3);
+    const h = new RelicHooks([HOARD]);
+    h.refresh({ hoardPct: 0.3 });
+    expect(h.damageMult(world({ gold: 500 }), { source: "auto", boss: false })).toBeCloseTo(1.05);
+    const s = stats(["hoarders_crown"]);
+    expect(s.shopPrice).toBeCloseTo(1.2);
+    const visit: ShopVisit = { level: 1, wave: 3, offers: [{ kind: "vitality", bought: false }], rerolls: 0, size: 1 };
+    const r = run();
+    const base = evaluateOffer(r, visit, visit.offers[0]).cost!;
+    expect(evaluateOffer(r, { ...visit, priceMult: s.shopPrice }, visit.offers[0]).cost).toBe(Math.floor(base * 1.2));
+  });
+
+  it("Berserker's Oath: +3% a cada 10% de vida perdida; sem cura durante a onda", () => {
+    expect(oathBonus(0.03, 100, 100)).toBe(0);
+    expect(oathBonus(0.03, 70, 100)).toBeCloseTo(0.09);
+    expect(oathBonus(0.03, 65, 100)).toBeCloseTo(0.09);
+    const h = new RelicHooks([OATH, NO_COMBAT_HEAL]);
+    h.refresh({ oathPct: 0.03, noCombatHeal: 1 });
+    expect(h.damageMult(world({ hp: 50, maxHp: 100 }), { source: "auto", boss: false })).toBeCloseTo(1.15);
+    expect(h.blocksHeal(world({ waveActive: true }))).toBe(true);
+    expect(h.blocksHeal(world({ waveActive: false }))).toBe(false);
+  });
+
+  it("Champion's Trophy e Last Rites deixam o campeão com mais vida", () => {
+    const s = stats(["champions_trophy", "last_rites"]);
+    const mods = waveMods(5, "normal");
+    const base = enemyStats({ hp: 20, damage: 5 }, 5, mods, true).hp;
+    expect(enemyStats({ hp: 20, damage: 5 }, 5, { ...mods, championHp: s.championHp }, true).hp).toBeCloseTo(base * s.championHp);
+    expect(enemyStats({ hp: 20, damage: 5 }, 5, { ...mods, championHp: s.championHp }, false).hp)
+      .toBeCloseTo(enemyStats({ hp: 20, damage: 5 }, 5, mods, false).hp);
+    expect(s.championHp).toBeGreaterThan(1.2);
   });
 });

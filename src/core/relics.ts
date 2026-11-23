@@ -5,7 +5,7 @@
 // - Ganchos: as relíquias que mudam o jogo (não só somam atributo) são mecânicas ligadas por um atributo próprio,
 //   como em relic_mechanics.lua; o jogo chama `RelicHooks` nos pontos de evento (quadro, abate, golpe sofrido,
 //   conjuração, nível, dano causado, cura) e elas respondem pelo `RelicWorld`.
-import { inNormalPool, RELIC_MECH, RELICS, type RelicDef } from "../data/relics";
+import { inNormalPool, RELIC_MECH, RELICS, type RelicDef, type RelicPool } from "../data/relics";
 import type { SpellEffect } from "../data/spells";
 import type { StatBlock, StatKey } from "./stats";
 import type { RunState } from "./run";
@@ -99,6 +99,8 @@ export interface RelicWorld {
   stun(foe: RelicFoe, seconds: number): boolean;
   /** aplica queimadura pelas regras de status (uma só por inimigo) */
   burn(foe: RelicFoe, dps: number, seconds: number): void;
+  /** dano em área do herói (behaviors.lua `areaHit` + `Damage.toEnemy`), menos em `except`; `source` é a fonte do golpe */
+  areaHit(x: number, z: number, radius: number, damage: number, except: object, source: string): void;
   /** aviso para efeito e som (o nome é o do evento de lá, como `burn_spread`) */
   emit(event: string, data?: Record<string, unknown>): void;
 }
@@ -134,6 +136,8 @@ export interface RelicStatus {
   id: string;
   left: number;
   total: number;
+  /** contagem mostrada no ícone (Kill Streak) */
+  count?: number;
 }
 
 /**
@@ -272,9 +276,97 @@ export const PRISM_CYCLE: RelicMechanic<Record<string, never>> = {
   },
 };
 
+/**
+ * relic_mechanics.lua KILL STREAK (D-433): cada abate soma um (até 10) e dá +3% de velocidade de ataque por acúmulo;
+ * a sequência cai sem abate em 2,5 s ou ao levar um golpe.
+ */
+export const KILL_STREAK: RelicMechanic<{ n: number; left: number }> = {
+  id: "kill_streak", stat: "killStreak", init: () => ({ n: 0, left: 0 }),
+  tick: (s, _v, _w, dt) => {
+    if (s.n <= 0) return;
+    s.left -= dt;
+    if (s.left <= 0) s.n = 0;
+  },
+  onKill: (s) => {
+    s.n = Math.min(RELIC_MECH.streakMax, s.n + 1);
+    s.left = RELIC_MECH.streakWindow;
+  },
+  onPlayerHit: (s, _v, _w, dealt) => {
+    if (dealt > 0) s.n = 0;
+  },
+  attackSpeedMult: (s) => 1 + RELIC_MECH.streakStep * s.n,
+  status: (s) => (s.n > 0 ? { id: "streak", left: s.left, total: RELIC_MECH.streakWindow, count: s.n } : null),
+};
+
+/** relic_mechanics.lua LAST RITES (D-433): o campeão que morre explode com `v` da vida máxima dele em volta (90 px). */
+export const LAST_RITES: RelicMechanic<Record<string, never>> = {
+  id: "last_rites", stat: "lastRites", init: () => ({}),
+  onKill: (_s, v, w, e) => {
+    if (!e.champion) return;
+    const r = px(RELIC_MECH.ritesRadiusPx);
+    w.emit("last_rites", { x: e.x, z: e.z, radius: r });
+    w.areaHit(e.x, e.z, r, e.maxHp * v, e.key, "last_rites");
+  },
+};
+
+/** relic_mechanics.lua `hoardBonus`: +1% de dano a cada 100 de ouro guardado, até `v`. */
+export function hoardBonus(v: number, gold: number): number {
+  return v > 0 ? Math.min(v, Math.floor(Math.max(0, gold) / RELIC_MECH.hoardStep) * 0.01) : 0;
+}
+
+/** relic_mechanics.lua HOARDER'S CROWN (D-433): dano pelo ouro guardado (o custo é a loja mais cara, `shopPricePct`). */
+export const HOARD: RelicMechanic<Record<string, never>> = {
+  id: "hoard", stat: "hoardPct", init: () => ({}),
+  damageMult: (_s, v, w) => 1 + hoardBonus(v, w.gold),
+  status: (_s, v, w) => {
+    const h = hoardBonus(v, w.gold);
+    return h > 0 ? { id: "hoard", left: h, total: v } : null;
+  },
+};
+
+/** relic_mechanics.lua `oathBonus`: `v` de dano a cada 10% de vida perdida (inteiros). */
+export function oathBonus(v: number, hp: number, maxHp: number): number {
+  if (v <= 0) return 0;
+  const missing = 1 - hp / Math.max(1, maxHp);
+  return v * Math.floor(Math.max(0, missing) * 10 + 1e-9);
+}
+
+/** relic_mechanics.lua BERSERKER'S OATH (D-433): dano pela vida perdida. */
+export const OATH: RelicMechanic<Record<string, never>> = {
+  id: "oath", stat: "oathPct", init: () => ({}),
+  damageMult: (_s, v, w) => 1 + oathBonus(v, w.hp, w.maxHp),
+  status: (_s, v, w) => {
+    const o = oathBonus(v, w.hp, w.maxHp);
+    return o > 0 ? { id: "oath", left: o, total: v * 10 } : null;
+  },
+};
+
+/** relic_mechanics.lua `blocksHeal` (Berserker's Oath): a cura é recusada enquanto há onda. */
+export const NO_COMBAT_HEAL: RelicMechanic<Record<string, never>> = {
+  id: "no_combat_heal", stat: "noCombatHeal", init: () => ({}),
+  blocksHeal: (_s, _v, w) => w.waveActive,
+};
+
 /** As mecânicas de relíquia ligadas pelo atributo; cada lote do M12 põe as dele aqui. */
 export const RELIC_MECHANICS: AnyMechanic[] = [MOMENTUM, LEVEL_HEAL, OVERHEAL_SHIELD, BURN_SPREAD, FROSTBITE, GLASS_THRONE,
-  CAST_HEAL, PRISM_CYCLE];
+  CAST_HEAL, PRISM_CYCLE, KILL_STREAK, LAST_RITES, HOARD, OATH, NO_COMBAT_HEAL];
+
+/**
+ * relic_system.lua `poolDraft` (D-150/D-151, D-179): `n` exclusivas do pool, por igual, das abertas que o herói não
+ * tem (`open`); se o pool acabar, completa com raras e épicas do sorteio normal (`normal`). `pick(k)` escolhe um
+ * índice de 0 a k − 1 (o `rng:int(1, k)` de lá, menos 1).
+ */
+export function poolRelicDraft(pool: RelicPool, owned: readonly string[], open: (id: string) => boolean,
+  normal: readonly string[], n: number, pick: (k: number) => number): string[] {
+  const list = Object.keys(RELICS).filter((id) => RELICS[id].pool === pool && !owned.includes(id) && open(id));
+  const out: string[] = [];
+  for (let i = 0, k = Math.min(n, list.length); i < k; i++) out.push(list.splice(pick(list.length), 1)[0]);
+  if (out.length < n) {
+    const extra = normal.filter((id) => RELICS[id] && (RELICS[id].rarity === "rare" || RELICS[id].rarity === "epic") && !out.includes(id));
+    while (out.length < n && extra.length) out.push(extra.splice(pick(extra.length), 1)[0]);
+  }
+  return out;
+}
 
 /**
  * bosses/boss_rewards.lua `draft` (§67, B4): no máximo UMA premium (chance `premiumChance`), a da build do chefe

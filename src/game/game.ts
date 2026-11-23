@@ -30,8 +30,8 @@ import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, type BossPatter
 import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
-import { RELICS, RELIC_IDS } from "../data/relics";
-import { bossRelicOffer, grantRelic, relicDraftable, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
+import { POOL_RELIC_CHOICES, POOL_TITLE, RELICS, RELIC_IDS, type RelicPool } from "../data/relics";
+import { bossRelicOffer, poolRelicDraft, grantRelic, relicDraftable, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
 import { HERO_UPGRADES, TUNING, UPGRADE_FX } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -322,6 +322,15 @@ export class Game {
         const e = f.key as Enemy;
         if (!e.dead) e.applyBurn(g.time, dps, seconds);
       },
+      areaHit: (x: number, z: number, r: number, damage: number, except: object) => {
+        const prev = g.hitSource;
+        g.hitSource = "other";
+        for (const e of [...g.enemies]) {
+          if (e.dead || e === except || Math.hypot(e.x - x, e.z - z) > r + e.radius) continue;
+          g.damageEnemy(e, damage, { noKnock: true });
+        }
+        g.hitSource = prev;
+      },
     };
   })();
   /** recompensa do chefe, entregue quando o corpo dele some */
@@ -347,6 +356,10 @@ export class Game {
   shopVisit: (ShopVisit & { auto: ShopReason | null }) | null = null;
   /** loja automática depois desta onda (run.pendingShop): antes de onda de chefe, ou depois de matar um campeão */
   private pendingShop: ShopReason | null = null;
+  /** relíquia exclusiva depois desta onda (run.pendingPoolRelic): risco (campeão, emboscada) ou maldição */
+  private pendingPoolRelic: RelicPool | null = null;
+  /** a escolha da relíquia exclusiva está aberta */
+  private poolOpen = false;
   private aim = new THREE.Vector3();
   private camTarget = new THREE.Vector3();
   private raycaster = new THREE.Raycaster();
@@ -514,6 +527,7 @@ export class Game {
     this.stats = computeStats(sources, this.hero.style);
     this.epics.refresh(this.run.upgradesTaken);
     this.relicHooks.refresh(relicTotals(this.run.relics));
+    if (this.mods) this.mods.championHp = this.stats.championHp;
     this.elements = this.buildElements();
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
@@ -568,7 +582,28 @@ export class Game {
     } else if (ev === "frost_deep_chill") {
       this.fx.burst(n("x"), 1, n("z"), 0x9fdcff, 14, 4, 0.12, 0.5, 2);
       this.fx.text(n("x"), 2.6, n("z"), "Frostbite", "frost");
+    } else if (ev === "last_rites") {
+      this.fx.burst(n("x"), 1, n("z"), 0xb05aff, 26, 7, 0.16, 0.6, 2);
+      this.fx.shockwave(n("x"), n("z"), n("radius"), 0xb05aff, 0.4);
+      this.fx.addShake(0.35);
     }
+  }
+
+  /**
+   * run_drafts.lua `openPoolDraft` (D-150/D-151): 1 de 2 exclusivas do pool, das abertas que o herói não tem;
+   * sem elas, raras e épicas do sorteio normal. Devolve se abriu.
+   */
+  openPoolDraft(pool: RelicPool, count: number = POOL_RELIC_CHOICES): boolean {
+    const open = new Set(filterOpen(this.ach.state, "relic", RELIC_IDS, TUNING.unlockAll));
+    const rr = this.rng.get("relics");
+    const offer = poolRelicDraft(pool, this.run.relics, (id) => open.has(id), this.relicPool(), count, (n) => rr.int(0, n - 1));
+    if (!offer.length) return false;
+    this.poolOpen = true;
+    this.events.relicChoice(offer, (id) => {
+      this.addRelic(id);
+      this.poolOpen = false;
+    }, POOL_TITLE[pool]);
+    return true;
   }
 
   /** Relíquias que podem entrar no sorteio: as abertas (unlocks.lua `filter`), que o herói ainda não tem e, as de spell, com a spell equipada. */
@@ -616,9 +651,12 @@ export class Game {
     this.segment = this.layout.segments[z.index];
     this.wave = null;
     this.mods = waveMods(wave, run.difficultyId, roomOf(run), this.hero.runMods);
+    this.mods.championHp = this.stats.championHp;
     this.shrineOpen = false;
     this.shopVisit = null;
     this.pendingShop = null;
+    this.pendingPoolRelic = null;
+    this.poolOpen = false;
     this.phase = "walk";
     this.phaseT = 0;
     this.bossEngaged = false;
@@ -1176,8 +1214,11 @@ export class Game {
     this.fx.burst(e.x, e.rig.height * 0.5, e.z, color, e.isBoss ? 80 : 14, e.isBoss ? 12 : 6, e.isBoss ? 0.3 : 0.18, e.isBoss ? 1.2 : 0.6);
     this.audio.play(e.isBoss ? "boss" : "kill");
     this.run.statistics.kills++;
-    // D-147: matar um campeão abre a loja depois da onda (a relíquia de risco chega no M12)
-    if (e.champion && !e.isBoss && !e.summoned && e !== this.detourGuard) this.pendingShop = "champion";
+    // D-147/D-150: matar um campeão abre a loja depois da onda e dá uma relíquia de risco (1 de 2)
+    if (e.champion && !e.isBoss && !e.summoned && e !== this.detourGuard) {
+      this.pendingShop = "champion";
+      this.pendingPoolRelic ??= "risk";
+    }
     if (this.stats.lifeOnKill > 0 && this.playerAlive) this.heal(this.stats.lifeOnKill, false);
     // BLOOD RITE e relíquias de cura ao matar: uma rolagem por morte na chance combinada (damage.lua §16)
     if (this.stats.deathHealChance > 0 && this.playerAlive && Math.random() < this.stats.deathHealChance) this.heal(UPGRADE_FX.deathHeal, false);
@@ -1589,8 +1630,11 @@ export class Game {
     this.hitstop = 0.25;
     this.fx.addShake(1);
     for (const m of this.enemies) if (m.summoned && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
-    // a emboscada dá a relíquia de risco (falta, M12), não a escolha de chefe
-    if (e.ambush) return;
+    // D-150: a emboscada é um nó de risco: dá a relíquia de risco (1 de 2), não a escolha de chefe
+    if (e.ambush) {
+      this.pendingPoolRelic = "risk";
+      return;
+    }
     const pool = this.relicPool();
     const rr = this.rng.get("relics");
     rr.shuffle(pool);
@@ -1655,6 +1699,13 @@ export class Game {
     }
     // depois do chefe, o portal (e a vitória) só abrem com a relíquia já entregue: as telas não se atropelam
     if (this.phase === "cleared" && this.phaseT >= RUN_TUNING.clearedTime && !this.bossReward) {
+      // R19: depois da relíquia do chefe, a relíquia exclusiva (risco ou maldição)
+      if (this.poolOpen) return;
+      if (this.pendingPoolRelic && this.playerAlive) {
+        const pool = this.pendingPoolRelic;
+        this.pendingPoolRelic = null;
+        if (this.openPoolDraft(pool)) return;
+      }
       // R17: os níveis ganhos na onda viram escolhas agora, um de cada vez
       if (this.levelUp) return;
       if (this.run.pendingLevelUps > 0 && this.playerAlive) {
@@ -1862,7 +1913,8 @@ export class Game {
     this.ach.waveComplete({ wave: run.wave, bossWave: w.isBossWave, gameOver: !this.playerAlive, gold: run.gold });
     this.saveAchievements();
     // §6: a sala vale só para esta onda; a maldição segue para a próxima, que fica sem mapa
-    expireWaveScope(run);
+    // D-150: a maldição que segue dá uma relíquia amaldiçoada (1 de 2)
+    if (expireWaveScope(run)) this.pendingPoolRelic = "curse";
     // wave_system.lua `complete`: a loja automática antes de toda onda de chefe
     if (isBossWave(run.wave + 1)) this.pendingShop ??= "preboss";
     this.phase = "cleared";
@@ -2042,6 +2094,7 @@ export class Game {
     const step = chooseCard(run, card);
     // a sala escolhida muda os números desta onda
     this.mods = waveMods(run.wave, run.difficultyId, roomOf(run), this.hero.runMods);
+    this.mods.championHp = this.stats.championHp;
     this.audio.play("pickup");
     this.events.zoneChanged();
     if (step === "relic") {
@@ -2075,7 +2128,7 @@ export class Game {
   private openShop(auto: ShopReason | null): void {
     // a automática abre no fim da onda (vale para a seguinte); a do portão, na caminhada da própria onda
     const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, this.relicPool());
-    this.shopVisit = { ...v, auto };
+    this.shopVisit = { ...v, auto, priceMult: this.stats.shopPrice };
     this.audio.play("pickup");
     this.events.shop();
   }

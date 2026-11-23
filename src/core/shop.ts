@@ -57,6 +57,8 @@ export interface ShopVisit {
   rerolls: number;
   /** quantas ofertas fora a relíquia (a troca mantém o tamanho da visita) */
   size: number;
+  /** `Shop.priceMult`: multiplicador dos preços (Hoarder's Crown; Depths no M13); a troca não leva */
+  priceMult?: number;
 }
 
 /** O sorteio da loja: o mesmo formato do fluxo da seed (`Rng`) e do sorteio roteirizado dos testes. */
@@ -203,8 +205,15 @@ export interface OfferEval {
   reason?: string;
 }
 
-/** `Shop.evaluate`: preço e validade agora (outras compras podem invalidar uma oferta). */
+/** `Shop.evaluate`: preço e validade agora (outras compras podem invalidar uma oferta); o preço leva `priceMult`. */
 export function evaluateOffer(run: RunState, visit: ShopVisit, o: ShopOffer): OfferEval {
+  const ev = evaluateBase(run, visit, o);
+  const m = visit.priceMult ?? 1;
+  return ev.cost !== null && m !== 1 ? { ...ev, cost: Math.floor(ev.cost * m) } : ev;
+}
+
+/** `Shop.evaluateBase`: o preço sem o multiplicador da visita. */
+function evaluateBase(run: RunState, visit: ShopVisit, o: ShopOffer): OfferEval {
   const R = SHOP_REASONS;
   if (o.bought) return { cost: null, valid: false, reason: R.bought };
   const L = visit.level;

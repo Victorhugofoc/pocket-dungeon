@@ -1100,6 +1100,11 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect(RELIC_MECH.throneBreak).toBe(num("THRONE_BREAK"));
     expect(RELIC_MECH.prismTime).toBe(num("PRISM_TIME"));
     expect(RELIC_MECH.castHealMin).toBe(num("CAST_HEAL_MIN"));
+    expect(RELIC_MECH.streakWindow).toBe(num("STREAK_WINDOW"));
+    expect(RELIC_MECH.streakMax).toBe(num("STREAK_MAX"));
+    expect(RELIC_MECH.streakStep).toBe(num("STREAK_STEP"));
+    expect(RELIC_MECH.ritesRadiusPx).toBe(num("RITES_RADIUS"));
+    expect(RELIC_MECH.hoardStep).toBe(num("HOARD_STEP"));
     expect(src).toContain(`RM.PRISM_ORDER = { ${RELIC_MECH.prismOrder.map((x) => `"${x}"`).join(", ")} }`);
   });
 

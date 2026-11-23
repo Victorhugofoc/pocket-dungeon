@@ -81,7 +81,15 @@ export type StatKey =
   | "untouchedPct" // Glass Throne: dano a mais enquanto não leva golpe
   | "arcaneDominion" // Arcane Dominion: o ataque recebe os bônus de dano de spell e de Arcane
   | "castHealPct" // Mana Battery: cada spell cura isto da vida máxima
-  | "prismCycle"; // Prism Cycle: dano a mais na escola da vez
+  | "prismCycle" // Prism Cycle: dano a mais na escola da vez
+  // M12-05: mecânicas das exclusivas (relic_mechanics.lua, D-433) e os custos delas
+  | "killStreak" // Kill Streak: velocidade de ataque por abate seguido
+  | "lastRites" // Last Rites: o campeão explode ao morrer com isto da vida dele
+  | "hoardPct" // Hoarder's Crown: até isto de dano pelo ouro guardado
+  | "oathPct" // Berserker's Oath: isto de dano a cada 10% de vida perdida
+  | "noCombatHeal" // Berserker's Oath: sem cura durante a onda
+  | "championHpPct" // vida dos campeões (custo do Champion's Trophy e do Last Rites)
+  | "shopPricePct"; // preços da loja (custo do Hoarder's Crown)
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -96,6 +104,7 @@ export const STAT_KEYS: StatKey[] = [
   "shieldBoomerang", "shieldRicochet", "momentumPct", "levelHealPct", "overhealShield",
   "windPct", "runePct", "lightPct", "earthPct", "lightningTargets", "echoChance", "volatileChance", "spellCritChance",
   "slowedDamagePct", "chainEscalate", "burnSpread", "frostbite", "untouchedPct", "arcaneDominion", "castHealPct", "prismCycle",
+  "killStreak", "lastRites", "hoardPct", "oathPct", "noCombatHeal", "championHpPct", "shopPricePct",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -172,6 +181,13 @@ export const STAT_LABEL: Record<StatKey, string> = {
   arcaneDominion: "Arcane Dominion",
   castHealPct: "heal per cast",
   prismCycle: "Prism Cycle",
+  killStreak: "Kill Streak",
+  lastRites: "Last Rites",
+  hoardPct: "Hoarder's Crown",
+  oathPct: "Berserker's Oath",
+  noCombatHeal: "no healing in waves",
+  championHpPct: "Champion HP",
+  shopPricePct: "Shop prices",
 };
 
 /** format.lua `MECH`: as mecânicas de relíquia se leem como uma frase (texto de en.lua). */
@@ -186,6 +202,11 @@ const MECH_TEXT: Partial<Record<StatKey, (pct: number, v: number) => string>> = 
   arcaneDominion: () => "Auto Attack gets the Spell Damage and Arcane bonuses",
   castHealPct: (_p, v) => `Each spell cast heals ${(v * 100).toFixed(1)}% HP (min. 1)`,
   prismCycle: (p) => `+${p}% damage to the element of the moment (changes every 5 s)`,
+  killStreak: () => "+3% Attack Speed per kill in a row (up to 10; resets when hit)",
+  lastRites: (p) => `Champions explode on death: ${p}% of their HP in an area`,
+  hoardPct: (p) => `+1% damage per 100 gold held (up to +${p}%)`,
+  oathPct: (p) => `+${p}% damage per 10% HP missing`,
+  noCombatHeal: () => "No healing during waves",
 };
 
 const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true,
@@ -297,6 +318,9 @@ export interface FinalStats {
   slowedDamage: number;
   /** Conduit Ring: dano a mais por salto do raio */
   chainEscalate: number;
+  /** M12-05 (stats.lua `championHpMult`, `shopPriceMult`): vida dos campeões e preços da loja */
+  championHp: number;
+  shopPrice: number;
 }
 
 /** Escolas cujo dano tem bônus próprio (D14; vento, runa, luz e terra no M12-03). As outras (cura, lâmina, veneno) usam 1. */
@@ -436,5 +460,7 @@ export function computeStats(sources: StatBlock[], style: AutoStyle = "normal"):
     spellCritChance: stackChance(L("spellCritChance")),
     slowedDamage: Math.max(0.1, m("slowedDamagePct")),
     chainEscalate: g("chainEscalate"),
+    championHp: Math.max(0.1, m("championHpPct")),
+    shopPrice: Math.max(0.1, m("shopPricePct")),
   };
 }

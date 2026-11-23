@@ -5,8 +5,10 @@
 import type { StatBlock, StatKey } from "../core/stats";
 import type { SpellEffect } from "./spells";
 
-/** relics.lua `category`: core (§41), component (§42), spell (§43), keystone (§44), tier2, tier3, boss, boss_build */
-export type RelicCategory = "core" | "component" | "spell" | "keystone" | "tier2" | "tier3" | "boss" | "boss_build";
+/** relics.lua `category`: core (§41), component (§42), spell (§43), keystone (§44), tier2, tier3, boss, boss_build, exclusive */
+export type RelicCategory = "core" | "component" | "spell" | "keystone" | "tier2" | "tier3" | "boss" | "boss_build" | "exclusive";
+/** relics.lua `pool` (D-150/D-151): de onde vem a exclusiva (evento, risco, maldição, pacto) */
+export type RelicPool = "event" | "risk" | "curse" | "pact";
 /** relics.lua `rarity` (o sorteio normal usa as três primeiras, pesos 65/30/5) */
 export type RelicRarity = "uncommon" | "rare" | "epic" | "boss" | "evolved";
 
@@ -32,6 +34,8 @@ export interface RelicDef {
   needs?: string;
   /** relíquia de chefe por build (§69, `boss_build`): a build do chefe que a dá (`BossDef.relicBuild`) */
   bossBuild?: string;
+  /** exclusiva (`category: "exclusive"`): só sai pelo nó dela, nunca no sorteio normal nem na loja */
+  pool?: RelicPool;
   color: number;
 }
 
@@ -51,9 +55,15 @@ function boss(id: string, name: string, effects: RelicEffect[], build: string | 
   return relic({ id, name, category: build ? "boss_build" : "boss", rarity: "boss", effects, tags, color, ...(build ? { bossBuild: build } : {}) });
 }
 
-/** Relíquias do sorteio normal e da loja (relic_system.lua `isDraftable`: sem as de chefe e as evoluções). */
+/** relics.lua `excl`: exclusiva de um pool (evento, risco, maldição, pacto). */
+function excl(pool: RelicPool, t: Omit<RelicInput, "category" | "pool">): RelicDef {
+  return relic({ ...t, category: "exclusive", pool });
+}
+
+/** Relíquias do sorteio normal e da loja (relic_system.lua `isDraftable`: sem as de chefe, as evoluções e as exclusivas). */
 export function inNormalPool(d: RelicDef): boolean {
-  return d.category !== "boss" && d.category !== "boss_build" && d.category !== "tier2" && d.category !== "tier3";
+  return d.category !== "boss" && d.category !== "boss_build" && d.category !== "tier2" && d.category !== "tier3"
+    && d.category !== "exclusive";
 }
 
 const list: RelicDef[] = [
@@ -238,6 +248,50 @@ const list: RelicDef[] = [
   boss("brood_heart", "Brood Heart", [e("deathHealChance", 0.08)], "venom_hydra", ["healing", "sustain"], 0x6fb83a),
   boss("soulward_crown", "Soulward Crown", [e("dodge", 0.18), e("armor", 7)], "gravekeeper", ["survival", "dodge", "magic"], 0x9ad1ff),
   boss("gravebound_core", "Gravebound Core", [e("spellDamagePct", 0.20), e("deathHealChance", 0.04)], "gravekeeper", ["magic", "sustain"], 0x73a8d9),
+  // 1.2 exclusivas (D-150/D-151): só pelo nó delas (evento, risco, maldição, pacto), nunca no sorteio normal nem na loja
+  excl("event", { id: "merchants_ledger", name: "Merchant's Ledger", rarity: "rare",
+    effects: [e("goldPct", 0.20), e("xpPct", 0.10)], tags: ["economy"], color: 0xffd34d }),
+  excl("event", { id: "pilgrims_charm", name: "Pilgrim's Charm", rarity: "rare",
+    effects: [e("regen", 0.4), e("maxHpPct", 0.08)], tags: ["healing", "survival"], color: 0x8fe08a }),
+  excl("event", { id: "gamblers_coin", name: "Gambler's Coin", rarity: "rare",
+    effects: [e("critChance", 0.08), e("critDamagePct", 0.25), e("armor", -8)], tags: ["auto", "crit", "risk"], color: 0xe8c86a }),
+  excl("event", { id: "wanderers_map", name: "Wanderer's Map", rarity: "rare",
+    effects: [e("moveSpeedPct", 0.10), e("rangePct", 0.12)], tags: ["speed", "range"], color: 0xc8a878 }),
+  // D-432: as de risco têm um risco de verdade
+  excl("risk", { id: "champions_trophy", name: "Champion's Trophy", rarity: "epic",
+    effects: [e("damagePct", 0.15), e("championGoldPct", 0.30), e("championXpPct", 0.30), e("championHpPct", 0.15)],
+    tags: ["damage", "risk"], color: 0xffc83d }),
+  excl("risk", { id: "ambushers_fang", name: "Ambusher's Fang", rarity: "epic",
+    effects: [e("autoDamagePct", 0.20), e("pierce", 1), e("armor", -5)], tags: ["auto", "damage", "risk"], color: 0xc84a3a }),
+  excl("risk", { id: "warlords_plate", name: "Warlord's Plate", rarity: "epic",
+    effects: [e("armor", 20), e("damagePct", -0.08)], tags: ["survival", "armor", "tradeoff"], color: 0x9aa0a8 }),
+  excl("risk", { id: "stormbreaker_sigil", name: "Stormbreaker Sigil", rarity: "epic",
+    effects: [e("spellDamagePct", 0.15), e("cdrPct", 0.10), e("maxHpPct", -0.08)], tags: ["magic", "spell_haste", "risk"], color: 0x7fa8ff }),
+  // D-433: mecânicas (core/relics.ts)
+  excl("risk", { id: "kill_streak", name: "Kill Streak", rarity: "epic",
+    effects: [e("killStreak", 1)], tags: ["auto", "speed", "risk"], color: 0xff8a3a }),
+  excl("risk", { id: "last_rites", name: "Last Rites", rarity: "epic",
+    effects: [e("lastRites", 0.30), e("championHpPct", 0.10)], tags: ["damage", "risk"], color: 0xb05aff }),
+  excl("curse", { id: "bleeding_crown", name: "Bleeding Crown", rarity: "epic",
+    effects: [e("damagePct", 0.30), e("maxHpPct", -0.20)], tags: ["damage", "risk"], color: 0xb8162e }),
+  excl("curse", { id: "hollow_hourglass", name: "Hollow Hourglass", rarity: "epic",
+    effects: [e("cdrPct", 0.20), e("autoDamagePct", -0.20)], tags: ["magic", "spell_haste", "tradeoff"], color: 0xa8b8c8 }),
+  excl("curse", { id: "hoarders_crown", name: "Hoarder's Crown", rarity: "epic",
+    effects: [e("hoardPct", 0.30), e("shopPricePct", 0.20)], tags: ["economy", "damage", "tradeoff"], color: 0xffb81a }),
+  excl("curse", { id: "berserkers_oath", name: "Berserker's Oath", rarity: "epic",
+    effects: [e("oathPct", 0.03), e("noCombatHeal", 1)], tags: ["damage", "risk"], color: 0xd9283a }),
+  excl("curse", { id: "glass_aegis", name: "Glass Aegis", rarity: "epic",
+    effects: [e("dodge", 0.15), e("armor", -20)], tags: ["dodge", "risk"], color: 0xd8ecff }),
+  excl("curse", { id: "starved_grimoire", name: "Starved Grimoire", rarity: "epic",
+    effects: [e("spellDamagePct", 0.35), e("goldPct", -0.30)], tags: ["magic", "tradeoff"], color: 0x6a4a8a }),
+  excl("pact", { id: "oathbound_blade", name: "Oathbound Blade", rarity: "epic",
+    effects: [e("damage", 4), e("attackSpeedPct", 0.10)], tags: ["auto", "damage"], color: 0xe0e0f0 }),
+  excl("pact", { id: "covenant_heart", name: "Covenant Heart", rarity: "epic",
+    effects: [e("maxHp", 25), e("armor", 10)], tags: ["survival", "armor"], color: 0xe05a6a }),
+  excl("pact", { id: "infernal_contract", name: "Infernal Contract", rarity: "epic",
+    effects: [e("firePct", 0.20), e("burnPct", 0.20), e("volatileChance", 0.10)], tags: ["fire", "burn"], color: 0xff4a1a }),
+  excl("pact", { id: "void_covenant", name: "Void Covenant", rarity: "epic",
+    effects: [e("arcanePct", 0.20), e("echoChance", 0.15)], tags: ["arcane", "magic"], color: 0x7a3aff }),
 ];
 
 export const RELICS: Record<string, RelicDef> = Object.fromEntries(list.map((r) => [r.id, r]));
@@ -269,4 +323,19 @@ export const RELIC_MECH = {
   prismOrder: ["fire", "ice", "lightning", "arcane"] as const,
   /** Mana Battery: cura mínima por spell (D-589) */
   castHealMin: 1,
+  /** Kill Streak: segundos até o próximo abate antes de a sequência cair, teto e velocidade de ataque por abate */
+  streakWindow: 2.5,
+  streakMax: 10,
+  streakStep: 0.03,
+  /** Last Rites: raio da explosão do campeão (px de lá) */
+  ritesRadiusPx: 90,
+  /** Hoarder's Crown: ouro guardado por +1% de dano */
+  hoardStep: 100,
+};
+
+/** run_drafts.lua `openPoolDraft`: a escolha da exclusiva é 1 de 2 */
+export const POOL_RELIC_CHOICES = 2;
+/** relics.lua `POOL_NAMES` (en.lua): título da escolha de cada pool */
+export const POOL_TITLE: Readonly<Record<RelicPool, string>> = {
+  event: "Event Relic", risk: "Risk Relic", curse: "Curse Relic", pact: "Pact Relic",
 };

@@ -44,6 +44,8 @@ export interface WaveMods {
   heroEarlyBoss: { upTo: number; mult: number } | null;
   /** P-02: parte da onda comum que vem como campeão */
   heroChampionShare: number | null;
+  /** D-432 (modifier_engine.lua `championHp`): vida dos campeões pelas relíquias do herói (Champion's Trophy, Last Rites) */
+  championHp?: number;
 }
 
 function lateHp(d: Difficulty, wave: number): number {
@@ -306,6 +308,7 @@ export function enemyStats(def: { id?: string; hp: number; damage: number }, wav
   if (mods.heroEnemyDamagePerWave) damage *= 1 + mods.heroEnemyDamagePerWave * Math.max(0, wave - 1);
   if (champion) {
     hp = Math.max(hp, (CHAMPION.hpBase + wave * CHAMPION.hpPerWave) * heroHpK) * CHAMPION.hpMult;
+    hp *= mods.championHp ?? 1;
     damage *= CHAMPION.damageMult;
     speed *= CHAMPION.speedMult;
   }
