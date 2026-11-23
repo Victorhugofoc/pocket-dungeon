@@ -1,4 +1,5 @@
 // Loop principal: herói, combate, progressão e as ondas da partida (cada zona = 5 ondas, D13).
+import { CAMP_RANK_OFFSET } from "../data/camps";
 import * as THREE from "three";
 import { armorReduction, computeStats, type FinalStats, type StatBlock } from "../core/stats";
 import { arcHalfAngle, autoPattern, autoReach, forkAngles, patternCounts } from "../core/autostyle";
@@ -2038,9 +2039,16 @@ export class Game {
 
   private queueSpawn(spawn: WaveSpawn, boss = false, pack: { x: number; z: number } | null = null): void {
     const S = PACE.packSpread;
-    const at = boss ? this.bossPoint()
+    let at = boss ? this.bossPoint()
       : pack ? { x: pack.x + (Math.random() - 0.5) * 2 * S, z: pack.z + (Math.random() - 0.5) * 2 * S }
       : this.edgePoint();
+    if (pack && !boss && spawn.rank) {
+      // M9-07: frente mais perto do herói, atiradores atrás da linha (sem sair da clareira)
+      const dx = pack.x - this.player.x, dz = pack.z - this.player.z, d = Math.hypot(dx, dz) || 1;
+      const k = CAMP_RANK_OFFSET[spawn.rank];
+      const x = at.x + (dx / d) * k, z = at.z + (dz / d) * k, sg = this.segment;
+      if (!sg || (Math.hypot(x - sg.x, z - sg.z) < sg.r - 1.2 && !this.grid.hits(x, z, 0.6))) at = { x, z };
+    }
     const mesh = new THREE.Mesh(MARKER_GEO, new THREE.MeshBasicMaterial({
       color: boss ? 0xff5a3a : spawn.champion ? 0xffc83d : 0xb06aff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false,
     }));
