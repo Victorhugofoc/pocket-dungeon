@@ -324,7 +324,7 @@ export class Ui {
       return `${a.text}${p ? ` (${Math.min(p.current, p.goal).toLocaleString("en-US")} / ${p.goal.toLocaleString("en-US")})` : ""}`;
     };
     const MEDAL = ["", "Easy", "Normal", "Hard"];
-    const render = () => {
+    const render = (swap = false) => {
       const h = HEROES[this.selectedHero];
       if (!h.startingSpells.includes(this.selectedSpell as SpellId)) this.selectedSpell = h.startingSpells[0];
       const locked = !open(h.id);
@@ -338,11 +338,11 @@ export class Ui {
         ? `${rec.runs} runs · ${rec.wins} wins · best wave ${rec.highestWave}${rec.bestEndless ? ` · endless to wave ${rec.bestEndless}` : ""} · ${rec.kills} kills · ${achievementCount(ach)} of ${ACHIEVEMENTS.length} achievements`
         : "Action RPG · procedural maps, one hero, waves and bosses";
       const faces = this.game.stage.portraits();
-      const roster = HERO_ORDER.map((id) => {
+      const roster = HERO_ORDER.map((id, i) => {
         const d = HEROES[id];
         const lk = !open(id);
         const tip = lk ? `Locked · ${lockText(id)}` : `${d.name} · ${d.title}`;
-        return `<button class="hs-portrait ${id === h.id ? "sel" : ""} ${lk ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}" title="${tip}">
+        return `<button class="hs-portrait ${id === h.id ? "sel" : ""} ${lk ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)};--i:${i}" title="${tip}">
           <span class="face"><img src="${lk ? faces[id].locked : faces[id].face}" alt="">${lk ? `<i class="lock">🔒</i>` : ""}</span><span class="nm">${lk ? "???" : d.name}</span>
           ${isNew(ach, "hero", id) ? `<em class="new">NEW</em>` : ""}</button>`;
       }).join("");
@@ -351,16 +351,15 @@ export class Ui {
         ${barsHtml(h.id)}
         <div class="section">Attack</div><p class="hs-line">${attackLine(h)}</p>
         ${heroKit(h, h.technique.cooldown)}
-        <div class="section">Records</div>
-        <ul class="hs-rec">${best.length ? best.join("") : `<li class="note">No runs with this hero yet</li>`}
-          ${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}</ul>`;
+        ${best.length || medal ? `<div class="section">Records</div>
+        <ul class="hs-rec">${best.join("")}${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}</ul>` : ""}`;
       const diffs = DIFFICULTY_ORDER.map((id) => {
         const d = DIFFICULTIES[id];
         const tip = `${DIFFICULTY_TEXT[id]} Enemy HP x${d.enemyHp.toFixed(2)} · enemy damage x${d.enemyDamage.toFixed(2)} · reward x${d.reward.toFixed(2)}`;
         return `<button class="${id === this.selectedDifficulty ? "sel" : ""}" data-diff="${id}" style="--cc:${DIFF_COLOR[id]}" title="${tip}">${d.name}</button>`;
       }).join("");
       const spells = h.startingSpells.map((id, i) => `<button class="${id === this.selectedSpell ? "sel" : ""}" data-spell="${id}"
-        title="${SPELL_TEXT[id]}"><span>${SPELL_ICON[id] ?? "✦"}</span>${spellName(id)}<kbd>${i + 1}</kbd></button>`).join("");
+        title="${SPELL_TEXT[id]}"><span>${SPELL_ICON[id] ?? "✦"}</span><b class="sn">${spellName(id)}</b><kbd>${i + 1}</kbd></button>`).join("");
       panel.innerHTML = `
         <header class="hs-top">
           <div><h1>DUNGEON REIGN</h1><p class="tag">${records}</p></div>
@@ -369,16 +368,19 @@ export class Ui {
             ${runLog ? `<button data-act="runlog">Export run log (${runLog})</button>` : ""}
           </div>
         </header>
-        <div class="hs-main">
+        <div class="hs-main ${swap ? "swap" : ""}">
           <div class="hs-roster">${roster}</div>
           <div class="hs-stage ${locked ? "locked" : ""}" style="--hc:${hex(h.color)}">
             <div class="hs-name"><h2>${locked ? "Locked" : h.name}</h2><p>${locked ? "" : h.title}</p></div>
             <div class="hs-floor" data-r="stage"></div>
-            ${locked ? `<p class="hs-lock">Unlock: ${lockText(h.id)}</p>` : ""}
+            ${locked ? `<p class="hs-lock">Unlock: ${lockText(h.id)}</p>` : `<div class="hs-look"><div class="section">Appearance</div>
+              <button class="sel" title="The hero's own look">Default</button>
+              <button disabled title="Hero skins: coming later">Skins · soon</button>
+              <button disabled title="Founder wings and cloaks: coming later">Founder · soon</button></div>`}
           </div>
           <div class="hs-info" style="--hc:${hex(h.color)}">${info}</div>
         </div>
-        <footer class="hs-setup ${locked ? "off" : ""}">
+        <footer class="hs-setup ${locked ? "off" : ""}" style="--hc:${hex(h.color)}">
           <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div></div>
           <div class="hs-group"><div class="section">Starting spell <small>· others come from the shop and upgrades</small></div>
             <div class="hs-spells">${spells}</div></div>
@@ -405,7 +407,7 @@ export class Ui {
       this.confirmNew = "";
       seedErr = "";
       if (open(id) && markFreshSeen(ach, "hero", id)) this.game.saveAchievements();
-      render();
+      render(true);
     };
     const go = () => {
       const h = HEROES[this.selectedHero];
@@ -428,6 +430,9 @@ export class Ui {
         code ? decodeSeed(code)! : undefined);
     };
     render();
+    // a cascata de entrada só na abertura da tela
+    panel.classList.add("enter");
+    window.setTimeout(() => panel.classList.remove("enter"), 900);
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       const hero = t.closest<HTMLElement>("[data-hero]")?.dataset.hero;

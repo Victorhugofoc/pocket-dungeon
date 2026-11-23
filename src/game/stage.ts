@@ -15,6 +15,8 @@ const ATTACK_LEN = 0.55;
 const HOME_YAW = -0.38;
 const RETURN_AFTER = 2.2;
 /** retrato: altura enquadrada e quanto o centro sobe acima do pescoço, em frações da altura do herói */
+/** enquadramento do palco: folga sob o nome e sobre a borda (fração da altura), largura útil, distância mínima, elevação */
+const STAGE_FRAME = { gap: 0.06, feet: 0.15, width: 0.8, minDist: 2.6, lift: 0.1 };
 const PORTRAIT = { span: 0.36, lift: 0.07 };
 
 function floorTexture(): THREE.CanvasTexture {
@@ -37,6 +39,7 @@ export class HeroStage {
   private ctx = this.canvas.getContext("2d")!;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(30, 1, 0.3, 80);
+  private bounds = new Map<string, { top: number; half: number }>();
   private rigs = new Map<string, Rig>();
   private heroId = "";
   private locked = false;
@@ -120,6 +123,12 @@ export class HeroStage {
       this.scene.add(rig.root);
       this.rigs.set(id, rig);
       animateRig(rig, { t: 0, move: 0, attack: -1, windup: 0, dead: 0 });
+      // medida real em pé (coroa, chifres, cajado), para o enquadramento do palco
+      rig.root.position.set(0, 0, 0);
+      rig.root.rotation.y = 0;
+      rig.root.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(rig.root);
+      this.bounds.set(id, { top: box.max.y, half: Math.max(-box.min.x, box.max.x, -box.min.z, box.max.z) });
     }
     // a silhueta (herói trancado) entra num plano minúsculo, para o programa dela já existir
     const probe = new THREE.Mesh(new THREE.PlaneGeometry(0.01, 0.01), this.silhouette);
@@ -293,13 +302,22 @@ export class HeroStage {
     const attack = !this.locked && a >= 0 && a < ATTACK_LEN ? a / ATTACK_LEN : -1;
     animateRig(rig, { t: this.t, move: 0, attack, windup: 0, dead: 0 });
 
-    // enquadra pela altura do herói, com a cabeça abaixo do nome
+    // enquadra pela medida do herói: o topo (coroa, cajado) logo abaixo do nome, os pés acima da borda
     const ht = rig.height;
-    // palco estreito (tela pequena) afasta a câmera para o herói caber na largura
-    const dist = ht * Math.max(3.9, 2.6 / Math.min(1, w / h));
-    this.camera.aspect = w / h;
-    this.camera.position.set(0, ht * 0.75, dist);
-    this.camera.lookAt(0, ht * 0.66, 0);
+    const b = this.bounds.get(this.heroId) ?? { top: ht * 1.1, half: ht * 0.4 };
+    const name = this.host.parentElement?.querySelector<HTMLElement>(".hs-name");
+    const nameBottom = name ? name.getBoundingClientRect().bottom - rect.top : h * 0.2;
+    const tan = Math.tan((this.camera.fov * Math.PI) / 360);
+    const aspect = w / h;
+    const yTop = 1 - (2 * (nameBottom + STAGE_FRAME.gap * h)) / h;
+    const yFeet = -1 + 2 * STAGE_FRAME.feet;
+    let dist = b.top / (tan * Math.max(0.2, yTop - yFeet));
+    // não fica grande demais em palco alto, e cabe na largura em palco estreito (girando, o meio-corpo é o maior raio)
+    dist = Math.max(dist, ht * STAGE_FRAME.minDist, b.half / (tan * aspect * STAGE_FRAME.width));
+    const center = -yFeet * dist * tan;
+    this.camera.aspect = aspect;
+    this.camera.position.set(0, center + ht * STAGE_FRAME.lift, dist);
+    this.camera.lookAt(0, center, 0);
     this.camera.updateProjectionMatrix();
 
     const r = this.renderer;
