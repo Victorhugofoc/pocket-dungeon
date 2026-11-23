@@ -36,6 +36,9 @@ const RELIC_STATUS: Record<string, { label: string; color: string; tip: string }
   momentum: { label: "Momentum", color: "#73e0ff", tip: "Momentum: damage bonus while moving" },
   overshield: { label: "Shield", color: "#e0485a", tip: "Blood Engine: shield from overhealing" },
   glass_throne: { label: "Throne", color: "#e8f4ff", tip: "Glass Throne: bonus damage while untouched; a hit removes it for 5 s" },
+  streak: { label: "Streak", color: "#ff8a3a", tip: "Kill Streak: Attack Speed per kill in a row; a hit or 2.5 s without a kill ends it" },
+  hoard: { label: "Hoard", color: "#ffb81a", tip: "Hoarder's Crown: damage from the gold you hold" },
+  oath: { label: "Oath", color: "#d9283a", tip: "Berserker's Oath: damage from missing HP; no healing during waves" },
   prism_fire: { label: "Fire", color: "#ff7a2a", tip: "Prism Cycle: bonus damage to Fire right now" },
   prism_ice: { label: "Ice", color: "#8fdcff", tip: "Prism Cycle: bonus damage to Ice right now" },
   prism_lightning: { label: "Lightning", color: "#9fb8ff", tip: "Prism Cycle: bonus damage to Lightning right now" },
@@ -508,14 +511,16 @@ export class Ui {
   /** relic_mechanics.lua `statuses`: os estados das relíquias com mecânica, sobre a barra de habilidades. */
   private updateRelicRow(): void {
     const list = this.game.relicHooks.statuses(this.game.relicWorld);
-    const key = list.map((st) => `${st.id}:${Math.round((st.left / Math.max(1e-6, st.total)) * 20)}:${Math.ceil(st.left)}`).join("|");
+    const key = list.map((st) => `${st.id}:${Math.round((st.left / Math.max(1e-6, st.total)) * 20)}:${Math.ceil(st.left)}:${st.count ?? ""}`).join("|");
     const row = this.r.relicRow;
     if (row.dataset.key === key) return;
     row.dataset.key = key;
     row.innerHTML = list.map((st) => {
       const f = Math.max(0, Math.min(1, st.left / Math.max(1e-6, st.total)));
       const info = RELIC_STATUS[st.id] ?? { label: st.id, color: "#ffffff", tip: "" };
-      const value = st.id === "overshield" ? ` ${Math.ceil(st.left)}` : st.id === "momentum" ? ` +${Math.round(st.left * 100)}%` : "";
+      const value = st.id === "overshield" ? ` ${Math.ceil(st.left)}`
+        : st.id === "momentum" || st.id === "hoard" || st.id === "oath" ? ` +${Math.round(st.left * 100)}%`
+        : st.count !== undefined ? ` x${st.count}` : "";
       return `<span class="rs" title="${info.tip}" style="--c:${info.color};--f:${f}"><i></i>${info.label}${value}</span>`;
     }).join("");
   }
