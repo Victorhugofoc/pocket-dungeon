@@ -42,10 +42,10 @@ describe("ciclo da onda", () => {
     }
   });
 
-  it("só sorteia inimigos que existem no jogo (os que faltam saem)", () => {
+  it("só sorteia inimigos que existem no jogo (os 15 de lá, desde a M9-05)", () => {
     const w = startWave(12, new Rng(3), known);
     expect(w.composition.every(([id]) => id in ENEMIES)).toBe(true);
-    expect(w.composition.map(([id]) => id)).not.toContain("leaper");
+    expect(w.composition.map(([id]) => id)).toContain("leaper"); // M9-05
     expect(w.composition.map(([id]) => id)).toContain("shieldbearer"); // M9-01
     const { spawns } = run(w);
     expect(spawns.every((s) => s.id in ENEMIES)).toBe(true);

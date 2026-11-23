@@ -1,8 +1,9 @@
 // Inimigos e chefes, a partir de dungeon-idle/src/data/enemies.lua e bosses.lua.
 // hp/damage/xp são os valores canônicos; distâncias já convertidas (px / 16).
+import type { LeapSpec } from "../core/leap";
 
-export type EnemyBehavior = "melee" | "ranged" | "charger" | "summoner" | "bombardier" | "shield";
-export type BodyKind = "humanoid" | "brute" | "bug" | "robed" | "slime";
+export type EnemyBehavior = "melee" | "ranged" | "charger" | "summoner" | "bombardier" | "shield" | "leaper";
+export type BodyKind = "humanoid" | "brute" | "bug" | "robed" | "slime" | "toad";
 
 export interface EnemyDef {
   id: string;
@@ -51,6 +52,11 @@ export interface EnemyDef {
    * `damageMult` do dano (damage.lua `wardenNearby`; um Warden não protege outro)
    */
   support?: { radius: number; damageMult: number };
+  /**
+   * enemies.lua `leapCooldown`, `leapRange`, `leapRadius`, `leapDamage`, `leapWindup`, `leapAirTime` e ai.lua `behaviors.leaper`
+   * (o mínimo de 70 px e a altura `hop` de 26 px): salto marcado até o lugar do herói; distâncias em m (px × TUNING.enemy.pxToUnit)
+   */
+  leap?: LeapSpec;
   body: BodyKind;
   color: number;
   accent: number;
@@ -102,6 +108,11 @@ export const ENEMIES: Record<string, EnemyDef> = {
   warden: { id: "warden", name: "Warden", hp: 72, speed: 1.75, damage: 7, behavior: "melee", radius: 0.63, xp: 64, gold: 15,
     category: "elite", cooldown: 1.6, attackRange: 1.55, support: { radius: 7, damageMult: 0.65 },
     body: "brute", color: 0x6a7a8a, accent: 0x66b8ff, scale: 1.2 },
+  // M9-05: sapo com chifres que salta no lugar do herói (círculo no chão); corpo no Blender (tools/blender/leaper.py)
+  leaper: { id: "leaper", name: "Leaper", hp: 43, speed: 3.2, damage: 9, behavior: "leaper", radius: 0.47, xp: 52, gold: 12,
+    category: "special", cooldown: 1.4, attackRange: 1.35,
+    leap: { cooldown: 5.3, range: 245 / 16, minDist: 70 / 16, radius: 38 / 16, damage: 1.15, windup: 0.6, airTime: 0.45, height: 26 / 16 },
+    body: "toad", color: 0xc8962a, accent: 0xeee0b0, scale: 1.0 },
 };
 
 /** enemy_attacks.lua `EA.hazard`: tique padrão das poças no chão, em s */

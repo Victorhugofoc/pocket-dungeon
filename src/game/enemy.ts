@@ -10,12 +10,13 @@ import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
 import { CROWN_TITLE, ENEMIES, SHIELD_CYCLE, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
 import { guardBlocks, shieldPhase, turnToward } from "../core/guard";
+import { type Leap, canLeap, leapHits, startLeap, stepLeap } from "../core/leap";
 import { makeGuardBand, type GuardBand } from "./guard";
 import type { StatusKind } from "../data/heroes";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
 import * as THREE from "three";
-import { type BossRing, type ChampionAura, type GroundArc, makeBossRing, makeChampionAura } from "./fx";
+import { type BossRing, type ChampionAura, type GroundArc, type Telegraph, makeBossRing, makeChampionAura } from "./fx";
 import type { Game } from "./game";
 import { AFFIXES, type AffixId } from "../data/affixes";
 import { affixReward } from "../core/affixes";
@@ -169,6 +170,13 @@ export class Enemy {
   summonCd = 3;
   chargeCd = 2.5;
   mortarCd = 2;
+  /** M9-05 (ai.lua `behaviors.leaper`): recarga do salto, o salto em curso, a marca no chão e a altura do arco */
+  leapCd = 0;
+  leap: Leap | null = null;
+  private leapMark: Telegraph | null = null;
+  hop = 0;
+  /** no ar: sem separação, sem empurrão e sem obstáculo (ai.lua `airborne`) */
+  airborne = false;
   /** ai.lua `berserker`: furioso (vida na metade ou menos), mais rápido e mais forte até morrer */
   berserk = false;
   /** cria do splitter (enemy.lua `splitChild`): sem recompensa, como o invocado, mas fora do teto de invocados */
@@ -253,6 +261,7 @@ export class Enemy {
       if (d.summon) this.summonCd = d.summon.cooldown * FIRST_TIMER.summon;
       if (d.charge) this.chargeCd = d.charge.cooldown * FIRST_TIMER.charge;
       if (d.mortar) this.mortarCd = d.mortar.cooldown * FIRST_TIMER.mortar;
+      if (d.leap) this.leapCd = d.leap.cooldown * FIRST_TIMER.leap;
     }
 
     if (opts.affixes?.length) this.applyAffixes(game, opts.affixes);
@@ -393,6 +402,7 @@ export class Enemy {
 
     if (this.dead) {
       if (this.windupT >= 0) this.endSwing();
+      if (this.leap) this.endLeap(game);
       this.aimT = -1;
       this.deadT += this.boss ? (dt * 1.25) / TUNING.boss.deathTime : dt * 2.0;
       // o corpo ainda desliza com o último empurrão
@@ -513,12 +523,16 @@ export class Enemy {
       if (c.t >= c.dur) this.charging = null;
     }
 
+    // M9-05: salto em curso (preparo parado, voo em linha reta, pouso que acerta quem estiver no círculo)
+    if (this.leap) this.stepLeap(game, dt, stunned);
+
+    if (this.airborne) this.kx = this.kz = 0;
     this.x += this.kx * dt;
     this.z += this.kz * dt;
     const kdec = Math.exp(-dt * KNOCK_DECAY);
     this.kx *= kdec;
     this.kz *= kdec;
-    game.grid.resolve(this, this.radius);
+    if (!this.airborne) game.grid.resolve(this, this.radius);
     // M21-10: fosso e barris; empurrado com força para dentro do fosso, cai
     const pit = game.terrain.step(this);
     if (pit) {
@@ -534,7 +548,7 @@ export class Enemy {
     this.z = Math.max(-lim, Math.min(lim, this.z));
 
     // visual
-    rig.root.position.set(this.x, 0, this.z);
+    rig.root.position.set(this.x, this.hop, this.z);
     let da = this.facing - rig.root.rotation.y;
     while (da > Math.PI) da -= Math.PI * 2;
     while (da < -Math.PI) da += Math.PI * 2;
@@ -543,9 +557,10 @@ export class Enemy {
       this.attackAnim += dt * 3.5;
       if (this.attackAnim >= 1) this.attackAnim = -1;
     }
+    const lp = this.leap ? this.leapPose : null;
     animateRig(rig, {
-      t: now, move: stunned ? 0 : this.moveAmt, attack: this.attackAnim,
-      windup: this.windupT >= 0 ? this.windupT / this.windupDur : this.aimT >= 0 ? this.aimT / TUNING.enemy.telegraph.shotWindup : this.casting > 0 ? 0.6 + Math.sin(now * 20) * 0.1 : 0, dead: 0,
+      t: now, move: stunned ? 0 : this.moveAmt, attack: this.attackAnim, air: lp?.air,
+      windup: lp ? lp.crouch : this.windupT >= 0 ? this.windupT / this.windupDur : this.aimT >= 0 ? this.aimT / TUNING.enemy.telegraph.shotWindup : this.casting > 0 ? 0.6 + Math.sin(now * 20) * 0.1 : 0, dead: 0,
       rage: this.rage, roar: this.roarT,
     });
     this.aura?.update(this.x, this.z, this.radius, now + this.rig.phase, 1);
@@ -600,6 +615,7 @@ export class Enemy {
     this.aimT = -1;
     this.casting = 0;
     this.charging = null;
+    this.endLeap(game);
     this.spiral = null;
     this.hp = this.maxHp;
     this.enraged = false;
@@ -737,6 +753,47 @@ export class Enemy {
   }
 
   /** enemy_attacks.lua `fire`: mira exata no herói; a bomba do bombardier é maior (7 px contra 5). */
+  private stepLeap(game: Game, dt: number, stunned: boolean): void {
+    const L = this.def!.leap!;
+    const leap = this.leap!;
+    // atordoar no preparo cancela o salto (como o golpe, M21-01); no ar ele termina o voo
+    if (leap.windup > 0 && stunned && TUNING.enemy.telegraph.stunInterrupts) {
+      this.endLeap(game);
+      return;
+    }
+    const s = stepLeap(leap, dt, L);
+    this.x = s.x;
+    this.z = s.z;
+    this.hop = s.hop;
+    this.airborne = s.airborne;
+    if (s.k > 0) this.moveAmt = 0;
+    if (!s.landed) return;
+    this.endLeap(game, false);
+    game.fx.shockwave(this.x, this.z, L.radius, 0xd8b048);
+    game.fx.burst(this.x, 0.15, this.z, 0x9a8458, 14, 5, 0.18, 0.45, 10);
+    game.audio.play("land");
+    const p = game.player;
+    if (game.playerAlive && leapHits(this.x, this.z, L.radius, p.x, p.z, TUNING.enemy.telegraph.playerRadius))
+      game.hurtPlayer(this.hitDmg * L.damage, this.name, this);
+  }
+
+  /** acaba o salto (morte, reinício, atordoado no preparo ou pouso) */
+  private endLeap(game: Game, cancelMark = true): void {
+    if (cancelMark && this.leapMark) game.fx.cancelTelegraph(this.leapMark);
+    this.leapMark = null;
+    this.leap = null;
+    this.hop = 0;
+    this.airborne = false;
+  }
+
+  /** 0..1 do preparo do salto ou do voo, para a animação */
+  get leapPose(): { crouch: number; air: number } {
+    const L = this.leap;
+    if (!L || !this.def?.leap) return { crouch: 0, air: 0 };
+    if (L.windup > 0) return { crouch: 1 - L.windup / this.def.leap.windup, air: 0 };
+    return { crouch: 0, air: Math.min(1, L.t / this.def.leap.airTime) };
+  }
+
   private shoot(game: Game, color: number, speedP: number, size = 1): void {
     const p = game.player;
     const a = Math.atan2(p.x - this.x, p.z - this.z);
@@ -747,7 +804,7 @@ export class Enemy {
   private updateBehavior(game: Game, dt: number, dist: number, speed: number): void {
     const d = this.def!;
     const p = game.player;
-    if (this.charging) return;
+    if (this.charging || this.leap) return;
     switch (d.behavior) {
       case "melee":
         this.meleeStep(game, dt, dist, speed, (d.attackRange ?? 1.5) + 0.3);
@@ -779,6 +836,21 @@ export class Enemy {
             if (this.dead || game.time < this.stunUntil) return;
             this.charging = { t: 0, dur: len / c.speed, dx: Math.sin(a), dz: Math.cos(a), speed: c.speed, dmg: this.hitDmg * c.damage, hit: false };
           });
+          return;
+        }
+        this.meleeStep(game, dt, dist, speed, (d.attackRange ?? 1.5) + 0.3);
+        break;
+      }
+      case "leaper": {
+        // ai.lua `behaviors.leaper`: com a recarga pronta e o herói entre o mínimo e o alcance, marca o lugar dele e salta;
+        // fora disso, corpo a corpo
+        const L = d.leap!;
+        this.leapCd -= dt;
+        if (this.windupT < 0 && canLeap(this.leapCd, dist, L)) {
+          this.leapCd = L.cooldown * this.cdMult;
+          this.face(p.x, p.z);
+          this.leap = startLeap(this.x, this.z, p.x, p.z, L.windup);
+          this.leapMark = game.fx.telegraphCircle(p.x, p.z, L.radius, L.windup + L.airTime, () => {});
           return;
         }
         this.meleeStep(game, dt, dist, speed, (d.attackRange ?? 1.5) + 0.3);

@@ -183,6 +183,52 @@ export function animateChar(rig: Rig, a: AnimState): void {
     return;
   }
 
+  if (c.form === "toad") {
+    // M9-05: anda aos pulinhos; no preparo do salto se agacha, no voo estica as patas de trás e levanta o focinho
+    const h = B.hips!, hd = B.head!;
+    const air = a.air ?? 0;
+    const flying = air > 0 && air < 1;
+    const hop = flying ? 0 : Math.abs(Math.sin(P.stride * 0.8)) * move;
+    const crouch = a.windup;
+    const breathe = Math.sin(t * 2.2);
+    h.position.set(0, c.hipY + hop * 0.32 - crouch * 0.14 + breathe * 0.006, 0);
+    const pitch = flying ? -0.45 * Math.cos(air * Math.PI) : -hop * 0.22 + crouch * 0.12;
+    h.rotation.set(pitch + leanF + kf * 0.6, twist * 0.5, -leanS - ks * 0.6);
+    const sq = crouch * 0.12 - hop * 0.05;
+    h.scale.set(1 + sq * 0.6, 1 - sq, 1 + sq * 0.6);
+    const kick = flying ? Math.sin(air * Math.PI) : 0;
+    for (const [leg, s] of [[B.thighL!, -1], [B.thighR!, 1]] as const) {
+      leg.rotation.set(hop * 0.7 + kick * 1.1 - crouch * 0.25, 0, s * crouch * 0.12);
+    }
+    for (const [leg, s] of [[B.armL!, -1], [B.armR!, 1]] as const) {
+      leg.rotation.set(-hop * 0.45 - kick * 0.8 + crouch * 0.2, 0, s * (crouch * 0.1));
+    }
+    // mordida: o sapo dá um bote curto para a frente (corpo esticado, patas de trás empurrando, as da frente à frente)
+    // e a cabeça desce sobre o alvo
+    const bite = a.attack >= 0 ? Math.sin(a.attack * Math.PI) : 0;
+    if (bite > 0) {
+      h.position.y += bite * 0.14;
+      h.position.z += bite * 0.45;
+      h.rotation.x += bite * 0.3;
+      h.scale.set(1 - bite * 0.06, 1 - bite * 0.04, 1 + bite * 0.16);
+      B.thighL!.rotation.x += bite * 0.9;
+      B.thighR!.rotation.x += bite * 0.9;
+      B.armL!.rotation.x += bite * 0.25;
+      B.armR!.rotation.x += bite * 0.25;
+    }
+    hd.rotation.set(-crouch * 0.25 + bite * 0.5 - Math.max(0, -pitch) * 0.3, 0, 0);
+    const rest = (hd.userData.rest ??= hd.position.clone()) as THREE.Vector3;
+    hd.position.set(rest.x, rest.y, rest.z + bite * 0.12);
+    if (!alive) {
+      // cai de costas, patas para cima
+      const k = Math.min(1, a.dead);
+      h.rotation.set(0, 0, k * 2.7);
+      h.position.y = c.hipY * (1 - k * 0.3);
+      h.scale.setScalar(1);
+    }
+    return;
+  }
+
   const hips = B.hips!, torso = B.torso!, head = B.head!;
   const armL = B.armL!, armR = B.armR!, foreL = B.foreL!, foreR = B.foreR!;
   const ph = P.stride;

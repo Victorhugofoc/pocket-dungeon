@@ -996,6 +996,13 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
       if (d.support) expect({ radius: d.support.radius / TUNING.enemy.pxToUnit, damageMult: d.support.damageMult }, id)
         .toEqual({ radius: o.supportRadius, damageMult: o.supportDamageMult });
       else expect(o.supportRadius, id).toBeUndefined();
+      // M9-05: salto do Leaper (distâncias em px de lá; mínimo de 70 px e altura de 26 px do ai.lua)
+      if (d.leap) {
+        const u = TUNING.enemy.pxToUnit, L = d.leap;
+        expect({ cooldown: L.cooldown, range: L.range / u, radius: L.radius / u, damage: L.damage, windup: L.windup, airTime: L.airTime }, id)
+          .toEqual({ cooldown: o.leapCooldown, range: o.leapRange, radius: o.leapRadius, damage: o.leapDamage, windup: o.leapWindup, airTime: o.leapAirTime });
+        expect({ minDist: L.minDist / u, height: L.height / u }).toEqual({ minDist: 70, height: 26 });
+      } else expect(o.leapCooldown, id).toBeUndefined();
     }
     expect({ ...SHIELD_CYCLE }).toEqual(TU.SHIELD_CYCLE);
   });

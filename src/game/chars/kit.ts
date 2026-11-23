@@ -10,7 +10,12 @@ export type Bone =
 /** `throwL` = arremesso com o braço esquerdo (escudo) */
 /** `spear`: escudo e lança (M9-01): os braços não balançam ao andar e só o direito estoca, ao longo da haste */
 export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "throwL" | "bite" | "spear";
-export type Form = "biped" | "robed" | "bat" | "slime" | "spider";
+/**
+ * `toad` (M9-05): corpo em `hips`, cabeça e as 4 patas rígidas presas a ele. Pivôs a partir de `dims` (ver build.ts):
+ * cabeça em (0, headY, arm), patas da frente (`armL`/`armR`) em (±shoulderX, shoulderY, arm), de trás (`thighL`/`thighR`)
+ * em (±hipX, 0, -thigh), tudo relativo ao quadril em hipY
+ */
+export type Form = "biped" | "robed" | "bat" | "slime" | "spider" | "toad";
 
 // ---------------------------------------------------------------- primitivas (já pintadas por vértice)
 export const dk = (c: number, f = 0.68) => new THREE.Color(c).multiplyScalar(f).getHex();
