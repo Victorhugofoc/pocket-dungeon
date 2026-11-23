@@ -38,7 +38,7 @@ Estilo `spear`: só o braço direito estoca (recua e avança ao longo da lança)
 - "O escudo mal parece escudo, o jeito que segura não faz sentido": escudo colado no peito, sem braço segurando.
 - "A lança parece de fazer carinho": lança fina em pé, mole na mão.
 
-## 7. Revisão Blender (2026-11-23)
+## 7. Revisão Blender (2026-11-23), aprovada pelo usuário
 - Modelo em `tools/blender/shieldbearer.py` (~7,7 mil triângulos; o escudo, com 1,8 mil, é a peça mais pesada). Escudo e lança modelados na orientação do mundo a partir da mão e levados ao repouso do antebraço por `to_fore` (a mesma conta de `hang` em `kit.ts`: ponto = pivô + (0, −mão, 0) + Fᵀ·d). Poses achadas por busca numérica: `POSE_L = (-0.65, -1.05, 0, -0.7)` deixa o antebraço atravessado à frente do peito; `POSE_R = (0.05, -0.95, 0, -0.6)` deixa a mão da lança junto ao quadril. Ao mudar pose, `lean` ou `armOut`, refazer a busca e conferir que a lança passa por fora da borda do escudo.
 - Elmo: grande elmo (tambor de laterais retas, tampa reta, frente plana); a fenda dos olhos é um corte booleano de verdade com o miolo escuro atrás, não uma barra pintada; nervura só abaixo da fenda; duas fileiras de furos redondos de respiro (fendas verticais liam como dentes).
 - Escudo facetado como no sprite: metade direita mais escura, quina clara no meio, aro escuro, chevron vermelho (o sprite tem chevron; um crítico leu "banda diagonal", e a ampliação da referência mostra o V).
