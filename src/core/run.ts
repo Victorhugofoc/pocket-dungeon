@@ -124,6 +124,8 @@ export interface RunState {
   /** técnica do herói (fora das spells; game_state.lua guarda no slot 0) */
   technique: SpellSlot;
   relics: string[];
+  /** relíquias banidas (relic_system.lua `bannedRelics`, D-148): fora de todo sorteio até o fim da partida */
+  bannedRelics: string[];
   /** muda a cada relíquia nova (relic_system.lua `relicVersion`): uma evolução recusada volta quando muda */
   relicVersion: number;
   /** "espaço:evolução" → `relicVersion` de quando foi recusada (evolution.lua `evolutionDeclined`) */
@@ -206,6 +208,7 @@ export function newRun(opts: NewRunOptions): RunState {
     spells: [newSpellSlot(opts.startingSpell)],
     technique: newSpellSlot(hero.technique.id),
     relics: [],
+    bannedRelics: [],
     relicVersion: 0,
     evolutionDeclined: {},
     evolutionsDone: 0,
@@ -299,6 +302,8 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.lootBank ??= [];
   // checkpoints de antes do M7-03
   run.shop ??= newShopState();
+  // checkpoints de antes do M12-10
+  run.bannedRelics ??= [];
   // checkpoints de antes do M6-01
   for (const s of [...run.spells, run.technique]) s.modifiers ??= [];
   // checkpoints de antes do M20-06 guardavam o progresso do jogo antigo (mochila, equipamento, mortes)

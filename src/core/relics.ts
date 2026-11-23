@@ -5,11 +5,15 @@
 // - Ganchos: as relíquias que mudam o jogo (não só somam atributo) são mecânicas ligadas por um atributo próprio,
 //   como em relic_mechanics.lua; o jogo chama `RelicHooks` nos pontos de evento (quadro, abate, golpe sofrido,
 //   conjuração, nível, dano causado, cura) e elas respondem pelo `RelicWorld`.
-import { inNormalPool, RELIC_MECH, RELICS, type RelicDef, type RelicPool } from "../data/relics";
+import { inNormalPool, RELIC_DRAFT, RELIC_IDS, RELIC_MECH, RELICS, type RelicDef, type RelicPool, type RelicRarity } from "../data/relics";
+import { MAX_SPELLS } from "../data/spells";
+import { wantedRelics } from "./evolution";
+import { elementsOf, hasElement } from "./levelup";
 import type { SpellEffect } from "../data/spells";
 import type { StatBlock, StatKey } from "./stats";
 import type { RunState } from "./run";
 import { px } from "./techniques";
+import { BUILD_FIT } from "../data/upgrades";
 
 export function relicDef(id: string): RelicDef | undefined {
   return Object.prototype.hasOwnProperty.call(RELICS, id) ? RELICS[id] : undefined;
@@ -351,47 +355,144 @@ export const NO_COMBAT_HEAL: RelicMechanic<Record<string, never>> = {
 export const RELIC_MECHANICS: AnyMechanic[] = [MOMENTUM, LEVEL_HEAL, OVERHEAL_SHIELD, BURN_SPREAD, FROSTBITE, GLASS_THRONE,
   CAST_HEAL, PRISM_CYCLE, KILL_STREAK, LAST_RITES, HOARD, OATH, NO_COMBAT_HEAL];
 
+// ---------------------------------------------------------------- escolha de relíquia (relic_system.lua, run_drafts.lua)
+
+/**
+ * O sorteio de lá: `u()` é o `rng:random()` (de 0 a 1) e os dois sorteios abaixo são os de `core/rng.lua`, para que
+ * a mesma sequência de números dê as mesmas ofertas daqui e de lá.
+ */
+export type Uniform = () => number;
+const luaInt = (u: Uniform, k: number) => Math.floor(u() * k); // `rng:int(1, k)` − 1
+function luaWeighted(u: Uniform, w: readonly number[]): number {
+  let total = 0;
+  for (const x of w) total += x;
+  if (total <= 0) return -1;
+  let r = u() * total;
+  for (let i = 0; i < w.length; i++) {
+    r -= w[i];
+    if (r < 0) return i;
+  }
+  return w.length - 1;
+}
+
+/** `isDraftable` com o herói: das categorias do sorteio, aberta, que ele não tem nem baniu. */
+export function relicDraftPool(run: RunState, open: (id: string) => boolean): string[] {
+  return RELIC_IDS.filter((id) => !run.relics.includes(id) && !run.bannedRelics.includes(id) && open(id)
+    && relicDraftable(id, run.spells));
+}
+
+/** `missingSpell` (D-570): a spell para a qual a peça foi feita, quando o herói não tem ela. */
+export function relicMissingSpell(run: RunState, d: RelicDef): string | null {
+  const need = d.category === "component" ? (d.needs ?? d.spell) : undefined;
+  if (!need || run.spells.some((s) => s.id === need)) return null;
+  return need;
+}
+
+/** build_fit.lua `weight` para relíquia: um elemento que ninguém da build usa sai com 25%. */
+function relicFit(run: RunState, d: RelicDef): number {
+  const els = elementsOf(d);
+  if (els.length === 0) return 1;
+  return els.some((el) => hasElement(run, el)) ? 1 : BUILD_FIT.offBuild;
+}
+
+/** O peso de uma relíquia dentro da raridade dela (receita × build × peça de spell faltando). */
+export function relicDraftWeight(run: RunState, id: string, wanted: Readonly<Record<string, string>> = wantedRelics(run)): number {
+  const d = RELICS[id];
+  const miss = relicMissingSpell(run, d) ? (run.spells.length >= MAX_SPELLS ? 0 : RELIC_DRAFT.missingSpellWeight) : 1;
+  return (wanted[id] ? RELIC_DRAFT.recipeWeight : 1) * relicFit(run, d) * miss;
+}
+
+/**
+ * relic_system.lua `draft` (§40, D-053, D-197, D-309, D-570): `n` relíquias sem repetir. A cada uma, a raridade por
+ * 65/30/5 entre as que ainda têm candidata, e dentro dela a relíquia pelo peso (por igual quando todas pesam 1).
+ */
+export function relicDraft(run: RunState, open: (id: string) => boolean, u: Uniform, n: number = 3): string[] {
+  const byRarity = new Map<RelicRarity, string[]>();
+  for (const id of relicDraftPool(run, open)) {
+    const r = RELICS[id].rarity;
+    if (!byRarity.has(r)) byRarity.set(r, []);
+    byRarity.get(r)!.push(id);
+  }
+  const wanted = wantedRelics(run);
+  // a ordem de lá: as raridades por nome
+  const rarities = (Object.keys(RELIC_DRAFT.rarityWeights) as RelicRarity[]).sort();
+  const out: string[] = [];
+  for (let k = 0; k < n; k++) {
+    const live = rarities.filter((r) => (byRarity.get(r)?.length ?? 0) > 0);
+    if (!live.length) break;
+    const list = byRarity.get(live[luaWeighted(u, live.map((r) => RELIC_DRAFT.rarityWeights[r]!))])!;
+    const w = list.map((id) => relicDraftWeight(run, id, wanted));
+    const idx = w.some((x) => x !== 1) ? luaWeighted(u, w) : luaInt(u, list.length);
+    if (idx < 0) break; // todas pesam 0
+    out.push(list.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
 /**
  * relic_system.lua `poolDraft` (D-150/D-151, D-179): `n` exclusivas do pool, por igual, das abertas que o herói não
- * tem (`open`); se o pool acabar, completa com raras e épicas do sorteio normal (`normal`). `pick(k)` escolhe um
- * índice de 0 a k − 1 (o `rng:int(1, k)` de lá, menos 1).
+ * tem nem baniu; se o pool acabar, completa com raras e épicas do sorteio normal.
  */
-export function poolRelicDraft(pool: RelicPool, owned: readonly string[], open: (id: string) => boolean,
-  normal: readonly string[], n: number, pick: (k: number) => number): string[] {
-  const list = Object.keys(RELICS).filter((id) => RELICS[id].pool === pool && !owned.includes(id) && open(id));
+export function poolRelicDraft(run: RunState, pool: RelicPool, open: (id: string) => boolean, n: number, u: Uniform): string[] {
+  const list = RELIC_IDS.filter((id) => RELICS[id].pool === pool && !run.relics.includes(id) && !run.bannedRelics.includes(id) && open(id));
   const out: string[] = [];
-  for (let i = 0, k = Math.min(n, list.length); i < k; i++) out.push(list.splice(pick(list.length), 1)[0]);
+  for (let i = 0, k = Math.min(n, list.length); i < k; i++) out.push(list.splice(luaInt(u, list.length), 1)[0]);
   if (out.length < n) {
-    const extra = normal.filter((id) => RELICS[id] && (RELICS[id].rarity === "rare" || RELICS[id].rarity === "epic") && !out.includes(id));
-    while (out.length < n && extra.length) out.push(extra.splice(pick(extra.length), 1)[0]);
+    const extra = relicDraftPool(run, open).filter((id) => RELICS[id].rarity === "rare" || RELICS[id].rarity === "epic");
+    while (out.length < n && extra.length) out.push(extra.splice(luaInt(u, extra.length), 1)[0]);
   }
   return out;
 }
 
 /**
  * bosses/boss_rewards.lua `draft` (§67, B4): no máximo UMA premium (chance `premiumChance`), a da build do chefe
- * antes, senão uma universal; o resto vem do sorteio normal (`normal`, já embaralhado). `roll` é o sorteio de 0 a 1 e
- * `pick(n)` escolhe um índice de 0 a n − 1.
+ * antes, senão uma universal; o resto vem do sorteio normal (`draw(k)`, depois da premium, como lá).
  */
-export function bossRelicOffer(owned: readonly string[], relicBuild: string | undefined, normal: readonly string[],
-  choices: number, roll: number, premiumChance: number, pick: (n: number) => number): { offer: string[]; premium: string | null } {
+export function bossRelicOffer(owned: readonly string[], relicBuild: string | undefined, draw: (k: number) => string[],
+  choices: number, u: Uniform, premiumChance: number): { offer: string[]; premium: string | null } {
   let premium: string | null = null;
-  if (roll < premiumChance) {
+  if (u() < premiumChance) {
     const specific: string[] = [];
     const universal: string[] = [];
-    for (const id of Object.keys(RELICS)) {
+    for (const id of RELIC_IDS) {
       if (owned.includes(id)) continue;
       const d = RELICS[id];
       if (d.category === "boss_build" && relicBuild && d.bossBuild === relicBuild) specific.push(id);
       else if (d.category === "boss") universal.push(id);
     }
     const pool = specific.length ? specific : universal;
-    if (pool.length) premium = pool[pick(pool.length)];
+    if (pool.length) premium = pool[luaInt(u, pool.length)];
   }
-  const offer = premium ? [premium, ...normal.slice(0, choices - 1)] : normal.slice(0, choices);
-  return { offer, premium };
+  const normal = draw(premium ? choices - 1 : choices);
+  return { offer: premium ? [premium, ...normal] : normal, premium };
 }
 
+/** relic_system.lua `bansLeft` (D-148): quantas relíquias ainda se bane nesta partida (a vantagem das Depths soma). */
+export function relicBansLeft(run: RunState, extraBans = 0): number {
+  return RELIC_DRAFT.banLimit + extraBans - run.bannedRelics.length;
+}
+
+/** relic_system.lua `ban`: tira a relíquia de todo sorteio futuro. Devolve se baniu. */
+export function banRelic(run: RunState, id: string, extraBans = 0): boolean {
+  if (relicBansLeft(run, extraBans) <= 0 || run.bannedRelics.includes(id)) return false;
+  run.bannedRelics.push(id);
+  return true;
+}
+
+/**
+ * run_drafts.lua `banRelic` (D-148): bane a oferta `index` e põe no lugar a primeira de um sorteio novo da mesma
+ * fonte (`draw(8)`) que ainda não está na escolha; sem nenhuma, a oferta sai. Devolve a escolha nova, ou null.
+ */
+export function banRelicChoice(run: RunState, choices: readonly string[], index: number, draw: (k: number) => string[],
+  extraBans = 0): string[] | null {
+  const id = choices[index];
+  if (!id || !banRelic(run, id, extraBans)) return null;
+  const repl = draw(RELIC_DRAFT.replaceDraw).find((c) => !choices.includes(c));
+  const out = [...choices];
+  if (repl) out[index] = repl;
+  else out.splice(index, 1);
+  return out;
+}
 
 /** O despacho dos ganchos: o jogo chama `refresh` ao recalcular os atributos e os métodos nos pontos de evento. */
 export class RelicHooks {

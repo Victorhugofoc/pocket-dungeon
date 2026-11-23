@@ -4,8 +4,8 @@
 //
 // A técnica (`run.technique`, o `spells[0]` de lá) também sobe de nível na loja (S19, D-252); nível 5 = evolução.
 // Ainda não entram (como no roadmap): Hoarder's Crown e Depths
-// (`priceMult`, `offerCount`), trocas grátis e a relíquia de encomenda (`M12`, `M13`). A relíquia da 4ª oferta sai
-// por igual da lista que o jogo passa; o sorteio por raridade de `relic_system.lua` chega com as relíquias (`M12`).
+// (`priceMult`, `offerCount`), trocas grátis e a relíquia de encomenda (`M12`, `M13`). A relíquia da 4ª oferta vem do
+// sorteio normal (`relicDraft`, M12-10), pela função que o jogo passa.
 import type { RunState } from "./run";
 import type { StatBlock } from "./stats";
 import { addModifier, addSpell, levelUpSpell } from "./spells";
@@ -155,9 +155,9 @@ const same = (a: Omit<ShopOffer, "bought">, b: Omit<ShopOffer, "bought">) =>
 /**
  * `Shop.roll` (§72): uma visita nova. Uma melhoria de spell é garantida quando alguma spell pode subir; o resto sai
  * por categoria sorteada por igual entre as que ainda têm oferta livre, depois o item dentro dela. A 4ª oferta é
- * uma relíquia de `relicPool` (as abertas que o herói ainda não tem).
+ * uma relíquia do sorteio normal (`relic()`, relic_system.lua `draft(run, rng, 1)`, D-145).
  */
-export function rollShop(run: RunState, rng: ShopRng, wave: number, relicPool: readonly string[], size: number = SHOP_OFFERS): ShopVisit {
+export function rollShop(run: RunState, rng: ShopRng, wave: number, relic: () => string | undefined, size: number = SHOP_OFFERS): ShopVisit {
   run.shop.visits++;
   const offers: Omit<ShopOffer, "bought">[] = [];
   const add = (o: Omit<ShopOffer, "bought">) => {
@@ -174,8 +174,8 @@ export function rollShop(run: RunState, rng: ShopRng, wave: number, relicPool: r
     if (cats.length === 0) break;
     add(rng.pick(rng.pick(cats)));
   }
-  const pool = relicPool.filter((id) => !run.relics.includes(id));
-  if (pool.length > 0) offers.push({ kind: "relic", relic: rng.pick(pool) });
+  const r = relic();
+  if (r) offers.push({ kind: "relic", relic: r });
   return { level: shopLevel(wave), wave, offers: offers.map((o) => ({ ...o, bought: false })), rerolls: 0, size };
 }
 
@@ -183,11 +183,11 @@ export function rollShop(run: RunState, rng: ShopRng, wave: number, relicPool: r
  * `Shop.reroll` (D-146, D-182): troca as 4 ofertas, compradas também, por um sorteio novo do mesmo tamanho. Não
  * conta como visita nova. Devolve o custo pago, ou o motivo da recusa.
  */
-export function rerollShop(run: RunState, visit: ShopVisit, rng: ShopRng, relicPool: readonly string[]):
+export function rerollShop(run: RunState, visit: ShopVisit, rng: ShopRng, relic: () => string | undefined):
   { ok: true; cost: number } | { ok: false; reason: string } {
   const cost = rerollCost(visit);
   if (run.gold < cost) return { ok: false, reason: SHOP_REASONS.noGold };
-  const fresh = rollShop(run, rng, visit.wave, relicPool, visit.size);
+  const fresh = rollShop(run, rng, visit.wave, relic, visit.size);
   run.shop.visits--;
   visit.offers = fresh.offers;
   run.gold -= cost;

@@ -1,6 +1,6 @@
 // Motor de relíquias (core/relics.ts): posse com tags, fontes de atributo, efeitos de spell e despacho dos ganchos.
 import { describe, expect, it } from "vitest";
-import { bossRelicOffer, hoardBonus, HOARD, KILL_STREAK, LAST_RITES, NO_COMBAT_HEAL, OATH, oathBonus, poolRelicDraft, BURN_SPREAD, CAST_HEAL, FROSTBITE, GLASS_THRONE, grantRelic, prismSchool, PRISM_CYCLE, relicDraftable, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, type RelicFoe, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
+import { banRelic, banRelicChoice, relicBansLeft, relicDraft, relicDraftPool, relicDraftWeight, relicMissingSpell, bossRelicOffer, hoardBonus, HOARD, KILL_STREAK, LAST_RITES, NO_COMBAT_HEAL, OATH, oathBonus, poolRelicDraft, BURN_SPREAD, CAST_HEAL, FROSTBITE, GLASS_THRONE, grantRelic, prismSchool, PRISM_CYCLE, relicDraftable, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, type RelicFoe, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
 import { newRun } from "../src/core/run";
 import { computeStats } from "../src/core/stats";
 import { evaluateOffer, type ShopVisit } from "../src/core/shop";
@@ -330,15 +330,17 @@ describe("relíquias: lote 3 (M12-04)", () => {
 
   it("recompensa do chefe: premium só com o sorteio, a da build do chefe antes, senão universal", () => {
     const normal = ["blood_pact", "arcane_core", "hunters_eye"];
-    const none = bossRelicOffer([], "berserker", normal, 3, 0.9, 0.35, () => 0);
+    const draw = (k: number) => normal.slice(0, k);
+    const u = (roll: number) => { let i = 0; return () => (i++ === 0 ? roll : 0); };
+    const none = bossRelicOffer([], "berserker", draw, 3, u(0.9), 0.35);
     expect(none).toEqual({ offer: normal, premium: null });
-    const b = bossRelicOffer([], "berserker", normal, 3, 0.1, 0.35, () => 0);
+    const b = bossRelicOffer([], "berserker", draw, 3, u(0.1), 0.35);
     expect(RELICS[b.premium!].bossBuild).toBe("berserker");
     expect(b.offer).toEqual([b.premium, "blood_pact", "arcane_core"]);
     const owned = ["berserkers_brand", "bloodrush_medallion"];
-    const u = bossRelicOffer(owned, "berserker", normal, 3, 0.1, 0.35, () => 0);
-    expect(RELICS[u.premium!].category).toBe("boss");
-    expect(RELICS[bossRelicOffer([], undefined, normal, 3, 0.1, 0.35, () => 0).premium!].category).toBe("boss");
+    const un = bossRelicOffer(owned, "berserker", draw, 3, u(0.1), 0.35);
+    expect(RELICS[un.premium!].category).toBe("boss");
+    expect(RELICS[bossRelicOffer([], undefined, draw, 3, u(0.1), 0.35).premium!].category).toBe("boss");
   });
 });
 
@@ -357,12 +359,17 @@ describe("relíquias: lote 4, as exclusivas (M12-05)", () => {
 
   it("sorteio do pool: só do pool, sem as que tem nem as fechadas; acabou, completa com raras e épicas", () => {
     const pick = () => 0;
-    expect(poolRelicDraft("risk", [], () => true, [], 2, pick)).toEqual(["champions_trophy", "ambushers_fang"]);
-    expect(poolRelicDraft("risk", ["champions_trophy"], (id) => id !== "ambushers_fang", [], 2, pick)).toEqual(["warlords_plate", "stormbreaker_sigil"]);
+    const run = (relics: string[], bannedRelics: string[] = []) =>
+      ({ ...newRun({ heroId: "frostine", difficultyId: "normal", startingSpell: "iceball", randomSeed: 1 }), relics, bannedRelics });
+    expect(poolRelicDraft(run([]), "risk", () => true, 2, pick)).toEqual(["champions_trophy", "ambushers_fang"]);
+    expect(poolRelicDraft(run(["champions_trophy"]), "risk", (id) => id !== "ambushers_fang", 2, pick)).toEqual(["warlords_plate", "stormbreaker_sigil"]);
+    expect(poolRelicDraft(run([], ["champions_trophy"]), "risk", () => true, 2, pick)).toEqual(["ambushers_fang", "warlords_plate"]);
     const curse = RELIC_IDS.filter((id) => RELICS[id].pool === "curse");
-    const got = poolRelicDraft("curse", curse.slice(1), () => true, ["hunters_eye", "blood_pact", "glass_cannon"], 2, pick);
-    expect(got).toEqual([curse[0], "blood_pact"]);
-    expect(poolRelicDraft("pact", RELIC_IDS, () => true, [], 2, pick)).toEqual([]);
+    const normal = ["hunters_eye", "blood_pact", "glass_cannon"];
+    const got = poolRelicDraft(run(curse.slice(1)), "curse", (id) => !RELICS[id].pool && normal.includes(id) || RELICS[id].pool === "curse", 2, pick);
+    expect(got[0]).toBe(curse[0]);
+    expect(["rare", "epic"]).toContain(RELICS[got[1]].rarity);
+    expect(poolRelicDraft(run(RELIC_IDS), "pact", () => true, 2, pick)).toEqual([]);
   });
 
   it("Kill Streak: +3% de ataque por abate, até 10; cai em 2,5 s sem abate ou ao levar golpe", () => {
@@ -430,5 +437,60 @@ describe("relíquias: lote 4, as exclusivas (M12-05)", () => {
     expect(enemyStats({ hp: 20, damage: 5 }, 5, { ...mods, championHp: s.championHp }, false).hp)
       .toBeCloseTo(enemyStats({ hp: 20, damage: 5 }, 5, mods, false).hp);
     expect(s.championHp).toBeGreaterThan(1.2);
+  });
+});
+
+describe("escolha de relíquia como no original (M12-10)", () => {
+  const mk = () => newRun({ heroId: "frostine", difficultyId: "normal", startingSpell: "iceball", randomSeed: 9 });
+  const seq = (...u: number[]) => { let i = 0; return () => u[i++ % u.length]; };
+
+  it("sorteio: sem repetir, sem as que tem, banidas ou fechadas; de spell só com a spell", () => {
+    const run = mk();
+    run.relics = ["blood_pact"];
+    run.bannedRelics = ["hunters_eye"];
+    const closed = (id: string) => id !== "arcane_core";
+    let x = 1;
+    const u = () => (x = (x * 48271) % 2147483647) / 2147483647;
+    for (let k = 0; k < 200; k++) {
+      const got = relicDraft(run, closed, u, 3);
+      expect(got.length).toBe(3);
+      expect(new Set(got).size).toBe(3);
+      for (const id of got) {
+        expect(["blood_pact", "hunters_eye", "arcane_core"]).not.toContain(id);
+        const d = RELICS[id];
+        if (d.category === "spell") expect(d.spell).toBe("iceball");
+      }
+    }
+    expect(relicDraftPool(run, () => true).every((id) => ["core", "component", "spell", "keystone"].includes(RELICS[id].category))).toBe(true);
+  });
+
+  it("pesos: receita da spell equipada ×3, elemento fora da build ×0,25, peça sem a spell ×1/3 (0 sem espaço)", () => {
+    const run = mk();
+    const recipe = Object.keys(RELICS).find((id) => relicDraftPool(run, () => true).includes(id) && relicDraftWeight(run, id) === 3);
+    expect(recipe).toBeTruthy();
+    const piece = RELIC_IDS.find((id) => RELICS[id].category === "component" && relicMissingSpell(run, RELICS[id]));
+    expect(piece).toBeTruthy();
+    expect(relicDraftWeight(run, piece!)).toBeLessThan(1);
+    run.spells.push({ id: "fireball", level: 1, modifiers: [], evolution: null });
+    const still = RELIC_IDS.find((id) => RELICS[id].category === "component" && relicMissingSpell(run, RELICS[id]));
+    if (still) expect(relicDraftWeight(run, still)).toBe(0);
+  });
+
+  it("banir: 2 por partida; a oferta banida dá lugar a uma nova da mesma fonte, ou sai", () => {
+    const run = mk();
+    expect(relicBansLeft(run)).toBe(2);
+    const draw = (k: number) => relicDraft(run, () => true, seq(0.1, 0.5, 0.9, 0.3), k);
+    const first = relicDraft(run, () => true, seq(0.2, 0.7), 3);
+    const next = banRelicChoice(run, first, 1, draw)!;
+    expect(run.bannedRelics).toEqual([first[1]]);
+    expect(next.length).toBe(3);
+    expect(next[0]).toBe(first[0]);
+    expect(next[2]).toBe(first[2]);
+    expect(first).not.toContain(next[1]);
+    expect(banRelicChoice(run, next, 0, () => [...next])).toEqual(next.slice(1));
+    expect(relicBansLeft(run)).toBe(0);
+    expect(banRelicChoice(run, next, 1, draw)).toBeNull();
+    expect(banRelic(run, "momentum")).toBe(false);
+    expect(relicBansLeft(run, 1)).toBe(1);
   });
 });

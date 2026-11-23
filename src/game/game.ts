@@ -31,7 +31,7 @@ import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { POOL_RELIC_CHOICES, POOL_TITLE, RELICS, RELIC_IDS, type RelicPool } from "../data/relics";
-import { bossRelicOffer, poolRelicDraft, grantRelic, relicDraftable, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
+import { banRelicChoice, banRelic, bossRelicOffer, poolRelicDraft, grantRelic, relicDraft, relicDraftPool, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
 import { HERO_UPGRADES, TUNING, UPGRADE_FX } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -89,9 +89,16 @@ const TECH_FX = {
   venom: 0x7be04a, venomCore: 0xeaffb8, venomSmoke: 0x3c5a22, wasp: 0xffc83a,
 } as const;
 
+/** banir uma oferta da escolha de relíquia (run_drafts.lua `banRelic`) */
+export type RelicBan = (index: number, current: readonly string[]) => string[] | null;
+
 export interface GameEvents {
   toast(msg: string, color?: string): void;
-  relicChoice(ids: string[], pick: (id: string) => void, title?: string): void;
+  /**
+   * abriu uma escolha de relíquia; `ban(i, atual)` bane a oferta `i` e devolve a escolha nova (null se não deu),
+   * quando a fonte deixa banir
+   */
+  relicChoice(ids: string[], pick: (id: string) => void, title?: string, ban?: RelicBan): void;
   /** abriu (ou mudou) a escolha de melhoria de nível; o estado está em `Game.levelUp` */
   levelUp(): void;
   /** abriu a oferta de evolução de spell; as opções estão em `Game.evolutionOffer` */
@@ -594,22 +601,46 @@ export class Game {
    * sem elas, raras e épicas do sorteio normal. Devolve se abriu.
    */
   openPoolDraft(pool: RelicPool, count: number = POOL_RELIC_CHOICES): boolean {
-    const open = new Set(filterOpen(this.ach.state, "relic", RELIC_IDS, TUNING.unlockAll));
-    const rr = this.rng.get("relics");
-    const offer = poolRelicDraft(pool, this.run.relics, (id) => open.has(id), this.relicPool(), count, (n) => rr.int(0, n - 1));
+    const offer = this.drawPoolRelics(pool, count);
     if (!offer.length) return false;
     this.poolOpen = true;
     this.events.relicChoice(offer, (id) => {
       this.addRelic(id);
       this.poolOpen = false;
-    }, POOL_TITLE[pool]);
+    }, POOL_TITLE[pool], this.relicBan((k) => this.drawPoolRelics(pool, k)));
     return true;
   }
 
-  /** Relíquias que podem entrar no sorteio: as abertas (unlocks.lua `filter`), que o herói ainda não tem e, as de spell, com a spell equipada. */
+  /** As relíquias abertas no codex (unlocks.lua `isOpen`). */
+  private relicOpen(): (id: string) => boolean {
+    const open = new Set(filterOpen(this.ach.state, "relic", RELIC_IDS, TUNING.unlockAll));
+    return (id) => open.has(id);
+  }
+
+  /** relic_system.lua `draft`: `k` relíquias do sorteio normal, no fluxo `stream` (relíquias; a loja usa o dela). */
+  drawRelics(k: number, stream: "relics" | "shop" = "relics"): string[] {
+    const rr = this.rng.get(stream);
+    return relicDraft(this.run, this.relicOpen(), () => rr.next(), k);
+  }
+
+  /** relic_system.lua `poolDraft`: `k` exclusivas do pool. */
+  private drawPoolRelics(pool: RelicPool, k: number): string[] {
+    const rr = this.rng.get("relics");
+    return poolRelicDraft(this.run, pool, this.relicOpen(), k, () => rr.next());
+  }
+
+  /** O banir da escolha (D-148): a reposição vem de um sorteio novo da mesma fonte (`draw`). */
+  private relicBan(draw: (k: number) => string[]): RelicBan {
+    return (i, current) => {
+      const next = banRelicChoice(this.run, current, i, draw);
+      if (next) this.audio.play("warn");
+      return next;
+    };
+  }
+
+  /** Relíquias que podem entrar no sorteio normal agora (abertas, que o herói não tem nem baniu, as de spell com a spell). */
   private relicPool(): string[] {
-    return filterOpen(this.ach.state, "relic", RELIC_IDS, TUNING.unlockAll)
-      .filter((id) => !this.run.relics.includes(id) && relicDraftable(id, this.run.spells));
+    return relicDraftPool(this.run, this.relicOpen());
   }
 
   /** Avisa as conquistas liberadas e grava. */
@@ -1635,20 +1666,18 @@ export class Game {
       this.pendingPoolRelic = "risk";
       return;
     }
-    const pool = this.relicPool();
     const rr = this.rng.get("relics");
-    rr.shuffle(pool);
     // boss_rewards.lua: até uma premium (35%), a da build do chefe antes (relíquias abertas que o herói não tem)
-    const open = new Set(filterOpen(this.ach.state, "relic", RELIC_IDS, TUNING.unlockAll));
-    const owned = RELIC_IDS.filter((id) => this.run.relics.includes(id) || !open.has(id));
-    const { offer } = bossRelicOffer(owned, e.boss?.relicBuild, pool, BOSS.relicChoices, rr.next(), BOSS.premiumChance, (n) => rr.int(0, n - 1));
+    const open = this.relicOpen();
+    const owned = RELIC_IDS.filter((id) => this.run.relics.includes(id) || !open(id));
+    const { offer } = bossRelicOffer(owned, e.boss?.relicBuild, (k) => this.drawRelics(k), BOSS.relicChoices, () => rr.next(), BOSS.premiumChance);
     // a escolha de relíquia só depois que o corpo do chefe se desfaz (a escolha pausa o jogo)
     this.bossReward = () => {
       if (offer.length) this.events.relicChoice(offer, (id) => {
         this.addRelic(id);
         // escolhida já na onda seguinte (entrou no portal antes): o checkpoint dela precisa da relíquia
         if (this.phase === "walk") this.saveCheckpoint();
-      });
+      }, undefined, this.relicBan((k) => this.drawRelics(k)));
     };
   }
 
@@ -2098,15 +2127,13 @@ export class Game {
     this.audio.play("pickup");
     this.events.zoneChanged();
     if (step === "relic") {
-      const pool = this.relicPool();
-      this.rng.get("relics").shuffle(pool);
-      const offer = pool.slice(0, BOSS.relicChoices);
+      const offer = this.drawRelics(BOSS.relicChoices);
       this.shrineOpen = true;
       this.events.relicChoice(offer, (id) => {
         this.addRelic(id);
         this.shrineOpen = false;
         this.resolveMap();
-      }, "Relic Shrine");
+      }, "Relic Shrine", this.relicBan((k) => this.drawRelics(k)));
       return;
     }
     if (step === "shop") {
@@ -2127,7 +2154,7 @@ export class Game {
   /** `openAutoShop` (reason) ou a carta "Shop" do mapa (null): uma visita nova, sorteada no fluxo `shop`. */
   private openShop(auto: ShopReason | null): void {
     // a automática abre no fim da onda (vale para a seguinte); a do portão, na caminhada da própria onda
-    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, this.relicPool());
+    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, () => this.drawRelics(1, "shop")[0]);
     this.shopVisit = { ...v, auto, priceMult: this.stats.shopPrice };
     this.audio.play("pickup");
     this.events.shop();
@@ -2157,10 +2184,22 @@ export class Game {
   rerollShop(): string | null {
     const v = this.shopVisit;
     if (!v) return "no shop";
-    const r = rerollShop(this.run, v, this.rng.get("shop"), this.relicPool());
+    const r = rerollShop(this.run, v, this.rng.get("shop"), () => this.drawRelics(1, "shop")[0]);
     this.audio.play(r.ok ? "pickup" : "warn");
     this.events.shop();
     return r.ok ? null : r.reason;
+  }
+
+  /** run_map_flow.lua `banShopRelic` (D-148): bane a relíquia da loja e sorteia outra; sem outra, a oferta some. */
+  banShopRelic(index: number): boolean {
+    const o = this.shopVisit?.offers[index];
+    if (!o || o.kind !== "relic" || o.bought || !o.relic || !banRelic(this.run, o.relic)) return false;
+    const repl = this.drawRelics(1, "shop")[0];
+    if (repl) o.relic = repl;
+    else o.bought = true;
+    this.audio.play("warn");
+    this.events.shop();
+    return true;
   }
 
   /** `closeShop`: a automática vem antes do mapa; a da carta resolve o mapa. */

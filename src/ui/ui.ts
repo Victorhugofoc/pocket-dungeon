@@ -27,7 +27,8 @@ import { ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
 import type { MapCard } from "../core/runmap";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
-import type { Game } from "../game/game";
+import type { Game, RelicBan } from "../game/game";
+import { relicBansLeft } from "../core/relics";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const QUALITY = ["low", "medium", "high"];
@@ -187,7 +188,7 @@ export class Ui {
     this.buildHud();
     game.events = {
       toast: (m, c) => this.toast(m, c),
-      relicChoice: (ids, pick, title) => this.showRelicChoice(ids, pick, title),
+      relicChoice: (ids, pick, title, ban) => this.showRelicChoice(ids, pick, title, ban),
       levelUp: () => this.showLevelUp(),
       evolution: () => this.showEvolution(),
       shop: () => this.showShop(),
@@ -923,20 +924,37 @@ export class Ui {
   }
 
   // ---------------------------------------------------------------- relíquia / pausa / morte
-  private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!"): void {
-    const panel = this.open("relic", "relic");
+  private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!", ban?: RelicBan): void {
+    const panel = this.overlayKind === "relic" ? (this.overlay!.firstChild as HTMLElement) : this.open("relic", "relic");
     panel.style.width = "min(820px, 96vw)";
     // D-197: a relíquia que evolui uma spell equipada (com a spell no nível 5)
     const wanted = wantedRelics(this.game.run);
-    panel.innerHTML = `<h2>${title}</h2><p class="sub">Choose a relic. The bonus is permanent.</p>
-      <div class="cards">${ids.map((id) => {
+    // D-148: banir tira a relíquia da partida e põe outra da mesma fonte no lugar (2 por partida)
+    const left = ban ? relicBansLeft(this.game.run) : 0;
+    const hint = ban ? ` · Ban removes the relic from the run · ${left} left` : "";
+    panel.innerHTML = `<h2>${title}</h2><p class="sub">Choose a relic. The bonus is permanent.${hint}</p>
+      <div class="cards relics">${ids.map((id, i) => {
         const d = RELICS[id];
         const evo = wanted[id] ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
+        const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
         return `<div class="card" data-relic="${id}" style="--cc:${hex(d.color)}"><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${relicLines(d)}${evo}</div>`;
+          <h3>${d.name}</h3>${relicLines(d)}${evo}${b}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
-      const id = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]")?.dataset.relic;
+      const t = ev.target as HTMLElement;
+      const bi = t.closest<HTMLElement>("[data-ban]")?.dataset.ban;
+      if (bi !== undefined) {
+        const next = ban?.(Number(bi), ids);
+        if (!next) return;
+        if (!next.length) {
+          // sem nada para pôr no lugar: a escolha acaba sem relíquia
+          this.close();
+          return;
+        }
+        this.showRelicChoice(next, pick, title, ban);
+        return;
+      }
+      const id = t.closest<HTMLElement>("[data-relic]")?.dataset.relic;
       if (!id) return;
       this.close();
       pick(id);
@@ -966,6 +984,11 @@ export class Ui {
       if (t.closest("[data-act=leave]")) return this.leaveShop();
       if (t.closest("[data-act=reroll]")) {
         g.rerollShop();
+        return;
+      }
+      const bi = t.closest<HTMLElement>("[data-ban]")?.dataset.ban;
+      if (bi !== undefined) {
+        if (g.banShopRelic(Number(bi))) this.toast("Relic banned for the rest of the run", "#ffd34d");
         return;
       }
       const i = t.closest<HTMLElement>("[data-offer]")?.dataset.offer;
@@ -1260,6 +1283,8 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     body = relicLines(d);
     const evo = wantedRelics(g.run)[o.relic!];
     if (evo) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
+    const left = relicBansLeft(g.run);
+    if (!o.bought) body += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
     color = hex(d.color);
   } else {
     const item = SHOP_ITEMS[o.kind];

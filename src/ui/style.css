@@ -159,6 +159,12 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .card .stat.neg { color: #ff8a7a; }
 .card .note { color: var(--muted); }
 .card .evo { color: var(--gold); font-size: 12px; font-weight: 600; }
+/* banir relíquia (M12-10) */
+.cards.relics .card { display: flex; flex-direction: column; }
+.card .ban { margin-top: auto; align-self: flex-start; padding: 3px 10px; font-size: 11px; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; cursor: pointer; }
+.card .ban:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+.card .ban:disabled { opacity: 0.4; cursor: default; }
+.cards.shop .card .ban { margin-top: 8px; }
 #levelup h2 small { color: var(--muted); font-size: 14px; font-weight: 500; }
 .controls { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 12px 0; }
 .controls kbd { background: #0d0f17; border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; font: 600 12px system-ui; text-align: center; }
