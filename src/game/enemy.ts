@@ -5,7 +5,9 @@ import { bossStats, enemyStats } from "../core/wave";
 import { pacedFoe } from "../core/pace";
 import { circleInArc } from "../core/melee";
 import { reactionFor, type ReactionId, type ReactState } from "../core/reactions";
-import { BURN, CHILD_SCALE, FIRST_TIMER, MINION_SCALE, RUN_TUNING, SUMMON_CAP } from "../data/run";
+import { BOSS_MECHANIC, BOSS_MECHANICS, BURN, CHILD_SCALE, FIRST_TIMER, MINION_SCALE, RUN_TUNING, SUMMON_CAP, type BossMechanicId } from "../data/run";
+import { type BossPhase, armyCount, bloodRush, phaseSteps, unlockedPatterns } from "../core/bossphase";
+import { HAZARD_TICK } from "../data/enemies";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
 import { CROWN_TITLE, ENEMIES, SHIELD_CYCLE, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
@@ -62,7 +64,6 @@ export class Enemy {
   straggler = false;
   maxHp: number;
   hp: number;
-  dmg: number;
   speed: number;
   radius: number;
   /** invocados e filhos da gosma não rendem ouro nem XP (`killReward`) */
@@ -192,6 +193,19 @@ export class Enemy {
   patternCd = 3;
   lastPattern = -1;
   enraged = false;
+  /** M10-10 (boss.lua `updatePhase`): fase pela vida e o que ela já deu, aplicado uma vez ao entrar */
+  phase: BossPhase = 1;
+  phaseSpeed = 1;
+  phasePatternK = 1;
+  phaseMeleeK = 1;
+  /** mecânica própria do chefe (bosses.lua `mechanic`) */
+  mechanic: BossMechanicId | null = null;
+  /** Blood Rush: degraus de 10% de vida perdida (passo e dano sobem a cada um) */
+  rushSteps = 0;
+  rushSpeed = 1;
+  rushDamage = 1;
+  /** Army of the Damned: última fase em que o chefe já ergueu o exército */
+  armyPhase = 0;
   spiral: { left: number; timer: number; angle: number; p: BossPattern } | null = null;
   /** rugido em curso (0..1) ou -1; o chefe não ataca enquanto ruge */
   roarT = -1;
@@ -251,11 +265,14 @@ export class Enemy {
     const derived = opts.child ? CHILD_SCALE : this.summoned ? MINION_SCALE : null;
     this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1));
     this.projK = st.projectileSpeed;
-    this.dmg = st.damage * (derived ? derived.damage : 1);
+    this.baseDmg = st.damage * (derived ? derived.damage : 1);
     this.speed = def.speed * st.speed * (derived ? derived.speed : 1);
     this.radius = def.radius * (this.champion ? 1.2 : 1);
     this.noReward = this.summoned || opts.child === true;
-    if (isBoss) this.windupDur = TUNING.enemy.telegraph.bossWindup;
+    if (isBoss) {
+      this.windupDur = TUNING.enemy.telegraph.bossWindup;
+      this.mechanic = BOSS_MECHANIC[def.id]?.id ?? null;
+    }
     else {
       const d = def as EnemyDef;
       if (d.summon) this.summonCd = d.summon.cooldown * FIRST_TIMER.summon;
@@ -348,6 +365,12 @@ export class Enemy {
     this.rig.root.rotation.y = this.facing;
     this.rig.root.visible = visible;
     game.scene.add(this.rig.root);
+  }
+
+  /** dano base pela onda; o do chefe sobe com o Blood Rush (boss_ai.lua `hit`: `e.damage × rushDamage`) */
+  baseDmg = 0;
+  get dmg(): number {
+    return this.baseDmg * this.rushDamage;
   }
 
   /** dano do golpe e da investida: no berserker furioso, multiplicado (ai.lua `damageOf`) */
@@ -480,7 +503,7 @@ export class Enemy {
       game.fx.text(this.x, this.rig.height + 0.3, this.z, "Berserk!", "crit");
     }
     const slow = now < this.slowUntil ? 1 - this.slowPower : 1;
-    const speed = this.speed * slow * haste * (this.enraged ? 1.15 : 1) * (this.berserk && bz ? bz.speed : 1) * (this.straggler ? PACE.straggler.speed : 1);
+    const speed = this.speed * slow * haste * this.phaseSpeed * this.rushSpeed * (this.berserk && bz ? bz.speed : 1) * (this.straggler ? PACE.straggler.speed : 1);
     const dxp = p.x - this.x;
     const dzp = p.z - this.z;
     const dist = Math.hypot(dxp, dzp);
@@ -619,6 +642,11 @@ export class Enemy {
     this.spiral = null;
     this.hp = this.maxHp;
     this.enraged = false;
+    this.phase = 1;
+    this.phaseSpeed = this.phasePatternK = this.phaseMeleeK = 1;
+    this.rushSteps = 0;
+    this.rushSpeed = this.rushDamage = 1;
+    this.armyPhase = 0;
     this.roarT = -1;
     this.dots.length = 0;
     if (this.isBoss) game.onBossReset(this);
@@ -711,7 +739,7 @@ export class Enemy {
         const ward = this.boss ? null : game.spells.wardFor(this);
         if (ward) game.spells.hitWard(ward);
         else if (this.swingHits(p.x, p.z, range)) game.hurtPlayer(this.hitDmg, this.name, this);
-        this.cd = (this.boss ? this.boss.attackCooldown : this.def!.cooldown) * this.cdMult;
+        this.cd = (this.boss ? this.boss.attackCooldown * this.phaseMeleeK : this.def!.cooldown) * this.cdMult;
       }
       return;
     }
@@ -919,14 +947,8 @@ export class Enemy {
   private updateBoss(game: Game, dt: number, dist: number, speed: number): void {
     const b = this.boss!;
     const p = game.player;
-    if (!this.enraged && this.hp < this.maxHp * TUNING.boss.enrageAt) {
-      this.enraged = true;
-      game.fx.shockwave(this.x, this.z, 8, 0xff2a1a, 0.6);
-      game.fx.text(this.x, this.rig.height + 1, this.z, "ENRAGED!", "crit");
-      game.audio.play("boss");
-      this.startRoar(TUNING.boss.enrageRoarTime);
-      return;
-    }
+    if (this.updatePhase(game)) return;
+    this.updateMechanic(game);
     if (this.spiral) {
       const s = this.spiral;
       s.timer -= dt;
@@ -948,8 +970,9 @@ export class Enemy {
     if (this.charging) return;
     this.patternCd -= dt;
     if (this.patternCd <= 0 && this.windupT < 0) {
-      this.patternCd = b.patternCooldown * (this.enraged ? TUNING.boss.enrageCooldownMult : 1) * this.cdMult;
-      const list = this.patterns;
+      this.patternCd = b.patternCooldown * this.phasePatternK * this.cdMult;
+      // boss_ai.lua `rotation`: só os padrões que a fase já abriu (o emprestado do rei coroado vem no fim e ele tem todos)
+      const list = this.patterns.slice(0, unlockedPatterns(this.patterns.length, this.phase, this.crowned));
       let idx = Math.floor(Math.random() * list.length);
       if (idx === this.lastPattern) idx = (idx + 1) % list.length;
       this.lastPattern = idx;
@@ -958,6 +981,71 @@ export class Enemy {
     }
     this.meleeStep(game, dt, dist, speed, b.attackRange);
     void p;
+  }
+
+  /**
+   * boss.lua `updatePhase`: cada fase que a vida atravessou entra uma vez e em ordem, com os multiplicadores dela. A
+   * fase 2 dá um aviso curto; a 3 é a fúria, com rugido. Devolve true se o chefe parou para rugir.
+   */
+  private updatePhase(game: Game): boolean {
+    let roared = false;
+    for (const st of phaseSteps(this.phase, this.hp / this.maxHp)) {
+      this.phase = st.phase;
+      this.phaseSpeed *= st.speed;
+      this.phasePatternK *= st.patternCooldown;
+      this.phaseMeleeK *= st.meleeCooldown;
+      if (st.enraged) {
+        this.enraged = true;
+        game.fx.shockwave(this.x, this.z, 8, 0xff2a1a, 0.6);
+        game.fx.text(this.x, this.rig.height + 1, this.z, "ENRAGED!", "crit");
+        game.audio.play("boss");
+        this.startRoar(TUNING.boss.enrageRoarTime);
+        roared = true;
+      } else {
+        game.fx.shockwave(this.x, this.z, 5, this.boss!.glow, 0.45);
+        game.fx.text(this.x, this.rig.height + 1, this.z, `PHASE ${st.phase}`, "crit");
+        game.audio.play("warn");
+      }
+    }
+    return roared;
+  }
+
+  /** boss_ai.lua `updateMechanic` e o exército do Gravekeeper (`BA.update`, D-199). */
+  private updateMechanic(game: Game): void {
+    if (this.mechanic === "blood_rush") {
+      const r = bloodRush(this.hp / this.maxHp);
+      if (r.steps > this.rushSteps) {
+        game.fx.shockwave(this.x, this.z, 3.2, 0xff2a2a, 0.35);
+        game.fx.text(this.x, this.rig.height + 0.6, this.z, `Blood Rush ${r.steps}`, "crit");
+      }
+      this.rushSteps = r.steps;
+      this.rushSpeed = r.speed;
+      this.rushDamage = r.damage;
+    } else if (this.mechanic === "army_of_the_damned" && this.armyPhase < this.phase) {
+      this.armyPhase = this.phase;
+      this.raiseArmy(game, armyCount(this.phase));
+    }
+  }
+
+  /** boss_ai.lua `phaseSummon`: aviso em volta do chefe e n lacaios em roda (sem recompensa, fora do teto de invocados). */
+  private raiseArmy(game: Game, n: number): void {
+    const M = BOSS_MECHANICS.army_of_the_damned;
+    const px = TUNING.enemy.pxToUnit;
+    game.audio.play("warn");
+    game.fx.telegraphCircle(this.x, this.z, this.radius + 24 * px, M.warning, () => {
+      if (this.dead || !this.aggro) return;
+      for (let k = 1; k <= n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        let x = this.x + Math.cos(a) * 52 * px;
+        let z = this.z + Math.sin(a) * 52 * px;
+        // wd:clampToArena: dentro da arena do chefe
+        const dx = x - this.homeX, dz = z - this.homeZ, d = Math.hypot(dx, dz), lim = game.layout.bossRadius - 1;
+        if (d > lim) { x = this.homeX + (dx / d) * lim; z = this.homeZ + (dz / d) * lim; }
+        game.spawnEnemy(M.minion, this.level, x, z, { summoned: true, aggro: true });
+      }
+      game.fx.shockwave(this.x, this.z, 5, this.boss!.glow);
+      game.fx.text(this.x, this.rig.height + 1, this.z, "Army of the Damned", "crit");
+    });
   }
 
   private startPattern(game: Game, pt: BossPattern, dist: number): void {
@@ -1037,6 +1125,11 @@ export class Enemy {
           fx.telegraphCircle(x, z, r, pt.warning + i * 0.18, () => {
             if (!ok()) return;
             game.explode(x, z, r, this.dmg * pt.damage, b.glow, this.name);
+            // Meteor Siege (boss_ai.lua `meteorstorm` `after`): a cratera queima por um tempo
+            if (this.mechanic === "meteor_siege") {
+              const M = BOSS_MECHANICS.meteor_siege;
+              game.affixes.addPool(x, z, r * M.radiusMult, M.fireTime, this.dmg * M.fireDps * HAZARD_TICK, `${this.name} (fire)`, 0xff6a1a);
+            }
           });
         }
         break;

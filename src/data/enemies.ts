@@ -191,7 +191,7 @@ export const BOSSES: Record<string, BossDef> = {
     id: "gravekeeper", name: "Gravekeeper", title: "The Summoner", hp: 2100, damage: 12, speed: 2.6, radius: 1.4,
     attackRange: 3.0, attackCooldown: 1.7, patternCooldown: 4.4,
     patterns: [
-      { kind: "summon", warning: 0.8, damage: 0, count: 4, minion: "goblin" },
+      // M10-10 (D-199): a invocação saiu da rotação; o exército vem uma vez por fase (Army of the Damned)
       { kind: "meteors", warning: 1.0, damage: 1.2, radius: 3.0, count: 5 },
       { kind: "nova", warning: 0.6, damage: 0.8, count: 14, speed: 10 },
     ],

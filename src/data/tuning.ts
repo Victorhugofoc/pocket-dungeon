@@ -66,8 +66,6 @@ export const TUNING = {
     },
   },
   boss: {
-    enrageAt: 0.3,
-    enrageCooldownMult: 0.65,
     /** segundos em que o chefe ruge sem atacar: ao entrar na luta e ao enfurecer */
     roarTime: 1.3,
     enrageRoarTime: 0.9,

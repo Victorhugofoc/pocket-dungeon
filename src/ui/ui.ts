@@ -632,7 +632,7 @@ export class Ui {
     const showBoss = !!boss && g.bossEngaged && !boss.dead;
     r.boss.classList.toggle("hidden", !showBoss);
     if (showBoss && boss) {
-      r.bossName.textContent = `${boss.ambush ? "Ambush: " : ""}${boss.boss!.name} — ${boss.title}${boss.enraged ? " (enraged)" : ""}`;
+      r.bossName.textContent = `${boss.ambush ? "Ambush: " : ""}${boss.boss!.name} — ${boss.title}${boss.enraged ? " (enraged)" : boss.phase > 1 ? ` (phase ${boss.phase})` : ""}${boss.rushSteps > 0 ? ` · Blood Rush ${boss.rushSteps}` : ""}`;
       r.bossFill.style.width = `${(boss.hp / boss.maxHp) * 100}%`;
       r.bossText.textContent = `${Math.ceil(boss.hp)} / ${boss.maxHp}`;
     }

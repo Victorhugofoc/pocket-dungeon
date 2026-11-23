@@ -19,6 +19,7 @@ import {
   LEVELUP_REROLL, RUN_MAP, RUN_START, RUN_TUNING, TOTAL_WAVES, UPGRADE_TIER_WEIGHTS, UPGRADE_TIERS, WAVE_STAGES, WAVES,
   XP_GROWTH,
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
+  BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PHASES,
 } from "../src/data/run";
 import { BOSS_ORDER, BOSSES, ENEMIES, SHIELD_CYCLE } from "../src/data/enemies";
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
@@ -1236,5 +1237,21 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect(BOSS.premiumChance).toBe(BS.PREMIUM_CHANCE);
     for (const id of Object.keys(BOSSES)) expect(BOSSES[id].relicBuild, id).toBe(BS.builds[id]?.relicBuild ?? undefined);
     for (const id of RELIC_IDS) expect(RELICS[id].bossBuild, id).toBe(RL[id].bossBuild ?? undefined);
+  });
+  it("fases e mecânicas dos chefes iguais às de bosses.lua (M10-10)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    expect(BOSS_PHASES.map((x) => ({ ...x }))).toEqual(BS.PHASES);
+    for (const id of Object.keys(BOSSES)) expect(BOSS_MECHANIC[id]?.id, id).toBe(BS.builds[id].mechanic);
+    for (const id of Object.keys(BOSSES)) expect(BOSS_MECHANIC[id]?.name, id).toBe(BS.builds[id].mechanicName);
+    const M = BS.MECHANICS, A = BS.ATTACKS;
+    expect(BOSS_MECHANICS.blood_rush).toEqual(M.blood_rush);
+    expect([...BOSS_MECHANICS.army_of_the_damned.perPhase]).toEqual(M.army_of_the_damned.perPhase);
+    expect(BOSS_MECHANICS.army_of_the_damned.minion).toBe(A.summon.minion);
+    expect(BOSS_MECHANICS.army_of_the_damned.warning).toBe(A.summon.warning);
+    expect(BOSS_MECHANICS.meteor_siege.fireTime).toBe(A.meteorstorm.fireTime);
+    expect(BOSS_MECHANICS.meteor_siege.fireDps).toBe(A.meteorstorm.fireDps);
+    expect([...BOSS_MECHANICS.soul_tether.perPhase]).toEqual(M.soul_tether.perPhase);
+    expect(BOSS_MECHANICS.soul_tether.damageTakenMult).toBe(M.soul_tether.damageTakenMult);
+    expect(BOSS_MECHANICS.soul_tether.wardHp).toBe(M.soul_tether.wardHp);
   });
 });
