@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/core/rng";
 import { checkpoint, continueRun, newRun, RunRng } from "../src/core/run";
-import { chooseCard, expireWaveScope, forkGateSpots, generateMap, needsMap, nodePool, roomOf, type MapNodeId } from "../src/core/runmap";
+import { chooseCard, expireWaveScope, forkGateSpots, generateMap, needsMap, nodePool, roomOf, type MapNodeId, arcSpots } from "../src/core/runmap";
 import { startWave, stepWave, waveMods } from "../src/core/wave";
 import { ROOM_BY_ID } from "../src/data/rooms";
 import { startRoomFx, stepRoomFx, stormDps, tickCount } from "../src/core/roomfx";
@@ -138,5 +138,20 @@ describe("M21-08: portões do mapa", () => {
     r.mapOffer = { wave: 2, cards: [{ node: "shop" }, { node: "combat_room", room: "x" }] };
     const back = continueRun(JSON.parse(JSON.stringify(checkpoint(r, new RunRng(7), 2))));
     expect(back.run.mapOffer).toEqual(r.mapOffer);
+  });
+});
+
+describe("M21-14: portões e desvios em arco dentro da clareira", () => {
+  it("arco virado para a seguinte, no raio pedido, com folga mínima entre vizinhos; offset π vai para trás", () => {
+    const from = { x: 10, z: 20 }, to = { x: -30, z: -20 };
+    const ahead = Math.atan2(to.z - from.z, to.x - from.x);
+    const g = arcSpots(from, to, 3, 11, (20 * Math.PI) / 180, 0, 12.5);
+    expect(g).toHaveLength(3);
+    for (const s of g) expect(Math.hypot(s.x - from.x, s.z - from.z)).toBeCloseTo(11, 6);
+    expect(g[1].angle).toBeCloseTo(ahead, 9);
+    // o passo de 20° daria ~3,8 m; a folga mínima manda
+    for (let i = 1; i < 3; i++) expect(Math.hypot(g[i].x - g[i - 1].x, g[i].z - g[i - 1].z)).toBeGreaterThanOrEqual(12.5 - 1e-6);
+    const back = arcSpots(from, to, 1, 9, 1, Math.PI)[0];
+    expect(Math.hypot(back.x - to.x, back.z - to.z)).toBeGreaterThan(Math.hypot(from.x - to.x, from.z - to.z));
   });
 });

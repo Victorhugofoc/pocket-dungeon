@@ -11,6 +11,18 @@ export const PACE = {
    * Primeiro chute: onda 1 com 11 inimigos (lá 18), 2 com 16 (23), 3 com 22 (28), 4 com 27 (30).
    */
   countScale: [0.6, 0.7, 0.8, 0.9] as readonly number[],
+  /**
+   * M21-13: a luta vem até o herói. Os inimigos nascem em grupos de `pack` (original: 1, um por vez) e todos chegam
+   * dentro de `spawnWindow` da duração (original: 0,9), para limpar cedo fechar a onda e não sobrar tempo morto.
+   * O grupo nasce a `packDistance` m do herói (dentro da clareira), espalhado em `packSpread` m (original: na borda,
+   * longe do herói). Quando restam até `straggler.count` vivos e nada por nascer, eles correm (`speed`) até o herói
+   * e setas na borda da tela apontam os que estão fora dela.
+   */
+  pack: 3,
+  spawnWindow: 0.5,
+  packDistance: [7, 11] as const,
+  packSpread: 1.8,
+  straggler: { count: 3, speed: 1.35 },
   /** escala da duração da onda (original: 1; durações de lá 20, 25, 30, 35 e 40 s) */
   durationMult: 1,
   /** escala da vida e do dano dos inimigos comuns e campeões (original: 1) */

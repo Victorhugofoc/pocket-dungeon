@@ -22,6 +22,16 @@ export function pacedFoe<T extends { hp: number; damage: number }>(st: T): T {
   return { ...st, hp: st.hp * PACE.enemyHpMult, damage: st.damage * PACE.enemyDamageMult };
 }
 
+/** M21-13: quantos inimigos nascem juntos (original: 1). */
+export function pacedPack(): number {
+  return Math.max(1, Math.round(PACE.pack));
+}
+
+/** M21-13: fração da duração em que todos os inimigos da onda nascem (original: `WAVES.spawnWindow`, 0,9). */
+export function pacedSpawnWindow(): number {
+  return PACE.spawnWindow;
+}
+
 /** Raio de uma clareira de onda com ritmo. */
 export function pacedClearing(radius: number): number {
   return radius * PACE.clearingMult;

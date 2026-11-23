@@ -147,6 +147,23 @@ export interface GateSpot {
 }
 
 /**
+ * M21-14: `n` pontos em arco em volta de `from`, a `radius` do centro, centrados na direção de `to` girada de
+ * `offset` radianos. O passo entre vizinhos é `spread` radianos, ou mais, para que fiquem a pelo menos `minGap`
+ * um do outro. `angle` = do centro para o ponto. Para os portões (de frente para a clareira seguinte) e os desvios.
+ */
+export function arcSpots(from: { x: number; z: number }, to: { x: number; z: number }, n: number,
+  radius: number, spread: number, offset = 0, minGap = 0): GateSpot[] {
+  const step = Math.max(spread, 2 * Math.asin(Math.min(1, minGap / (2 * radius))));
+  const base = Math.atan2(to.z - from.z, to.x - from.x) + offset;
+  const out: GateSpot[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = base + (i - (n - 1) / 2) * step;
+    out.push({ x: from.x + Math.cos(a) * radius, z: from.z + Math.sin(a) * radius, angle: a });
+  }
+  return out;
+}
+
+/**
  * M21-12: um portão na trava de cada trilha da bifurcação. Com 3 cartas, uma por trilha; com 2, as dos lados; com 1,
  * a do meio. O portão fica de frente para quem anda pela trilha.
  */

@@ -3,7 +3,7 @@
 // A sala do mapa da partida entra pela camada da onda (runmap.ts). Sem pactos, eventos e afixos
 // por enquanto (M9, M13 e o resto do M20-05; os `runMods` do herói entraram na M19-08): o que não existe vale 1.
 import type { Rng } from "./rng";
-import { pacedCount, pacedDuration } from "./pace";
+import { pacedCount, pacedDuration, pacedPack, pacedSpawnWindow } from "./pace";
 import { waveLayer } from "./runmap";
 import { AMBUSH_DELAY, ENEMY_GROUPS, type RoomDef } from "../data/rooms";
 import type { HeroRunMods } from "../data/heroes";
@@ -117,6 +117,8 @@ export interface WaveState {
   spawned: number;
   interval: number;
   nextSpawn: number;
+  /** M21-13: quantos nascem juntos a cada `interval` (camada de ritmo) */
+  pack: number;
   /** inimigos sorteáveis, com peso (só os que existem no jogo) */
   composition: [string, number][];
   isBossWave: boolean;
@@ -180,8 +182,10 @@ export function startWave(wave: number, champions: Rng, known: (id: string) => b
   }
   return {
     number: wave, duration, elapsed: 0, target, spawned: 0,
-    interval: (duration * WAVES.spawnWindow) / target,
+    // M21-13: em grupos de `pack`, todos dentro de `spawnWindow` da duração (camada de ritmo)
+    interval: (duration * pacedSpawnWindow()) / Math.ceil(target / pacedPack()),
     nextSpawn: WAVES.firstSpawnDelay,
+    pack: pacedPack(),
     composition, isBossWave: boss, randomChampionAt, championAt,
     ambush, ambushAt: AMBUSH_DELAY, ambushSpawned: false,
     extraChampions: [...endlessChampions(wave, target)],
@@ -215,12 +219,7 @@ export function stepWave(w: WaveState, dt: number, world: WaveWorld, spawns: Rng
     out.ambush = true;
   }
   while (w.spawned < w.target && w.elapsed >= w.nextSpawn) {
-    const id = spawns.weighted(w.composition);
-    w.spawned++;
-    let champion = w.championAt === w.spawned || w.randomChampionAt === w.spawned || w.extraChampions.includes(w.spawned);
-    // P-02 (Varok): parte de toda onda comum vem como campeão (não na onda de chefe: o duelo fica limpo)
-    if (!champion && championShare && championShare > 0 && !w.isBossWave) champion = (champions ?? spawns).chance(championShare);
-    out.spawns.push({ id, champion });
+    for (let k = 0; k < w.pack && w.spawned < w.target; k++) spawnOne(w, out, spawns, champions, championShare);
     w.nextSpawn += w.interval;
   }
   if (w.isBossWave) {
@@ -243,6 +242,15 @@ export function stepWave(w: WaveState, dt: number, world: WaveWorld, spawns: Rng
     complete(w, out);
   }
   return out;
+}
+
+function spawnOne(w: WaveState, out: WaveStep, spawns: Rng, champions: Rng | undefined, championShare: number | null): void {
+  const id = spawns.weighted(w.composition);
+  w.spawned++;
+  let champion = w.championAt === w.spawned || w.randomChampionAt === w.spawned || w.extraChampions.includes(w.spawned);
+  // P-02 (Varok): parte de toda onda comum vem como campeão (não na onda de chefe: o duelo fica limpo)
+  if (!champion && championShare && championShare > 0 && !w.isBossWave) champion = (champions ?? spawns).chance(championShare);
+  out.spawns.push({ id, champion });
 }
 
 function complete(w: WaveState, out: WaveStep): void {

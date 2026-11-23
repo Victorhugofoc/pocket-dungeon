@@ -5,14 +5,14 @@ import { arcHalfAngle, autoPattern, autoReach, forkAngles, patternCounts } from 
 import { ARC_STYLES, AUTO_SHOT, STYLE_GUN, STYLE_SHIELD, STYLE_STORM, STYLE_VENOM } from "../data/autostyle";
 import { applyEvolution, declineEvolutions, pendingEvolutionOffer, type EvolutionOption } from "../core/evolution";
 import { addXp, applyUpgrade, draftLevelUp, draftTiers, rerollCost, rerollsLeft, upgradeSources, type UpgradeTier } from "../core/levelup";
-import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
+import { generateZone, ObstacleGrid, SPAWN_R, type Segment, type ZoneLayout } from "../core/worldgen";
 import { runLogEntry, waveEntry, type RunOutcome } from "../core/runlog";
 import { BUILD, storeRunLog } from "./runlog";
 import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, safeStorage } from "../core/save";
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
 import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
-import { chooseCard, expireWaveScope, forkGateSpots, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
+import { arcSpots, chooseCard, expireWaveScope, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
   canHasten, hasten, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
   type WaveMods, type WaveSpawn, type WaveState,
@@ -48,7 +48,7 @@ import { StatusIcons } from "./status-icons";
 import { EnemyBars } from "./hpbars";
 import { MapGates } from "./gates";
 import { DetourField } from "./detours";
-import { detourGold, detourRng, detourSpots, rollDetours, shrineCost } from "../core/detours";
+import { detourGold, detourRng, rollDetours, shrineCost } from "../core/detours";
 import { DETOUR, DETOURS } from "../data/detours";
 import { GATE_SIGNAL } from "../data/map-nodes";
 import type { MoveHandle, TrailHandle } from "./vfx";
@@ -272,6 +272,13 @@ export class Game {
   private phaseT = 0;
   /** o trecho (clareira) da onda atual */
   segment!: Segment;
+  /** M21-13: s andando até a clareira (fase "walk"), e o da onda atual, para o registro */
+  private travelT = 0;
+  /** M21-14: o portão foi escolhido com E; a viagem sai quando a carta estiver resolvida */
+  private warpPending = false;
+  /** s até a resolução adaptativa voltar a agir (`TUNING.frame.settle`) */
+  private settleT = 0;
+  private waveTravel = 0;
   private markers: SpawnMarker[] = [];
   private ring: THREE.Mesh | null = null;
   private projectiles: Projectile[] = [];
@@ -505,6 +512,12 @@ export class Game {
   private adaptResolution(dt: number): void {
     const f = TUNING.frame, gpu = this.pipeline.gpuMs;
     if (gpu < 0) return;
+    // começo da partida ou zona nova: os picos são de carregamento, não de carga; não mexe na resolução
+    if (this.settleT > 0) {
+      this.settleT -= dt;
+      this.gpuAvg = gpu;
+      return;
+    }
     this.gpuAvg += (gpu - this.gpuAvg) * Math.min(1, dt * 4);
     this.resTimer += dt;
     if (this.resTimer < f.every) return;
@@ -570,7 +583,10 @@ export class Game {
     const w = this.wave, run = this.run;
     const midWave = !!w && w.started && !(run.waveLog.at(-1)?.wave === run.wave);
     const last = midWave ? waveEntry(run, w, this.playerAlive ? this.player.hp / this.stats.maxHp : 0, false) : null;
-    if (last) last.perf = this.perfLog.takeWave();
+    if (last) {
+      last.perf = this.perfLog.takeWave();
+      last.travel = Math.round(this.waveTravel * 10) / 10;
+    }
     const env = { gpu: gpuName(this.renderer), width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio, quality: this.quality };
     storeRunLog(this.storage, runLogEntry(run, outcome, new Date().toISOString(), BUILD, last, this.perfLog.run(env)), beacon);
   }
@@ -672,6 +688,8 @@ export class Game {
    * A onda começa quando o herói entra na clareira (Q2: como no Dungeon Reign, mas no mapa aberto).
    */
   prepareWave(wave: number, fresh = false): void {
+    if (fresh) this.travelT = 0;
+    this.warpPending = false;
     // a relíquia do chefe nunca se perde: se o corpo ainda não sumiu, a escolha abre agora
     const reward = this.bossReward;
     this.bossReward = null;
@@ -734,6 +752,7 @@ export class Game {
     setZoneAtmosphere(this.scene, zone);
     // M16-01: compila os shaders da zona e dos efeitos agora, no carregamento, e não no primeiro golpe
     // (e os modelos dos inimigos da zona e dos chefes: esculpidos uma vez, ver `chars/build.ts`)
+    this.settleT = TUNING.frame.settle;
     this.fx.lib.warm(this.layout.spawn.x, this.layout.spawn.z);
     const warmRigs = [...zone.enemies.map(([id]) => characterRig(id, "enemy")), characterRig(zone.enemies[0][0], "enemy", "champion"), characterRig(zone.enemies[0][0], "enemy", "summoned"),
       ...Object.keys(BOSSES).map((id) => characterRig(id, "boss"))];
@@ -742,6 +761,13 @@ export class Game {
       this.scene.add(r.root);
     }
     this.pipeline.compile(this.scene, this.camera);
+    // compilar não sobe a geometria: um desenho num alvo minúsculo, sem recorte, sobe os buffers agora e não no
+    // primeiro inimigo (picos "geo" no começo da onda 1, registro de 2026-11-22)
+    for (const r of warmRigs) r.root.traverse((o) => (o.frustumCulled = false));
+    const prevTarget = this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(Game.warmTarget);
+    this.renderer.render(this.scene, this.camera);
+    this.renderer.setRenderTarget(prevTarget);
     for (const r of warmRigs) disposeRig(r);
     this.fx.lib.clear();
 
@@ -1700,10 +1726,15 @@ export class Game {
       this.ring.visible = m.opacity > 0;
     }
     if (this.phase === "walk") {
+      this.travelT += raw;
       this.walkDetours(dt);
       if (!this.mapResolved) {
         this.walkGates(dt);
         return;
+      }
+      // M21-14: com a carta resolvida (depois do santuário ou da loja do portão) a viagem sai; sem portões, E leva
+      if (this.playerAlive && !this.shrineOpen && !this.shopVisit) {
+        if (this.warpPending || (this.nearDetour < 0 && this.input.wasPressed("KeyE"))) this.warp();
       }
       if (this.playerAlive && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r - 1.5) this.beginWave();
       return;
@@ -1726,7 +1757,10 @@ export class Game {
       for (const e of this.enemies) if (!e.dead) alive++;
       const bossAlive = this.markers.some((m) => m.boss) || (!!this.boss && !this.boss.dead);
       const step = stepWave(w, dt, { alive, bossAlive }, this.rng.get("spawns"), this.rng.get("champions"), this.mods.heroChampionShare);
-      for (const sp of step.spawns) this.queueSpawn(sp);
+      // M21-13: quem nasce no mesmo passo é um grupo, perto do herói
+      const pack = step.spawns.length ? this.packPoint() : null;
+      for (const sp of step.spawns) this.queueSpawn(sp, false, pack);
+      if (w.spawned >= w.target && !this.markers.length && alive <= PACE.straggler.count) this.rushStragglers();
       if (step.ambush) this.queueAmbush();
       if (step.completed) this.completeWave();
       return;
@@ -1778,6 +1812,8 @@ export class Game {
   /** O herói entrou na clareira: letreiro "Onda N" e a clareira fecha. */
   private beginWave(): void {
     const n = this.run.wave;
+    this.waveTravel = this.travelT;
+    this.travelT = 0;
     this.endDetours();
     this.wave = startWave(n, this.rng.get("champions"), (id) => id in ENEMIES, this.mods);
     this.ach.waveStart(n);
@@ -1821,8 +1857,93 @@ export class Game {
     return best;
   }
 
-  private queueSpawn(spawn: WaveSpawn, boss = false): void {
-    const at = boss ? this.bossPoint() : this.edgePoint();
+  /**
+   * M21-13: o centro de um grupo: a `PACE.packDistance` m do herói, dentro da clareira (16 tentativas; sem lugar,
+   * o ponto da borda longe do herói, como antes).
+   */
+  private packPoint(): { x: number; z: number } {
+    const sg = this.segment, p = this.player;
+    const [d0, d1] = PACE.packDistance;
+    for (let i = 0; i < 16; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = d0 + Math.random() * (d1 - d0);
+      const x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
+      if (Math.hypot(x - sg.x, z - sg.z) < sg.r - 1.5 && !this.grid.hits(x, z, 0.8)) return { x, z };
+    }
+    return this.edgePoint();
+  }
+
+  /**
+   * M21-13: setas na borda da tela para as sobras da onda fora dela: posição em px (já presa à borda, `pad` px para
+   * dentro) e ângulo da seta. Vazio fora da luta ou sem sobras.
+   */
+  stragglerArrows(w: number, h: number, pad: number): { x: number; y: number; angle: number }[] {
+    if (this.phase !== "fight") return [];
+    const out: { x: number; y: number; angle: number }[] = [];
+    const v = Game.arrowV;
+    for (const e of this.enemies) {
+      if (e.dead || !e.straggler) continue;
+      v.set(e.x, 1, e.z).project(this.camera);
+      const behind = v.z > 1;
+      let sx = v.x, sy = -v.y;
+      if (behind) { sx = -sx; sy = -sy; }
+      if (!behind && Math.abs(sx) < 0.95 && Math.abs(sy) < 0.95) continue;
+      // da tela ao centro: prende na borda
+      const k = 1 / Math.max(Math.abs(sx), Math.abs(sy), 1e-6);
+      const ex = sx * k, ey = sy * k;
+      out.push({
+        x: Math.max(pad, Math.min(w - pad, ((ex + 1) / 2) * w)),
+        y: Math.max(pad, Math.min(h - pad, ((ey + 1) / 2) * h)),
+        angle: Math.atan2(sy * h, sx * w),
+      });
+    }
+    return out;
+  }
+  private static arrowV = new THREE.Vector3();
+  private static warmTarget = new THREE.WebGLRenderTarget(4, 4);
+
+  /**
+   * Quanto um inimigo pode avançar de (x, z) na direção (dx, dz) sem sair da clareira da luta (o raio dele fora);
+   * fora da luta, ou de fora da clareira, sem limite. Para as investidas.
+   */
+  arenaReach(x: number, z: number, dx: number, dz: number, radius: number): number {
+    const sg = this.segment;
+    if (!sg || (this.phase !== "fight" && this.phase !== "intro")) return Infinity;
+    const R = sg.r - radius - 0.3;
+    const ox = x - sg.x, oz = z - sg.z;
+    const c = ox * ox + oz * oz - R * R;
+    if (c > 0) return Infinity;
+    const b = ox * dx + oz * dz;
+    return Math.max(0, -b + Math.sqrt(b * b - c));
+  }
+
+  /** Devolve o inimigo para dentro da clareira da luta se ele passou da borda; true se precisou. */
+  keepInArena(e: { x: number; z: number; radius: number }): boolean {
+    const sg = this.segment;
+    if (!sg || this.phase !== "fight") return false;
+    const R = sg.r - e.radius - 0.3;
+    const ox = e.x - sg.x, oz = e.z - sg.z, d = Math.hypot(ox, oz);
+    if (d <= R || d > sg.r + 6) return false;
+    e.x = sg.x + (ox / d) * R;
+    e.z = sg.z + (oz / d) * R;
+    return true;
+  }
+
+  /** M21-13: os últimos vivos correm até o herói, sem voltar para casa. */
+  private rushStragglers(): void {
+    for (const e of this.enemies) {
+      if (e.dead || e.isBoss || e.straggler) continue;
+      e.straggler = true;
+      e.hunter = true;
+      if (!e.aggro) e.setAggro(this);
+    }
+  }
+
+  private queueSpawn(spawn: WaveSpawn, boss = false, pack: { x: number; z: number } | null = null): void {
+    const S = PACE.packSpread;
+    const at = boss ? this.bossPoint()
+      : pack ? { x: pack.x + (Math.random() - 0.5) * 2 * S, z: pack.z + (Math.random() - 0.5) * 2 * S }
+      : this.edgePoint();
     const mesh = new THREE.Mesh(MARKER_GEO, new THREE.MeshBasicMaterial({
       color: boss ? 0xff5a3a : spawn.champion ? 0xffc83d : 0xb06aff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false,
     }));
@@ -1939,6 +2060,7 @@ export class Game {
     }
     if (this.playerAlive) {
       const entry = waveEntry(run, w, this.player.hp / this.stats.maxHp, true);
+      entry.travel = Math.round(this.waveTravel * 10) / 10;
       // a onda leva os quadros desde o fim da anterior (o caminho até ela, as telas sem pausa e o combate)
       entry.perf = this.perfLog.takeWave();
       run.waveLog.push(entry);
@@ -1990,29 +2112,63 @@ export class Game {
     const cards = this.mapCards;
     this.mapResolved = !cards;
     if (!cards) return false;
-    // M21-12: um portão na trava de cada trilha da bifurcação até esta clareira
-    const fork = this.layout.forks.find((f) => f.to === index);
-    if (!fork) return false;
-    const spots = forkGateSpots(fork, cards.length);
+    // M21-14: os portões dentro da clareira vencida (ou em volta da fogueira), virados para a seguinte
+    const G = TUNING.world.gates;
+    const from = this.fromCircle(index);
+    const spots = arcSpots(from, this.layout.segments[index], Math.min(3, cards.length), Math.max(G.minRing, from.r * G.ring),
+      (G.spread * Math.PI) / 180, 0, G.minGap);
     this.gates.show(spots, cards.slice(0, spots.length));
     return true;
+  }
+
+  /** De onde se parte para o trecho `index`: a clareira de antes ou a fogueira. */
+  private fromCircle(index: number): { x: number; z: number; r: number } {
+    const L = this.layout;
+    return index > 0 ? L.segments[index - 1] : { ...L.spawn, r: SPAWN_R };
+  }
+
+  /**
+   * M21-14: leva o herói até dentro da clareira da onda (do lado de onde ele veio), com um clarão nos dois lados;
+   * a onda começa no quadro seguinte, porque ele já está dentro.
+   */
+  private warp(): void {
+    const p = this.player, sg = this.segment;
+    this.warpPending = false;
+    const from = this.fromCircle(this.layout.segments.indexOf(sg));
+    const dx = from.x - sg.x, dz = from.z - sg.z, d = Math.hypot(dx, dz) || 1;
+    const k = sg.r * TUNING.world.gates.arrive;
+    this.fx.burst(p.x, 1, p.z, 0x9be4ff, 24, 6, 0.16, 0.5);
+    this.fx.flashLight(p.x, 2, p.z, 0x9be4ff, 2, 0.35);
+    p.x = sg.x + (dx / d) * k;
+    p.z = sg.z + (dz / d) * k;
+    p.rush?.fire?.kill();
+    p.leap = p.rush = null;
+    this.camTarget.set(p.x, 0, p.z);
+    this.fx.burst(p.x, 1, p.z, 0x9be4ff, 30, 7, 0.18, 0.6);
+    this.fx.flashLight(p.x, 2, p.z, 0x9be4ff, 2.4, 0.4);
+    this.fx.shockwave(p.x, p.z, 3, 0x9be4ff);
+    this.audio.play("dash");
   }
 
   /** Caminhada com o mapa por escolher: passar por um portão escolhe a carta dele. */
   private walkGates(dt: number): void {
     const p = this.player;
     this.gates.update(this.time, dt);
-    const near = this.gates.nearest(p.x, p.z, 7);
+    const near = this.gates.nearest(p.x, p.z, TUNING.world.gates.useRadius);
     // o som da sala ao chegar perto do portão (parte do sinal, M21-08)
     const cards = this.mapCards;
     if (near >= 0 && near !== this.nearGate && cards) this.audio.play(GATE_SIGNAL[cards[near].node].sound);
     this.nearGate = near;
     if (!this.playerAlive || this.shrineOpen || this.shopVisit || !this.mapCards) return;
-    let i = this.gates.hit(p.x, p.z);
-    // M21-12: quem cortou pelo mato e chegou à clareira sem passar por portão fica com o mais perto
+    // M21-14: E perto de um portão escolhe a carta e leva até a clareira da onda
+    if (near >= 0 && this.input.wasPressed("KeyE")) {
+      this.warpPending = true;
+      this.chooseMapCard(near);
+      return;
+    }
+    // quem foi andando até a clareira sem escolher fica com o portão mais perto
     const sg = this.segment;
-    if (i < 0 && sg && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r + TUNING.world.gates.fallbackReach) i = this.gates.nearest(p.x, p.z, Infinity);
-    if (i >= 0) this.chooseMapCard(i);
+    if (sg && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r + TUNING.world.gates.fallbackReach) this.chooseMapCard(this.gates.nearest(p.x, p.z, Infinity));
   }
 
   /** Os desvios no minimapa: posição e cor. */
@@ -2041,16 +2197,12 @@ export class Game {
     const rng = detourRng(this.layout.seed, run.wave);
     const kinds = rollDetours(rng, { shopAhead: index < WAVES_PER_ZONE - 1 && !run.skipShop && run.wave < TOTAL_WAVES });
     if (!kinds.length) return;
-    const L = this.layout;
-    const spots = detourSpots(rng, kinds, {
-      from: index > 0 ? L.segments[index - 1] : L.spawn,
-      to: L.segments[index],
-      // M21-12: ao lado das trilhas dos lados da bifurcação, para fora
-      anchors: L.forks.find((f) => f.to === index)?.trails.filter((_, k) => k !== 1).map((t) => ({ x: t.lock.x, z: t.lock.z, nx: t.out.x, nz: t.out.z })),
-      clearings: L.segments,
-      bound: L.size / 2 - TUNING.world.margin - 2,
-      blocked: (x, z, r) => this.grid.hits(x, z, r),
-    });
+    // M21-14: do lado de trás da clareira vencida (ou da fogueira), longe dos portões, virados para o meio
+    const G = TUNING.world.gates;
+    const from = this.fromCircle(index);
+    const spots = arcSpots(from, this.layout.segments[index], kinds.length, Math.max(G.minRing * 0.8, from.r * G.detourRing),
+      (G.detourSpread * Math.PI) / 180, Math.PI, G.minGap * 0.7)
+      .map((a, i) => ({ x: a.x, z: a.z, kind: kinds[i], facing: a.angle + Math.PI }));
     this.detours.show(spots);
     const chest = spots.find((s) => s.kind === "chest");
     if (chest) {

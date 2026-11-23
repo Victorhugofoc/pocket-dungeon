@@ -324,7 +324,7 @@ export class Ui {
       return `${a.text}${p ? ` (${Math.min(p.current, p.goal).toLocaleString("en-US")} / ${p.goal.toLocaleString("en-US")})` : ""}`;
     };
     const MEDAL = ["", "Easy", "Normal", "Hard"];
-    const render = () => {
+    const render = (swap = false) => {
       const h = HEROES[this.selectedHero];
       if (!h.startingSpells.includes(this.selectedSpell as SpellId)) this.selectedSpell = h.startingSpells[0];
       const locked = !open(h.id);
@@ -338,11 +338,11 @@ export class Ui {
         ? `${rec.runs} runs · ${rec.wins} wins · best wave ${rec.highestWave}${rec.bestEndless ? ` · endless to wave ${rec.bestEndless}` : ""} · ${rec.kills} kills · ${achievementCount(ach)} of ${ACHIEVEMENTS.length} achievements`
         : "Action RPG · procedural maps, one hero, waves and bosses";
       const faces = this.game.stage.portraits();
-      const roster = HERO_ORDER.map((id) => {
+      const roster = HERO_ORDER.map((id, i) => {
         const d = HEROES[id];
         const lk = !open(id);
         const tip = lk ? `Locked · ${lockText(id)}` : `${d.name} · ${d.title}`;
-        return `<button class="hs-portrait ${id === h.id ? "sel" : ""} ${lk ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}" title="${tip}">
+        return `<button class="hs-portrait ${id === h.id ? "sel" : ""} ${lk ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)};--i:${i}" title="${tip}">
           <span class="face"><img src="${lk ? faces[id].locked : faces[id].face}" alt="">${lk ? `<i class="lock">🔒</i>` : ""}</span><span class="nm">${lk ? "???" : d.name}</span>
           ${isNew(ach, "hero", id) ? `<em class="new">NEW</em>` : ""}</button>`;
       }).join("");
@@ -351,16 +351,15 @@ export class Ui {
         ${barsHtml(h.id)}
         <div class="section">Attack</div><p class="hs-line">${attackLine(h)}</p>
         ${heroKit(h, h.technique.cooldown)}
-        <div class="section">Records</div>
-        <ul class="hs-rec">${best.length ? best.join("") : `<li class="note">No runs with this hero yet</li>`}
-          ${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}</ul>`;
+        ${best.length || medal ? `<div class="section">Records</div>
+        <ul class="hs-rec">${best.join("")}${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}</ul>` : ""}`;
       const diffs = DIFFICULTY_ORDER.map((id) => {
         const d = DIFFICULTIES[id];
         const tip = `${DIFFICULTY_TEXT[id]} Enemy HP x${d.enemyHp.toFixed(2)} · enemy damage x${d.enemyDamage.toFixed(2)} · reward x${d.reward.toFixed(2)}`;
         return `<button class="${id === this.selectedDifficulty ? "sel" : ""}" data-diff="${id}" style="--cc:${DIFF_COLOR[id]}" title="${tip}">${d.name}</button>`;
       }).join("");
       const spells = h.startingSpells.map((id, i) => `<button class="${id === this.selectedSpell ? "sel" : ""}" data-spell="${id}"
-        title="${SPELL_TEXT[id]}"><span>${SPELL_ICON[id] ?? "✦"}</span>${spellName(id)}<kbd>${i + 1}</kbd></button>`).join("");
+        title="${SPELL_TEXT[id]}"><span>${SPELL_ICON[id] ?? "✦"}</span><b class="sn">${spellName(id)}</b><kbd>${i + 1}</kbd></button>`).join("");
       panel.innerHTML = `
         <header class="hs-top">
           <div><h1>DUNGEON REIGN</h1><p class="tag">${records}</p></div>
@@ -369,16 +368,19 @@ export class Ui {
             ${runLog ? `<button data-act="runlog">Export run log (${runLog})</button>` : ""}
           </div>
         </header>
-        <div class="hs-main">
+        <div class="hs-main ${swap ? "swap" : ""}">
           <div class="hs-roster">${roster}</div>
           <div class="hs-stage ${locked ? "locked" : ""}" style="--hc:${hex(h.color)}">
             <div class="hs-name"><h2>${locked ? "Locked" : h.name}</h2><p>${locked ? "" : h.title}</p></div>
             <div class="hs-floor" data-r="stage"></div>
-            ${locked ? `<p class="hs-lock">Unlock: ${lockText(h.id)}</p>` : ""}
+            ${locked ? `<p class="hs-lock">Unlock: ${lockText(h.id)}</p>` : `<div class="hs-look"><div class="section">Appearance</div>
+              <button class="sel" title="The hero's own look">Default</button>
+              <button disabled title="Hero skins: coming later">Skins · soon</button>
+              <button disabled title="Founder wings and cloaks: coming later">Founder · soon</button></div>`}
           </div>
           <div class="hs-info" style="--hc:${hex(h.color)}">${info}</div>
         </div>
-        <footer class="hs-setup ${locked ? "off" : ""}">
+        <footer class="hs-setup ${locked ? "off" : ""}" style="--hc:${hex(h.color)}">
           <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div></div>
           <div class="hs-group"><div class="section">Starting spell <small>· others come from the shop and upgrades</small></div>
             <div class="hs-spells">${spells}</div></div>
@@ -387,7 +389,7 @@ export class Ui {
               title="Same seed = same map, rooms, relics and bosses. Paste a run's 7-letter code or type any word. Empty = random.">
             ${seedErr ? `<p class="bad">${seedErr}</p>` : ""}</div>
           <div class="hs-go"><button class="primary ${confirming ? "danger" : ""}" data-act="go" ${locked ? "disabled" : ""}>${
-            confirming ? "This ends the current run. Start again to confirm" : "Start the run"}</button></div>
+            confirming ? "Ends your saved run · click to confirm" : "Start the run"}</button></div>
         </footer>
         <p class="hs-keys">Arrows: hero · drag: turn · 1-4: starting spell · Enter: start · Esc: cancel</p>`;
       this.game.stage.show(panel.querySelector<HTMLElement>("[data-r=stage]")!, h.id, locked);
@@ -405,7 +407,7 @@ export class Ui {
       this.confirmNew = "";
       seedErr = "";
       if (open(id) && markFreshSeen(ach, "hero", id)) this.game.saveAchievements();
-      render();
+      render(true);
     };
     const go = () => {
       const h = HEROES[this.selectedHero];
@@ -428,6 +430,9 @@ export class Ui {
         code ? decodeSeed(code)! : undefined);
     };
     render();
+    // a cascata de entrada só na abertura da tela
+    panel.classList.add("enter");
+    window.setTimeout(() => panel.classList.remove("enter"), 900);
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       const hero = t.closest<HTMLElement>("[data-hero]")?.dataset.hero;
@@ -495,6 +500,7 @@ export class Ui {
   private buildHud(): void {
     this.hud.innerHTML = `
       <div id="vignette"></div>
+      <div id="arrows" data-r="arrows"></div>
       <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold"><span data-r="gold"></span><span class="bank hidden" data-r="bank" title="BANKED LOOT: orbs left on the floor were banked. Enemies with the coin under them drop double until it runs out."></span></p><div class="points hidden" data-r="points"></div></div>
       <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
       <div id="banner" data-r="banner"></div>
@@ -522,6 +528,17 @@ export class Ui {
     this.hud.querySelectorAll<HTMLElement>("[data-r]").forEach((e) => (this.r[e.dataset.r!] = e));
     this.toasts = this.hud.querySelector("#toasts")!;
     this.mapCtx = this.hud.querySelector<HTMLCanvasElement>("#minimap")!.getContext("2d")!;
+  }
+
+  /** M21-13: setas na borda da tela para as sobras da onda fora dela. */
+  private updateArrows(): void {
+    const box = this.r.arrows;
+    const list = this.game.stragglerArrows(window.innerWidth, window.innerHeight, 36);
+    while (box.children.length < list.length) box.appendChild(document.createElement("i"));
+    while (box.children.length > list.length) box.lastChild!.remove();
+    list.forEach((a, i) => {
+      (box.children[i] as HTMLElement).style.transform = `translate(${a.x}px, ${a.y}px) rotate(${a.angle}rad)`;
+    });
   }
 
   /** relic_mechanics.lua `statuses`: os estados das relíquias com mecânica, sobre a barra de habilidades. */
@@ -582,6 +599,7 @@ export class Ui {
     const p = g.player;
     const s = g.stats;
     const r = this.r;
+    this.updateArrows();
     r.hpFill.style.width = `${(p.hp / s.maxHp) * 100}%`;
     r.hpText.textContent = `${Math.ceil(p.hp)} / ${s.maxHp}`;
     r.xpFill.style.width = `${Math.min(100, (g.run.xp / g.run.xpToNext) * 100)}%`;
@@ -618,7 +636,7 @@ export class Ui {
     r.waveN.textContent = `Wave ${n}${total}`;
     const w = g.wave;
     let t = "";
-    if (g.phase === "walk") t = g.mapCards ? "choose a gate" : "go to the circle";
+    if (g.phase === "walk") t = g.mapCards ? "choose a gate" : "press E to go";
     else if (g.phase === "intro") t = "get ready";
     else if (g.phase === "fight" && w) {
       const left = Math.ceil(g.waveTimeLeft);
@@ -639,7 +657,7 @@ export class Ui {
     const cards = g.mapCards;
     const hint = g.nearPortal ? "E — go on to the next zone"
       : g.phase === "walk" && g.playerAlive && g.detourHint ? g.detourHint
-      : g.phase === "walk" && g.playerAlive ? (cards ? `Walk through a gate to choose wave ${n}` : `Step into the circle to start wave ${n}`) : "";
+      : g.phase === "walk" && g.playerAlive ? (cards ? (g.nearGate >= 0 ? `E — take this gate to wave ${n}` : `Walk to a gate and press E to choose wave ${n}`) : `E — go to wave ${n}`) : "";
     if (r.hint.textContent !== hint) r.hint.textContent = hint;
     r.hint.classList.toggle("hidden", !hint || !!this.overlay);
     // M21-08: a carta do portão mais perto (o mapa de consulta)

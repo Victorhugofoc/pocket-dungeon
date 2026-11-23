@@ -26,7 +26,7 @@ export const DETOUR = {
   /** quantos desvios por trecho: [quantidade, peso] */
   count: [[0, 0.3], [1, 0.45], [2, 0.25]] as const,
   /** distância do meio do trecho para o lado (metros) */
-  offset: [8, 15] as const,
+  offset: [5, 9] as const,
   /** folga da beira de qualquer clareira (metros) */
   clearingGap: 3,
   /** raio de chão livre em volta do desvio e largura do corredor até ele */

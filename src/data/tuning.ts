@@ -3,7 +3,11 @@
 export const TUNING = {
   /** Resolução adaptativa (game.ts): mira 60 fps. A escala da resolução interna desce quando o tempo de GPU passa de `gpuHigh` ms e
    * sobe quando fica abaixo de `gpuLow`, entre `minScale` e 1 (1 = densidade máxima da qualidade escolhida). */
-  frame: { gpuHigh: 12.5, gpuLow: 8.5, minScale: 0.6, step: 0.08, every: 0.75, maxRatio: 1.5 },
+  /**
+   * Resolução adaptativa. `settle`: s depois de começar a partida ou carregar a zona sem adaptar (os primeiros quadros
+   * sobem texturas e geometria; baixar a resolução ali realoca os alvos e piora os picos, visto no registro de 2026-11-22).
+   */
+  frame: { gpuHigh: 12.5, gpuLow: 8.5, minScale: 0.6, step: 0.08, every: 0.75, maxRatio: 1.5, settle: 10 },
   /** SÓ PARA TESTE (2026-11-16): tudo desbloqueado (Unlocks.ALL do original), para seguir testando os 9 heróis. Desligar ao balancear. */
   unlockAll: true,
   /** DEV Grimoire no F1 (constants.lua `C.DEV_TOOLS`, lá ligado por `--dev`). Ligado enquanto não há loja (M7). Desligar ao publicar. */
@@ -78,13 +82,17 @@ export const TUNING = {
     /** raio das clareiras das ondas 1 a 4 de cada zona */
     segmentRadius: 16,
     /**
-     * M21-12: as clareiras em zigue-zague, uma de cada lado do meio da zona (`zigzag`: distância do meio, x), e 3
-     * trilhas entre uma e a seguinte: a do meio e duas que se abrem `bulge` para os lados (encolhe até `minBulge` se
-     * chegar perto de outra clareira), saindo da borda a `departDeg` graus e voltando a se juntar `junction` antes
-     * da clareira seguinte. `spawnSide`, `bossSide`: distância do meio da fogueira e da arena, do lado oposto.
+     * M21-12: as 3 trilhas entre uma clareira e a seguinte: a do meio e duas que se abrem `bulge` para os lados
+     * (encolhe até `minBulge` se chegar perto de outra clareira), saindo da borda a `departDeg` graus e voltando a se
+     * juntar `junction` antes da clareira seguinte. Curtas desde a M21-13.
      */
-    forks: { zigzag: [24, 34] as const, spawnSide: [14, 30] as const, bossSide: [14, 40] as const, zJitter: 3,
-      bulge: 15, minBulge: 8, departDeg: 40, junction: 5, samples: 14, clearance: 3 },
+    forks: { bulge: 7, minBulge: 4, departDeg: 38, junction: 2, samples: 10, clearance: 2 },
+    /**
+     * M21-13: a zona é uma corrente de arenas em linha reta (substitui o zigue-zague da M21-12): `gap` = vão entre a
+     * borda de uma clareira e a da seguinte (as trilhas da bifurcação cabem nele, ~2 s andando), `xJitter` = quanto o
+     * centro sai do meio, `bend` = curva do caminho do meio entre duas paradas.
+     */
+    chain: { gap: [9, 11] as const, xJitter: 4, bend: 1.5 },
     /** M21-08: portões do mapa da partida, na trava de cada trilha (M21-12) */
     gates: {
       /** distância do centro do portão que conta como passar por ele (a trilha tem ~6 de largura) */
@@ -93,6 +101,15 @@ export const TUNING = {
       width: 4.6,
       /** M21-12: sem portão escolhido, chegar a esta distância da borda da clareira escolhe o portão mais perto */
       fallbackReach: 2,
+      /**
+       * M21-14: os portões ficam dentro da clareira vencida (ou em volta da fogueira), em arco virado para a seguinte:
+       * a `ring` do raio (pelo menos `minRing` m do centro), `spread` graus entre um e o vizinho ou mais, para ficarem a
+       * `minGap` m um do outro (o brilho de cada um tem ~7 m); E perto (`useRadius`, o mesmo raio que mostra a carta)
+       * escolhe e leva até a seguinte. Os desvios ficam do lado de trás, a `detourRing` do raio.
+       */
+      ring: 0.62, minRing: 9, spread: 50, minGap: 12.5, useRadius: 5.5, detourRing: 0.6, detourSpread: 70,
+      /** onde o herói chega na clareira seguinte: fração do raio, do centro para o lado de onde veio */
+      arrive: 0.35,
     },
   },
 } as const;

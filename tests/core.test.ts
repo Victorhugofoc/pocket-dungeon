@@ -68,16 +68,20 @@ describe("dados", () => {
   });
 });
 
-describe("M21-12: zigue-zague e bifurcações", () => {
-  it("clareiras afastadas, 3 trilhas por bifurcação, travas separadas, trilhas livres", () => {
+describe("M21-13: corrente de arenas e bifurcações curtas", () => {
+  it("clareiras em linha com vão curto, 3 trilhas por bifurcação, travas separadas, trilhas livres", () => {
     for (const zid of ZONE_ORDER) {
       for (let seed = 1; seed <= 40; seed++) {
         const L = generateZone(ZONES[zid], seed);
         const circles = [{ ...L.spawn, r: SPAWN_R }, ...L.segments];
-        // vizinhas com espaço para a bifurcação
+        // vizinhas com vão curto (a caminhada entre ondas é curta), sempre subindo a tela
+        const [g0, g1] = TUNING.world.chain.gap;
         for (let i = 1; i < circles.length; i++) {
           const a = circles[i - 1], b = circles[i];
-          expect(Math.hypot(a.x - b.x, a.z - b.z) - a.r - b.r, `${zid} ${seed} ${i}`).toBeGreaterThan(14);
+          const gap = Math.hypot(a.x - b.x, a.z - b.z) - a.r - b.r;
+          expect(gap, `${zid} ${seed} ${i}`).toBeGreaterThan(g0 - 0.01);
+          expect(gap, `${zid} ${seed} ${i}`).toBeLessThan(g1 + 2 * TUNING.world.chain.xJitter);
+          expect(b.z, `${zid} ${seed} ${i}`).toBeLessThan(a.z);
         }
         // uma bifurcação até cada clareira das ondas; nenhuma até a arena
         expect(L.forks.map((f) => [f.from, f.to])).toEqual([[-1, 0], [0, 1], [1, 2], [2, 3]]);
@@ -86,7 +90,7 @@ describe("M21-12: zigue-zague e bifurcações", () => {
           expect(f.trails).toHaveLength(3);
           const locks = f.trails.map((t) => t.lock);
           for (let a = 0; a < 3; a++) for (let b = a + 1; b < 3; b++)
-            expect(Math.hypot(locks[a].x - locks[b].x, locks[a].z - locks[b].z)).toBeGreaterThan(10);
+            expect(Math.hypot(locks[a].x - locks[b].x, locks[a].z - locks[b].z)).toBeGreaterThan(TUNING.world.gates.width + 1.5);
           const others = circles.filter((_, k) => k !== f.from + 1 && k !== f.to + 1);
           let edge = 0, nearOther = Infinity, blocked = 0;
           for (const t of f.trails) {
