@@ -232,6 +232,7 @@ export class Ui {
   }
 
   private close(): void {
+    this.game.stage.hide();
     this.overlay?.remove();
     this.overlay = null;
     this.overlayKind = "";
@@ -387,7 +388,8 @@ export class Ui {
           <div class="hs-go"><button class="primary ${confirming ? "danger" : ""}" data-act="go" ${locked ? "disabled" : ""}>${
             confirming ? "This ends the current run. Start again to confirm" : "Start the run"}</button></div>
         </footer>
-        <p class="hs-keys">Arrows: hero · 1-4: starting spell · Enter: start · Esc: cancel</p>`;
+        <p class="hs-keys">Arrows: hero · drag: turn · 1-4: starting spell · Enter: start · Esc: cancel</p>`;
+      this.game.stage.show(panel.querySelector<HTMLElement>("[data-r=stage]")!, h.id, locked);
       const input = panel.querySelector<HTMLInputElement>("[data-r=seed]")!;
       input.oninput = () => (this.seedText = input.value.toUpperCase());
       input.onkeydown = (e) => {
