@@ -8,7 +8,9 @@ import { reactionFor, type ReactionId, type ReactState } from "../core/reactions
 import { BURN, CHILD_SCALE, FIRST_TIMER, MINION_SCALE, RUN_TUNING, SUMMON_CAP } from "../data/run";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
-import { CROWN_TITLE, ENEMIES, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
+import { CROWN_TITLE, ENEMIES, SHIELD_CYCLE, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
+import { guardBlocks, shieldPhase, turnToward } from "../core/guard";
+import { makeGuardBand, type GuardBand } from "./guard";
 import type { StatusKind } from "../data/heroes";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -211,6 +213,11 @@ export class Enemy {
   /** multiplicador de ouro e XP do campeão (+25% por afixo) */
   affixK = 1;
   bubble: ShieldBubble | null = null;
+  /** M9-01 (ai.lua `behaviors.shield`): guinada do escudo de frente, relógio do ciclo e a fase dele */
+  shieldYaw = 0;
+  shieldT = 0;
+  shieldState: "up" | "warn" | "down" = "up";
+  private guardBand: GuardBand | null = null;
 
   constructor(game: Game, def: EnemyDef | BossDef, wave: number, x: number, z: number,
     opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean; ambush?: { hp: number; damage: number } | null;
@@ -257,6 +264,10 @@ export class Enemy {
       this.ring = makeBossRing(game.scene, this.boss.glow);
       this.ring.update(x, z, this.radius * 1.9, 0, 0, 0.45);
     }
+    if (this.def?.shield) {
+      this.shieldYaw = this.facing = Math.atan2(game.player.x - x, game.player.z - z);
+      this.guardBand = makeGuardBand(game.scene, this.def.shield.arcDeg, 0x9ad1ff);
+    }
     if (this.champion && !this.boss) {
       this.aura = makeChampionAura(game.scene);
       this.aura.update(x, z, this.radius, 0, 1);
@@ -284,6 +295,18 @@ export class Enemy {
     this.affixK = affixReward(ids.length);
   }
 
+  /**
+   * damage.lua `shieldBlocks`: o escudo erguido (ou piscando) segura o dano que vem de (fx, fz)? Devolve o multiplicador
+   * (1 sem escudo). (px, pz) é o herói, a origem quando a do golpe está colada no corpo.
+   */
+  guardMult(fx: number, fz: number, px: number, pz: number): number {
+    const sh = this.def?.shield;
+    if (!sh || this.dead || this.shieldState === "down") return 1;
+    if (!guardBlocks(this.shieldYaw, sh.arcDeg, this.x, this.z, this.radius, fx, fz, px, pz)) return 1;
+    this.guardBand?.flash();
+    return sh.damageMult;
+  }
+
   hasAffix(id: AffixId): boolean {
     return this.affixes.includes(id);
   }
@@ -292,6 +315,8 @@ export class Enemy {
   dispose(): void {
     this.bubble?.dispose();
     this.bubble = null;
+    this.guardBand?.dispose();
+    this.guardBand = null;
     this.endSwing();
     disposeRig(this.rig);
     this.ring?.dispose();
@@ -392,6 +417,7 @@ export class Enemy {
       if (this.boss) this.dissolve(game, dt);
       this.aura?.update(this.x, this.z, this.radius, now, Math.max(0, 1 - this.deadT * 1.6));
       this.bubble?.update(this.x, this.z, this.radius, this.rig.height, 0, now);
+      this.guardBand?.update(this.x, this.z, this.shieldYaw, this.radius, this.rig.height, 0, now);
       if (this.deadT >= 1.25) this.remove = true;
       return;
     }
@@ -524,6 +550,8 @@ export class Enemy {
     });
     this.aura?.update(this.x, this.z, this.radius, now + this.rig.phase, 1);
     this.bubble?.update(this.x, this.z, this.radius, this.rig.height, this.shieldMax > 0 ? this.shield / this.shieldMax : 0, now);
+    this.guardBand?.update(this.x, this.z, this.shieldYaw, this.radius, this.rig.height,
+      this.shieldState === "up" ? 1 : this.shieldState === "warn" ? 0.5 : 0, now);
     if (this.boss) {
       this.rage += ((this.enraged ? 1 : 0) - this.rage) * Math.min(1, dt * 3);
       this.ring?.update(this.x, this.z, this.radius * 1.9, now, this.rage, this.aggro ? 1 : 0.45);
@@ -724,6 +752,16 @@ export class Enemy {
       case "melee":
         this.meleeStep(game, dt, dist, speed, (d.attackRange ?? 1.5) + 0.3);
         break;
+      case "shield": {
+        // ai.lua `behaviors.shield`: o ciclo corre sempre (nasce erguido); o escudo gira devagar para o herói, e o corpo com ele
+        const sh = d.shield!;
+        this.shieldT += dt;
+        this.shieldState = shieldPhase(this.shieldT, SHIELD_CYCLE);
+        this.shieldYaw = turnToward(this.shieldYaw, Math.atan2(p.x - this.x, p.z - this.z), sh.turnRate * dt);
+        this.meleeStep(game, dt, dist, speed, (d.attackRange ?? 1.5) + 0.3);
+        this.facing = this.shieldYaw;
+        break;
+      }
       case "charger": {
         const c = d.charge!;
         this.chargeCd -= dt;

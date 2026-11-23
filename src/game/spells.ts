@@ -922,7 +922,7 @@ export class SpellCaster {
       const cz = e.z;
       this.arc(px, pz, cx, cz, count, (count - 1) * CHAIN_STEP);
       // Conduit Ring (D-438): cada salto bate mais forte que o anterior
-      g.spellHit(e, st.damage * (1 + (st.chainEscalate ?? 0) * (count - 1)), false, schoolOf(st));
+      g.spellHit(e, st.damage * (1 + (st.chainEscalate ?? 0) * (count - 1)), false, schoolOf(st), { x: px, z: pz });
       // Static Field: chance de acertar o primeiro alvo duas vezes
       if (count === 1 && st.doubleHit && !e.dead && Math.random() < st.doubleHit) {
         g.spellHit(e, st.damage, false, schoolOf(st));
@@ -1345,7 +1345,7 @@ export class SpellCaster {
         for (const e of g.enemies) {
           if (e.dead) continue;
           if ((e.x - v.x) ** 2 + (e.z - v.z) ** 2 > (st.radius + e.radius) ** 2) continue;
-          g.spellHit(e, st.damage, true, schoolOf(st));
+          g.spellHit(e, st.damage, true, schoolOf(st), "none"); // techniques.lua: o ciclone não tem direção
           if (v.element && !e.dead) this.tornadoTick(v, e);
         }
       }
@@ -2430,7 +2430,7 @@ export class SpellCaster {
       if (e.dead) continue;
       if ((e.x - pr.x) ** 2 + (e.z - pr.z) ** 2 > (r + e.radius) ** 2) continue;
       if (st.id === "fireball") this.applyBurn(e, st, pr.slot);
-      g.spellHit(e, st.damage, false, schoolOf(st));
+      g.spellHit(e, st.damage, false, schoolOf(st), { x: pr.x - pr.dx * 1.2, z: pr.z - pr.dz * 1.2 });
       if (st.id === "iceball" && !e.dead) this.applySlow(e, st.slow ?? 0, st.slowDuration ?? 0, true);
     }
     if (st.id === "arcane_bolt") {

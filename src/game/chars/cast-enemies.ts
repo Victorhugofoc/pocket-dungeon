@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { paint, prep } from "../flora";
 import { addModel } from "./baked";
-import { type Builder, type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, restHand, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER } from "./kit";
+import { type Builder, type G, type Spec, at, axe, beard, bell, belt, body, bow, bx, cape, capeMesh, club, cone, cyl, dagger, dk, dome, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, hornHelm, lathe, limb, pauldron, restArm, restHand, sculpt, sph, ss, staff, stud, torsoMesh, torus, tubeMesh, BONE, IRON, LEATHER, WOOD } from "./kit";
 
 export const ENEMIES: Record<string, Spec> = {
   // ------------------------------------------------ inimigos
@@ -298,6 +298,17 @@ export const ENEMIES: Record<string, Spec> = {
     b.form = "slime"; b.style = "bite"; b.rough = 0.2; b.glowColor = 0xfff2f8;
     addModel(b, "splitter");
   },
+  shieldbearer: (b) => {
+    // cavaleiro de escudo e lança modelado no Blender (tools/blender/shieldbearer.py, brief em docs/briefs/shieldbearer.md); escudo e
+    // lança também vêm de lá, presos aos antebraços. Pose do sprite: antebraço do escudo atravessado à frente do peito, lança baixa
+    // junto ao quadril apontando para a frente. As poses têm de bater com POSE_L, POSE_R, LEAN e OUT do script
+    b.scale = 1.0; b.style = "spear"; b.rough = 0.4; b.glowColor = 0xffd27a;
+    b.lean = 0.12; b.crouch = 0.18; b.armOut = 0.15;
+    b.poseL = [-0.65, -1.05, 0, -0.7]; b.poseR = [0.05, -0.95, 0, -0.6];
+    b.dims = { hipY: 0.98, headY: 0.56, shoulderY: 0.48, shoulderX: 0.36, arm: 0.34, hipX: 0.15, thigh: 0.47 };
+    addModel(b, "shieldbearer");
+  },
+
 
 };
 

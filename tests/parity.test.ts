@@ -19,7 +19,7 @@ import {
   XP_GROWTH,
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
 } from "../src/data/run";
-import { BOSS_ORDER, BOSSES, ENEMIES } from "../src/data/enemies";
+import { BOSS_ORDER, BOSSES, ENEMIES, SHIELD_CYCLE } from "../src/data/enemies";
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
 import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
@@ -980,7 +980,12 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
       else expect(o.berserkThreshold, id).toBeUndefined();
       if (d.splitInto) expect(d.splitInto, id).toEqual({ id: o.splitInto, count: o.splitCount });
       else expect(o.splitInto, id).toBeUndefined();
+      // M9-01: escudo de frente e armadura do Shieldbearer
+      if (d.shield) expect(d.shield, id).toEqual({ arcDeg: o.shieldArcDeg, damageMult: o.shieldDamageMult, turnRate: o.shieldTurnRate });
+      else expect(o.shieldArcDeg, id).toBeUndefined();
+      expect(d.armor, id).toBe(o.armor);
     }
+    expect({ ...SHIELD_CYCLE }).toEqual(TU.SHIELD_CYCLE);
   });
 
   it("afixos de campeão: os 10, números, pares proibidos, segundo afixo e recompensa iguais aos de lá (M9-06)", () => {
