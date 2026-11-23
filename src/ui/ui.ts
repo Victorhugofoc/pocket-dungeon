@@ -389,7 +389,7 @@ export class Ui {
               title="Same seed = same map, rooms, relics and bosses. Paste a run's 7-letter code or type any word. Empty = random.">
             ${seedErr ? `<p class="bad">${seedErr}</p>` : ""}</div>
           <div class="hs-go"><button class="primary ${confirming ? "danger" : ""}" data-act="go" ${locked ? "disabled" : ""}>${
-            confirming ? "This ends the current run. Start again to confirm" : "Start the run"}</button></div>
+            confirming ? "Ends your saved run · click to confirm" : "Start the run"}</button></div>
         </footer>
         <p class="hs-keys">Arrows: hero · drag: turn · 1-4: starting spell · Enter: start · Esc: cancel</p>`;
       this.game.stage.show(panel.querySelector<HTMLElement>("[data-r=stage]")!, h.id, locked);
@@ -636,7 +636,7 @@ export class Ui {
     r.waveN.textContent = `Wave ${n}${total}`;
     const w = g.wave;
     let t = "";
-    if (g.phase === "walk") t = g.mapCards ? "choose a gate" : "go to the circle";
+    if (g.phase === "walk") t = g.mapCards ? "choose a gate" : "press E to go";
     else if (g.phase === "intro") t = "get ready";
     else if (g.phase === "fight" && w) {
       const left = Math.ceil(g.waveTimeLeft);
@@ -657,7 +657,7 @@ export class Ui {
     const cards = g.mapCards;
     const hint = g.nearPortal ? "E — go on to the next zone"
       : g.phase === "walk" && g.playerAlive && g.detourHint ? g.detourHint
-      : g.phase === "walk" && g.playerAlive ? (cards ? `Walk through a gate to choose wave ${n}` : `Step into the circle to start wave ${n}`) : "";
+      : g.phase === "walk" && g.playerAlive ? (cards ? (g.nearGate >= 0 ? `E — take this gate to wave ${n}` : `Walk to a gate and press E to choose wave ${n}`) : `E — go to wave ${n}`) : "";
     if (r.hint.textContent !== hint) r.hint.textContent = hint;
     r.hint.classList.toggle("hidden", !hint || !!this.overlay);
     // M21-08: a carta do portão mais perto (o mapa de consulta)

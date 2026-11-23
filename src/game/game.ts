@@ -5,14 +5,14 @@ import { arcHalfAngle, autoPattern, autoReach, forkAngles, patternCounts } from 
 import { ARC_STYLES, AUTO_SHOT, STYLE_GUN, STYLE_SHIELD, STYLE_STORM, STYLE_VENOM } from "../data/autostyle";
 import { applyEvolution, declineEvolutions, pendingEvolutionOffer, type EvolutionOption } from "../core/evolution";
 import { addXp, applyUpgrade, draftLevelUp, draftTiers, rerollCost, rerollsLeft, upgradeSources, type UpgradeTier } from "../core/levelup";
-import { generateZone, ObstacleGrid, type Segment, type ZoneLayout } from "../core/worldgen";
+import { generateZone, ObstacleGrid, SPAWN_R, type Segment, type ZoneLayout } from "../core/worldgen";
 import { runLogEntry, waveEntry, type RunOutcome } from "../core/runlog";
 import { BUILD, storeRunLog } from "./runlog";
 import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, safeStorage } from "../core/save";
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
 import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
-import { chooseCard, expireWaveScope, forkGateSpots, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
+import { arcSpots, chooseCard, expireWaveScope, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
   canHasten, hasten, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
   type WaveMods, type WaveSpawn, type WaveState,
@@ -48,7 +48,7 @@ import { StatusIcons } from "./status-icons";
 import { EnemyBars } from "./hpbars";
 import { MapGates } from "./gates";
 import { DetourField } from "./detours";
-import { detourGold, detourRng, detourSpots, rollDetours, shrineCost } from "../core/detours";
+import { detourGold, detourRng, rollDetours, shrineCost } from "../core/detours";
 import { DETOUR, DETOURS } from "../data/detours";
 import { GATE_SIGNAL } from "../data/map-nodes";
 import type { MoveHandle, TrailHandle } from "./vfx";
@@ -274,6 +274,10 @@ export class Game {
   segment!: Segment;
   /** M21-13: s andando até a clareira (fase "walk"), e o da onda atual, para o registro */
   private travelT = 0;
+  /** M21-14: o portão foi escolhido com E; a viagem sai quando a carta estiver resolvida */
+  private warpPending = false;
+  /** s até a resolução adaptativa voltar a agir (`TUNING.frame.settle`) */
+  private settleT = 0;
   private waveTravel = 0;
   private markers: SpawnMarker[] = [];
   private ring: THREE.Mesh | null = null;
@@ -508,6 +512,12 @@ export class Game {
   private adaptResolution(dt: number): void {
     const f = TUNING.frame, gpu = this.pipeline.gpuMs;
     if (gpu < 0) return;
+    // começo da partida ou zona nova: os picos são de carregamento, não de carga; não mexe na resolução
+    if (this.settleT > 0) {
+      this.settleT -= dt;
+      this.gpuAvg = gpu;
+      return;
+    }
     this.gpuAvg += (gpu - this.gpuAvg) * Math.min(1, dt * 4);
     this.resTimer += dt;
     if (this.resTimer < f.every) return;
@@ -679,6 +689,7 @@ export class Game {
    */
   prepareWave(wave: number, fresh = false): void {
     if (fresh) this.travelT = 0;
+    this.warpPending = false;
     // a relíquia do chefe nunca se perde: se o corpo ainda não sumiu, a escolha abre agora
     const reward = this.bossReward;
     this.bossReward = null;
@@ -741,6 +752,7 @@ export class Game {
     setZoneAtmosphere(this.scene, zone);
     // M16-01: compila os shaders da zona e dos efeitos agora, no carregamento, e não no primeiro golpe
     // (e os modelos dos inimigos da zona e dos chefes: esculpidos uma vez, ver `chars/build.ts`)
+    this.settleT = TUNING.frame.settle;
     this.fx.lib.warm(this.layout.spawn.x, this.layout.spawn.z);
     const warmRigs = [...zone.enemies.map(([id]) => characterRig(id, "enemy")), characterRig(zone.enemies[0][0], "enemy", "champion"), characterRig(zone.enemies[0][0], "enemy", "summoned"),
       ...Object.keys(BOSSES).map((id) => characterRig(id, "boss"))];
@@ -749,6 +761,13 @@ export class Game {
       this.scene.add(r.root);
     }
     this.pipeline.compile(this.scene, this.camera);
+    // compilar não sobe a geometria: um desenho num alvo minúsculo, sem recorte, sobe os buffers agora e não no
+    // primeiro inimigo (picos "geo" no começo da onda 1, registro de 2026-11-22)
+    for (const r of warmRigs) r.root.traverse((o) => (o.frustumCulled = false));
+    const prevTarget = this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(Game.warmTarget);
+    this.renderer.render(this.scene, this.camera);
+    this.renderer.setRenderTarget(prevTarget);
     for (const r of warmRigs) disposeRig(r);
     this.fx.lib.clear();
 
@@ -1713,6 +1732,10 @@ export class Game {
         this.walkGates(dt);
         return;
       }
+      // M21-14: com a carta resolvida (depois do santuário ou da loja do portão) a viagem sai; sem portões, E leva
+      if (this.playerAlive && !this.shrineOpen && !this.shopVisit) {
+        if (this.warpPending || (this.nearDetour < 0 && this.input.wasPressed("KeyE"))) this.warp();
+      }
       if (this.playerAlive && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r - 1.5) this.beginWave();
       return;
     }
@@ -1877,6 +1900,34 @@ export class Game {
     return out;
   }
   private static arrowV = new THREE.Vector3();
+  private static warmTarget = new THREE.WebGLRenderTarget(4, 4);
+
+  /**
+   * Quanto um inimigo pode avançar de (x, z) na direção (dx, dz) sem sair da clareira da luta (o raio dele fora);
+   * fora da luta, ou de fora da clareira, sem limite. Para as investidas.
+   */
+  arenaReach(x: number, z: number, dx: number, dz: number, radius: number): number {
+    const sg = this.segment;
+    if (!sg || (this.phase !== "fight" && this.phase !== "intro")) return Infinity;
+    const R = sg.r - radius - 0.3;
+    const ox = x - sg.x, oz = z - sg.z;
+    const c = ox * ox + oz * oz - R * R;
+    if (c > 0) return Infinity;
+    const b = ox * dx + oz * dz;
+    return Math.max(0, -b + Math.sqrt(b * b - c));
+  }
+
+  /** Devolve o inimigo para dentro da clareira da luta se ele passou da borda; true se precisou. */
+  keepInArena(e: { x: number; z: number; radius: number }): boolean {
+    const sg = this.segment;
+    if (!sg || this.phase !== "fight") return false;
+    const R = sg.r - e.radius - 0.3;
+    const ox = e.x - sg.x, oz = e.z - sg.z, d = Math.hypot(ox, oz);
+    if (d <= R || d > sg.r + 6) return false;
+    e.x = sg.x + (ox / d) * R;
+    e.z = sg.z + (oz / d) * R;
+    return true;
+  }
 
   /** M21-13: os últimos vivos correm até o herói, sem voltar para casa. */
   private rushStragglers(): void {
@@ -2061,29 +2112,61 @@ export class Game {
     const cards = this.mapCards;
     this.mapResolved = !cards;
     if (!cards) return false;
-    // M21-12: um portão na trava de cada trilha da bifurcação até esta clareira
-    const fork = this.layout.forks.find((f) => f.to === index);
-    if (!fork) return false;
-    const spots = forkGateSpots(fork, cards.length);
+    // M21-14: os portões dentro da clareira vencida (ou em volta da fogueira), virados para a seguinte
+    const G = TUNING.world.gates;
+    const spots = arcSpots(this.fromCircle(index), this.layout.segments[index], Math.min(3, cards.length), G.ring, (G.spread * Math.PI) / 180);
     this.gates.show(spots, cards.slice(0, spots.length));
     return true;
+  }
+
+  /** De onde se parte para o trecho `index`: a clareira de antes ou a fogueira. */
+  private fromCircle(index: number): { x: number; z: number; r: number } {
+    const L = this.layout;
+    return index > 0 ? L.segments[index - 1] : { ...L.spawn, r: SPAWN_R };
+  }
+
+  /**
+   * M21-14: leva o herói até dentro da clareira da onda (do lado de onde ele veio), com um clarão nos dois lados;
+   * a onda começa no quadro seguinte, porque ele já está dentro.
+   */
+  private warp(): void {
+    const p = this.player, sg = this.segment;
+    this.warpPending = false;
+    const from = this.fromCircle(this.layout.segments.indexOf(sg));
+    const dx = from.x - sg.x, dz = from.z - sg.z, d = Math.hypot(dx, dz) || 1;
+    const k = sg.r * TUNING.world.gates.arrive;
+    this.fx.burst(p.x, 1, p.z, 0x9be4ff, 24, 6, 0.16, 0.5);
+    this.fx.flashLight(p.x, 2, p.z, 0x9be4ff, 2, 0.35);
+    p.x = sg.x + (dx / d) * k;
+    p.z = sg.z + (dz / d) * k;
+    p.rush?.fire?.kill();
+    p.leap = p.rush = null;
+    this.camTarget.set(p.x, 0, p.z);
+    this.fx.burst(p.x, 1, p.z, 0x9be4ff, 30, 7, 0.18, 0.6);
+    this.fx.flashLight(p.x, 2, p.z, 0x9be4ff, 2.4, 0.4);
+    this.fx.shockwave(p.x, p.z, 3, 0x9be4ff);
+    this.audio.play("dash");
   }
 
   /** Caminhada com o mapa por escolher: passar por um portão escolhe a carta dele. */
   private walkGates(dt: number): void {
     const p = this.player;
     this.gates.update(this.time, dt);
-    const near = this.gates.nearest(p.x, p.z, 7);
+    const near = this.gates.nearest(p.x, p.z, TUNING.world.gates.useRadius);
     // o som da sala ao chegar perto do portão (parte do sinal, M21-08)
     const cards = this.mapCards;
     if (near >= 0 && near !== this.nearGate && cards) this.audio.play(GATE_SIGNAL[cards[near].node].sound);
     this.nearGate = near;
     if (!this.playerAlive || this.shrineOpen || this.shopVisit || !this.mapCards) return;
-    let i = this.gates.hit(p.x, p.z);
-    // M21-12: quem cortou pelo mato e chegou à clareira sem passar por portão fica com o mais perto
+    // M21-14: E perto de um portão escolhe a carta e leva até a clareira da onda
+    if (near >= 0 && this.input.wasPressed("KeyE")) {
+      this.warpPending = true;
+      this.chooseMapCard(near);
+      return;
+    }
+    // quem foi andando até a clareira sem escolher fica com o portão mais perto
     const sg = this.segment;
-    if (i < 0 && sg && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r + TUNING.world.gates.fallbackReach) i = this.gates.nearest(p.x, p.z, Infinity);
-    if (i >= 0) this.chooseMapCard(i);
+    if (sg && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r + TUNING.world.gates.fallbackReach) this.chooseMapCard(this.gates.nearest(p.x, p.z, Infinity));
   }
 
   /** Os desvios no minimapa: posição e cor. */
@@ -2112,16 +2195,11 @@ export class Game {
     const rng = detourRng(this.layout.seed, run.wave);
     const kinds = rollDetours(rng, { shopAhead: index < WAVES_PER_ZONE - 1 && !run.skipShop && run.wave < TOTAL_WAVES });
     if (!kinds.length) return;
-    const L = this.layout;
-    const spots = detourSpots(rng, kinds, {
-      from: index > 0 ? L.segments[index - 1] : L.spawn,
-      to: L.segments[index],
-      // M21-12: ao lado das trilhas dos lados da bifurcação, para fora
-      anchors: L.forks.find((f) => f.to === index)?.trails.filter((_, k) => k !== 1).map((t) => ({ x: t.lock.x, z: t.lock.z, nx: t.out.x, nz: t.out.z })),
-      clearings: L.segments,
-      bound: L.size / 2 - TUNING.world.margin - 2,
-      blocked: (x, z, r) => this.grid.hits(x, z, r),
-    });
+    // M21-14: do lado de trás da clareira vencida (ou da fogueira), longe dos portões, virados para o meio
+    const G = TUNING.world.gates;
+    const from = this.fromCircle(index);
+    const spots = arcSpots(from, this.layout.segments[index], kinds.length, G.detourRing, (G.detourSpread * Math.PI) / 180, Math.PI)
+      .map((a, i) => ({ x: a.x, z: a.z, kind: kinds[i], facing: a.angle + Math.PI }));
     this.detours.show(spots);
     const chest = spots.find((s) => s.kind === "chest");
     if (chest) {

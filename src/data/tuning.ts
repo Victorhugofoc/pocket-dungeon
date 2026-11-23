@@ -3,7 +3,11 @@
 export const TUNING = {
   /** Resolução adaptativa (game.ts): mira 60 fps. A escala da resolução interna desce quando o tempo de GPU passa de `gpuHigh` ms e
    * sobe quando fica abaixo de `gpuLow`, entre `minScale` e 1 (1 = densidade máxima da qualidade escolhida). */
-  frame: { gpuHigh: 12.5, gpuLow: 8.5, minScale: 0.6, step: 0.08, every: 0.75, maxRatio: 1.5 },
+  /**
+   * Resolução adaptativa. `settle`: s depois de começar a partida ou carregar a zona sem adaptar (os primeiros quadros
+   * sobem texturas e geometria; baixar a resolução ali realoca os alvos e piora os picos, visto no registro de 2026-11-22).
+   */
+  frame: { gpuHigh: 12.5, gpuLow: 8.5, minScale: 0.6, step: 0.08, every: 0.75, maxRatio: 1.5, settle: 10 },
   /** SÓ PARA TESTE (2026-11-16): tudo desbloqueado (Unlocks.ALL do original), para seguir testando os 9 heróis. Desligar ao balancear. */
   unlockAll: true,
   /** DEV Grimoire no F1 (constants.lua `C.DEV_TOOLS`, lá ligado por `--dev`). Ligado enquanto não há loja (M7). Desligar ao publicar. */
@@ -97,6 +101,14 @@ export const TUNING = {
       width: 4.6,
       /** M21-12: sem portão escolhido, chegar a esta distância da borda da clareira escolhe o portão mais perto */
       fallbackReach: 2,
+      /**
+       * M21-14: os portões ficam dentro da clareira vencida (ou em volta da fogueira), em arco virado para a seguinte:
+       * a `ring` do raio, `spread` graus entre um e o vizinho; E perto (`useRadius`, o mesmo raio que mostra a carta) escolhe e leva até a seguinte.
+       * Os desvios ficam do lado de trás, em arco de `detourSpread` graus, a `detourRing` do raio.
+       */
+      ring: 0.55, spread: 36, useRadius: 6, detourRing: 0.6, detourSpread: 70,
+      /** onde o herói chega na clareira seguinte: fração do raio, do centro para o lado de onde veio */
+      arrive: 0.35,
     },
   },
 } as const;

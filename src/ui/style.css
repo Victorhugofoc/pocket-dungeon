@@ -172,6 +172,10 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .hs-setup .bad { color: var(--bad); margin: 4px 0 0; font-size: 0.8em; }
 .hs-go .primary { padding: 0.9em 2.2em; font-size: 1.25em; min-width: 11em; background: linear-gradient(#ffd75e, #e0a92a); color: #1a1408; border-color: #ffe9a8;
   box-shadow: 0 0 22px -6px var(--gold); font-weight: 800; letter-spacing: 0.5px; white-space: nowrap; }
+#title .hs-go .primary:hover:not(:disabled) { background: linear-gradient(#ffe38a, #efb93e); border-color: #fff3c4; color: #1a1408; }
+#title .hs-go .primary.danger, #title .hs-go .primary.danger:hover:not(:disabled) { background: linear-gradient(#ff8a66, #d9472c); border-color: #ffc2b0;
+  color: #fff; text-shadow: 0 1px 0 #0006; box-shadow: 0 0 22px -6px #ff5a3a; }
+#title .hs-go .primary:disabled { background: var(--panel-2); color: var(--muted); border-color: var(--line); box-shadow: none; }
 .hs-keys { margin: 0; text-align: center; color: var(--muted); font-size: 0.78em; }
 @media (max-width: 1180px) {
   .hs-setup { grid-template-columns: 1fr 1fr; }

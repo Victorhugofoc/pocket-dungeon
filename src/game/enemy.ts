@@ -422,6 +422,8 @@ export class Enemy {
       this.x += c.dx * c.speed * dt;
       this.z += c.dz * c.speed * dt;
       this.moveAmt = 1;
+      // a investida para na borda da clareira da luta (não sai da arena)
+      if (game.keepInArena(this)) c.t = c.dur;
       if (!c.hit && Math.hypot(p.x - this.x, p.z - this.z) < this.radius + 0.9) {
         c.hit = true;
         game.hurtPlayer(c.dmg, this.name, this);
@@ -677,7 +679,7 @@ export class Enemy {
           this.face(p.x, p.z);
           const a = this.facing;
           this.casting = c.windup;
-          const len = Math.min(c.range, dist + 5);
+          const len = Math.min(c.range, dist + 5, game.arenaReach(this.x, this.z, Math.sin(a), Math.cos(a), this.radius));
           game.fx.telegraphRect(this.x, this.z, a, len, this.radius * 2 + 0.8, c.windup, () => {
             if (this.dead || game.time < this.stunUntil) return;
             this.charging = { t: 0, dur: len / c.speed, dx: Math.sin(a), dz: Math.cos(a), speed: c.speed, dmg: this.hitDmg * c.damage, hit: false };
@@ -814,7 +816,7 @@ export class Enemy {
       }
       case "charge": {
         const a = this.facing;
-        const len = Math.min(pt.length ?? 20, dist + 8);
+        const len = Math.min(pt.length ?? 20, dist + 8, game.arenaReach(this.x, this.z, Math.sin(a), Math.cos(a), this.radius));
         fx.telegraphRect(this.x, this.z, a, len, pt.width ?? 3, pt.warning, () => {
           if (!ok()) return;
           this.charging = { t: 0, dur: len / (pt.speed ?? 24), dx: Math.sin(a), dz: Math.cos(a), speed: pt.speed ?? 24, dmg: this.dmg * pt.damage, hit: false };
