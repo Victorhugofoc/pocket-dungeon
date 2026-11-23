@@ -1,6 +1,6 @@
 // Chefes. Método de modelagem: seção 4 de docs/roadmap.md; conferir em /preview.html com o sprite ao lado.
 import * as THREE from "three";
-import { addModel } from "./baked";
+import { addModel, modelParts } from "./baked";
 import { displace, paint, prep } from "../flora";
 import { type Builder, type G, type Spec, at, bell, belt, body, bx, cap, cape, cone, cyl, dk, grp, hairLong, headBase, headMask, lathe, limb, muscleArm, muscleLeg, hang, restArm, robeMesh, sculpt, sph, ss, staff, stud, torsoMesh, torus, BONE, GOLD, IRON, LEATHER } from "./kit";
 
@@ -238,6 +238,37 @@ export const BOSSES: Record<string, Spec> = {
     }
     gravekeeperShovel(b);
     gravekeeperLantern(b);
+  },
+  // M10-01: escorpião blindado modelado no Blender (tools/blender/deathstalker.py, brief em docs/briefs/deathstalker.md). Forma
+  // `scorpion`: os pontos dos ossos são os pivôs do script (cauda TAIL, pinça CLAW); as patas usam as malhas `legfemur`/`legtibia`.
+  deathstalker: (b) => {
+    b.form = "scorpion"; b.scale = 2.6; b.style = "cast"; b.glowColor = 0x7ff3ff; b.glowByVertex = true; b.rough = 0.38;
+    // o corpo desce DROP em relação aos pivôs do Blender (todos os ossos juntos, as patas ficam mais baixas)
+    const DROP = 0.07;
+    b.dims = { ...b.dims, hipY: 0.34 - DROP };
+    const tail: [number, number, number][] = [[0, 0.36, -0.45], [0, 0.465, -0.584], [0, 0.657, -0.639], [0, 0.861, -0.557], [0, 0.976, -0.357]];
+    (["tail", "tail2", "tail3", "tail4", "tail5"] as const).forEach((bone, i) => b.joints.push({ bone, parent: i ? (["tail", "tail2", "tail3", "tail4"] as const)[i - 1] : "hips", at: [tail[i][0], tail[i][1] - DROP, tail[i][2]] }));
+    for (const [s, side] of [[1, "R"], [-1, "L"]] as const) {
+      b.joints.push({ bone: `arm${side}`, parent: "hips", at: [s * 0.13, 0.35 - DROP, 0.42] });
+      b.joints.push({ bone: `fore${side}`, parent: `arm${side}`, at: [s * 0.25, 0.36 - DROP, 0.53] });
+      b.joints.push({ bone: `claw${side}`, parent: `fore${side}`, at: [s * 0.23, 0.39 - DROP, 0.88] });
+    }
+    const parts = modelParts("deathstalker");
+    for (const [key, g] of parts) {
+      if (key.startsWith("leg")) continue;
+      const [bone, layer] = key.split("@");
+      if (layer === "lit") b.lit(bone, g);
+      else if (layer === "flat") b.flat(bone, g);
+      else b.add(bone, g);
+    }
+    // patas: 4 de cada lado, presas ao lado do corpo; o pé pousa afastado, o joelho fica acima do corpo
+    const L1 = 0.27, L2 = 0.33;
+    const rows: [number, number, number][] = [[0.16, 0.42, 0.36], [0.04, 0.48, 0.04], [-0.1, 0.46, -0.28], [-0.24, 0.38, -0.56]];
+    for (const [az, hx, hz] of rows) {
+      for (const s of [-1, 1]) {
+        b.ikLegs.push({ attach: [s * 0.15, -0.02, az], home: [s * hx, hz], l1: L1, l2: L2, femur: [parts.get("legfemur")!], tibia: [parts.get("legtibia")!] });
+      }
+    }
   },
   // Redesenho a partir do sprite (docs/ref/ember_matriarch.png): torso esguio de mulher sobre corpo de aranha, casca preta rachada de lava.
   // Medidas do sprite (altura 120 px): abdômen 60 px de diâmetro atrás do corpo, cefalotórax 25 px, cintura a 35% e ombros a 67% da altura,
