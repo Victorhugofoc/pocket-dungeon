@@ -84,6 +84,8 @@ const ICON_SIZE = 0.9; // metros
 const ICON_GAP = 0.08;
 const ENDING = 1; // segundos finais em que o ícone pulsa
 const RING_W = 6;
+/** folga entre a barra de vida e a fileira de ícones (m, no plano da tela) */
+const ICON_BAR_GAP = 0.1;
 const RING_STEPS = 48;
 
 /** Cor do contorno de cada estado: a parte acesa é o relógio (`drawRing`), que esvazia até o estado acabar. */
@@ -474,6 +476,8 @@ export class StatusIcons {
   private pool: THREE.Sprite[] = [];
   private used = 0;
   private right = new THREE.Vector3();
+  /** o "para cima" da tela no mundo: o ícone sobe por ele a partir da barra, sem a câmera inclinada encurtar a folga */
+  private up = new THREE.Vector3();
   private emberT = new WeakMap<Enemy, number>();
 
   constructor(private scene: THREE.Scene) {}
@@ -516,18 +520,22 @@ export class StatusIcons {
   update(enemies: readonly Enemy[], ctx: StatusContext, camera: THREE.Camera, fx: Fx, dt: number): void {
     this.used = 0;
     this.right.setFromMatrixColumn(camera.matrixWorld, 0).setY(0).normalize();
+    this.up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
     for (const e of enemies) {
       if (e.dead) continue;
       const list = enemyStatuses(e, ctx);
       if (!list.length) continue;
       // acima da barra de vida (hpbars.ts), que fica em altura + lift (M9-06: campeão sempre tem ícone)
-      const y = e.rig.root.position.y + e.rig.height + HP_BAR.lift + HP_BAR.height + ICON_SIZE / 2 + 0.06;
+      // o centro da barra, e daí, no plano da tela, meia barra + folga + meio ícone para cima
+      const lift = HP_BAR.height / 2 + HP_BAR.border + ICON_BAR_GAP + ICON_SIZE / 2;
+      const y = e.rig.root.position.y + e.rig.height + HP_BAR.lift + this.up.y * lift;
+      const ux = this.up.x * lift, uz = this.up.z * lift;
       const w = list.length * ICON_SIZE + (list.length - 1) * ICON_GAP;
       for (let i = 0; i < list.length; i++) {
         const b = list[i];
         const off = -w / 2 + ICON_SIZE / 2 + i * (ICON_SIZE + ICON_GAP);
-        const x = e.x + this.right.x * off;
-        const z = e.z + this.right.z * off;
+        const x = e.x + ux + this.right.x * off;
+        const z = e.z + uz + this.right.z * off;
         const left = b.until === undefined ? 1 : this.timers.left(e, b.kind, b.until, ctx.now);
         // no último segundo o ícone pulsa: o estado está para acabar
         const ending = b.until !== undefined && b.until - ctx.now < ENDING;
