@@ -1275,7 +1275,7 @@ export class Game {
     const warden = wardenFor(e, this.enemies);
     if (warden) amount *= warden.def!.support!.damageMult;
     // M9-06 (damage.lua): Armored corta, o Arcane Shield come primeiro; qualquer dano zera a pausa do Regenerating
-    amount *= e.dmgTakenMult;
+    amount *= e.dmgTakenMult * e.tetherK;
     amount = Math.max(1, Math.round(amount));
     e.idle = 0;
     if (e.shield > 0) {
@@ -1366,7 +1366,7 @@ export class Game {
         this.spawnEnemy(split.id, e.level, e.x + Math.cos(a) * 0.8, e.z + Math.sin(a) * 0.8, { summoned: true, child: true, aggro: true });
       }
     }
-    if (!e.summoned) this.rollHealOrb(e);
+    if (!e.noReward) this.rollHealOrb(e);
     if (e.hasAffix("explosive")) this.affixes.explode(e);
     if (e.def?.plague) this.plagueBurst(e, e.def.plague);
     if (e.isBoss) this.onBossKilled(e);
@@ -1789,7 +1789,7 @@ export class Game {
     this.bossDead = true;
     this.hitstop = 0.25;
     this.fx.addShake(1);
-    for (const m of this.enemies) if (m.summoned && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
+    for (const m of this.enemies) if ((m.summoned || m.def?.helper) && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
     // D-150: a emboscada é um nó de risco: dá a relíquia de risco (1 de 2), não a escolha de chefe
     if (e.ambush) {
       this.pendingPoolRelic = "risk";

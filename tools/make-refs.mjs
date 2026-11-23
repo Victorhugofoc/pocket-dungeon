@@ -31,6 +31,8 @@ const GROUPS = [
   { name: "_heroes", fw: 96, fh: 96, cols: 5, items: HEROES.map((id) => [id, `assets/characters/${id}/${id}_sheet.png`]) },
   { name: "_enemies", fw: 96, fh: 96, cols: 5, items: Object.entries(ENEMIES).map(([id, dir]) => [id, `assets/enemies/${dir}/${id}_sheet.png`]) },
   { name: "_bosses", fw: 192, fh: 160, cols: 5, items: BOSSES.map((id) => [id, `assets/enemies/bosses/${id}_sheet.png`]) },
+  // ajudantes de chefe (sprite_meta.lua: quadro de 80 × 40): o Selo de Alma do Hollow King
+  { name: "_helpers", fw: 80, fh: 40, cols: 1, items: [["soul_ward", "assets/enemies/special/soul_ward_sheet.png"]] },
 ];
 
 /** copia o quadro 0 de `sheet` para `dst` em (dx, dy), ampliado `k` vezes sem suavizar */

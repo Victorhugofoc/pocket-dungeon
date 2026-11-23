@@ -6,8 +6,9 @@ import { pacedFoe } from "../core/pace";
 import { circleInArc } from "../core/melee";
 import { reactionFor, type ReactionId, type ReactState } from "../core/reactions";
 import { BOSS_MECHANIC, BOSS_MECHANICS, BURN, CHILD_SCALE, FIRST_TIMER, MINION_SCALE, RUN_TUNING, SUMMON_CAP, type BossMechanicId } from "../data/run";
-import { type BossPhase, armyCount, bloodRush, phaseSteps, unlockedPatterns } from "../core/bossphase";
-import { HAZARD_TICK } from "../data/enemies";
+import { type BossPhase, armyCount, bloodRush, phaseSteps, soulWardCount, tetherMult, unlockedPatterns } from "../core/bossphase";
+import { TetherBeam } from "./tether";
+import { HAZARD_TICK, HELPERS } from "../data/enemies";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
 import { CROWN_TITLE, ENEMIES, SHIELD_CYCLE, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
@@ -206,6 +207,10 @@ export class Enemy {
   rushDamage = 1;
   /** Army of the Damned: última fase em que o chefe já ergueu o exército */
   armyPhase = 0;
+  /** Soul Tether: última fase em que ergueu selos, os selos e as linhas de luz até ele */
+  wardPhase = 0;
+  wards: Enemy[] = [];
+  private tethers: TetherBeam[] = [];
   spiral: { left: number; timer: number; angle: number; p: BossPattern } | null = null;
   /** rugido em curso (0..1) ou -1; o chefe não ataca enquanto ruge */
   roarT = -1;
@@ -268,7 +273,7 @@ export class Enemy {
     this.baseDmg = st.damage * (derived ? derived.damage : 1);
     this.speed = def.speed * st.speed * (derived ? derived.speed : 1);
     this.radius = def.radius * (this.champion ? 1.2 : 1);
-    this.noReward = this.summoned || opts.child === true;
+    this.noReward = this.summoned || opts.child === true || (!isBoss && (def as EnemyDef).helper === true);
     if (isBoss) {
       this.windupDur = TUNING.enemy.telegraph.bossWindup;
       this.mechanic = BOSS_MECHANIC[def.id]?.id ?? null;
@@ -339,6 +344,8 @@ export class Enemy {
 
   /** tira da cena tudo o que é deste inimigo */
   dispose(): void {
+    for (const t of this.tethers) t.dispose();
+    this.tethers.length = 0;
     this.bubble?.dispose();
     this.bubble = null;
     this.guardBand?.dispose();
@@ -422,6 +429,7 @@ export class Enemy {
     const now = game.time;
     const p = game.player;
     const rig = this.rig;
+    if (this.tethers.length) this.updateTethers(now);
 
     if (this.dead) {
       if (this.windupT >= 0) this.endSwing();
@@ -549,7 +557,7 @@ export class Enemy {
     // M9-05: salto em curso (preparo parado, voo em linha reta, pouso que acerta quem estiver no círculo)
     if (this.leap) this.stepLeap(game, dt, stunned);
 
-    if (this.airborne) this.kx = this.kz = 0;
+    if (this.airborne || this.def?.behavior === "static") this.kx = this.kz = 0;
     this.x += this.kx * dt;
     this.z += this.kz * dt;
     const kdec = Math.exp(-dt * KNOCK_DECAY);
@@ -647,6 +655,7 @@ export class Enemy {
     this.rushSteps = 0;
     this.rushSpeed = this.rushDamage = 1;
     this.armyPhase = 0;
+    this.dropWards(game);
     this.roarT = -1;
     this.dots.length = 0;
     if (this.isBoss) game.onBossReset(this);
@@ -1024,7 +1033,62 @@ export class Enemy {
     } else if (this.mechanic === "army_of_the_damned" && this.armyPhase < this.phase) {
       this.armyPhase = this.phase;
       this.raiseArmy(game, armyCount(this.phase));
+    } else if (this.mechanic === "soul_tether" && this.wardPhase < this.phase) {
+      this.wardPhase = this.phase;
+      this.raiseWards(game, soulWardCount(this.phase));
     }
+  }
+
+  /** Soul Tether: dano que o chefe leva (×0,35 com algum selo de pé). */
+  get tetherK(): number {
+    return this.mechanic === "soul_tether" ? tetherMult(this.wards.filter((w) => !w.dead).length) : 1;
+  }
+
+  /**
+   * boss_ai_ext.lua `spawnHelpers` (soul_tether): n selos em roda a 150 px do chefe, com um giro sorteado de até 0,6 rad,
+   * dentro da arena; vida = 6% da vida máxima do chefe; sem recompensa. Os selos das fases anteriores continuam de pé.
+   */
+  private raiseWards(game: Game, n: number): void {
+    const M = BOSS_MECHANICS.soul_tether;
+    const px = TUNING.enemy.pxToUnit;
+    const lim = game.layout.bossRadius - 20 * px;
+    for (let k = 1; k <= n; k++) {
+      const a = (k / n) * Math.PI * 2 + Math.random() * 0.6;
+      let x = this.x + Math.cos(a) * 150 * px;
+      let z = this.z + Math.sin(a) * 150 * px;
+      const dx = x - this.homeX, dz = z - this.homeZ, d = Math.hypot(dx, dz);
+      if (d > lim) { x = this.homeX + (dx / d) * lim; z = this.homeZ + (dz / d) * lim; }
+      const w = game.spawnEnemy("soul_ward", this.level, x, z, { aggro: true });
+      w.maxHp = w.hp = Math.round(this.maxHp * M.wardHp);
+      w.lootBonus = false;
+      this.wards.push(w);
+      this.tethers.push(new TetherBeam(game.scene, this.boss!.glow));
+      game.fx.shockwave(x, z, 2, this.boss!.glow, 0.4);
+    }
+    game.audio.play("warn");
+    game.fx.text(this.x, this.rig.height + 1, this.z, "Soul Tether", "crit");
+  }
+
+  /** linhas de luz dos selos vivos até o chefe; a do selo que caiu some */
+  private updateTethers(now: number): void {
+    for (let i = this.wards.length - 1; i >= 0; i--) {
+      const w = this.wards[i];
+      if (w.dead || this.dead) {
+        this.tethers[i].dispose();
+        this.tethers.splice(i, 1);
+        this.wards.splice(i, 1);
+        continue;
+      }
+      this.tethers[i].update(w.x, 0.85 + Math.sin(now * 2.1) * 0.06, w.z, this.x, this.rig.height * 0.55, this.z, now);
+    }
+  }
+
+  /** o chefe voltou ao começo (perdeu o herói): os selos somem com ele */
+  private dropWards(game: Game): void {
+    for (const w of this.wards) if (!w.dead) { w.dead = true; w.deadT = 1; }
+    this.updateTethers(0);
+    this.wardPhase = 0;
+    void game;
   }
 
   /** boss_ai.lua `phaseSummon`: aviso em volta do chefe e n lacaios em roda (sem recompensa, fora do teto de invocados). */
@@ -1145,7 +1209,7 @@ export class Enemy {
 }
 
 export function enemyDef(id: string): EnemyDef {
-  const d = ENEMIES[id];
+  const d = ENEMIES[id] ?? HELPERS[id];
   if (!d) throw new Error("unknown enemy: " + id);
   return d;
 }

@@ -183,6 +183,19 @@ export function animateChar(rig: Rig, a: AnimState): void {
     return;
   }
 
+  if (c.form === "wisp") {
+    // M10-10: a alma (osso head) flutua sobre o selo do chão (osso hips, parado), respira, dá um tranco ao apanhar e
+    // afunda encolhendo ao morrer
+    const h = B.head!;
+    const k = alive ? 0 : Math.min(1, a.dead);
+    const sy = 1 + Math.sin(t * 2.1) * 0.04 + bounce * 1.2;
+    h.scale.set((1 / Math.sqrt(sy)) * (1 - k * 0.7), sy * (1 - k * 0.85), (1 / Math.sqrt(sy)) * (1 - k * 0.7));
+    h.position.set(0, Math.sin(t * 2.1) * 0.06 - k * 0.1, 0);
+    h.rotation.set(Math.sin(t * 1.3) * 0.05 + kf * 0.6, Math.sin(t * 0.7) * 0.15, Math.sin(t * 1.7 + 1) * 0.06 - ks * 0.6);
+    inner.scale.setScalar(1);
+    return;
+  }
+
   if (c.form === "toad") {
     // M9-05: anda aos pulinhos; no preparo do salto se agacha, no voo estica as patas de trás e levanta o focinho
     const h = B.hips!, hd = B.head!;

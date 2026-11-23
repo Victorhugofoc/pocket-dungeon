@@ -239,7 +239,7 @@ export function buildChar(id: string, scaleMult: number, variant: "champion" | "
     bones[name] = g;
     return g;
   };
-  const hips = mk("hips", inner, 0, b.form === "bat" ? 1.1 : b.form === "slime" ? 0 : b.dims.hipY, 0);
+  const hips = mk("hips", inner, 0, b.form === "bat" ? 1.1 : b.form === "slime" || b.form === "wisp" ? 0 : b.dims.hipY, 0);
   if (b.form === "toad") {
     const d = b.dims;
     mk("head", hips, 0, d.headY, d.arm);
@@ -247,7 +247,7 @@ export function buildChar(id: string, scaleMult: number, variant: "champion" | "
     mk("armR", hips, d.shoulderX, d.shoulderY, d.arm);
     mk("thighL", hips, -d.hipX, 0, -d.thigh);
     mk("thighR", hips, d.hipX, 0, -d.thigh);
-  } else if (b.form !== "bat" && b.form !== "slime") {
+  } else if (b.form !== "bat" && b.form !== "slime" && b.form !== "wisp") {
     const torso = mk("torso", hips, 0, TORSO_Y, 0);
     mk("head", torso, 0, b.dims.headY, 0);
     const sx = b.dims.shoulderX || 0.27 * k + 0.07;
@@ -263,6 +263,8 @@ export function buildChar(id: string, scaleMult: number, variant: "champion" | "
       mk("shinR", mk("thighR", hips, hx, -0.02, 0), 0, -b.dims.thigh, 0);
     }
     mk("skirt", hips, 0, 0, 0); // bípedes também podem vestir saia de manto por cima das pernas
+  } else if (b.form === "wisp") {
+    mk("head", hips, 0, 0, 0); // a alma; o selo fica no hips, parado no chão
   } else if (b.form === "bat") {
     mk("wingL", hips, -0.16, 0.05, 0);
     mk("wingR", hips, 0.16, 0.05, 0);
@@ -344,7 +346,7 @@ export function buildChar(id: string, scaleMult: number, variant: "champion" | "
   applyAtmosphere(root);
   const scale = b.scale * scaleMult;
   root.scale.setScalar(scale);
-  const height = (b.form === "bat" ? 1.5 : b.form === "slime" ? 1.2 : b.form === "toad" ? 1.15 : 2.1) * scale;
+  const height = (b.form === "bat" ? 1.5 : b.form === "slime" ? 1.2 : b.form === "wisp" ? 1.3 : b.form === "toad" ? 1.15 : 2.1) * scale;
   // peso: corpos grandes balançam mais devagar
   const weight = Math.max(0.6, Math.sqrt(scale) * (0.7 + 0.3 * k));
   return {

@@ -2,8 +2,8 @@
 // hp/damage/xp são os valores canônicos; distâncias já convertidas (px / 16).
 import type { LeapSpec } from "../core/leap";
 
-export type EnemyBehavior = "melee" | "ranged" | "charger" | "summoner" | "bombardier" | "shield" | "leaper";
-export type BodyKind = "humanoid" | "brute" | "bug" | "robed" | "slime" | "toad";
+export type EnemyBehavior = "melee" | "ranged" | "charger" | "summoner" | "bombardier" | "shield" | "leaper" | "static";
+export type BodyKind = "humanoid" | "brute" | "bug" | "robed" | "slime" | "toad" | "wisp";
 
 export interface EnemyDef {
   id: string;
@@ -57,6 +57,8 @@ export interface EnemyDef {
    * (o mínimo de 70 px e a altura `hop` de 26 px): salto marcado até o lugar do herói; distâncias em m (px × TUNING.enemy.pxToUnit)
    */
   leap?: LeapSpec;
+  /** enemies.lua `helper`: ajudante de chefe, nunca na composição da onda e sem recompensa (nem orbe de cura) */
+  helper?: boolean;
   body: BodyKind;
   color: number;
   accent: number;
@@ -113,6 +115,16 @@ export const ENEMIES: Record<string, EnemyDef> = {
     category: "special", cooldown: 1.4, attackRange: 1.35,
     leap: { cooldown: 5.3, range: 245 / 16, minDist: 70 / 16, radius: 38 / 16, damage: 1.15, windup: 0.6, airTime: 0.45, height: 26 / 16 },
     body: "toad", color: 0xc8962a, accent: 0xeee0b0, scale: 1.0 },
+};
+
+/**
+ * enemies.lua `soul_ward` (1.6 D-208): o Selo de Alma do Hollow King (Soul Tether). Parado e sem dano; a vida vem do chefe
+ * (`BOSS_MECHANICS.soul_tether.wardHp`). Corpo no Blender (tools/blender/soul_ward.py). Fora de `ENEMIES` para não entrar no
+ * sorteio nem nas listas de inimigos; `enemyDef` acha os dois.
+ */
+export const HELPERS: Record<string, EnemyDef> = {
+  soul_ward: { id: "soul_ward", name: "Soul Ward", hp: 60, speed: 0, damage: 0, behavior: "static", radius: 15 / 16, xp: 0, gold: 0,
+    category: "special", cooldown: 99, helper: true, body: "wisp", color: 0x69bfa6, accent: 0x73ffcc, scale: 1 },
 };
 
 /** enemy_attacks.lua `EA.hazard`: tique padrão das poças no chão, em s */

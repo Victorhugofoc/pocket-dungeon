@@ -21,7 +21,7 @@ import {
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
   BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PHASES,
 } from "../src/data/run";
-import { BOSS_ORDER, BOSSES, ENEMIES, SHIELD_CYCLE } from "../src/data/enemies";
+import { BOSS_ORDER, BOSSES, ENEMIES, HELPERS, SHIELD_CYCLE } from "../src/data/enemies";
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
 import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
@@ -1238,6 +1238,15 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     for (const id of Object.keys(BOSSES)) expect(BOSSES[id].relicBuild, id).toBe(BS.builds[id]?.relicBuild ?? undefined);
     for (const id of RELIC_IDS) expect(RELICS[id].bossBuild, id).toBe(RL[id].bossBuild ?? undefined);
   });
+  it("Selo de Alma (soul_ward) igual ao de enemies.lua: parado, sem dano, sem recompensa, ajudante (M10-10)", () => {
+    const o: Lua = dr!["src.data.enemies"].soul_ward;
+    const d = HELPERS.soul_ward;
+    expect({ hp: d.hp, speed: d.speed, damage: d.damage, behavior: d.behavior, xp: d.xp, gold: d.gold, category: d.category,
+      cooldown: d.cooldown, helper: d.helper, radiusPx: d.radius * 16 })
+      .toEqual({ hp: o.hp, speed: o.speed, damage: o.damage, behavior: o.behavior, xp: o.xp, gold: o.gold, category: o.category,
+        cooldown: o.cooldown, helper: o.helper, radiusPx: o.radius });
+  });
+
   it("fases e mecânicas dos chefes iguais às de bosses.lua (M10-10)", () => {
     const BS: Lua = dr!["src.data.bosses"];
     expect(BOSS_PHASES.map((x) => ({ ...x }))).toEqual(BS.PHASES);

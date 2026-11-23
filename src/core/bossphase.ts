@@ -56,3 +56,14 @@ export function armyCount(phase: BossPhase): number {
   const c = BOSS_MECHANICS.army_of_the_damned.perPhase;
   return c[Math.min(phase, c.length) - 1];
 }
+
+/** Soul Tether (D-256): Selos de Alma erguidos ao entrar na fase (2, 3, 3). */
+export function soulWardCount(phase: BossPhase): number {
+  const c = BOSS_MECHANICS.soul_tether.perPhase;
+  return c[Math.min(phase, c.length) - 1];
+}
+
+/** boss_ai_ext.lua `soul_tether`: com algum selo de pé, o chefe leva só 35% do dano. */
+export function tetherMult(wardsAlive: number): number {
+  return wardsAlive > 0 ? BOSS_MECHANICS.soul_tether.damageTakenMult : 1;
+}
