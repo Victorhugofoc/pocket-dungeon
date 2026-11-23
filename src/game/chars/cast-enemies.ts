@@ -318,6 +318,15 @@ export const ENEMIES: Record<string, Spec> = {
     b.dims = { hipY: 0.84, headY: 0.42, shoulderY: 0.4, shoulderX: 0.19, arm: 0.3, hipX: 0.12, thigh: 0.42 };
     addModel(b, "hexer");
   },
+  plaguebearer: (b) => {
+    // zumbi inchado e enfaixado com barril de peste nas costas, modelado no Blender (tools/blender/plaguebearer.py, brief em
+    // docs/briefs/plaguebearer.md); barril, correias e gosma no osso do tronco. Dims iguais ao RIG do script
+    b.scale = 1.25; b.style = "swing"; b.rough = 0.7; b.glowColor = 0xc8e050;
+    b.lean = 0.42; b.crouch = 0.3; b.armOut = 0.2;
+    b.poseR = [-0.35, -0.45]; b.poseL = [-0.3, -0.4];
+    b.dims = { hipY: 0.66, headY: 0.46, shoulderY: 0.44, shoulderX: 0.36, arm: 0.3, hipX: 0.17, thigh: 0.3 };
+    addModel(b, "plaguebearer");
+  },
 
 
 };

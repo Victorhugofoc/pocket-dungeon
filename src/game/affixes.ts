@@ -178,7 +178,8 @@ export class AffixField {
     return { pools: this.pools.map((v) => ({ x: +v.x.toFixed(2), z: +v.z.toFixed(2), r: +v.r.toFixed(2), time: +v.time.toFixed(2), amount: +v.amount.toFixed(2) })) };
   }
 
-  private addPool(x: number, z: number, r: number, time: number, amount: number, source: string, color: number): void {
+  /** Poça no chão que fere o herói em `amount` a cada tique de 0,5 s (enemy_attacks.lua `EA.hazard`); também a peste do Plaguebearer. */
+  addPool(x: number, z: number, r: number, time: number, amount: number, source: string, color: number): void {
     const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
     const mesh = new THREE.Mesh(DISC, mat);
     mesh.rotation.x = -Math.PI / 2;

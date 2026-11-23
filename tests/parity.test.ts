@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { ACHIEVEMENT_RULES, ACHIEVEMENTS, COSMETIC_NAMES, UNLOCK_REWARDS } from "../src/data/achievements";
 import { EVOLUTION_ORDER, EVOLUTIONS, MAX_SPELLS, SPELL_CAST, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TUNING, SPELLS } from "../src/data/spells";
+import { TUNING } from "../src/data/tuning";
 import { spellStats } from "../src/core/spells";
 import { techniqueStats } from "../src/core/techniques";
 import { DR_PX_PER_M } from "../src/data/techniques";
@@ -987,6 +988,10 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
       // M9-02: maldição do Hexer
       if (d.hex) expect(d.hex, id).toEqual({ duration: o.hexDuration, damageMult: o.hexDamageMult });
       else expect(o.hexDuration, id).toBeUndefined();
+      // M9-03: poça de peste do Plaguebearer (raio em px de lá)
+      if (d.plague) expect({ radius: d.plague.radius / TUNING.enemy.pxToUnit, duration: d.plague.duration }, id)
+        .toEqual({ radius: o.hazardRadius, duration: o.hazardDuration });
+      else expect(o.hazardRadius, id).toBeUndefined();
     }
     expect({ ...SHIELD_CYCLE }).toEqual(TU.SHIELD_CYCLE);
   });

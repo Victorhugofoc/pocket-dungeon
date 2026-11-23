@@ -26,8 +26,9 @@ import { buildElements, executes, isBehind, primedReactions, reactionFor, type R
 import { REACTIONS } from "../data/reactions";
 import { SPELL_CAST, SPELL_SCHOOL, type SpellId } from "../data/spells";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
-import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, type BossPattern } from "../data/enemies";
+import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, HAZARD_TICK, type BossPattern, type EnemyDef } from "../data/enemies";
 import { applyHex, hexMult, type HexState } from "../core/hex";
+import { plagueDps } from "../core/plague";
 import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
@@ -240,6 +241,8 @@ export interface PlayerState {
 
 const UP = new THREE.Vector3(0, 1, 0);
 const PROJ_GEO = new THREE.IcosahedronGeometry(1, 0);
+/** cor da poça de peste do Plaguebearer (verde-amarelado doentio) */
+const PLAGUE_COLOR = 0x9fbf3a;
 const GEM_GEO = new THREE.OctahedronGeometry(1, 0);
 
 const MARKER_GEO = new THREE.RingGeometry(0.35, 0.75, 6);
@@ -1355,7 +1358,17 @@ export class Game {
     }
     if (!e.summoned) this.rollHealOrb(e);
     if (e.hasAffix("explosive")) this.affixes.explode(e);
+    if (e.def?.plague) this.plagueBurst(e, e.def.plague);
     if (e.isBoss) this.onBossKilled(e);
+  }
+
+  /** ai.lua `onKill` (§54, D-069): o Plaguebearer estoura numa poça de peste que fere o herói por segundo, mais forte nas ondas altas. */
+  private plagueBurst(e: Enemy, p: NonNullable<EnemyDef["plague"]>): void {
+    const color = PLAGUE_COLOR;
+    this.affixes.addPool(e.x, e.z, p.radius, p.duration, plagueDps(p, this.run.wave) * HAZARD_TICK, `${e.name} (plague)`, color);
+    this.fx.burst(e.x, 0.5, e.z, color, 22, 5, 0.2, 0.7);
+    this.fx.shockwave(e.x, e.z, p.radius, color, 0.4);
+    this.audio.play("plague");
   }
 
   /**

@@ -41,6 +41,11 @@ export interface EnemyDef {
    * (enemy_attacks.lua `applyHex`: renova sem acumular, fica o tempo maior e o multiplicador menor)
    */
   hex?: { duration: number; damageMult: number };
+  /**
+   * enemies.lua `hazardRadius`, `hazardDuration` e ai.lua `onKill` (§54, D-069): ao morrer deixa uma poça de peste de raio
+   * `radius` (m; px × TUNING.enemy.pxToUnit) por `duration` s, que fere o herói em `dpsBase + dpsPerWave × onda` por segundo
+   */
+  plague?: { radius: number; duration: number; dpsBase: number; dpsPerWave: number };
   body: BodyKind;
   color: number;
   accent: number;
@@ -84,7 +89,14 @@ export const ENEMIES: Record<string, EnemyDef> = {
   hexer: { id: "hexer", name: "Hexer", hp: 40, speed: 1.95, damage: 7, behavior: "ranged", radius: 0.47, xp: 48, gold: 10, category: "ranged",
     cooldown: 2.8, range: 15, projectileSpeed: 10.5, projectileColor: 0x7ad94a, hex: { duration: 3, damageMult: 0.88 },
     body: "robed", color: 0x5a2f5e, accent: 0x7ad94a, scale: 0.95 },
+  // M9-03: zumbi inchado com barril nas costas; ao morrer vira uma poça de peste; corpo no Blender (tools/blender/plaguebearer.py)
+  plaguebearer: { id: "plaguebearer", name: "Plaguebearer", hp: 57, speed: 2.1, damage: 8, behavior: "melee", radius: 0.56, xp: 50, gold: 12,
+    category: "special", cooldown: 1.4, attackRange: 1.5, plague: { radius: 3, duration: 3.8, dpsBase: 5, dpsPerWave: 0.45 },
+    body: "brute", color: 0xb8a868, accent: 0x8c2a22, scale: 1.05 },
 };
+
+/** enemy_attacks.lua `EA.hazard`: tique padrão das poças no chão, em s */
+export const HAZARD_TICK = 0.5;
 
 /** tuning.lua `SHIELD_CYCLE` (D-178): o escudo do Shieldbearer fica erguido `up` s, pisca `warn` s e cai `down` s */
 export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
