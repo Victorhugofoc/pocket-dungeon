@@ -46,6 +46,11 @@ export interface EnemyDef {
    * `radius` (m; px × TUNING.enemy.pxToUnit) por `duration` s, que fere o herói em `dpsBase + dpsPerWave × onda` por segundo
    */
   plague?: { radius: number; duration: number; dpsBase: number; dpsPerWave: number };
+  /**
+   * enemies.lua `supportRadius`, `supportDamageMult` (§54, D-071): aliados a até `radius` m (px × TUNING.enemy.pxToUnit) levam
+   * `damageMult` do dano (damage.lua `wardenNearby`; um Warden não protege outro)
+   */
+  support?: { radius: number; damageMult: number };
   body: BodyKind;
   color: number;
   accent: number;
@@ -93,6 +98,10 @@ export const ENEMIES: Record<string, EnemyDef> = {
   plaguebearer: { id: "plaguebearer", name: "Plaguebearer", hp: 57, speed: 2.1, damage: 8, behavior: "melee", radius: 0.56, xp: 50, gold: 12,
     category: "special", cooldown: 1.4, attackRange: 1.5, plague: { radius: 3, duration: 3.8, dpsBase: 5, dpsPerWave: 0.45 },
     body: "brute", color: 0xb8a868, accent: 0x8c2a22, scale: 1.05 },
+  // M9-04: golem lento que protege os aliados por perto (aura azul); corpo no Blender (tools/blender/warden.py)
+  warden: { id: "warden", name: "Warden", hp: 72, speed: 1.75, damage: 7, behavior: "melee", radius: 0.63, xp: 64, gold: 15,
+    category: "elite", cooldown: 1.6, attackRange: 1.55, support: { radius: 7, damageMult: 0.65 },
+    body: "brute", color: 0x6a7a8a, accent: 0x66b8ff, scale: 1.2 },
 };
 
 /** enemy_attacks.lua `EA.hazard`: tique padrão das poças no chão, em s */

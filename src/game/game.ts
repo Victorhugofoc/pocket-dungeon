@@ -29,6 +29,8 @@ import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../dat
 import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, HAZARD_TICK, type BossPattern, type EnemyDef } from "../data/enemies";
 import { applyHex, hexMult, type HexState } from "../core/hex";
 import { plagueDps } from "../core/plague";
+import { wardenFor } from "../core/ward";
+import { WardAuras } from "./ward";
 import { crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
@@ -311,6 +313,8 @@ export class Game {
   private trails: Trail[] = [];
   private echoes: Echo[] = [];
   private pools: VenomPool[] = [];
+  /** M9-04: as auras dos Wardens no chão */
+  private wardAuras!: WardAuras;
   private icicle = new IcicleCounter();
   private extraSwings: ExtraSwing[] = [];
   /** números da técnica do herói no nível atual (src/core/techniques.ts); null se ainda for a técnica antiga */
@@ -439,6 +443,7 @@ export class Game {
     this.fx = new Fx(this.scene, textLayer);
     this.gates = new MapGates(this.scene, this.fx);
     this.detours = new DetourField(this.scene, this.fx);
+    this.wardAuras = new WardAuras(this.scene);
     this.hazards = new RoomHazards({
       scene: this.scene,
       fx: this.fx,
@@ -838,6 +843,7 @@ export class Game {
     this.rifts.clear();
     this.hazards.clear();
     this.affixes.clear();
+    this.wardAuras.clear();
     for (const t of this.trails) this.disposeTrail(t);
     this.trails.length = 0;
     this.echoes.length = 0;
@@ -1264,6 +1270,9 @@ export class Game {
       guarded = k < 1;
       amount *= k;
     }
+    // M9-04 (damage.lua §54): aliado dentro da aura de um Warden leva menos (depois da armadura e do escudo, como lá)
+    const warden = wardenFor(e, this.enemies);
+    if (warden) amount *= warden.def!.support!.damageMult;
     // M9-06 (damage.lua): Armored corta, o Arcane Shield come primeiro; qualquer dano zera a pausa do Regenerating
     amount *= e.dmgTakenMult;
     amount = Math.max(1, Math.round(amount));
@@ -1308,7 +1317,7 @@ export class Game {
         e.kz += kdz * power * TUNING.enemy.knockback;
       }
       this.fx.impact(e.x - kdx * e.radius, e.rig.height * 0.55, e.z - kdz * e.radius, opts.crit ? 0xffe066 : this.hero.auto.color, opts.crit ? 1.5 : 1);
-      this.fx.text(e.x, top, e.z, String(amount) + (opts.crit ? "!" : ""), guarded ? "frost" : opts.crit ? "crit" : "dmg");
+      this.fx.text(e.x, top, e.z, String(amount) + (opts.crit ? "!" : ""), guarded || warden ? "frost" : opts.crit ? "crit" : "dmg");
       this.fx.burst(e.x, e.rig.height * 0.6, e.z, guarded ? 0x9ad1ff : opts.crit ? 0xffe066 : 0xffffff, opts.crit ? 9 : 4, 5, 0.13, 0.3);
       this.audio.play(guarded ? "block" : opts.crit ? "crit" : "hit");
       if (opts.crit) {
@@ -3696,6 +3705,7 @@ export class Game {
     });
     this.hazards.update(dt, this.time);
     this.affixes.updateWorld(dt);
+    this.wardAuras.update(this.enemies, this.time);
     this.terrain.update(dt, this.time);
   }
 

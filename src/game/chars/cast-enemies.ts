@@ -327,6 +327,15 @@ export const ENEMIES: Record<string, Spec> = {
     b.dims = { hipY: 0.66, headY: 0.46, shoulderY: 0.44, shoulderX: 0.36, arm: 0.3, hipX: 0.17, thigh: 0.3 };
     addModel(b, "plaguebearer");
   },
+  warden: (b) => {
+    // golem de pedras empilhadas com runas douradas acesas, modelado no Blender (tools/blender/warden.py, brief em docs/briefs/warden.md);
+    // a aura azul no chão é de game/ward.ts. Dims iguais ao RIG do script
+    b.scale = 1.4; b.style = "swing"; b.rough = 0.9; b.glowColor = 0xffa83a;
+    b.lean = 0.4; b.crouch = 0.2; b.armOut = 0.14;
+    b.poseR = [-0.35, -0.75]; b.poseL = [-0.2, -0.55];
+    b.dims = { hipY: 0.7, headY: 0.5, shoulderY: 0.54, shoulderX: 0.47, arm: 0.36, hipX: 0.24, thigh: 0.33 };
+    addModel(b, "warden");
+  },
 
 
 };

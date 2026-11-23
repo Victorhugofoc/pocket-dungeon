@@ -992,6 +992,10 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
       if (d.plague) expect({ radius: d.plague.radius / TUNING.enemy.pxToUnit, duration: d.plague.duration }, id)
         .toEqual({ radius: o.hazardRadius, duration: o.hazardDuration });
       else expect(o.hazardRadius, id).toBeUndefined();
+      // M9-04: aura do Warden (raio em px de lá)
+      if (d.support) expect({ radius: d.support.radius / TUNING.enemy.pxToUnit, damageMult: d.support.damageMult }, id)
+        .toEqual({ radius: o.supportRadius, damageMult: o.supportDamageMult });
+      else expect(o.supportRadius, id).toBeUndefined();
     }
     expect({ ...SHIELD_CYCLE }).toEqual(TU.SHIELD_CYCLE);
   });
