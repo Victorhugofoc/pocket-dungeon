@@ -30,6 +30,8 @@ export interface RelicDef {
   spellEffect?: SpellEffect;
   /** componente feito para esta spell (D-570): sai menos no sorteio sem ela */
   needs?: string;
+  /** relíquia de chefe por build (§69, `boss_build`): a build do chefe que a dá (`BossDef.relicBuild`) */
+  bossBuild?: string;
   color: number;
 }
 
@@ -44,6 +46,16 @@ function relic(t: RelicInput): RelicDef {
   return { ...t, effects, tags: t.tags ?? [], stats };
 }
 
+/** relics.lua `boss`: §68 universal (`bossBuild` vazio) ou §69 da build do chefe. */
+function boss(id: string, name: string, effects: RelicEffect[], build: string | undefined, tags: string[], color: number): RelicDef {
+  return relic({ id, name, category: build ? "boss_build" : "boss", rarity: "boss", effects, tags, color, ...(build ? { bossBuild: build } : {}) });
+}
+
+/** Relíquias do sorteio normal e da loja (relic_system.lua `isDraftable`: sem as de chefe e as evoluções). */
+export function inNormalPool(d: RelicDef): boolean {
+  return d.category !== "boss" && d.category !== "boss_build" && d.category !== "tier2" && d.category !== "tier3";
+}
+
 const list: RelicDef[] = [
   // §41 core
   relic({ id: "blood_pact", name: "Blood Pact", category: "core", rarity: "rare",
@@ -55,7 +67,7 @@ const list: RelicDef[] = [
   relic({ id: "ember_heart", name: "Ember Heart", category: "core", rarity: "rare",
     effects: [e("burnPct", 1.00)], tags: ["magic", "fire", "burn"], color: 0xff7a1a }),
   relic({ id: "frost_crown", name: "Frost Crown", category: "core", rarity: "rare",
-    effects: [e("slowDurationPct", 0.20), e("armor", 8)], tags: ["magic", "ice", "slow"], color: 0x8fdcff }),
+    effects: [e("slowDurationPct", 0.20), e("frostbite", 0.6)], tags: ["magic", "ice", "slow"], color: 0x8fdcff }),
   relic({ id: "greedy_soul", name: "Greedy Soul", category: "core", rarity: "uncommon",
     effects: [e("goldPct", 0.35), e("damagePct", -0.10)], tags: ["economy", "damage"], color: 0xffd34d }),
   relic({ id: "glass_cannon", name: "Glass Cannon", category: "core", rarity: "epic",
@@ -86,7 +98,7 @@ const list: RelicDef[] = [
   relic({ id: "storm_vane", name: "Storm Vane", category: "component", rarity: "rare",
     effects: [e("areaPct", 0.20)], tags: ["magic", "area"], color: 0x6fa8ff }),
   relic({ id: "grave_locket", name: "Grave Locket", category: "component", rarity: "rare",
-    effects: [e("lifeOnKill", 2), e("xpPct", 0.10)], tags: ["survival", "healing", "economy"], color: 0x9ad1ff }),
+    effects: [e("deathHealChance", 0.05), e("survivorRewardPct", 0.10)], tags: ["survival", "healing", "economy"], color: 0x9ad1ff }),
   // M12-02, lote 1: as do sorteio normal que só somam atributo que o jogo já tem, mais Momentum, Vital Spark e Blood Engine
   relic({ id: "veiled_step", name: "Veiled Step", category: "core", rarity: "rare",
     effects: [e("dodge", 0.09)], tags: ["survival", "dodge"], color: 0xa9b8d9 }),
@@ -194,6 +206,38 @@ const list: RelicDef[] = [
   relic({ id: "prismatic_core", name: "Prismatic Core", category: "core", rarity: "epic",
     effects: [e("firePct", 0.08), e("icePct", 0.08), e("lightningPct", 0.08), e("arcanePct", 0.08), e("spellCritChance", 0.05)],
     tags: ["magic", "fire", "ice", "lightning", "arcane"], color: 0xffe0f8 }),
+  // M12-04, lote 3: as mecânicas que faltavam no sorteio normal (relic_mechanics.lua, D-438 e D-433)
+  relic({ id: "cinder_lens", name: "Cinder Lens", category: "component", rarity: "uncommon",
+    effects: [e("burnPct", 0.08), e("burnSpread", 1)], tags: ["fire", "burn"], color: 0xff8a3a }),
+  relic({ id: "glass_throne", name: "Glass Throne", category: "keystone", rarity: "epic",
+    effects: [e("untouchedPct", 0.60), e("maxHpPct", -0.30)], tags: ["auto", "magic", "damage", "risk"], color: 0xe8f4ff }),
+  relic({ id: "arcane_dominion", name: "Arcane Dominion", category: "keystone", rarity: "epic",
+    effects: [e("spellDamagePct", 0.15), e("arcaneDominion", 1)], tags: ["magic", "arcane", "auto"], color: 0x9a5aff }),
+  relic({ id: "mana_battery", name: "Mana Battery", category: "core", rarity: "rare",
+    effects: [e("spellDamagePct", 0.10), e("castHealPct", 0.005)], tags: ["magic", "healing"], color: 0x6fd0ff }),
+  relic({ id: "prism_cycle", name: "Prism Cycle", category: "core", rarity: "rare",
+    effects: [e("prismCycle", 0.40)], tags: ["magic"], color: 0xffa8e0 }),
+  // §68 relíquias de chefe (universais) e §69 por build do chefe: só na recompensa do chefe, nunca no sorteio normal
+  boss("warlords_fang", "Warlord's Fang", [e("autoDamagePct", 0.30), e("critChance", 0.10)], undefined, ["auto", "crit", "damage"], 0xd94a3a),
+  boss("hunters_mark", "Hunter's Mark", [e("rangePct", 0.20), e("autoDamagePct", 0.15)], undefined, ["auto", "range"], 0x8ad94a),
+  boss("kingbreaker", "Kingbreaker", [e("damagePct", 0.25), e("rangePct", 0.15)], undefined, ["damage", "range"], 0xffc83d),
+  boss("infernal_crown", "Infernal Crown", [e("burnPct", 0.70), e("spellDamagePct", 0.12)], undefined, ["fire", "burn", "magic"], 0xff5a1a),
+  boss("frost_throne", "Frost Throne", [e("slowDurationPct", 0.24), e("spellDamagePct", 0.15)], undefined, ["ice", "slow", "magic"], 0x9fe8ff),
+  boss("tempest_crown", "Tempest Crown", [e("lightningTargets", 2), e("cdrPct", 0.10)], undefined, ["lightning", "spell_haste"], 0x7fa8ff),
+  boss("royal_arcane_core", "Royal Arcane Core", [e("spellDamagePct", 0.20), e("cdrPct", 0.20)], undefined, ["arcane", "magic", "spell_haste"], 0xc08aff),
+  boss("blood_crown", "Blood Crown", [e("damagePct", 0.20), e("deathHealChance", 0.08)], undefined, ["damage", "sustain"], 0xc8283a),
+  boss("berserkers_brand", "Berserker's Brand", [e("autoDamagePct", 0.20), e("attackSpeedPct", 0.10)], "berserker", ["auto", "speed"], 0xe0402a),
+  boss("bloodrush_medallion", "Bloodrush Medallion", [e("damagePct", 0.15), e("critChance", 0.10)], "berserker", ["damage", "crit"], 0xb8262e),
+  boss("deadeye_sigil", "Deadeye Sigil", [e("rangePct", 0.15), e("critChance", 0.12)], "hunter", ["range", "crit"], 0xe8e07a),
+  boss("predator_lens", "Predator Lens", [e("autoDamagePct", 0.18), e("rangePct", 0.10)], "hunter", ["auto", "range"], 0x9ad94a),
+  boss("tempest_core", "Tempest Core", [e("lightningTargets", 1), e("spellDamagePct", 0.12)], "stormcaller", ["lightning", "magic"], 0x6f9aff),
+  boss("storm_lens_boss", "Storm Lens (Boss)", [e("spellDamagePct", 0.20), e("rangePct", 0.10)], "stormcaller", ["magic", "range"], 0x8fb8ff),
+  boss("earthheart", "Earthheart", [e("armor", 25), e("maxHpPct", 0.12)], "iron_colossus", ["survival", "armor"], 0xa08a6a),
+  boss("breaker_core", "Breaker Core", [e("autoDamagePct", 0.18), e("armor", -8)], "iron_colossus", ["auto", "tradeoff"], 0x8a7a6a),
+  boss("venom_eye", "Venom Eye", [e("spellDamagePct", 0.18), e("rangePct", 0.10)], "venom_hydra", ["magic", "range"], 0x8fe04a),
+  boss("brood_heart", "Brood Heart", [e("deathHealChance", 0.08)], "venom_hydra", ["healing", "sustain"], 0x6fb83a),
+  boss("soulward_crown", "Soulward Crown", [e("dodge", 0.18), e("armor", 7)], "gravekeeper", ["survival", "dodge", "magic"], 0x9ad1ff),
+  boss("gravebound_core", "Gravebound Core", [e("spellDamagePct", 0.20), e("deathHealChance", 0.04)], "gravekeeper", ["magic", "sustain"], 0x73a8d9),
 ];
 
 export const RELICS: Record<string, RelicDef> = Object.fromEntries(list.map((r) => [r.id, r]));
@@ -204,7 +248,7 @@ export const RELIC_IDS: string[] = list.map((r) => r.id);
  * outras efeito a efeito. Cada lote do M12-02 a M12-05 tira daqui as que passar a portar como lá.
  */
 export const RELIC_ADAPTED: readonly string[] = [
-  "frost_crown", "living_moss", "bulwark_core", "renewing_heart", "duelist_crown", "storm_vane", "grave_locket",
+  "living_moss", "bulwark_core", "renewing_heart", "duelist_crown", "storm_vane",
 ];
 
 /** relic_mechanics.lua: os números das mecânicas de relíquia (iguais aos de lá). */
@@ -212,4 +256,17 @@ export const RELIC_MECH = {
   /** Momentum: segundos andando até o bônus cheio, e parado até perder tudo */
   momentumRamp: 10,
   momentumFade: 2,
+  /** Cinder Lens: até onde quem morre queimando passa a queimadura (px de lá), e por quanto tempo no máximo */
+  spreadRadiusPx: 90,
+  spreadMaxTime: 2.5,
+  /** Frost Crown: segundos de Slow até congelar, e de espera até o mesmo inimigo congelar de novo */
+  frostbiteAfter: 3,
+  frostbiteCooldown: 4,
+  /** Glass Throne: segundos sem o bônus depois de levar um golpe */
+  throneBreak: 5,
+  /** Prism Cycle: segundos por escola, na ordem de lá */
+  prismTime: 5,
+  prismOrder: ["fire", "ice", "lightning", "arcane"] as const,
+  /** Mana Battery: cura mínima por spell (D-589) */
+  castHealMin: 1,
 };

@@ -35,6 +35,11 @@ const QUALITY = ["low", "medium", "high"];
 const RELIC_STATUS: Record<string, { label: string; color: string; tip: string }> = {
   momentum: { label: "Momentum", color: "#73e0ff", tip: "Momentum: damage bonus while moving" },
   overshield: { label: "Shield", color: "#e0485a", tip: "Blood Engine: shield from overhealing" },
+  glass_throne: { label: "Throne", color: "#e8f4ff", tip: "Glass Throne: bonus damage while untouched; a hit removes it for 5 s" },
+  prism_fire: { label: "Fire", color: "#ff7a2a", tip: "Prism Cycle: bonus damage to Fire right now" },
+  prism_ice: { label: "Ice", color: "#8fdcff", tip: "Prism Cycle: bonus damage to Ice right now" },
+  prism_lightning: { label: "Lightning", color: "#9fb8ff", tip: "Prism Cycle: bonus damage to Lightning right now" },
+  prism_arcane: { label: "Arcane", color: "#c08aff", tip: "Prism Cycle: bonus damage to Arcane right now" },
 };
 const RELIC_RARITY: Record<string, string> = { uncommon: "Uncommon", rare: "Rare", epic: "Epic", boss: "Boss", evolved: "Evolved" };
 const TIER_LABEL: Record<UpgradeTier, string> = { common: "Common", rare: "Rare", epic: "Epic" };

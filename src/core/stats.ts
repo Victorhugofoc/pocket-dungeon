@@ -74,7 +74,14 @@ export type StatKey =
   | "volatileChance" // chance de Volatile (Fireball), no pool da spell
   | "spellCritChance" // as spells só dão crítico com isto (damage.lua `SPELL_SOURCES`)
   | "slowedDamagePct" // dano em inimigo com Slow (damage.lua §37)
-  | "chainEscalate"; // Conduit Ring: cada salto do raio, +isto de dano
+  | "chainEscalate" // Conduit Ring: cada salto do raio, +isto de dano
+  // M12-04: mecânicas de relíquia do lote 3 (relic_mechanics.lua, D-438 e D-433)
+  | "burnSpread" // Cinder Lens: quem morre queimando passa a queimadura ao vizinho
+  | "frostbite" // Frost Crown: inimigo com Slow por 3 s congela por isto (s)
+  | "untouchedPct" // Glass Throne: dano a mais enquanto não leva golpe
+  | "arcaneDominion" // Arcane Dominion: o ataque recebe os bônus de dano de spell e de Arcane
+  | "castHealPct" // Mana Battery: cada spell cura isto da vida máxima
+  | "prismCycle"; // Prism Cycle: dano a mais na escola da vez
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -88,7 +95,7 @@ export const STAT_KEYS: StatKey[] = [
   "permafrost", "staticCharge", "riftDurationFlat", "wildfire", "executionerPct", "nightfall", "judgement", "contagion",
   "shieldBoomerang", "shieldRicochet", "momentumPct", "levelHealPct", "overhealShield",
   "windPct", "runePct", "lightPct", "earthPct", "lightningTargets", "echoChance", "volatileChance", "spellCritChance",
-  "slowedDamagePct", "chainEscalate",
+  "slowedDamagePct", "chainEscalate", "burnSpread", "frostbite", "untouchedPct", "arcaneDominion", "castHealPct", "prismCycle",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -159,14 +166,26 @@ export const STAT_LABEL: Record<StatKey, string> = {
   spellCritChance: "Spell Crit",
   slowedDamagePct: "damage vs. Slowed targets",
   chainEscalate: "Lightning jump damage",
+  burnSpread: "Burn spread",
+  frostbite: "Frostbite",
+  untouchedPct: "damage while untouched",
+  arcaneDominion: "Arcane Dominion",
+  castHealPct: "heal per cast",
+  prismCycle: "Prism Cycle",
 };
 
 /** format.lua `MECH`: as mecânicas de relíquia se leem como uma frase (texto de en.lua). */
-const MECH_TEXT: Partial<Record<StatKey, (pct: number) => string>> = {
+const MECH_TEXT: Partial<Record<StatKey, (pct: number, v: number) => string>> = {
   momentumPct: (p) => `Up to +${p}% damage while moving (fills in 10 s, fades when still)`,
   levelHealPct: (p) => `Levelling up heals ${p}% HP`,
   overhealShield: (p) => `Healing past max HP becomes a shield (up to ${p}% HP)`,
   chainEscalate: (p) => `Each Lightning jump: +${p}% damage`,
+  burnSpread: () => "An enemy that dies burning passes its Burn on",
+  frostbite: (_p, v) => `An enemy Slowed for 3 s freezes for ${v.toFixed(1)} s`,
+  untouchedPct: (p) => `+${p}% damage; taking a hit removes the bonus for 5 s`,
+  arcaneDominion: () => "Auto Attack gets the Spell Damage and Arcane bonuses",
+  castHealPct: (_p, v) => `Each spell cast heals ${(v * 100).toFixed(1)}% HP (min. 1)`,
+  prismCycle: (p) => `+${p}% damage to the element of the moment (changes every 5 s)`,
 };
 
 const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true,
@@ -181,7 +200,7 @@ export function isFlat(k: StatKey): boolean {
 export function formatStat(k: StatKey, v: number): string {
   const sign = v >= 0 ? "+" : "";
   const mech = MECH_TEXT[k];
-  if (mech) return mech(Math.round(v * 100));
+  if (mech) return mech(Math.round(v * 100), v);
   if (isFlat(k)) return `${sign}${Math.round(v * 10) / 10} ${STAT_LABEL[k]}`;
   return `${sign}${Math.round(v * 1000) / 10}% ${STAT_LABEL[k]}`;
 }
@@ -359,7 +378,8 @@ export function computeStats(sources: StatBlock[], style: AutoStyle = "normal"):
     regen: effectiveRegen(g("regen")),
     dodge: stackChance(L("dodge"), STACKING.dodgeCap),
     cooldownMult: Math.max(STACKING.cooldownFloor, stackMultiplier(cooldownValues)),
-    autoDamage: Math.max(0.1, m("autoDamagePct")),
+    // stats.lua: ARCANE DOMINION põe os bônus de dano de spell e de Arcane no ataque
+    autoDamage: Math.max(0.1, m("autoDamagePct")) * (g("arcaneDominion") > 0 ? Math.max(0.1, m("spellDamagePct")) * Math.max(0.1, m("arcanePct")) : 1),
     spellPower: Math.max(1, DR_SPELL_POWER + g("spellPower")),
     spellDamage: Math.max(0.1, m("spellDamagePct")),
     school: {
