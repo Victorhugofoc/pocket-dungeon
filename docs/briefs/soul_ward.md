@@ -23,7 +23,7 @@ Forma `wisp`: sobe e desce 0,08 m num ciclo de ~3 s, balança devagar, respira n
 
 ## 5. Checagem (o crítico recebe esta lista)
 1. De cima, lê-se "alma/fantasma verde-água pequeno sobre um selo no chão", e não "gosma" nem "ovo".
-2. Buraco escuro (verde-escuro, sem brilho) na frente, visível na câmera do jogo.
+2. Olho preto com brilho branco na frente-direita, visível na câmera do jogo; núcleo verde-escuro macio por dentro do corpo, à esquerda.
 3. Flutua: vê-se o vão entre a bolha e o chão.
 4. Uma voluta só, saindo do corpo na frente-baixo (mudou na 1ª rodada do crítico: o genoma tem 2 tentáculos, o sprite mostra uma).
 5. Combina com o Hollow King (verde-água e dourado).
@@ -31,3 +31,6 @@ Forma `wisp`: sobe e desce 0,08 m num ciclo de ~3 s, balança devagar, respira n
 
 ## 6. Crítico (2026-11-23)
 6 rodadas. Corrigido: olho de "câmera" (anel em relevo com pupila acesa) virou um buraco verde-escuro chapado, sem brilho, como no sprite; o buraco cavado por metaball negativa tinha borda serrilhada e a pintura pela distância escurecia também as costas (virou disco pousado na pele por raio, `decal`, que não sai do perfil); duas caudas enroladas como chifres de carneiro viraram uma voluta só, primeiro um tubo pendurado (lia como tromba ou cano cinza) e por fim parte da própria malha do corpo, na frente-baixo, embaixo do buraco; ponta de chama no topo (lia como caule de fruta) saiu; vinco entre cúpula e base; cor fria e plástica puxada para verde-menta, mais fosca (`rough` 0,65); 25% maior para ler na câmera do jogo. Oscilaram e ficaram: corpo largo e baixo com base reta ↔ gota alta afinando (ficou o largo, como o quadro 0 do sprite); cauda grossa ↔ fina; brilho no olho sim ↔ não (ficou sem, como no sprite). Médios restantes: a voluta ainda lê como um nó de massa de perto, leitura de "crânio" de frente para um crítico, falta brilho próprio de alma (pede emissivo, fica para a fase 2 de VFX). ~4,3 mil triângulos (3 mil na alma).
+
+## 7. Usuário (2026-11-23)
+Recusou o buraco escuro: "o olho não parece olho". A folha inteira do sprite mostra que a mancha verde-escura grande é o **núcleo**, visto através do corpo translúcido, e que o olho é um pontinho preto com brilho branco na frente-direita (a boca vermelha só aparece ao apanhar). Agora: núcleo pintado na pele da frente com borda que se perde no corpo, e olho oval preto (0,058 × 0,08) com ponto de brilho, pousados na pele (`decal`). Lição: ler a folha inteira, não só o quadro 0, antes de decidir o que cada mancha é.

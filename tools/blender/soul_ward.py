@@ -13,18 +13,23 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PIV = {"hips": (0, 0, 0), "head": (0, 0, 0)}
 # verde-menta claro (sprite ~#7fd3a6), sombra no máximo ~#4f9e7c
 SOUL, SOUL_L, SOUL_D, SHEEN = hexc(0x6fd39a), hexc(0xa6eec4), hexc(0x3f9a6e), hexc(0xc8f7dc)
-CORE, GOLD, GOLD_D, RUNE = hexc(0x1f4a40), hexc(0xe8c25a), hexc(0x8a6a2a), hexc(0x73ffcc)
+NUCLEUS, EYE, GLINT, GOLD, GOLD_D, RUNE = hexc(0x3a8a64), hexc(0x0f1f18), hexc(0xffffff), hexc(0xe8c25a), hexc(0x8a6a2a), hexc(0x73ffcc)
 BASE_Z = 0.3  # a base da alma: quase reta, flutuando acima do selo
 
-# o buraco da alma: na frente, um pouco à esquerda, na metade de cima (como no sprite)
-NUC_X, NUC_Z = -0.07, 0.66
+# a folha do sprite mostra: a mancha verde-escura grande é o núcleo, visto por dentro do corpo translúcido (à esquerda,
+# no meio da altura); o olho é um pontinho preto com brilho branco, na frente-direita, um pouco mais alto
+NUC_X, NUC_Z = -0.1, 0.6
+EYE_X, EYE_Z = 0.17, 0.72
 
 
 def soul_tint(co, n):
     c = mix(SOUL_D, SOUL, ss(0.25, 0.7, co.z) * (0.55 + 0.45 * ss(-0.7, 0.3, n.z)))
     c = mix(c, SOUL_L, 0.7 * ss(0.3, 0.95, n.z) * ss(0.65, 0.95, co.z))
     # brilho largo e suave no alto à esquerda
-    return mix(c, SHEEN, 0.35 * ss(0.65, 0.95, Vector(n).dot(Vector((-0.5, -0.3, 0.8)).normalized())))
+    c = mix(c, SHEEN, 0.35 * ss(0.65, 0.95, Vector(n).dot(Vector((-0.5, -0.3, 0.8)).normalized())))
+    # núcleo por dentro: mancha macia, só na frente, borda que se perde no corpo (não é um buraco)
+    d = math.hypot((co.x - NUC_X) / 1.1, co.z - NUC_Z)
+    return mix(c, NUCLEUS, 0.85 * (1 - ss(0.1, 0.18, d)) * ss(0.05, -0.15, co.y))
 
 
 def body():
@@ -85,10 +90,10 @@ def decal(name, at, cx, cz, rx, rz, lift, col_fn, rings=6, seg=40):
 
 
 def eye_disc(at):
-    """o buraco: verde-escuro chapado (não preto) no meio, clareando até a sombra do corpo na borda; sem brilho, como no sprite"""
-    c, _ = at(NUC_X, NUC_Z)
-    hole = decal("hole", at, NUC_X, NUC_Z, 0.165, 0.15, 0.006, lambda co, n: mix(CORE, SOUL_D, ss(0.1, 0.17, (Vector(co) - c).length)))
-    return [hole]
+    """o olho: oval preto pequeno, mais alto que largo, na frente-direita, com um ponto de brilho branco no alto"""
+    eye = decal("eye", at, EYE_X, EYE_Z, 0.058, 0.08, 0.006, lambda co, n: EYE, rings=3, seg=24)
+    glint = decal("glint", at, EYE_X - 0.017, EYE_Z + 0.028, 0.02, 0.02, 0.011, lambda co, n: GLINT, rings=2, seg=12)
+    return [eye, glint]
 
 
 def seal():
