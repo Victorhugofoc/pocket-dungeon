@@ -29,7 +29,7 @@ import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game, RelicBan } from "../game/game";
 import { relicBansLeft } from "../core/relics";
-import { attackLine, barsHtml, initials } from "./heroselect";
+import { attackLine, barsHtml } from "./heroselect";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const QUALITY = ["low", "medium", "high"];
@@ -232,6 +232,7 @@ export class Ui {
   }
 
   private close(): void {
+    this.game.stage.hide();
     this.overlay?.remove();
     this.overlay = null;
     this.overlayKind = "";
@@ -336,12 +337,13 @@ export class Ui {
       const records = rec.runs
         ? `${rec.runs} runs · ${rec.wins} wins · best wave ${rec.highestWave}${rec.bestEndless ? ` · endless to wave ${rec.bestEndless}` : ""} · ${rec.kills} kills · ${achievementCount(ach)} of ${ACHIEVEMENTS.length} achievements`
         : "Action RPG · procedural maps, one hero, waves and bosses";
+      const faces = this.game.stage.portraits();
       const roster = HERO_ORDER.map((id) => {
         const d = HEROES[id];
         const lk = !open(id);
         const tip = lk ? `Locked · ${lockText(id)}` : `${d.name} · ${d.title}`;
         return `<button class="hs-portrait ${id === h.id ? "sel" : ""} ${lk ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)}" title="${tip}">
-          <span class="face">${lk ? "🔒" : initials(d)}</span><span class="nm">${lk ? "???" : d.name}</span>
+          <span class="face"><img src="${lk ? faces[id].locked : faces[id].face}" alt="">${lk ? `<i class="lock">🔒</i>` : ""}</span><span class="nm">${lk ? "???" : d.name}</span>
           ${isNew(ach, "hero", id) ? `<em class="new">NEW</em>` : ""}</button>`;
       }).join("");
       const info = locked ? `<p class="note">This hero is still locked.</p>` : `
@@ -387,7 +389,8 @@ export class Ui {
           <div class="hs-go"><button class="primary ${confirming ? "danger" : ""}" data-act="go" ${locked ? "disabled" : ""}>${
             confirming ? "This ends the current run. Start again to confirm" : "Start the run"}</button></div>
         </footer>
-        <p class="hs-keys">Arrows: hero · 1-4: starting spell · Enter: start · Esc: cancel</p>`;
+        <p class="hs-keys">Arrows: hero · drag: turn · 1-4: starting spell · Enter: start · Esc: cancel</p>`;
+      this.game.stage.show(panel.querySelector<HTMLElement>("[data-r=stage]")!, h.id, locked);
       const input = panel.querySelector<HTMLInputElement>("[data-r=seed]")!;
       input.oninput = () => (this.seedText = input.value.toUpperCase());
       input.onkeydown = (e) => {

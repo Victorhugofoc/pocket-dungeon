@@ -113,7 +113,10 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .hs-portrait .nm { font-size: clamp(12px, 0.8vw, 16px); font-weight: 600; color: var(--hc); }
 .hs-portrait:hover:not(:disabled) { border-color: var(--hc); background: #23273a; }
 .hs-portrait.sel { border-color: var(--hc); background: #23273a; box-shadow: 0 0 0 1px var(--hc), 0 0 18px -4px var(--hc); }
-.hs-portrait.locked .face { background: #07080c; color: var(--muted); font-size: 22px; filter: none; }
+.hs-portrait .face { position: relative; overflow: hidden; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--hc) 70%, #000); }
+.hs-portrait .face img { width: 100%; height: 100%; display: block; }
+.hs-portrait .face .lock { position: absolute; right: 2px; bottom: 0; font-style: normal; font-size: 0.6em; }
+.hs-portrait.locked .face { box-shadow: inset 0 0 0 2px #3a3e4e; }
 .hs-portrait.locked .nm { color: var(--muted); }
 .hs-portrait .new { position: absolute; top: 6px; right: 6px; font-style: normal; font-size: 10px; color: #1a1408; background: var(--gold);
   border-radius: 4px; padding: 1px 5px; }
@@ -124,8 +127,8 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .hs-stage .hs-name h2 { font-size: clamp(30px, 2.6vw, 52px); letter-spacing: 2px; color: var(--hc); margin: 0; text-shadow: 0 3px 0 #0008; }
 .hs-stage .hs-name p { font-size: clamp(14px, 1vw, 20px); margin: 2px 0 0; color: var(--text); opacity: 0.8; }
 .hs-floor { position: absolute; inset: 0; }
-.hs-floor::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: 13%; height: 12%; border-radius: 50%;
-  background: radial-gradient(ellipse, color-mix(in srgb, var(--hc) 40%, transparent) 0%, transparent 70%); }
+.hs-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.hs-canvas:active { cursor: grabbing; }
 .hs-stage.locked { --hc: #555a70; }
 .hs-stage.locked .hs-name h2 { color: var(--muted); }
 .hs-lock { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; color: var(--text); padding: 0 20px; }

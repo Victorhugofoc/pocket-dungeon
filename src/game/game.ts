@@ -56,6 +56,7 @@ import { LootView } from "./loot";
 import { promisesBank } from "../core/loot";
 import { Input } from "./input";
 import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
+import { HeroStage } from "./stage";
 import { characterRig } from "./rigs";
 import { kickRig, nextShot } from "./chars";
 import { Pipeline } from "./render";
@@ -398,6 +399,8 @@ export class Game {
   probe: FrameProbe;
   /** fps e travadinhas por onda para o registro de partidas (core/perflog.ts) */
   perfLog = new PerfLog();
+  /** palco 3D da tela de seleção de herói (M14-08) */
+  stage: HeroStage;
 
   constructor(private canvas: HTMLCanvasElement, textLayer: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -406,6 +409,7 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(38, 1, 1, 400);
     this.pipeline = new Pipeline(this.renderer, this.scene, this.camera);
     this.probe = new FrameProbe(this.renderer);
+    this.stage = new HeroStage(this.renderer);
     this.fx = new Fx(this.scene, textLayer);
     this.gates = new MapGates(this.scene, this.fx);
     this.detours = new DetourField(this.scene, this.fx);
@@ -456,6 +460,7 @@ export class Game {
 
   // ---------------------------------------------------------------- início / zona
   start(run: RunState, rng: RunRng): void {
+    this.stage.hide();
     this.run = run;
     this.perfLog.reset();
     this.rng = rng;
@@ -3507,6 +3512,7 @@ export class Game {
     this.fps += (1 / Math.max(real, 0.001) - this.fps) * 0.05;
     this.probe.begin();
     if (!this.started) {
+      this.stage.frame(raw);
       this.input.endFrame();
       return;
     }
