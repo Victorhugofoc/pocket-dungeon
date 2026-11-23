@@ -72,6 +72,8 @@ export const TUNING = {
     /** segundos entre a morte do chefe e o corpo sumir */
     deathTime: 2.4,
     xpMult: 22,
+    /** chefe que mantém distância (`preferred`, M10-01): vai ao golpe quando o herói chega a esta folga além do alcance */
+    closeIn: 1.5,
   },
   world: {
     size: 240,

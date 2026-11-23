@@ -19,9 +19,9 @@ import {
   LEVELUP_REROLL, RUN_MAP, RUN_START, RUN_TUNING, TOTAL_WAVES, UPGRADE_TIER_WEIGHTS, UPGRADE_TIERS, WAVE_STAGES, WAVES,
   XP_GROWTH,
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
-  BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PHASES,
+  BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PHASES, BOSS_SKILLSHOT,
 } from "../src/data/run";
-import { BOSS_ORDER, BOSSES, ENEMIES, HELPERS, SHIELD_CYCLE } from "../src/data/enemies";
+import { BOSS_ORDER, BOSSES, CROWN_BORROW, ENEMIES, HELPERS, SHIELD_CYCLE } from "../src/data/enemies";
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
 import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
@@ -109,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "gravekeeper", "ember_matriarch", "hollow_king" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "hollow_king" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1262,5 +1262,26 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect([...BOSS_MECHANICS.soul_tether.perPhase]).toEqual(M.soul_tether.perPhase);
     expect(BOSS_MECHANICS.soul_tether.damageTakenMult).toBe(M.soul_tether.damageTakenMult);
     expect(BOSS_MECHANICS.soul_tether.wardHp).toBe(M.soul_tether.wardHp);
+  });
+  it("Deathstalker igual ao de bosses.lua: distância, skillshot, Mark, Crossfire e Marked Prey (M10-01)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.deathstalker, d = BOSSES.deathstalker;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    expect(d.patterns.map((p) => p.kind)).toEqual(["skillshot", "mark", "crossfire"]);
+    expect(build.attacks).toEqual(["skillshot", "mark", "crossfire"]);
+    expect(px(d.preferred)).toBe(build.preferred);
+    expect(d.relicBuild).toBe(build.relicBuild);
+    expect(BOSS_SKILLSHOT.cooldown).toBe(BS.BASE.skillshotCooldown);
+    expect(BOSS_SKILLSHOT.speed).toBe(BS.BASE.skillshotSpeed);
+    const [ss, mk, cf] = d.patterns;
+    expect([ss.warning, ss.damage, px(ss.width)]).toEqual([A.skillshot.warning, A.skillshot.dmg, A.skillshot.width]);
+    expect([mk.warning, mk.lock, mk.damage, px(mk.radius), mk.markTime, mk.markMult])
+      .toEqual([A.mark.warning, A.mark.lock, A.mark.dmg, A.mark.radius, A.mark.markTime, A.mark.markMult]);
+    expect(mk.markMult).toBe(BS.MECHANICS.marked_prey.mult);
+    expect(BOSS_MECHANICS.marked_prey.mult).toBe(BS.MECHANICS.marked_prey.mult);
+    expect([cf.warning, cf.damage, px(cf.width), px(cf.length)]).toEqual([A.crossfire.warning, A.crossfire.dmg, A.crossfire.width, 840]);
+    // o empréstimo do rei coroado: só os de `CROWN.borrow` que já existem aqui, na ordem de lá
+    const map: Record<string, string> = { nova: "nova", crossfire: "crossfire", fan: "fanvolley", spiral: "spiralvolley" };
+    expect(CROWN_BORROW.map((k) => map[k])).toEqual(BS.CROWN.borrow.filter((k: string) => Object.values(map).includes(k)));
   });
 });

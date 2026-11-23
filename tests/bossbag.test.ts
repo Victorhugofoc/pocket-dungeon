@@ -14,8 +14,8 @@ function draws(seed: number, n: number): string[] {
 }
 
 describe("saco de chefes (boss_bag.lua)", () => {
-  it("o saco tem os 4 chefes modelados, na ordem de bosses.lua", () => {
-    expect(POOL).toEqual(["bloodfang", "gravekeeper", "ember_matriarch", "hollow_king"]);
+  it("o saco tem os chefes que já lutam aqui, na ordem de bosses.lua", () => {
+    expect(POOL).toEqual(["bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "hollow_king"]);
   });
 
   it("mesma seed, mesma ordem; seeds diferentes, ordens diferentes", () => {
@@ -26,8 +26,8 @@ describe("saco de chefes (boss_bag.lua)", () => {
 
   it("sem repetir dentro do saco, e o saco novo não começa pelo último que saiu", () => {
     for (let seed = 1; seed <= 40; seed++) {
-      const d = draws(seed, 12);
-      for (let i = 0; i < 12; i += 4) expect(new Set(d.slice(i, i + 4)).size, `seed ${seed}`).toBe(4);
+      const n = POOL.length, d = draws(seed, n * 3);
+      for (let i = 0; i < n * 3; i += n) expect(new Set(d.slice(i, i + n)).size, `seed ${seed}`).toBe(n);
       for (let i = 1; i < d.length; i++) expect(d[i], `seed ${seed} #${i}`).not.toBe(d[i - 1]);
     }
   });
@@ -63,6 +63,6 @@ describe("saco de chefes (boss_bag.lua)", () => {
         if (k) expect(own).not.toContain(k);
       }
     }
-    expect(crownAttack(["nova", "fan", "spiral"], CROWN_BORROW, rng)).toBeNull();
+    expect(crownAttack(["nova", "crossfire", "fan", "spiral"], CROWN_BORROW, rng)).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { armyCount, bloodRush, phaseFor, phaseSteps, soulWardCount, tetherMult, unlockedPatterns } from "../src/core/bossphase";
+import { applyMark, armyCount, bloodRush, bossRotation, markMult, phaseFor, phaseSteps, soulWardCount, tetherMult, unlockedPatterns } from "../src/core/bossphase";
 
 describe("fases do chefe (M10-10)", () => {
   it("fase pela vida: acima de 60% = 1, acima de 30% = 2, senão 3", () => {
@@ -42,5 +42,24 @@ describe("fases do chefe (M10-10)", () => {
     expect(tetherMult(0)).toBe(1);
     expect(tetherMult(1)).toBe(0.35);
     expect(tetherMult(3)).toBe(0.35);
+  });
+  it("skillshot fora da rotação, com recarga própria que encurta nas fases (M10-01)", () => {
+    const k = ["skillshot", "mark", "crossfire"] as const;
+    expect(bossRotation(k, 1, false)).toEqual({ rotation: [], skillshot: true });
+    expect(bossRotation(k, 2, false)).toEqual({ rotation: [1], skillshot: true });
+    expect(bossRotation(k, 3, false)).toEqual({ rotation: [1, 2], skillshot: true });
+    expect(bossRotation(["nova", "fan", "slam"], 3, false)).toEqual({ rotation: [0, 1, 2], skillshot: false });
+    expect(phaseSteps(1, 0).map((x) => x.skillshotCooldown)).toEqual([0.88, 0.82]);
+  });
+  it("Marked Prey: só o dano de quem marcou sai ×1,25, até a marca acabar; a nova troca a velha", () => {
+    const a = {}, b = {};
+    const m = applyMark(10, 4, 1.25, a);
+    expect(markMult(m, 12, a)).toBe(1.25);
+    expect(markMult(m, 12, b)).toBe(1);
+    expect(markMult(m, 14, a)).toBe(1);
+    expect(markMult(null, 12, a)).toBe(1);
+    const m2 = applyMark(13, 4, 1.25, b);
+    expect(markMult(m2, 16, a)).toBe(1);
+    expect(markMult(m2, 16.9, b)).toBe(1.25);
   });
 });

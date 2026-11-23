@@ -133,7 +133,7 @@ export const HAZARD_TICK = 0.5;
 /** tuning.lua `SHIELD_CYCLE` (D-178): o escudo do Shieldbearer fica erguido `up` s, pisca `warn` s e cai `down` s */
 export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
-export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral";
+export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -146,6 +146,11 @@ export interface BossPattern {
   speed?: number;
   spreadDeg?: number;
   minion?: string;
+  /** `mark`: a retícula segue o herói por `warning` s e fica travada `lock` s antes de bater */
+  lock?: number;
+  /** `mark`: quanto tempo o herói fica marcado e o multiplicador do dano do chefe nele */
+  markTime?: number;
+  markMult?: number;
 }
 
 export interface BossDef {
@@ -169,6 +174,8 @@ export interface BossDef {
   xp: number;
   /** bosses.lua `relicBuild`: as relíquias de chefe por build (§69) que este chefe dá; sem = só as universais */
   relicBuild?: string;
+  /** bosses.lua `preferred`: distância que o chefe tenta manter do herói, em m (sem = vai atrás, como lá o 0) */
+  preferred?: number;
 }
 
 /** Ordem dos 13 chefes em `bosses.lua` (`B.order`); o saco usa os que existem em `BOSSES` (M20-09, D6). */
@@ -180,9 +187,9 @@ export const BOSS_ORDER = [
 /**
  * `bosses.lua` `CROWN.borrow`: ataques que o rei coroado da onda 20 pode pegar de outro chefe. Lá são `nova`,
  * `crossfire`, `radial`, `fanvolley`, `spiralvolley`, `stormfield`, `venomfield` e `quake`; aqui só existem os
- * equivalentes de `nova`, `fanvolley` e `spiralvolley` (os outros chegam com os chefes do `M10`).
+ * equivalentes de `nova`, `crossfire` (M10-01), `fanvolley` e `spiralvolley` (os outros chegam com os chefes do `M10`).
  */
-export const CROWN_BORROW = ["nova", "fan", "spiral"] as const;
+export const CROWN_BORROW = ["nova", "crossfire", "fan", "spiral"] as const;
 
 /** Título do rei coroado (en.lua: "THE CROWNED KING", D-640). */
 export const CROWN_TITLE = "The Crowned King";
@@ -220,6 +227,18 @@ export const BOSSES: Record<string, BossDef> = {
       { kind: "slam", warning: 0.9, damage: 1.4, radius: 6 },
     ],
     body: "brute", color: 0x4a2a1e, accent: 0xff8a2a, glow: 0xff6a1a, scale: 2.7, projectileColor: 0xff8a2a, xp: 70,
+  },
+  // M10-01: o caçador. Fica a 230 px do herói; skillshot desde a fase 1, Mark na 2 e Crossfire na 3 (bosses.lua, px ÷ 16).
+  deathstalker: {
+    id: "deathstalker", name: "Deathstalker", title: "The Hunter", hp: 1700, damage: 12, speed: 2.9, radius: 1.5,
+    attackRange: 3.0, attackCooldown: 1.5, patternCooldown: 4.0, preferred: 230 / 16,
+    patterns: [
+      { kind: "skillshot", warning: 0.45, damage: 1.1, width: 10 / 16, length: 520 / 16, radius: 6 / 16 },
+      { kind: "mark", warning: 1.0, lock: 0.55, damage: 1.25, radius: 42 / 16, markTime: 4, markMult: 1.25 },
+      { kind: "crossfire", warning: 0.8, damage: 1.2, width: 26 / 16, length: 840 / 16 },
+    ],
+    body: "bug", color: 0x2a2d33, accent: 0xd9a23a, glow: 0x8cff7a, scale: 2.4, projectileColor: 0xb6ff7a, xp: 55,
+    relicBuild: "hunter",
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,
