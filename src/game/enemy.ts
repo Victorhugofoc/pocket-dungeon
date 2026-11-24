@@ -5,7 +5,7 @@ import { bossStats, enemyStats } from "../core/wave";
 import { pacedFoe } from "../core/pace";
 import { circleInArc } from "../core/melee";
 import { reactionFor, type ReactionId, type ReactState } from "../core/reactions";
-import { BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PROJECTILE_SPEED, BOSS_SKILLSHOT, BURN, CHILD_SCALE, FIRST_TIMER, MINION_SCALE, RUN_TUNING, SUMMON_CAP, type BossMechanicId } from "../data/run";
+import { BOSS_BOULDER, BOSS_GUARD, BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PROJECTILE_SPEED, BOSS_SKILLSHOT, BURN, CHILD_SCALE, FIRST_TIMER, MINION_SCALE, RUN_TUNING, SUMMON_CAP, type BossMechanicId } from "../data/run";
 import { type BossPhase, armyCount, bloodRush, bossRotation, markMult, phaseSteps, soulWardCount, tetherMult } from "../core/bossphase";
 import { distToSegment } from "../core/worldgen";
 import { TetherBeam } from "./tether";
@@ -30,6 +30,8 @@ import { makeShieldBubble, type ShieldBubble } from "./affixes";
 const VENOM_POOL_COLOR = 0x7ad83a;
 const FROST_POOL_COLOR = 0xbfeeff;
 const STORM_POOL_COLOR = 0x8fb8ff;
+/** M10-08: chão rachado do Earthbreaker (efeito mínimo da fase 1) */
+const CRACK_POOL_COLOR = 0x8a5a3a;
 const CRACKLE_COLOR = 0x8fe8ff;
 
 /** cor do aviso do golpe, a mesma da marca no chão */
@@ -223,6 +225,10 @@ export class Enemy {
   wakeCd: number = BOSS_MECHANICS.glacial_wake.first;
   diveT = -1;
   private diveDur = 1;
+  /** M10-08: pedra do Iron Colossus (recarga do tiro comum de lá, × fase) e a guarda (§65): s até virar */
+  boulderCd: number = BOSS_BOULDER.cooldown;
+  phaseRangedK = 1;
+  guardCd: number = BOSS_GUARD.cooldown * 0.5;
   /** M10-07 Storm Field: s até o próximo raio no herói */
   stormCd: number = BOSS_MECHANICS.storm_field.first;
   /** M10-07: s até o próximo estalo de raio em volta do Storm Tyrant (só visual) */
@@ -335,6 +341,11 @@ export class Enemy {
       this.shieldYaw = this.facing = Math.atan2(game.player.x - x, game.player.z - z);
       this.guardBand = makeGuardBand(game.scene, this.def.shield.arcDeg, 0x9ad1ff);
     }
+    if (this.boss?.guard) {
+      // boss.lua: a guarda nasce abaixada e sobe pela primeira vez na metade da recarga
+      this.shieldState = "down";
+      this.guardBand = makeGuardBand(game.scene, BOSS_GUARD.arcDeg, this.boss.glow);
+    }
     if (this.champion && !this.boss) {
       this.aura = makeChampionAura(game.scene);
       this.aura.update(x, z, this.radius, 0, 1);
@@ -367,7 +378,7 @@ export class Enemy {
    * (1 sem escudo). (px, pz) é o herói, a origem quando a do golpe está colada no corpo.
    */
   guardMult(fx: number, fz: number, px: number, pz: number): number {
-    const sh = this.def?.shield;
+    const sh = this.def?.shield ?? (this.boss?.guard ? BOSS_GUARD : null);
     if (!sh || this.dead || this.shieldState === "down") return 1;
     if (!guardBlocks(this.shieldYaw, sh.arcDeg, this.x, this.z, this.radius, fx, fz, px, pz)) return 1;
     this.guardBand?.flash();
@@ -726,6 +737,10 @@ export class Enemy {
     this.wakeCd = BOSS_MECHANICS.glacial_wake.first;
     this.diveT = -1;
     this.stormCd = BOSS_MECHANICS.storm_field.first;
+    this.boulderCd = BOSS_BOULDER.cooldown;
+    this.phaseRangedK = 1;
+    this.guardCd = BOSS_GUARD.cooldown * 0.5;
+    if (this.boss?.guard) this.shieldState = "down";
     this.dropWards(game);
     this.roarT = -1;
     this.dots.length = 0;
@@ -1030,6 +1045,7 @@ export class Enemy {
     if (this.slimeRings.length) this.updateSlimeRings(game, dt);
     if (this.updatePhase(game)) return;
     this.updateMechanic(game, dt);
+    if (b.guard) this.updateGuard(game, dt);
     if (this.spiral) {
       const s = this.spiral;
       s.timer -= dt;
@@ -1052,6 +1068,14 @@ export class Enemy {
     // boss_ai.lua `rotation` e `hasSkillshot`: só os padrões que a fase já abriu (o emprestado do rei coroado vem no fim
     // e ele tem todos); o skillshot corre com recarga própria, fora da rotação
     const { rotation, skillshot } = bossRotation(this.patterns.map((pt) => pt.kind), this.phase, this.crowned);
+    // boss_ai.lua: o Iron Colossus arremessa pedra no lugar do tiro comum, sem parar de andar (`build.boulder`, D-219)
+    if (b.boulder && this.windupT < 0 && game.playerAlive) {
+      this.boulderCd -= dt;
+      if (this.boulderCd <= 0) {
+        this.boulderCd = BOSS_BOULDER.cooldown * this.phaseRangedK * this.cdMult;
+        this.throwBoulder(game);
+      }
+    }
     if (skillshot && this.windupT < 0) {
       this.skillshotCd -= dt;
       if (this.skillshotCd <= 0) {
@@ -1123,7 +1147,8 @@ export class Enemy {
     let roared = false;
     for (const st of phaseSteps(this.phase, this.hp / this.maxHp)) {
       this.phase = st.phase;
-      this.phaseSpeed *= st.speed;
+      this.phaseSpeed *= st.speed * (this.boss!.phaseSpeed?.[st.phase - 1] ?? 1);
+      this.phaseRangedK *= st.rangedCooldown;
       this.phasePatternK *= st.patternCooldown;
       this.phaseMeleeK *= st.meleeCooldown;
       this.phaseSkillshotK *= st.skillshotCooldown;
@@ -1410,6 +1435,48 @@ export class Enemy {
     game.affixes.addPool(x, z, r, time, this.dmg * dps * HAZARD_TICK, `${this.name} (storm)`, STORM_POOL_COLOR);
   }
 
+  /**
+   * boss_ai.lua `updateGuard` (§65): a guarda sobe por `active` s a cada `cooldown` s, de frente para o herói, e gira devagar
+   * atrás dele; o golpe que vem da frente leva ×0,15 (`guardMult`).
+   */
+  private updateGuard(game: Game, dt: number): void {
+    const G = BOSS_GUARD, p = game.player;
+    const target = Math.atan2(p.x - this.x, p.z - this.z);
+    this.guardCd -= dt;
+    if (this.guardCd <= 0) {
+      const up = this.shieldState === "down";
+      this.shieldState = up ? "up" : "down";
+      this.guardCd = up ? G.active : G.cooldown;
+      if (up) {
+        this.shieldYaw = target;
+        game.fx.text(this.x, this.rig.height + 0.6, this.z, "GUARD", "frost");
+        game.audio.play("warn");
+      }
+    }
+    if (this.shieldState === "up") this.shieldYaw = turnToward(this.shieldYaw, target, G.turnRate * dt);
+  }
+
+  /** boss_ai.lua `boulder`: círculo avisado no herói; a pedra cai nele (o aviso segue mesmo se o chefe morrer, como lá) */
+  private throwBoulder(game: Game): void {
+    const B = BOSS_BOULDER, p = game.player, b = this.boss!;
+    const r = B.radius * TUNING.enemy.pxToUnit, x = p.x, z = p.z, dmg = this.dmg * B.damage;
+    this.attackAnim = Math.max(this.attackAnim, 0.25);
+    game.fx.burst(this.x, this.rig.height * 0.7, this.z, b.projectileColor, 10, 4, 0.16, 0.4);
+    game.fx.telegraphCircle(x, z, r, B.warning, () => {
+      game.explode(x, z, r, dmg, b.projectileColor, `${this.name} (boulder)`);
+      game.fx.burst(x, 0.4, z, b.projectileColor, 18, 6, 0.2, 0.6);
+      game.fx.addShake(0.25);
+    });
+  }
+
+  /** boss_ai.lua `earthbreakerCrack`: com a mecânica Earthbreaker, o golpe deixa chão rachado que fere quem pisa */
+  private crack(game: Game, x: number, z: number): void {
+    if (this.mechanic !== "earthbreaker") return;
+    const M = BOSS_MECHANICS.earthbreaker;
+    game.affixes.addPool(x, z, M.crackRadius * TUNING.enemy.pxToUnit, M.crackTime, this.dmg * M.crackDps * HAZARD_TICK,
+      `${this.name} (crack)`, CRACK_POOL_COLOR);
+  }
+
   /** boss_ai.lua `updateShockwaves`: o anel cresce até `max`; o herói na faixa (± grossura/2 + raio dele) leva o golpe uma vez */
   private updateSlimeRings(game: Game, dt: number): void {
     const p = game.player;
@@ -1590,6 +1657,66 @@ export class Enemy {
           fx.shockwave(x, z, R, b.glow, (max - r0) / speed, r0 + thick / 2); // borda de fora do anel, de r0 até R
           fx.addShake(0.35);
         }, r0);
+        break;
+      }
+      case "quake": {
+        // boss_ai.lua `quake`: o anel do slimewave em volta dele (miolo seguro: grudar nele ou sair do círculo) e chão rachado
+        const R = pt.radius ?? 9, r0 = R * (pt.inner ?? 0.45), speed = pt.speed ?? 16.25, thick = pt.thickness ?? 1.25;
+        const x = this.x, z = this.z;
+        this.casting = pt.warning + R / speed;
+        fx.telegraphCircle(x, z, R, pt.warning, () => {
+          if (!ok()) return;
+          this.attackAnim = 0;
+          const max = R - thick / 2;
+          this.slimeRings.push({ x, z, r: r0, max, speed, thick, dmg: this.dmg * pt.damage, hit: false });
+          fx.shockwave(x, z, R, b.glow, (max - r0) / speed, r0 + thick / 2);
+          fx.burst(x, 0.3, z, b.projectileColor, 22, 6, 0.2, 0.6);
+          fx.addShake(0.45);
+          this.crack(game, x, z);
+        }, r0);
+        break;
+      }
+      case "armorbreak": {
+        // boss_ai.lua `armorbreak`: círculo no herói; quem leva perde armadura por um tempo; o chão racha onde caiu
+        const r = pt.radius ?? 4, x = p.x, z = p.z;
+        this.casting = pt.warning;
+        fx.telegraphCircle(x, z, r, pt.warning, () => {
+          if (!ok()) return;
+          this.attackAnim = 0;
+          const hp = game.player, pr = TUNING.enemy.telegraph.playerRadius;
+          fx.burst(x, 0.4, z, b.glow, 20, 6, 0.2, 0.55);
+          fx.addShake(0.35);
+          if (Math.hypot(hp.x - x, hp.z - z) <= r + pr && game.hurtPlayer(this.dmg * pt.damage, `${this.name} (armorbreak)`, this)) {
+            game.armorBreakPlayer(pt.time ?? 6, pt.armor ?? -15);
+          }
+          this.crack(game, x, z);
+        });
+        break;
+      }
+      case "leap": {
+        // boss_ai.lua `leap`: no ar (sem golpe), cai onde o herói estava (preso na arena), estremece e racha o chão
+        const r = pt.radius ?? 5.75;
+        let tx = p.x, tz = p.z;
+        const dx = tx - this.homeX, dz = tz - this.homeZ, d = Math.hypot(dx, dz), lim = game.layout.bossRadius - this.radius;
+        if (d > lim) { tx = this.homeX + (dx / d) * lim; tz = this.homeZ + (dz / d) * lim; }
+        this.casting = pt.warning + 0.3;
+        this.diveT = 0;
+        this.diveDur = pt.warning;
+        this.endSwing();
+        fx.burst(this.x, 0.4, this.z, b.projectileColor, 20, 5, 0.18, 0.5);
+        fx.telegraphCircle(tx, tz, r, pt.warning, () => {
+          this.diveT = -1;
+          if (!ok()) return;
+          this.x = tx;
+          this.z = tz;
+          this.rig.root.position.set(tx, 0, tz);
+          this.attackAnim = 0;
+          game.explode(tx, tz, r, this.dmg * pt.damage, b.glow, `${this.name} (leap)`);
+          fx.shockwave(tx, tz, r, b.glow, 0.35);
+          fx.burst(tx, 0.4, tz, b.projectileColor, 26, 7, 0.2, 0.7);
+          fx.addShake(0.6);
+          this.crack(game, tx, tz);
+        });
         break;
       }
       case "frostbreath": {

@@ -19,7 +19,7 @@ import {
   LEVELUP_REROLL, RUN_MAP, RUN_START, RUN_TUNING, TOTAL_WAVES, UPGRADE_TIER_WEIGHTS, UPGRADE_TIERS, WAVE_STAGES, WAVES,
   XP_GROWTH,
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
-  BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PHASES, BOSS_PROJECTILE_SPEED, BOSS_SKILLSHOT,
+  BOSS_BOULDER, BOSS_GUARD, BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PHASES, BOSS_PROJECTILE_SPEED, BOSS_SKILLSHOT,
 } from "../src/data/run";
 import { BOSS_ORDER, BOSSES, CROWN_BORROW, ENEMIES, HELPERS, SHIELD_CYCLE } from "../src/data/enemies";
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
@@ -109,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra", "gorged_ooze", "rimefang_wyrm", "storm_tyrant" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra", "gorged_ooze", "rimefang_wyrm", "storm_tyrant", "iron_colossus" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1282,7 +1282,7 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect([cf.warning, cf.damage, px(cf.width), px(cf.length)]).toEqual([A.crossfire.warning, A.crossfire.dmg, A.crossfire.width, 840]);
     // o empréstimo do rei coroado: só os de `CROWN.borrow` que já existem aqui, na ordem de lá
     const map: Record<string, string> = { nova: "nova", crossfire: "crossfire", radial: "radial", fan: "fanvolley", spiral: "spiralvolley",
-      stormfield: "stormfield", venomfield: "venomfield" };
+      stormfield: "stormfield", venomfield: "venomfield", quake: "quake" };
     expect(CROWN_BORROW.map((k) => map[k])).toEqual(BS.CROWN.borrow.filter((k: string) => Object.values(map).includes(k)));
   });
   it("Dune Leviathan igual ao de bosses.lua: distância, parede de areia, varrida, erupção e Burrow (M10-02)", () => {
@@ -1396,6 +1396,32 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect([B.interval, B.radius, B.time, B.dps, B.warning]).toEqual([M.interval, M.radius, M.time, M.dps, M.warning]);
     expect(BOSS_MECHANIC.storm_tyrant).toEqual({ id: build.mechanic, name: build.mechanicName });
     const m = build.mults, o = BOSS_MULTS.storm_tyrant;
+    expect([o.hp, o.damage, o.speed, o.projectileSpeed]).toEqual([m.hp, m.damage, m.speed, m.projectileSpeed]);
+  });
+  it("Iron Colossus igual ao de bosses.lua: Quake, Armorbreak, Leap, pedra, guarda, passo por fase e Earthbreaker (M10-08)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.iron_colossus, d = BOSSES.iron_colossus;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    expect(d.patterns.map((p) => p.kind)).toEqual(build.attacks);
+    expect(d.preferred ?? 0).toBe(build.preferred);
+    expect(d.relicBuild).toBe(build.relicBuild);
+    const [qk, ab, lp] = d.patterns;
+    // boss_ai.lua `quake`: o raio do anel é o `slamRadius` do chefe
+    expect([qk.warning, qk.damage, px(qk.radius), qk.inner, px(qk.speed), px(qk.thickness)])
+      .toEqual([A.quake.warning, A.quake.dmg, build.slamRadius, A.quake.safeInner, A.quake.ringSpeed, A.quake.thickness]);
+    expect([ab.warning, ab.damage, px(ab.radius), ab.armor, ab.time]).toEqual([A.armorbreak.warning, A.armorbreak.dmg, A.armorbreak.radius, A.armorbreak.armor, A.armorbreak.time]);
+    expect([lp.warning, lp.damage, px(lp.radius)]).toEqual([A.leap.warning, A.leap.dmg, A.leap.radius]);
+    expect(d.boulder).toBe(build.boulder);
+    expect([BOSS_BOULDER.warning, BOSS_BOULDER.damage, BOSS_BOULDER.radius]).toEqual([A.boulder.warning, A.boulder.dmg, A.boulder.radius]);
+    expect(BOSS_BOULDER.cooldown).toBe(BS.BASE.rangedCooldown * build.mults.rangedCooldown);
+    expect(d.guard).toBe(build.guard);
+    expect({ ...BOSS_GUARD }).toEqual({ ...BS.GUARD });
+    expect([...d.phaseSpeed!]).toEqual([...build.phaseSpeed]);
+    expect(BOSS_PHASES[1].rangedCooldown).toBe(BS.PHASES[1].rangedCooldown);
+    const M = BS.MECHANICS.earthbreaker, B = BOSS_MECHANICS.earthbreaker;
+    expect([B.crackTime, B.crackDps, B.crackRadius]).toEqual([M.crackTime, M.crackDps, M.crackRadius]);
+    expect(BOSS_MECHANIC.iron_colossus).toEqual({ id: build.mechanic, name: build.mechanicName });
+    const m = build.mults, o = BOSS_MULTS.iron_colossus;
     expect([o.hp, o.damage, o.speed, o.projectileSpeed]).toEqual([m.hp, m.damage, m.speed, m.projectileSpeed]);
   });
   it("cópia do Mirage Djinn (mirage_illusion) igual à de enemies.lua: atiradora, sem recompensa, meio transparente (M10-03)", () => {

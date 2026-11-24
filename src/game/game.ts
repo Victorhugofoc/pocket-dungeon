@@ -29,6 +29,7 @@ import { SPELL_CAST, SPELL_SCHOOL, type SpellId } from "../data/spells";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, HAZARD_TICK, type BossPattern, type EnemyDef } from "../data/enemies";
 import { applyHex, hexMult, type HexState } from "../core/hex";
+import { applyArmorBreak, armorTakenMult, type ArmorBreakState } from "../core/armorbreak";
 import { applyMark, type MarkState } from "../core/bossphase";
 import { plagueDps } from "../core/plague";
 import { wardenFor } from "../core/ward";
@@ -246,6 +247,8 @@ export interface PlayerState {
   hex: HexState | null;
   /** M10-01: Marked Prey do Deathstalker (`core/bossphase.ts`): o dano de quem marcou sai ×mult até a marca acabar */
   mark: MarkState<Enemy> | null;
+  /** M10-08: Armorbreak do Iron Colossus (`core/armorbreak.ts`): armadura a menos até acabar */
+  armorBreak: ArmorBreakState | null;
   rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number; x0: number; z0: number; fire?: TrailHandle } | null;
 }
 
@@ -279,7 +282,7 @@ export class Game {
   player: PlayerState = {
     x: 0, z: 0, facing: 0, hp: 1, rig: null, moveAmt: 0, attackAnim: -1, attackCd: 0, techCd: 0, techMax: 1, followUntil: 0,
     dashCd: 0, dashT: 0, dashDx: 0, dashDz: 0, iframes: 0, shadowUntil: 0, aegis: null, throws: 0, nestT: VENOM.broodEvery,
-    flash: 0, hurtT: 0, leap: null, rush: null, chillUntil: 0, chillMult: 1, hex: null, mark: null,
+    flash: 0, hurtT: 0, leap: null, rush: null, chillUntil: 0, chillMult: 1, hex: null, mark: null, armorBreak: null,
   };
   playerAlive = true;
   playerVelX = 0;
@@ -819,6 +822,7 @@ export class Game {
     p.chillUntil = 0;
     p.hex = null;
     p.mark = null;
+    p.armorBreak = null;
     p.dashT = 0;
     this.playerAlive = true;
     this.epics.reset();
@@ -1285,7 +1289,7 @@ export class Game {
     const armor = e.def?.armor ?? 0;
     if (armor) amount *= 1 - armorReduction(armor);
     let guarded = false;
-    if (e.def?.shield && !opts.dot && opts.from !== "none") {
+    if ((e.def?.shield || e.boss?.guard) && !opts.dot && opts.from !== "none") {
       const p = this.player;
       const f = opts.from ?? p;
       const k = e.guardMult(f.x, f.z, p.x, p.z);
@@ -1698,7 +1702,8 @@ export class Game {
       }
       return false;
     }
-    amount *= this.stats.damageTaken;
+    // damage.lua: a armadura do golpe já conta o Armorbreak do Iron Colossus (sem ele, igual a `stats.damageTaken`)
+    amount *= armorTakenMult(this.stats.armor, p.armorBreak, this.time);
     amount = this.epics.incoming(amount);
     if (this.hero.maxHitFraction) amount = Math.min(amount, this.stats.maxHp * this.hero.maxHitFraction);
     amount = Math.max(1, Math.round(amount));
@@ -1740,6 +1745,15 @@ export class Game {
     if (fresh) this.fx.text(p.x, 2.2, p.z, "Hexed", "poison");
     this.fx.burst(p.x, 1.6, p.z, ENEMIES.hexer.accent, 10, 3, 0.12, 0.5);
     this.audio.play("hex");
+  }
+
+  /** M10-08 (boss_ai.lua `armorbreak`): o herói perde `armor` de armadura (negativa) por `time` s; troca a quebra anterior. */
+  armorBreakPlayer(time: number, armor: number): void {
+    const p = this.player;
+    if (!this.playerAlive) return;
+    p.armorBreak = applyArmorBreak(this.time, time, armor);
+    this.fx.text(p.x, 2.2, p.z, "Armorbreak", "crit");
+    this.fx.burst(p.x, 1.4, p.z, 0xb3b8c7, 12, 4, 0.12, 0.5);
   }
 
   /** M10-01 (boss_ai.lua `mark`): o chefe marca o herói por `time` s; o dano dele sai ×`mult` (troca a marca anterior). */
