@@ -29,6 +29,8 @@ import { makeShieldBubble, type ShieldBubble } from "./affixes";
 /** Cor das poças de veneno da Venom Hydra (Venom Field e Venom Bloom). */
 const VENOM_POOL_COLOR = 0x7ad83a;
 const FROST_POOL_COLOR = 0xbfeeff;
+const STORM_POOL_COLOR = 0x8fb8ff;
+const CRACKLE_COLOR = 0x8fe8ff;
 
 /** cor do aviso do golpe, a mesma da marca no chão */
 const WARN_COLOR = 0xff5a4a;
@@ -221,6 +223,10 @@ export class Enemy {
   wakeCd: number = BOSS_MECHANICS.glacial_wake.first;
   diveT = -1;
   private diveDur = 1;
+  /** M10-07 Storm Field: s até o próximo raio no herói */
+  stormCd: number = BOSS_MECHANICS.storm_field.first;
+  /** M10-07: s até o próximo estalo de raio em volta do Storm Tyrant (só visual) */
+  private sparkT = 0;
   /** M10-05 Mitosis: última fase em que a gosma já se dividiu */
   splitPhase = 0;
   /** M10-05 Slime Wave (boss_ai.lua `updateShockwaves`): anéis que crescem e acertam o herói uma vez cada */
@@ -474,6 +480,7 @@ export class Enemy {
       if (this.diveT >= 0) this.diveT += dt;
       if (this.mechanic === "mirage") fadeRig(this.rig, this.dashBlinkT >= 0 ? TUNING.boss.blinkFade : 1);
       if (this.mechanic === "glacial_wake") fadeRig(this.rig, this.diveT >= 0 ? TUNING.boss.blinkFade : 1);
+      if (this.mechanic === "storm_field" && !this.dead) this.crackle(game, dt);
       if (this.emergeT >= 0 && (this.emergeT += dt) > TUNING.boss.burrowAnim) this.emergeT = -1;
       if (this.queued.length && !this.dead) {
         const due = this.queued.filter((q) => q.at <= now);
@@ -718,6 +725,7 @@ export class Enemy {
     this.slimeRings.length = 0;
     this.wakeCd = BOSS_MECHANICS.glacial_wake.first;
     this.diveT = -1;
+    this.stormCd = BOSS_MECHANICS.storm_field.first;
     this.dropWards(game);
     this.roarT = -1;
     this.dots.length = 0;
@@ -1152,6 +1160,18 @@ export class Enemy {
         this.wakeCd = M.interval;
         this.frostPatch(game, this.x, this.z, M.radius * TUNING.enemy.pxToUnit);
       }
+    } else if (this.mechanic === "storm_field") {
+      // boss_ai.lua `storm_field`: o relógio corre sempre; o raio cai onde o herói está quando o aviso começa
+      this.stormCd -= dt;
+      if (this.stormCd <= 0) {
+        const M = BOSS_MECHANICS.storm_field;
+        this.stormCd = M.interval;
+        const p = game.player, r = M.radius * TUNING.enemy.pxToUnit, x = p.x, z = p.z;
+        game.fx.telegraphCircle(x, z, r, M.warning, () => {
+          if (this.dead) return;
+          this.stormStrike(game, x, z, r, M.time, M.dps);
+        });
+      }
     } else if (this.mechanic === "blood_rush") {
       const r = bloodRush(this.hp / this.maxHp);
       if (r.steps > this.rushSteps) {
@@ -1344,6 +1364,50 @@ export class Enemy {
   private frostPatch(game: Game, x: number, z: number, r: number): void {
     const M = BOSS_MECHANICS.glacial_wake;
     game.affixes.addPool(x, z, r, M.time, this.dmg * M.dps * HAZARD_TICK, `${this.name} (frost)`, FROST_POOL_COLOR, { mult: M.chill, time: M.chillTime });
+  }
+
+  /**
+   * M10-07: o rei da tempestade estala o tempo todo (só visual): arcos curtos em volta da coroa, arcos correndo pela nuvem
+   * e, de vez em quando, um raio do céu caindo na nuvem com clarão.
+   */
+  private crackle(game: Game, dt: number): void {
+    this.sparkT -= dt;
+    if (this.sparkT > 0) return;
+    this.sparkT = 0.15 + Math.random() * 0.35;
+    // a nuvem do modelo tem ~1,2 de raio e ~0,6 de altura antes da escala do corpo
+    const lib = game.fx.lib, h = this.rig.height, rim = this.radius * 2.2, top = h * 0.3, x = this.x, z = this.z;
+    const o = { color: CRACKLE_COLOR, core: 0xffffff, rate: 0.04 };
+    const r = Math.random();
+    if (r < 0.35) {
+      // na coroa: do alto da cabeça para um ponto ao lado, acima dos ombros
+      const a = Math.random() * Math.PI * 2, d = 0.5 + Math.random() * 0.7;
+      lib.lightning(x, h * 0.97, z, x + Math.cos(a) * d * 1.6, h * (0.75 + Math.random() * 0.4), z + Math.sin(a) * d * 1.6, { ...o, width: 0.3, branches: 3, dur: 0.24 });
+    } else if (r < 0.8) {
+      // na nuvem: da borda subindo por cima dela até perto do manto
+      const a = Math.random() * Math.PI * 2, b = a + (Math.random() < 0.5 ? -1 : 1) * (1.0 + Math.random() * 1.0);
+      const x1 = x + Math.cos(b) * rim * 1.05, z1 = z + Math.sin(b) * rim * 1.05;
+      lib.lightning(x + Math.cos(a) * rim * 1.05, top * 0.7, z + Math.sin(a) * rim * 1.05, x1, top * 0.7, z1,
+        { ...o, width: 0.32, branches: 3, dur: 0.26, jag: 0.22 });
+      game.fx.glow(x1, top * 0.7, z1, CRACKLE_COLOR, 0.9, 0.2);
+    } else {
+      // raio do céu caindo na nuvem
+      const a = Math.random() * Math.PI * 2, px = x + Math.cos(a) * rim * 0.8, pz = z + Math.sin(a) * rim * 0.8;
+      lib.lightning(px + (Math.random() - 0.5) * 2, h + 6, pz + (Math.random() - 0.5) * 2, px, top * 0.8, pz, { ...o, width: 0.4, branches: 3, dur: 0.3 });
+      game.fx.flashLight(px, h * 0.5, pz, CRACKLE_COLOR, 40, 0.18);
+    }
+  }
+
+  /** boss_ai.lua `zone(..., "storm", ...)` e o evento `storm_strike`: raio do céu e zona elétrica de `time` s, `dps` × dano/s */
+  private stormStrike(game: Game, x: number, z: number, r: number, time: number, dps: number): void {
+    const fx = game.fx;
+    fx.lib.lightning(x + (Math.random() - 0.5) * 2, 9, z + (Math.random() - 0.5) * 2, x, 0.1, z,
+      { color: STORM_POOL_COLOR, core: 0xffffff, width: 0.3, branches: 3, rate: 0.05, dur: 0.28 });
+    fx.impact(x, 0.4, z, STORM_POOL_COLOR, 1.4);
+    fx.flashLight(x, 2.5, z, STORM_POOL_COLOR, 80, 0.25);
+    fx.shockwave(x, z, r, STORM_POOL_COLOR, 0.3);
+    fx.addShake(0.12);
+    game.audio.play("zap");
+    game.affixes.addPool(x, z, r, time, this.dmg * dps * HAZARD_TICK, `${this.name} (storm)`, STORM_POOL_COLOR);
   }
 
   /** boss_ai.lua `updateShockwaves`: o anel cresce até `max`; o herói na faixa (± grossura/2 + raio dele) leva o golpe uma vez */
@@ -1615,6 +1679,42 @@ export class Enemy {
             game.affixes.addPool(c.x, c.z, r, pt.time ?? 5, this.dmg * (pt.dps ?? 0.7) * HAZARD_TICK, `${this.name} (venom)`, VENOM_POOL_COLOR);
           });
         }
+        break;
+      }
+      case "stormfield": {
+        // boss_ai.lua `stormfield`: um círculo no herói e os outros a 80 px dele em ângulo sorteado; cada um vira raio e zona
+        const r = pt.radius ?? 3.125, n = pt.count ?? 3, around = pt.around ?? 5;
+        this.casting = pt.warning;
+        this.attackAnim = 0;
+        for (let k = 1; k <= n; k++) {
+          const c = { x: p.x, z: p.z, radius: r };
+          if (k > 1) {
+            const a = Math.random() * Math.PI * 2;
+            c.x += Math.cos(a) * around;
+            c.z += Math.sin(a) * around;
+            game.keepInArena(c);
+          }
+          fx.telegraphCircle(c.x, c.z, r, pt.warning, () => {
+            if (!ok()) return;
+            this.stormStrike(game, c.x, c.z, r, pt.time ?? 4, pt.dps ?? 0.55);
+          });
+        }
+        break;
+      }
+      case "radial": {
+        // boss_ai.lua `radial`: brilho em volta dele e uma roda de tiros com ângulo inicial sorteado
+        const n = pt.count ?? 18;
+        this.casting = pt.warning;
+        fx.telegraphCircle(this.x, this.z, this.radius + 1, pt.warning, () => {
+          if (!ok()) return;
+          this.attackAnim = 0;
+          const off = Math.random() * Math.PI * 2;
+          const speed = BOSS_PROJECTILE_SPEED * TUNING.enemy.pxToUnit * (pt.speedMult ?? 0.8) * this.projK;
+          for (let i = 0; i < n; i++) {
+            game.spawnEnemyProjectile(this.x, this.z, off + (i / n) * Math.PI * 2, speed, this.dmg * pt.damage, b.projectileColor, 0.32, this, this.bloom(game));
+          }
+          fx.shockwave(this.x, this.z, 4, b.glow);
+        });
         break;
       }
       case "mark": {

@@ -292,6 +292,15 @@ export const BOSSES: Record<string, Spec> = {
     bones.forEach((bone, i) => b.joints.push({ bone, parent: i ? bones[i - 1] : "hips", at: tail[i] }));
     addModel(b, "mirage_djinn");
   },
+  // M10-07: rei de armadura sobre uma nuvem, modelado no Blender (tools/blender/storm_tyrant.py, brief em
+  // docs/briefs/storm_tyrant.md). Forma `djinn` sem cauda: a nuvem e a saia ficam no hips (flutuam juntas), a capa no `cape`.
+  storm_tyrant: (b) => {
+    b.form = "djinn"; b.bulk = 1.3; b.scale = 2.8; b.style = "cast"; b.glowColor = 0x7ae8ff; b.glowByVertex = true; b.rough = 0.65;
+    b.lean = 0.04; b.armOut = 0.22;
+    b.poseL = [-0.35, -1.5, -0.05]; b.poseR = [-0.15, -1.45, 0.85];
+    b.dims = { hipY: 0.95, headY: 0.6, shoulderY: 0.5, shoulderX: 0.46, arm: 0.34, hipX: 0, thigh: 0.42 };
+    addModel(b, "storm_tyrant");
+  },
   // M10-05: gosma de boca enorme modelada no Blender (tools/blender/gorged_ooze.py, brief em docs/briefs/gorged_ooze.md). Forma
   // `slime`: um osso só, o hips, que achata e estica tudo; o lábio de baixo é parte da malha da gosma.
   gorged_ooze: (b) => {

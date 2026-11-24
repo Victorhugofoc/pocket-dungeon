@@ -144,7 +144,7 @@ export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
 export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire"
   | "sandvolley" | "tailsweep" | "erupt" | "orbitals" | "prismbeam" | "miragedash" | "venomfield"
-  | "acidlob" | "slimewave" | "frostbreath" | "iciclerain" | "glacierdive";
+  | "acidlob" | "slimewave" | "frostbreath" | "iciclerain" | "glacierdive" | "stormfield" | "radial";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -230,10 +230,10 @@ export const BOSS_ORDER = [
 /**
  * `bosses.lua` `CROWN.borrow`: ataques que o rei coroado da onda 20 pode pegar de outro chefe. Lá são `nova`,
  * `crossfire`, `radial`, `fanvolley`, `spiralvolley`, `stormfield`, `venomfield` e `quake`; aqui só existem os
- * equivalentes de `nova`, `crossfire` (M10-01), `fanvolley`, `spiralvolley` e `venomfield` (M10-04); os outros chegam com os
- * chefes do `M10`.
+ * equivalentes de `nova`, `crossfire` (M10-01), `radial` e `stormfield` (M10-07), `fanvolley`, `spiralvolley` e `venomfield`
+ * (M10-04); o `quake` chega com o Iron Colossus.
  */
-export const CROWN_BORROW = ["nova", "crossfire", "fan", "spiral", "venomfield"] as const;
+export const CROWN_BORROW = ["nova", "crossfire", "radial", "fan", "spiral", "stormfield", "venomfield"] as const;
 
 /** Título do rei coroado (en.lua: "THE CROWNED KING", D-640). */
 export const CROWN_TITLE = "The Crowned King";
@@ -331,6 +331,19 @@ export const BOSSES: Record<string, BossDef> = {
       { kind: "glacierdive", warning: 1.0, damage: 1.5, radius: 88 / 16, poolScale: 0.8 },
     ],
     body: "brute", color: 0x8cd9ff, accent: 0xe8f6ff, glow: 0x9fe6ff, scale: 2.4, projectileColor: 0xbfefff, xp: 70,
+  },
+  // M10-07: o rei da tempestade. Mantém 190 px; skillshot, campo de tempestade na 2 e rajada radial na 3 (bosses.lua, px ÷ 16).
+  // Storm Field: a cada 5 s um raio cai onde o herói está e deixa zona elétrica (BOSS_MECHANICS.storm_field).
+  storm_tyrant: {
+    id: "storm_tyrant", name: "Storm Tyrant", title: "The Stormcaller", hp: 2000, damage: 13, speed: 2.8, radius: 1.5,
+    attackRange: 3.2, attackCooldown: 1.6, patternCooldown: 4.0, preferred: 190 / 16,
+    patterns: [
+      { kind: "skillshot", warning: 0.45, damage: 1.1, width: 10 / 16, length: 520 / 16, radius: 6 / 16 },
+      { kind: "stormfield", warning: 0.8, damage: 0, dps: 0.55, radius: 50 / 16, count: 3, time: 4, around: 80 / 16 },
+      { kind: "radial", warning: 0.5, damage: 0.7, count: 18, speedMult: 0.8 },
+    ],
+    body: "robed", color: 0x8c99ff, accent: 0xe8d27a, glow: 0xbfd0ff, scale: 2.5, projectileColor: 0x9fc8ff, xp: 65,
+    relicBuild: "stormcaller",
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,
