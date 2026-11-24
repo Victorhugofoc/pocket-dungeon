@@ -59,6 +59,8 @@ export interface EnemyDef {
   leap?: LeapSpec;
   /** enemies.lua `helper`: ajudante de chefe, nunca na composição da onda e sem recompensa (nem orbe de cura) */
   helper?: boolean;
+  /** enemies.lua `sprite` e `alpha`: usa o corpo de outro personagem, com esta opacidade (as cópias do Mirage Djinn) */
+  look?: { model: string; opacity: number };
   body: BodyKind;
   color: number;
   accent: number;
@@ -125,6 +127,13 @@ export const ENEMIES: Record<string, EnemyDef> = {
 export const HELPERS: Record<string, EnemyDef> = {
   soul_ward: { id: "soul_ward", name: "Soul Ward", hp: 60, speed: 0, damage: 0, behavior: "static", radius: 15 / 16, xp: 0, gold: 0,
     category: "special", cooldown: 99, helper: true, body: "wisp", color: 0x69bfa6, accent: 0x73ffcc, scale: 1 },
+  /**
+   * enemies.lua `mirage_illusion` (1.6 D-208): as cópias do Mirage Djinn. Atiradoras; vida e dano vêm do chefe
+   * (`BOSS_MECHANICS.mirage`); desenhadas com o corpo do chefe (`look`) a 55% de opacidade (`alpha` de lá).
+   */
+  mirage_illusion: { id: "mirage_illusion", name: "Mirage", hp: 60, speed: 40 / 16, damage: 6, behavior: "ranged", radius: 20 / 16, xp: 0, gold: 0,
+    category: "special", cooldown: 2.4, range: 260 / 16, projectileSpeed: 190 / 16, projectileColor: 0xff8ce6, helper: true,
+    look: { model: "mirage_djinn", opacity: 0.55 }, body: "robed", color: 0x3ec8c0, accent: 0x6a2a8a, scale: 1 },
 };
 
 /** enemy_attacks.lua `EA.hazard`: tique padrão das poças no chão, em s */
@@ -134,7 +143,7 @@ export const HAZARD_TICK = 0.5;
 export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
 export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire"
-  | "sandvolley" | "tailsweep" | "erupt";
+  | "sandvolley" | "tailsweep" | "erupt" | "orbitals" | "prismbeam" | "miragedash";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -157,6 +166,17 @@ export interface BossPattern {
   spacing?: number;
   lines?: number;
   stagger?: number;
+  /** `orbitals`: giro do orbe em rad/s (o sentido é sorteado) e alcance em m; `prismbeam`: graus entre as linhas */
+  curve?: number;
+  reach?: number;
+  stepDeg?: number;
+  /** `miragedash`: s sumido, distância do herói onde reaparece (m), tiros da nova e o dano deles */
+  blink?: number;
+  away?: number;
+  nova?: number;
+  novaDamage?: number;
+  /** multiplicador da velocidade do tiro de chefe (`BOSS_PROJECTILE_SPEED`) */
+  speedMult?: number;
 }
 
 export interface BossDef {
@@ -182,6 +202,8 @@ export interface BossDef {
   relicBuild?: string;
   /** bosses.lua `preferred`: distância que o chefe tenta manter do herói, em m (sem = vai atrás, como lá o 0) */
   preferred?: number;
+  /** bosses.lua `minDifficulty` (boss_bag.lua `Bag.allowed`): só sai do saco dessa dificuldade para cima */
+  minDifficulty?: "hard";
 }
 
 /** Ordem dos 13 chefes em `bosses.lua` (`B.order`); o saco usa os que existem em `BOSSES` (M20-09, D6). */
@@ -268,5 +290,19 @@ export const BOSSES: Record<string, BossDef> = {
       { kind: "charge", warning: 0.7, damage: 1.4, length: 22, width: 3.0, speed: 28 },
     ],
     body: "robed", color: 0x1f3a3a, accent: 0xe8d27a, glow: 0x73ffcc, scale: 2.8, projectileColor: 0x73ffcc, xp: 90,
+    minDifficulty: "hard",
+  },
+  // M10-03: o ilusionista. Fica a 190 px; orbes em espiral, feixe prismático na 2 e investida da miragem na 3 (px ÷ 16).
+  // Mirage: 2 cópias a cada fase (HELPERS.mirage_illusion). Só na Hard (bosses.lua `minDifficulty`).
+  mirage_djinn: {
+    id: "mirage_djinn", name: "Mirage Djinn", title: "The Illusionist", hp: 2000, damage: 13, speed: 3.1, radius: 1.4,
+    attackRange: 3.0, attackCooldown: 1.5, patternCooldown: 4.0, preferred: 190 / 16,
+    patterns: [
+      { kind: "orbitals", warning: 0.5, damage: 0.7, count: 8, curve: 1.6, speedMult: 0.75, reach: 900 / 16 },
+      { kind: "prismbeam", warning: 0.55, damage: 1.1, width: 22 / 16, length: 600 / 16, lines: 6, stepDeg: 22, stagger: 0.16 },
+      { kind: "miragedash", warning: 0.7, blink: 0.45, damage: 1.3, width: 26 / 16, length: 700 / 16, away: 140 / 16, nova: 8, novaDamage: 0.6, speedMult: 0.7 },
+    ],
+    body: "robed", color: 0x3ec8c0, accent: 0x6a2a8a, glow: 0xff8ce6, scale: 2.4, projectileColor: 0xff8ce6, xp: 75,
+    minDifficulty: "hard",
   },
 };

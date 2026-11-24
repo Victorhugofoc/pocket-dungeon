@@ -280,6 +280,18 @@ export const BOSSES: Record<string, Spec> = {
     bones.forEach((bone, i) => b.joints.push({ bone, parent: i ? bones[i - 1] : "hips", at: spine[i] }));
     addModel(b, "dune_leviathan");
   },
+  // M10-03: gênio de cauda de fumaça modelado no Blender (tools/blender/mirage_djinn.py, brief em docs/briefs/mirage_djinn.md).
+  // Forma `djinn`: tronco, cabeça e braços como os bípedes (dims = RIG do script); a cauda é a cadeia de TAIL no script.
+  mirage_djinn: (b) => {
+    b.form = "djinn"; b.bulk = 1.25; b.scale = 2.3; b.style = "cast"; b.glowColor = 0xff8ce6; b.glowByVertex = true; b.rough = 0.7;
+    b.lean = 0.08; b.armOut = 0.3;
+    b.poseR = [-2.6, -0.5, 0.35]; b.poseL = [-0.4, -1.5, 0.35];
+    b.dims = { hipY: 0.95, headY: 0.6, shoulderY: 0.5, shoulderX: 0.45, arm: 0.34, hipX: 0, thigh: 0.42 };
+    const tail: [number, number, number][] = [[0, 0.8, -0.04], [0.16, 0.5, -0.18], [-0.12, 0.3, -0.36], [-0.55, 0.38, -0.42]];
+    const bones = ["tail", "tail2", "tail3", "tail4"] as const;
+    bones.forEach((bone, i) => b.joints.push({ bone, parent: i ? bones[i - 1] : "hips", at: tail[i] }));
+    addModel(b, "mirage_djinn");
+  },
   // Redesenho a partir do sprite (docs/ref/ember_matriarch.png): torso esguio de mulher sobre corpo de aranha, casca preta rachada de lava.
   // Medidas do sprite (altura 120 px): abdômen 60 px de diâmetro atrás do corpo, cefalotórax 25 px, cintura a 35% e ombros a 67% da altura,
   // patas longas com o joelho acima do corpo. As rachaduras vêm do shader (`surface = "lava"`); as patas usam cinemática inversa.

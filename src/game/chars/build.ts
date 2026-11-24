@@ -257,12 +257,21 @@ export function buildChar(id: string, scaleMult: number, variant: "champion" | "
     bones.armL!.rotation.order = bones.armR!.rotation.order = "YXZ"; // o giro do ombro (y) vem por último: mira o braço no chão
     if (b.weapon) mk("weapon", bones.foreR!, 0, -b.weapon.hand, 0);
     mk("cape", torso, 0, 0.52, -0.2 * k);
-    mk("tail", hips, 0, 0, -0.16 * k);
+    if (b.form !== "djinn") mk("tail", hips, 0, 0, -0.16 * k);
     if (b.form === "biped") {
       mk("shinL", mk("thighL", hips, -hx, -0.02, 0), 0, -b.dims.thigh, 0);
       mk("shinR", mk("thighR", hips, hx, -0.02, 0), 0, -b.dims.thigh, 0);
     }
     mk("skirt", hips, 0, 0, 0); // bípedes também podem vestir saia de manto por cima das pernas
+    if (b.form === "djinn") {
+      // M10-03: a cauda de fumaça em cadeia, cada osso no ponto do Blender, relativo ao pai (quadril em (0, hipY, 0))
+      const abs: Partial<Record<Bone, [number, number, number]>> = { hips: [0, b.dims.hipY, 0] };
+      for (const j of b.joints) {
+        const p = abs[j.parent]!;
+        mk(j.bone, bones[j.parent]!, j.at[0] - p[0], j.at[1] - p[1], j.at[2] - p[2]);
+        abs[j.bone] = j.at;
+      }
+    }
   } else if (b.form === "wisp") {
     mk("head", hips, 0, 0, 0); // a alma; o selo fica no hips, parado no chão
   } else if (b.form === "scorpion" || b.form === "worm") {

@@ -313,7 +313,46 @@ export function tintRig(rig: Rig, color: number, k: number): void {
   }
 }
 
+/**
+ * M10-03: opacidade do corpo inteiro (cópia do Mirage Djinn a 55%; o chefe some no Mirage Dash). Na primeira chamada,
+ * os materiais compartilhados (contorno) viram cópias do rig (fora de `rig.mats`, que é só dos que têm brilho), e o
+ * `disposeRig` libera.
+ */
+export function fadeRig(rig: Rig, opacity: number): void {
+  const ud = rig.root.userData as { fadeMats?: THREE.Material[]; fade?: number };
+  if (ud.fade === opacity) return;
+  if (!ud.fadeMats) {
+    const own = new Set<THREE.Material>(rig.mats);
+    const copies = new Map<THREE.Material, THREE.Material>();
+    const list = new Set<THREE.Material>();
+    rig.root.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+      if (!m || Array.isArray(m)) return;
+      let use = m;
+      if (!own.has(m)) {
+        use = copies.get(m) ?? m.clone();
+        if (!copies.has(m)) copies.set(m, use);
+        (o as THREE.Mesh).material = use;
+      }
+      if (!use.userData.baseOpacity) use.userData.baseOpacity = use.opacity;
+      list.add(use);
+    });
+    ud.fadeMats = [...list];
+    (ud as { fadeCopies?: THREE.Material[] }).fadeCopies = [...copies.values()];
+  }
+  ud.fade = opacity;
+  for (const m of ud.fadeMats) {
+    m.opacity = (m.userData.baseOpacity as number) * opacity;
+    const t = m.opacity < 0.999;
+    if (m.transparent !== t) {
+      m.transparent = t;
+      m.needsUpdate = true;
+    }
+  }
+}
+
 export function disposeRig(rig: Rig): void {
   rig.root.removeFromParent();
   for (const m of rig.mats) m.dispose();
+  for (const m of (rig.root.userData.fadeCopies as THREE.Material[] | undefined) ?? []) m.dispose();
 }
