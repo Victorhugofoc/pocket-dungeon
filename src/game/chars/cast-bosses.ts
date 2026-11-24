@@ -301,6 +301,16 @@ export const BOSSES: Record<string, Spec> = {
     b.dims = { hipY: 0.95, headY: 0.6, shoulderY: 0.5, shoulderX: 0.46, arm: 0.34, hipX: 0, thigh: 0.42 };
     addModel(b, "storm_tyrant");
   },
+  // M10-09: espectro do vazio com máscara de caveira e duas lâminas de osso, modelado no Blender (tools/blender/void_reaver.py, brief
+  // em docs/briefs/void_reaver.md). Forma `djinn` sem cauda: tentáculos no `skirt`, cabelo no `cape`, lâminas nos antebraços.
+  // Poses iguais a POSE_L/POSE_R, LEAN e OUT do script (braços cruzados na frente do peito)
+  void_reaver: (b) => {
+    b.form = "djinn"; b.bulk = 1.2; b.scale = 2.6; b.style = "cast"; b.glowColor = 0xff2050; b.glowByVertex = true; b.rough = 0.9;
+    b.lean = 0.28; b.armOut = 0.2; b.castOpen = 0.5;
+    b.poseL = [-0.55, -1.5, 0, -1.0]; b.poseR = [-0.55, -1.6, 0, -1.15];
+    b.dims = { hipY: 0.95, headY: 0.58, shoulderY: 0.5, shoulderX: 0.46, arm: 0.36, hipX: 0, thigh: 0.42 };
+    addModel(b, "void_reaver");
+  },
   // M10-08: colosso de ferro enferrujado com fornalha no peito, modelado no Blender (tools/blender/iron_colossus.py, brief em
   // docs/briefs/iron_colossus.md). Bípede; as ombreiras ficam no tronco. Dims iguais ao RIG do script
   iron_colossus: (b) => {

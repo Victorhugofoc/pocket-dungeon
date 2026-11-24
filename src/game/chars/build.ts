@@ -383,7 +383,7 @@ export function buildChar(id: string, scaleMult: number, variant: "champion" | "
     root, inner, body: inner, head: inner, armL: null, armR: null, legL: null, legR: null, wings: [],
     mats, baseEmissive: mats.map((m) => m.emissive.clone()), kind: "humanoid", height, phase: Math.random() * 10,
     char: { bones, legs, style: b.style, poseR: b.poseR, poseL: b.poseL, form: b.form, shot: 0,
-      lean: b.lean, crouch: b.crouch, stance: b.stance, swingHit: b.swingHit, armOut: b.armOut, shoulderFollow: b.shoulderFollow, weight, hipY: b.dims.hipY, weapon: b.weapon, ribbons, phys: newPhys() },
+      lean: b.lean, crouch: b.crouch, stance: b.stance, swingHit: b.swingHit, armOut: b.armOut, shoulderFollow: b.shoulderFollow, castOpen: b.castOpen, weight, hipY: b.dims.hipY, weapon: b.weapon, ribbons, phys: newPhys() },
   };
 }
 

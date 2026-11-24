@@ -23,6 +23,8 @@ export interface CharState {
   armOut: number;
   /** ver `Builder.shoulderFollow` */
   shoulderFollow: number;
+  /** ver `Builder.castOpen` */
+  castOpen: number;
   weight: number;
   /** altura do quadril em repouso */
   hipY: number;
@@ -566,6 +568,11 @@ export function animateChar(rig: Rig, a: AnimState): void {
         foreR.rotation.x = -0.9 * prep01 - 0.15 * hit + c.poseR[1] * back;
         armL.rotation.x = -1.2 * prep01 - 1.35 * hit + c.poseL[0] * back;
         foreL.rotation.x = -1.0 * prep01 - 0.15 * hit + c.poseL[1] * back;
+        if (c.castOpen) {
+          // braços cruzados descruzam no golpe, abrindo para fora como tesoura
+          armR.rotation.y += (c.castOpen - (c.poseR[3] ?? 0)) * hit;
+          armL.rotation.y -= (c.castOpen - (c.poseL[3] ?? 0)) * hit;
+        }
         torso.rotation.x += -0.22 * prep01 + 0.24 * hit;
         break;
       case "throw":
