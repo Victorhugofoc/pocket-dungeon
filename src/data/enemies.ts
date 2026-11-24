@@ -314,7 +314,7 @@ export const BOSSES: Record<string, BossDef> = {
       { kind: "slimewave", warning: 0.9, damage: 1.1, radius: 130 / 16, inner: 0.35, speed: 220 / 16, thickness: 22 / 16 },
       { kind: "charge", warning: 0.8, damage: 1.5, length: 320 / 16, width: 48 / 16, speed: 300 / 16 },
     ],
-    body: "brute", color: 0x99f259, accent: 0x2f5a1a, glow: 0xb6ff5a, scale: 2.6, projectileColor: 0x9be84a, xp: 70,
+    body: "brute", color: 0x99f259, accent: 0x2f5a1a, glow: 0xb6ff5a, scale: 2.0, projectileColor: 0x9be84a, xp: 70,
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,
