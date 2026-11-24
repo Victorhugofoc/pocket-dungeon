@@ -223,6 +223,7 @@ export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: num
   mirage_djinn: { hp: 1.06, damage: 1.12, speed: 1.10, projectileSpeed: 1.05 },
   venom_hydra: { hp: 1.05, damage: 1.05, speed: 1.06, projectileSpeed: 0.96 },
   gorged_ooze: { hp: 1.28, damage: 1.00, speed: 0.82, projectileSpeed: 0.85 },
+  rimefang_wyrm: { hp: 1.04, damage: 1.06, speed: 1.08, projectileSpeed: 0.92 },
 };
 
 /** bosses.lua `BASE.projectileSpeed`: velocidade do tiro de chefe em px/s (os ataques novos multiplicam por ela) */
@@ -246,7 +247,7 @@ export const BOSS_PHASES = [
   { above: -1, speed: 1.12, attackCooldown: 0.82, contactCooldown: 0.78, skillshotCooldown: 0.82, enraged: true },
 ] as const;
 
-export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage" | "venom_bloom" | "mitosis";
+export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage" | "venom_bloom" | "mitosis" | "glacial_wake";
 
 /** bosses.lua `builds[id].mechanic` e `mechanicName`, dos 4 chefes daqui. */
 export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }> = {
@@ -259,6 +260,7 @@ export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }>
   mirage_djinn: { id: "mirage", name: "Mirage" },
   venom_hydra: { id: "venom_bloom", name: "Venom Bloom" },
   gorged_ooze: { id: "mitosis", name: "Mitosis" },
+  rimefang_wyrm: { id: "glacial_wake", name: "Glacial Wake" },
 };
 
 /**
@@ -287,4 +289,8 @@ export const BOSS_MECHANICS = {
   /** boss_ai_ext.lua `mitosis`: ao entrar em cada fase solta `perPhase` crias (`minion`, MINION_SCALE, sem recompensa) a
    * `ring` px dele, em ângulos iguais */
   mitosis: { perPhase: [0, 3, 3], minion: "splitter", ring: 40 },
+  /** boss_ai_ext.lua `glacial_wake` e `frostPatch`: a cada `interval` s (o primeiro em `first`, `mechanicTimer` de boss.lua),
+   * fora do voo, gelo de `radius` px onde está por `time` s, `dps` × dano/s; quem pisa fica a `chill` da velocidade por
+   * `chillTime` s */
+  glacial_wake: { interval: 1.6, radius: 30, time: 5, dps: 0.15, chill: 0.65, chillTime: 1.0, first: 3 },
 } as const;

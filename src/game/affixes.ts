@@ -22,6 +22,8 @@ interface VenomPool {
   amount: number;
   source: string;
   mesh: THREE.Mesh;
+  /** gelo do Glacial Wake: quem pisa fica a `mult` da velocidade por `time` s */
+  chill?: { mult: number; time: number };
 }
 
 /** Bolha do Arcane Shield: esfera translúcida que some quando o escudo quebra e volta quando ele enche. */
@@ -157,7 +159,10 @@ export class AffixField {
       v.tickLeft -= dt;
       while (v.tickLeft <= 0 && v.time > -1e-9) {
         v.tickLeft += AFFIX_VENOM_TICK;
-        if (g.playerAlive && (p.x - v.x) ** 2 + (p.z - v.z) ** 2 <= (v.r + HERO_R) ** 2) g.hurtPlayer(v.amount, v.source);
+        if (g.playerAlive && (p.x - v.x) ** 2 + (p.z - v.z) ** 2 <= (v.r + HERO_R) ** 2) {
+          g.hurtPlayer(v.amount, v.source);
+          if (v.chill) g.chillPlayer(v.chill.mult, v.chill.time);
+        }
       }
       const k = v.time / v.total;
       (v.mesh.material as THREE.MeshBasicMaterial).opacity = 0.42 * Math.min(1, k * 3) * Math.min(1, (1 - k) * 8);
@@ -179,14 +184,14 @@ export class AffixField {
   }
 
   /** Poça no chão que fere o herói em `amount` a cada tique de 0,5 s (enemy_attacks.lua `EA.hazard`); também a peste do Plaguebearer. */
-  addPool(x: number, z: number, r: number, time: number, amount: number, source: string, color: number): void {
+  addPool(x: number, z: number, r: number, time: number, amount: number, source: string, color: number, chill?: { mult: number; time: number }): void {
     const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
     const mesh = new THREE.Mesh(DISC, mat);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(x, 0.04 + Math.random() * 0.01, z);
     mesh.scale.setScalar(r);
     this.game.scene.add(mesh);
-    this.pools.push({ x, z, r, time, total: time, tickLeft: AFFIX_VENOM_TICK, amount, source, mesh });
+    this.pools.push({ x, z, r, time, total: time, tickLeft: AFFIX_VENOM_TICK, amount, source, mesh, chill });
   }
 
   private disposePool(v: VenomPool): void {

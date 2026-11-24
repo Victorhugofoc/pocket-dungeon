@@ -144,7 +144,7 @@ export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
 export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire"
   | "sandvolley" | "tailsweep" | "erupt" | "orbitals" | "prismbeam" | "miragedash" | "venomfield"
-  | "acidlob" | "slimewave";
+  | "acidlob" | "slimewave" | "frostbreath" | "iciclerain" | "glacierdive";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -188,6 +188,10 @@ export interface BossPattern {
   poolScale?: number;
   inner?: number;
   thickness?: number;
+  /** `frostbreath`: meia abertura do cone (graus) e s de Chilled em quem leva; `iciclerain`: distância entre círculos (m) */
+  halfAngleDeg?: number;
+  chill?: number;
+  step?: number;
 }
 
 export interface BossDef {
@@ -315,6 +319,18 @@ export const BOSSES: Record<string, BossDef> = {
       { kind: "charge", warning: 0.8, damage: 1.5, length: 320 / 16, width: 48 / 16, speed: 300 / 16 },
     ],
     body: "brute", color: 0x99f259, accent: 0x2f5a1a, glow: 0xb6ff5a, scale: 2.0, projectileColor: 0x9be84a, xp: 70,
+  },
+  // M10-06: o dragão de gelo. Mantém 170 px; sopro em cone, chuva de estalactites na 2 e mergulho na 3 (bosses.lua, px ÷ 16).
+  // Glacial Wake: deixa gelo onde passa e o gelo deixa o herói lento (BOSS_MECHANICS.glacial_wake).
+  rimefang_wyrm: {
+    id: "rimefang_wyrm", name: "Rimefang Wyrm", title: "The Wyrm", hp: 2100, damage: 13, speed: 3.0, radius: 1.6,
+    attackRange: 3.2, attackCooldown: 1.6, patternCooldown: 4.0, preferred: 170 / 16,
+    patterns: [
+      { kind: "frostbreath", warning: 1.0, damage: 1.0, length: 240 / 16, halfAngleDeg: 28, chill: 2.0 },
+      { kind: "iciclerain", warning: 0.7, damage: 0.9, radius: 30 / 16, count: 7, stagger: 0.12, step: 58 / 16 },
+      { kind: "glacierdive", warning: 1.0, damage: 1.5, radius: 88 / 16, poolScale: 0.8 },
+    ],
+    body: "brute", color: 0x8cd9ff, accent: 0xe8f6ff, glow: 0x9fe6ff, scale: 2.4, projectileColor: 0xbfefff, xp: 70,
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,

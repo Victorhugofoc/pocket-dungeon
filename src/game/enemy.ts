@@ -28,6 +28,7 @@ import { makeShieldBubble, type ShieldBubble } from "./affixes";
 
 /** Cor das poças de veneno da Venom Hydra (Venom Field e Venom Bloom). */
 const VENOM_POOL_COLOR = 0x7ad83a;
+const FROST_POOL_COLOR = 0xbfeeff;
 
 /** cor do aviso do golpe, a mesma da marca no chão */
 const WARN_COLOR = 0xff5a4a;
@@ -216,6 +217,10 @@ export class Enemy {
   illusions: Enemy[] = [];
   miragePhase = 0;
   dashBlinkT = -1;
+  /** M10-06 Glacial Wake: s até o próximo gelo; `diveT` ≥ 0 = no ar (Glacier Dive: sem golpe nem gelo, corpo apagado) */
+  wakeCd: number = BOSS_MECHANICS.glacial_wake.first;
+  diveT = -1;
+  private diveDur = 1;
   /** M10-05 Mitosis: última fase em que a gosma já se dividiu */
   splitPhase = 0;
   /** M10-05 Slime Wave (boss_ai.lua `updateShockwaves`): anéis que crescem e acertam o herói uma vez cada */
@@ -466,7 +471,9 @@ export class Enemy {
       this.markK = markMult(p.mark, now, this as Enemy);
       if (this.reticle) this.followReticle(game, dt);
       if (this.burrowT >= 0) this.burrowT += dt;
+      if (this.diveT >= 0) this.diveT += dt;
       if (this.mechanic === "mirage") fadeRig(this.rig, this.dashBlinkT >= 0 ? TUNING.boss.blinkFade : 1);
+      if (this.mechanic === "glacial_wake") fadeRig(this.rig, this.diveT >= 0 ? TUNING.boss.blinkFade : 1);
       if (this.emergeT >= 0 && (this.emergeT += dt) > TUNING.boss.burrowAnim) this.emergeT = -1;
       if (this.queued.length && !this.dead) {
         const due = this.queued.filter((q) => q.at <= now);
@@ -634,7 +641,7 @@ export class Enemy {
     }
     const lp = this.leap ? this.leapPose : null;
     animateRig(rig, {
-      t: now, move: stunned ? 0 : this.moveAmt, attack: this.attackAnim, air: lp?.air,
+      t: now, move: stunned ? 0 : this.moveAmt, attack: this.attackAnim, air: lp?.air ?? (this.diveT >= 0 ? Math.min(0.999, this.diveT / this.diveDur) : undefined),
       windup: lp ? lp.crouch : this.windupT >= 0 ? this.windupT / this.windupDur : this.aimT >= 0 ? this.aimT / TUNING.enemy.telegraph.shotWindup : this.casting > 0 ? 0.6 + Math.sin(now * 20) * 0.1 : 0, dead: 0,
       rage: this.rage, roar: this.roarT, burrow: this.boss ? this.burrowK : 0,
     });
@@ -709,6 +716,8 @@ export class Enemy {
     this.armyPhase = 0;
     this.splitPhase = 0;
     this.slimeRings.length = 0;
+    this.wakeCd = BOSS_MECHANICS.glacial_wake.first;
+    this.diveT = -1;
     this.dropWards(game);
     this.roarT = -1;
     this.dots.length = 0;
@@ -1135,6 +1144,14 @@ export class Enemy {
         this.burrowCd = BOSS_MECHANICS.burrow.interval;
         this.startBurrow(game);
       }
+    } else if (this.mechanic === "glacial_wake") {
+      // boss_ai_ext.lua `glacial_wake`: o relógio corre sempre; no ar não deixa gelo
+      this.wakeCd -= dt;
+      if (this.wakeCd <= 0 && this.diveT < 0) {
+        const M = BOSS_MECHANICS.glacial_wake;
+        this.wakeCd = M.interval;
+        this.frostPatch(game, this.x, this.z, M.radius * TUNING.enemy.pxToUnit);
+      }
     } else if (this.mechanic === "blood_rush") {
       const r = bloodRush(this.hp / this.maxHp);
       if (r.steps > this.rushSteps) {
@@ -1323,6 +1340,12 @@ export class Enemy {
     game.audio.play("warn");
   }
 
+  /** boss_ai_ext.lua `frostPatch`: gelo no chão que fere (`dps` × dano/s) e deixa o herói lento (Glacial Wake) */
+  private frostPatch(game: Game, x: number, z: number, r: number): void {
+    const M = BOSS_MECHANICS.glacial_wake;
+    game.affixes.addPool(x, z, r, M.time, this.dmg * M.dps * HAZARD_TICK, `${this.name} (frost)`, FROST_POOL_COLOR, { mult: M.chill, time: M.chillTime });
+  }
+
   /** boss_ai.lua `updateShockwaves`: o anel cresce até `max`; o herói na faixa (± grossura/2 + raio dele) leva o golpe uma vez */
   private updateSlimeRings(game: Game, dt: number): void {
     const p = game.player;
@@ -1503,6 +1526,74 @@ export class Enemy {
           fx.shockwave(x, z, R, b.glow, (max - r0) / speed, r0 + thick / 2); // borda de fora do anel, de r0 até R
           fx.addShake(0.35);
         }, r0);
+        break;
+      }
+      case "frostbreath": {
+        // boss_ai_ext.lua `frostbreath`: cone a partir dele até o herói; quem leva fica Chilled
+        const a = Math.atan2(p.x - this.x, p.z - this.z);
+        const half = ((pt.halfAngleDeg ?? 28) * Math.PI) / 180, L = pt.length ?? 15;
+        const x = this.x, z = this.z;
+        this.casting = pt.warning + 0.2;
+        fx.telegraphCone(x, z, a, half, L, pt.warning, () => {
+          if (!ok()) return;
+          this.attackAnim = 0;
+          for (let i = 0; i < 28; i++) {
+            const rr = Math.sqrt(Math.random()) * L, aa = a + (Math.random() * 2 - 1) * half;
+            fx.spark(x + Math.sin(aa) * rr, 0.5 + Math.random() * 0.6, z + Math.cos(aa) * rr, b.glow, 0.26, 0.45, 0.4);
+          }
+          const hp = game.player, pr = TUNING.enemy.telegraph.playerRadius;
+          const dx = hp.x - x, dz = hp.z - z, d = Math.hypot(dx, dz);
+          let diff = Math.atan2(dx, dz) - a;
+          diff = ((diff + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+          const px = TUNING.enemy.pxToUnit;
+          if (d <= L + pr && Math.abs(diff) <= half + Math.atan(pr / Math.max(d, px))) {
+            if (game.hurtPlayer(this.dmg * pt.damage, `${this.name} (breath)`, this)) game.chillPlayer(BOSS_MECHANICS.glacial_wake.chill, pt.chill ?? 2);
+          }
+        });
+        break;
+      }
+      case "iciclerain": {
+        // boss_ai_ext.lua `iciclerain`: círculos em fila na reta até o herói, cada um com aviso um pouco mais longo
+        const px = TUNING.enemy.pxToUnit;
+        const r = pt.radius ?? 1.875, n = pt.count ?? 7, step = pt.step ?? 58 / 16;
+        const d = Math.max(Math.hypot(p.x - this.x, p.z - this.z), px);
+        const nx = (p.x - this.x) / d, nz = (p.z - this.z) / d;
+        const start = Math.max(40 * px, d - step * (n - 3));
+        this.casting = 0.5;
+        this.attackAnim = 0;
+        for (let k = 0; k < n; k++) {
+          const c = { x: this.x + nx * (start + k * step), z: this.z + nz * (start + k * step), radius: r };
+          game.keepInArena(c);
+          fx.telegraphCircle(c.x, c.z, r, pt.warning + k * (pt.stagger ?? 0.12), () => {
+            if (!ok()) return;
+            game.explode(c.x, c.z, r, this.dmg * pt.damage, b.glow, `${this.name} (icicle)`);
+          });
+        }
+        break;
+      }
+      case "glacierdive": {
+        // boss_ai_ext.lua `glacierdive`: alça voo (sem golpe nem gelo), cai onde o herói estava e deixa gelo
+        const r = pt.radius ?? 5.5;
+        let tx = p.x, tz = p.z;
+        const dx = tx - this.homeX, dz = tz - this.homeZ, d = Math.hypot(dx, dz), lim = game.layout.bossRadius - this.radius;
+        if (d > lim) { tx = this.homeX + (dx / d) * lim; tz = this.homeZ + (dz / d) * lim; }
+        this.casting = pt.warning + 0.3;
+        this.diveT = 0;
+        this.diveDur = pt.warning;
+        this.endSwing();
+        fx.burst(this.x, this.rig.height * 0.5, this.z, b.glow, 20, 5, 0.18, 0.5);
+        fx.telegraphCircle(tx, tz, r, pt.warning, () => {
+          this.diveT = -1;
+          if (!ok()) return;
+          this.x = tx;
+          this.z = tz;
+          this.rig.root.position.set(tx, 0, tz);
+          this.attackAnim = 0;
+          game.explode(tx, tz, r, this.dmg * pt.damage, b.glow, `${this.name} (dive)`);
+          this.frostPatch(game, tx, tz, r * (pt.poolScale ?? 0.8));
+          fx.burst(tx, 0.5, tz, b.projectileColor, 26, 7, 0.2, 0.7);
+          fx.addShake(0.5);
+        });
         break;
       }
       case "venomfield": {
