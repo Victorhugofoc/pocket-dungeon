@@ -26,6 +26,9 @@ import { AFFIXES, type AffixId } from "../data/affixes";
 import { affixReward } from "../core/affixes";
 import { makeShieldBubble, type ShieldBubble } from "./affixes";
 
+/** Cor das poças de veneno da Venom Hydra (Venom Field e Venom Bloom). */
+const VENOM_POOL_COLOR = 0x7ad83a;
+
 /** cor do aviso do golpe, a mesma da marca no chão */
 const WARN_COLOR = 0xff5a4a;
 const WP = new THREE.Vector3();
@@ -1306,6 +1309,17 @@ export class Enemy {
     });
   }
 
+
+  /**
+   * Venom Bloom (boss_ai.lua `bolt`, D-096): com essa mecânica, o tiro do chefe vira poça de veneno onde acaba.
+   * Devolve as opções do `spawnEnemyProjectile` (vazias para os outros chefes).
+   */
+  private bloom(game: Game): { onEnd?: (x: number, z: number) => void } {
+    if (this.mechanic !== "venom_bloom") return {};
+    const M = BOSS_MECHANICS.venom_bloom;
+    const r = M.poolRadius * TUNING.enemy.pxToUnit, amount = this.dmg * M.poolDps * HAZARD_TICK, src = `${this.name} (venom)`;
+    return { onEnd: (x, z) => game.affixes.addPool(x, z, r, M.poolTime, amount, src, VENOM_POOL_COLOR) };
+  }
   private startPattern(game: Game, pt: BossPattern, dist: number): void {
     const b = this.boss!;
     const p = game.player;
@@ -1349,14 +1363,17 @@ export class Enemy {
         break;
       }
       case "fan": {
-        const n = pt.count ?? 5;
+        // bosses.lua `fanvolley` (D-218): enfurecido, o leque sai com `enragedCount`
+        const n = (this.enraged && pt.enragedCount) || (pt.count ?? 5);
         const spread = ((pt.spreadDeg ?? 50) * Math.PI) / 180;
         fx.telegraphCircle(this.x, this.z, this.radius + 0.8, pt.warning, () => {
           if (!ok()) return;
           const a = Math.atan2(p.x - this.x, p.z - this.z);
           this.attackAnim = 0;
+          const speed = pt.speed ?? BOSS_PROJECTILE_SPEED * TUNING.enemy.pxToUnit;
           for (let i = 0; i < n; i++) {
-            game.spawnEnemyProjectile(this.x, this.z, a - spread / 2 + (spread * i) / (n - 1), (pt.speed ?? 13) * this.projK, this.dmg * pt.damage, b.projectileColor, 0.34, this);
+            game.spawnEnemyProjectile(this.x, this.z, a - spread / 2 + (spread * i) / (n - 1), speed * this.projK, this.dmg * pt.damage, b.projectileColor, 0.34, this,
+              this.bloom(game));
           }
         });
         break;
@@ -1399,8 +1416,29 @@ export class Enemy {
           if (!ok()) return;
           this.attackAnim = 0;
           const speed = BOSS_SKILLSHOT.speed * TUNING.enemy.pxToUnit * this.projK;
-          game.spawnEnemyProjectile(this.x, this.z, a, speed, this.dmg * pt.damage, b.projectileColor, pt.radius ?? 0.375, this);
+          game.spawnEnemyProjectile(this.x, this.z, a, speed, this.dmg * pt.damage, b.projectileColor, pt.radius ?? 0.375, this, this.bloom(game));
         });
+        break;
+      }
+      case "venomfield": {
+        // boss_ai.lua `venomfield`: um círculo no herói e os outros em volta dele; cada um vira poça de veneno
+        const r = pt.radius ?? 3.25, n = pt.count ?? 3, around = pt.around ?? 90 / 16;
+        this.casting = pt.warning;
+        this.attackAnim = 0;
+        for (let k = 1; k <= n; k++) {
+          const c = { x: p.x, z: p.z, radius: r };
+          if (k > 1) {
+            const a = (k / n) * Math.PI * 2 + Math.random();
+            c.x += Math.cos(a) * around;
+            c.z += Math.sin(a) * around;
+            game.keepInArena(c);
+          }
+          fx.telegraphCircle(c.x, c.z, r, pt.warning, () => {
+            if (!ok()) return;
+            fx.shockwave(c.x, c.z, r, b.glow, 0.35);
+            game.affixes.addPool(c.x, c.z, r, pt.time ?? 5, this.dmg * (pt.dps ?? 0.7) * HAZARD_TICK, `${this.name} (venom)`, VENOM_POOL_COLOR);
+          });
+        }
         break;
       }
       case "mark": {

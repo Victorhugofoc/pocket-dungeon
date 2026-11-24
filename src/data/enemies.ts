@@ -143,7 +143,7 @@ export const HAZARD_TICK = 0.5;
 export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
 export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire"
-  | "sandvolley" | "tailsweep" | "erupt" | "orbitals" | "prismbeam" | "miragedash";
+  | "sandvolley" | "tailsweep" | "erupt" | "orbitals" | "prismbeam" | "miragedash" | "venomfield";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -177,6 +177,12 @@ export interface BossPattern {
   novaDamage?: number;
   /** multiplicador da velocidade do tiro de chefe (`BOSS_PROJECTILE_SPEED`) */
   speedMult?: number;
+  /** `fan` (bosses.lua `fanvolley`): tiros quando o chefe está enfurecido (fase 3) */
+  enragedCount?: number;
+  /** `venomfield`: s que a poça fica no chão, dano por s (× dano do chefe) e distância dos círculos extras ao herói (m) */
+  time?: number;
+  dps?: number;
+  around?: number;
 }
 
 export interface BossDef {
@@ -215,9 +221,10 @@ export const BOSS_ORDER = [
 /**
  * `bosses.lua` `CROWN.borrow`: ataques que o rei coroado da onda 20 pode pegar de outro chefe. Lá são `nova`,
  * `crossfire`, `radial`, `fanvolley`, `spiralvolley`, `stormfield`, `venomfield` e `quake`; aqui só existem os
- * equivalentes de `nova`, `crossfire` (M10-01), `fanvolley` e `spiralvolley` (os outros chegam com os chefes do `M10`).
+ * equivalentes de `nova`, `crossfire` (M10-01), `fanvolley`, `spiralvolley` e `venomfield` (M10-04); os outros chegam com os
+ * chefes do `M10`.
  */
-export const CROWN_BORROW = ["nova", "crossfire", "fan", "spiral"] as const;
+export const CROWN_BORROW = ["nova", "crossfire", "fan", "spiral", "venomfield"] as const;
 
 /** Título do rei coroado (en.lua: "THE CROWNED KING", D-640). */
 export const CROWN_TITLE = "The Crowned King";
@@ -278,6 +285,19 @@ export const BOSSES: Record<string, BossDef> = {
       { kind: "erupt", warning: 0.8, damage: 1.2, radius: 52 / 16, count: 3, stagger: 0.45 },
     ],
     body: "bug", color: 0x8a6a3a, accent: 0xf0b0a8, glow: 0xffc86a, scale: 2.4, projectileColor: 0xe8c47a, xp: 60,
+  },
+  // M10-04: a mãe da ninhada. Fica a 170 px; campos de veneno, skillshot na 2 e leque na 3 (bosses.lua, px ÷ 16).
+  // Venom Bloom: todo tiro dela vira poça onde acaba (BOSS_MECHANICS.venom_bloom).
+  venom_hydra: {
+    id: "venom_hydra", name: "Venom Hydra", title: "The Broodmother", hp: 2100, damage: 13, speed: 2.9, radius: 1.6,
+    attackRange: 3.2, attackCooldown: 1.6, patternCooldown: 4.0, preferred: 170 / 16,
+    patterns: [
+      { kind: "venomfield", warning: 0.8, damage: 0, dps: 0.7, radius: 52 / 16, count: 3, time: 5, around: 90 / 16 },
+      { kind: "skillshot", warning: 0.45, damage: 1.1, width: 10 / 16, length: 520 / 16, radius: 6 / 16 },
+      { kind: "fan", warning: 0.4, damage: 1.0, count: 5, enragedCount: 7, spreadDeg: 50 },
+    ],
+    body: "brute", color: 0x3f7a2a, accent: 0xd8cf8a, glow: 0x9be84a, scale: 2.4, projectileColor: 0x8ce63a, xp: 65,
+    relicBuild: "venom_hydra",
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,

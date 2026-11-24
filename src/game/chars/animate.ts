@@ -89,6 +89,8 @@ const overshoot = (t: number) => 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t
 const STRIKE_TAIL = [0.5, 0.35, 0.1, -0.45, -0.8];
 /** M10-02: quanto cada gomo do verme gira no bote (a base fica de pé, o terço de cima enrola para baixo) */
 const WORM_BITE = [0, 0.03, 0.18, 0.3, 0.3];
+/** M10-04: atraso de cada cabeça da hidra no bote (a do meio primeiro) e a fase de cada pescoço no balanço */
+const HYDRA_NECKS = [["neckC", "neckC2", "head", "jaw", 0, 0], ["neckL", "neckL2", "headL", "jawL", 0.14, -1], ["neckR", "neckR2", "headR", "jawR", 0.26, 1]] as const;
 
 export function animateChar(rig: Rig, a: AnimState): void {
   const c = rig.char!;
@@ -235,6 +237,51 @@ export function animateChar(rig: Rig, a: AnimState): void {
       h.rotation.set(0, 0, e * Math.PI * 0.92);
       h.position.y = c.hipY + Math.sin(e * Math.PI) * 0.3 + e * 0.05;
       for (const bn of tail) if (bn) bn.rotation.x = -0.25 * e;
+    }
+    if (c.legs.length) stepLegs(c, rig, h.position, dt, vf, vs, a.dead);
+    return;
+  }
+
+  if (c.form === "hydra") {
+    // M10-04: corpo baixo sobre as 4 patas (cinemática inversa), ondula de lado ao andar; cauda e pescoços balançam com
+    // atraso; no preparo os pescoços recuam e as cabeças sobem; no golpe as 3 cabeças dão o bote, uma depois da outra;
+    // ao morrer vira de costas e os pescoços caem
+    const h = B.hips!;
+    const rage = a.rage ?? 0;
+    const breathe = Math.sin(t * (1.5 + 1.5 * rage));
+    const w = alive ? a.windup : 0;
+    const at = alive && a.attack >= 0 ? a.attack : -1;
+    const roar = alive && (a.roar ?? -1) >= 0 ? Math.sin(Math.min(1, a.roar!) * Math.PI) : 0;
+    const sway = Math.sin(P.stride * 0.6) * move;
+    h.position.set(0, c.hipY + breathe * 0.008 + w * 0.03, 0);
+    h.rotation.set(-w * 0.08 - roar * 0.12 + leanF + kf * 0.35, sway * 0.1 + twist * 0.3, -leanS - ks * 0.35);
+    const tail = [B.tail, B.tail2, B.tail3, B.tail4, B.tail5];
+    // a cauda é uma malha só no osso tail: balança inteira pela raiz
+    if (B.tail) {
+      B.tail.rotation.y = Math.sin(t * (1.1 + rage)) * 0.08 * (1 + rage) - sway * 0.2 + twist * 0.3 - secS * 0.1;
+      B.tail.rotation.x = Math.sin(t * 0.9) * 0.015 - secF * 0.04;
+    }
+    for (const [n1, n2, hd, jw, delay, side] of HYDRA_NECKS) {
+      const a1 = B[n1], a2 = B[n2], hb = B[hd];
+      if (!a1 || !a2 || !hb) continue;
+      const u = at >= 0 ? clamp((at - delay) / (1 - delay), 0, 1) : -1;
+      const bite = u > 0 ? (u < 0.3 ? overshoot(u / 0.3) : 1 - ease((u - 0.3) / 0.7)) : 0;
+      const ph = side * 1.7;
+      const idle = Math.sin(t * (1.3 + rage) + ph);
+      // o pescoço é uma malha só no 1º osso: dobra na base e na cabeça (o 2º osso fica parado)
+      a1.rotation.set(idle * 0.06 - w * 0.4 - roar * 0.4 + bite * 0.6 - secF * 0.08, Math.sin(t * 0.7 + ph) * 0.06 + side * bite * 0.35,
+        side * (0.04 + roar * 0.12 + w * 0.06 + bite * 0.12));
+      a2.rotation.set(0, 0, 0);
+      hb.rotation.set(Math.sin(t * 1.6 + ph - 1.4) * 0.06 + w * 0.35 + roar * 0.3 - bite * 0.45, Math.sin(t * 0.9 + ph) * 0.18, 0);
+      // boca: entreaberta no preparo e no rugido, escancarada no bote (fecha no fim dele)
+      const gape = u > 0 ? Math.sin(Math.min(1, u / 0.55) * Math.PI) : 0;
+      B[jw]?.rotation.set(Math.max(0, Math.sin(t * 0.8 + ph)) * 0.05 + w * 0.3 + roar * 0.55 + gape * 0.65, 0, 0);
+    }
+    if (!alive) {
+      const e = ease(Math.min(1, a.dead * 1.5));
+      h.rotation.set(0, 0, e * Math.PI * 0.9);
+      h.position.y = c.hipY + Math.sin(e * Math.PI) * 0.35 + e * 0.12;
+      for (const [n1] of HYDRA_NECKS) B[n1]?.rotation.set(1.0 * e, 0, 0);
     }
     if (c.legs.length) stepLegs(c, rig, h.position, dt, vf, vs, a.dead);
     return;

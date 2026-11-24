@@ -109,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1281,7 +1281,7 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect(BOSS_MECHANICS.marked_prey.mult).toBe(BS.MECHANICS.marked_prey.mult);
     expect([cf.warning, cf.damage, px(cf.width), px(cf.length)]).toEqual([A.crossfire.warning, A.crossfire.dmg, A.crossfire.width, 840]);
     // o empréstimo do rei coroado: só os de `CROWN.borrow` que já existem aqui, na ordem de lá
-    const map: Record<string, string> = { nova: "nova", crossfire: "crossfire", fan: "fanvolley", spiral: "spiralvolley" };
+    const map: Record<string, string> = { nova: "nova", crossfire: "crossfire", fan: "fanvolley", spiral: "spiralvolley", venomfield: "venomfield" };
     expect(CROWN_BORROW.map((k) => map[k])).toEqual(BS.CROWN.borrow.filter((k: string) => Object.values(map).includes(k)));
   });
   it("Dune Leviathan igual ao de bosses.lua: distância, parede de areia, varrida, erupção e Burrow (M10-02)", () => {
@@ -1317,6 +1317,25 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect([[...B.perPhase], B.illusionHp]).toEqual([M.perPhase, M.illusionHp]);
     // boss_bag.lua: só da Hard para cima
     for (const id of Object.keys(BOSSES)) expect(BOSSES[id].minDifficulty, id).toBe(BS.builds[id].minDifficulty ?? undefined);
+  });
+  it("Venom Hydra igual à de bosses.lua: distância, Venom Field, skillshot, leque e Venom Bloom (M10-04)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.venom_hydra, d = BOSSES.venom_hydra;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    const lua: Record<string, string> = { fan: "fanvolley" };
+    expect(d.patterns.map((p) => lua[p.kind] ?? p.kind)).toEqual(build.attacks);
+    expect(px(d.preferred)).toBe(build.preferred);
+    expect(d.relicBuild).toBe(build.relicBuild);
+    const [vf, ss, fv] = d.patterns;
+    // boss_ai.lua `venomfield`: os círculos extras ficam a 90 px do herói
+    expect([vf.warning, vf.dps, px(vf.radius), vf.count, vf.time, px(vf.around)])
+      .toEqual([A.venomfield.warning, A.venomfield.dps, A.venomfield.radius, A.venomfield.count, A.venomfield.time, 90]);
+    expect([ss.warning, ss.damage, px(ss.width)]).toEqual([A.skillshot.warning, A.skillshot.dmg, A.skillshot.width]);
+    expect([fv.warning, fv.damage, fv.count, fv.enragedCount, fv.spreadDeg])
+      .toEqual([A.fanvolley.warning, A.fanvolley.dmg, A.fanvolley.count, A.fanvolley.enragedCount, A.fanvolley.spreadDeg]);
+    expect(fv.speed).toBeUndefined(); // o leque sai em BOSS_PROJECTILE_SPEED, como o `bolt` de lá
+    const M = BS.MECHANICS.venom_bloom, B = BOSS_MECHANICS.venom_bloom;
+    expect([B.poolTime, B.poolDps, B.poolRadius]).toEqual([M.poolTime, M.poolDps, M.poolRadius]);
   });
   it("cópia do Mirage Djinn (mirage_illusion) igual à de enemies.lua: atiradora, sem recompensa, meio transparente (M10-03)", () => {
     const o: Lua = dr!["src.data.enemies"].mirage_illusion;
