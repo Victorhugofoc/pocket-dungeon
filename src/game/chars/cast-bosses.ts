@@ -298,6 +298,33 @@ export const BOSSES: Record<string, Spec> = {
     b.form = "slime"; b.scale = 2.0; b.style = "bite"; b.rough = 0.4; b.glowColor = 0xffffff;
     addModel(b, "gorged_ooze");
   },
+  // M10-06: dragão de gelo modelado no Blender (tools/blender/rimefang_wyrm.py, brief em docs/briefs/rimefang_wyrm.md). Usa a
+  // forma `hydra` com um pescoço só (neckC -> neckC2 -> head -> jaw) e as asas nos ossos wingL/wingR, presos ao hips no
+  // ombro; cauda em malha única no tail; 4 patas retas com `legfemur`/`legtibia`. Pontos = PIV3 do script.
+  rimefang_wyrm: (b) => {
+    b.form = "hydra"; b.scale = 2.8; b.style = "bite"; b.glowColor = 0x9fe6ff; b.rough = 0.55;
+    b.dims = { ...b.dims, hipY: 0.46 };
+    const tail: [number, number, number][] = [[0, 0.42, -0.4], [0.02, 0.32, -0.7], [0.12, 0.18, -0.96], [0.34, 0.14, -1.1], [0.56, 0.24, -1.04]];
+    const tb = ["tail", "tail2", "tail3", "tail4", "tail5"] as const;
+    tb.forEach((bone, i) => b.joints.push({ bone, parent: i ? tb[i - 1] : "hips", at: tail[i] }));
+    const neck: [Bone, [number, number, number]][] = [["neckC", [0, 0.58, 0.24]], ["neckC2", [0, 1.011, 0.47]], ["head", [0, 1.27, 0.52]], ["jaw", [0, 1.241, 0.545]]];
+    neck.forEach(([bone, at], i) => b.joints.push({ bone, parent: i ? neck[i - 1][0] : "hips", at }));
+    b.joints.push({ bone: "wingL", parent: "hips", at: [-0.13, 0.66, 0.1] }, { bone: "wingR", parent: "hips", at: [0.13, 0.66, 0.1] });
+    const parts = modelParts("rimefang_wyrm");
+    for (const [key, g] of parts) {
+      if (key.startsWith("leg")) continue;
+      const [bone, layer] = key.split("@");
+      if (layer === "lit") b.lit(bone, g);
+      else if (layer === "flat") b.flat(bone, g);
+      else b.add(bone, g);
+    }
+    // patas retas, de pé (não abertas como as da hidra)
+    for (const [ax, ay, az, hx, hz] of [[0.13, -0.1, 0.18, 0.15, 0.28], [0.14, -0.08, -0.31, 0.16, -0.22]] as const) {
+      for (const s of [-1, 1]) {
+        b.ikLegs.push({ attach: [s * ax, ay, az], home: [s * hx, hz], l1: 0.24, l2: 0.24, femur: [parts.get("legfemur")!], tibia: [parts.get("legtibia")!] });
+      }
+    }
+  },
   // M10-04: hidra de três cabeças modelada no Blender (tools/blender/venom_hydra.py, brief em docs/briefs/venom_hydra.md). Forma
   // `hydra`: corpo no hips, cauda e os três pescoços em cadeia (pontos = PIV3 do script); 4 patas com `legfemur`/`legtibia`.
   venom_hydra: (b) => {

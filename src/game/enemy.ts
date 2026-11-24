@@ -220,6 +220,7 @@ export class Enemy {
   /** M10-06 Glacial Wake: s até o próximo gelo; `diveT` ≥ 0 = no ar (Glacier Dive: sem golpe nem gelo, corpo apagado) */
   wakeCd: number = BOSS_MECHANICS.glacial_wake.first;
   diveT = -1;
+  private diveDur = 1;
   /** M10-05 Mitosis: última fase em que a gosma já se dividiu */
   splitPhase = 0;
   /** M10-05 Slime Wave (boss_ai.lua `updateShockwaves`): anéis que crescem e acertam o herói uma vez cada */
@@ -470,6 +471,7 @@ export class Enemy {
       this.markK = markMult(p.mark, now, this as Enemy);
       if (this.reticle) this.followReticle(game, dt);
       if (this.burrowT >= 0) this.burrowT += dt;
+      if (this.diveT >= 0) this.diveT += dt;
       if (this.mechanic === "mirage") fadeRig(this.rig, this.dashBlinkT >= 0 ? TUNING.boss.blinkFade : 1);
       if (this.mechanic === "glacial_wake") fadeRig(this.rig, this.diveT >= 0 ? TUNING.boss.blinkFade : 1);
       if (this.emergeT >= 0 && (this.emergeT += dt) > TUNING.boss.burrowAnim) this.emergeT = -1;
@@ -639,7 +641,7 @@ export class Enemy {
     }
     const lp = this.leap ? this.leapPose : null;
     animateRig(rig, {
-      t: now, move: stunned ? 0 : this.moveAmt, attack: this.attackAnim, air: lp?.air,
+      t: now, move: stunned ? 0 : this.moveAmt, attack: this.attackAnim, air: lp?.air ?? (this.diveT >= 0 ? Math.min(0.999, this.diveT / this.diveDur) : undefined),
       windup: lp ? lp.crouch : this.windupT >= 0 ? this.windupT / this.windupDur : this.aimT >= 0 ? this.aimT / TUNING.enemy.telegraph.shotWindup : this.casting > 0 ? 0.6 + Math.sin(now * 20) * 0.1 : 0, dead: 0,
       rage: this.rage, roar: this.roarT, burrow: this.boss ? this.burrowK : 0,
     });
@@ -1577,6 +1579,7 @@ export class Enemy {
         if (d > lim) { tx = this.homeX + (dx / d) * lim; tz = this.homeZ + (dz / d) * lim; }
         this.casting = pt.warning + 0.3;
         this.diveT = 0;
+        this.diveDur = pt.warning;
         this.endSwing();
         fx.burst(this.x, this.rig.height * 0.5, this.z, b.glow, 20, 5, 0.18, 0.5);
         fx.telegraphCircle(tx, tz, r, pt.warning, () => {

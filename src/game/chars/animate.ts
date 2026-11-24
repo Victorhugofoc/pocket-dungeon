@@ -275,7 +275,21 @@ export function animateChar(rig: Rig, a: AnimState): void {
       hb.rotation.set(Math.sin(t * 1.6 + ph - 1.4) * 0.06 + w * 0.35 + roar * 0.3 - bite * 0.45, Math.sin(t * 0.9 + ph) * 0.18, 0);
       // boca: aberta em repouso (ameaça, pedido do usuário), mais no preparo e no rugido, escancarada no bote
       const gape = u > 0 ? Math.sin(Math.min(1, u / 0.55) * Math.PI) : 0;
-      B[jw]?.rotation.set(0.42 + Math.sin(t * 1.1 + ph) * 0.06 + w * 0.25 + roar * 0.4 + gape * 0.45, 0, 0);
+      B[jw]?.rotation.set((B.wingL ? 0.16 : 0.42) + Math.sin(t * 1.1 + ph) * 0.06 + w * 0.25 + roar * 0.4 + gape * 0.45, 0, 0);
+    }
+    // M10-06 (asas do Rimefang): batem devagar em repouso, abrem no preparo e no rugido, batem forte no voo do mergulho
+    // (`air`, quando o corpo sobe) e caem ao morrer
+    const air = alive && a.air !== undefined && a.air > 0 && a.air < 1 ? a.air : 0;
+    if (air) h.position.y += Math.sin(air * Math.PI) * 1.1;
+    if (B.wingL && B.wingR) {
+      const beat = air ? Math.sin(t * 11) * 0.55 + 0.1 : Math.sin(t * (1.5 + rage)) * 0.07;
+      // golpe: asas abrem e o peito baixa junto com o bote (o crítico achou o golpe igual ao repouso)
+      const lunge = at >= 0 ? Math.sin(Math.min(1, at / 0.6) * Math.PI) : 0;
+      h.rotation.x += lunge * 0.14 - w * 0.06;
+      let up = beat + w * 0.2 + roar * 0.45 + lunge * 0.08;
+      if (!alive) up = -0.55 * ease(Math.min(1, a.dead * 1.5));
+      B.wingL.rotation.set(0, -w * 0.15, -up);
+      B.wingR.rotation.set(0, w * 0.15, up);
     }
     if (!alive) {
       const e = ease(Math.min(1, a.dead * 1.5));
