@@ -15,7 +15,7 @@ function draws(seed: number, n: number): string[] {
 
 describe("saco de chefes (boss_bag.lua)", () => {
   it("o saco tem os chefes que já lutam aqui, na ordem de bosses.lua", () => {
-    expect(POOL).toEqual(["bloodfang", "deathstalker", "venom_hydra", "gravekeeper", "ember_matriarch", "gorged_ooze", "dune_leviathan", "hollow_king", "mirage_djinn"]);
+    expect(POOL).toEqual(["bloodfang", "deathstalker", "venom_hydra", "gravekeeper", "ember_matriarch", "rimefang_wyrm", "gorged_ooze", "dune_leviathan", "hollow_king", "mirage_djinn"]);
   });
 
   it("chefe só da Hard (minDifficulty) fica fora do saco na Easy e na Normal (boss_bag.lua `allowed`)", () => {

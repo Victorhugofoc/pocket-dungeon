@@ -109,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra", "gorged_ooze" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra", "gorged_ooze", "rimefang_wyrm" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1357,6 +1357,26 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
       .toEqual([A.engulf.warning, A.engulf.dmg, A.engulf.speed, A.engulf.length, A.engulf.width]);
     const M = BS.MECHANICS.mitosis, B = BOSS_MECHANICS.mitosis;
     expect([[...B.perPhase], B.minion, B.ring]).toEqual([M.perPhase, M.minion, 40]);
+  });
+  it("Rimefang Wyrm igual ao de bosses.lua: sopro, estalactites, mergulho e Glacial Wake (M10-06)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.rimefang_wyrm, d = BOSSES.rimefang_wyrm;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    expect(d.patterns.map((p) => p.kind)).toEqual(build.attacks);
+    expect(px(d.preferred)).toBe(build.preferred);
+    expect(d.relicBuild).toBeUndefined();
+    const [fb, ir, gd] = d.patterns;
+    expect([fb.warning, fb.damage, px(fb.length), fb.halfAngleDeg, fb.chill])
+      .toEqual([A.frostbreath.warning, A.frostbreath.dmg, A.frostbreath.length, A.frostbreath.halfAngleDeg, A.frostbreath.chill]);
+    expect([ir.warning, ir.damage, px(ir.radius), ir.count, ir.stagger, px(ir.step)])
+      .toEqual([A.iciclerain.warning, A.iciclerain.dmg, A.iciclerain.radius, A.iciclerain.count, A.iciclerain.stagger, A.iciclerain.step]);
+    // boss_ai_ext.lua `glacierdive`: o gelo do pouso tem 0,8 do raio
+    expect([gd.warning, gd.damage, px(gd.radius), gd.poolScale]).toEqual([A.glacierdive.warning, A.glacierdive.dmg, A.glacierdive.radius, 0.8]);
+    const M = BS.MECHANICS.glacial_wake, B = BOSS_MECHANICS.glacial_wake;
+    expect([B.interval, B.radius, B.time, B.dps, B.chill, B.chillTime]).toEqual([M.interval, M.radius, M.time, M.dps, M.chill, M.chillTime]);
+    expect(BOSS_MECHANIC.rimefang_wyrm).toEqual({ id: build.mechanic, name: build.mechanicName });
+    const m = build.mults, o = BOSS_MULTS.rimefang_wyrm;
+    expect([o.hp, o.damage, o.speed, o.projectileSpeed]).toEqual([m.hp, m.damage, m.speed, m.projectileSpeed]);
   });
   it("cópia do Mirage Djinn (mirage_illusion) igual à de enemies.lua: atiradora, sem recompensa, meio transparente (M10-03)", () => {
     const o: Lua = dr!["src.data.enemies"].mirage_illusion;

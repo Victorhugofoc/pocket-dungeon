@@ -11,7 +11,7 @@ interface Particle {
 }
 
 export interface Telegraph {
-  kind: "circle" | "rect";
+  kind: "circle" | "rect" | "cone";
   t: number;
   dur: number;
   outline: THREE.Mesh;
@@ -358,6 +358,41 @@ export class Fx {
   private arcGeos = new Map<number, THREE.CircleGeometry>();
   private arcEdgeGeos = new Map<number, THREE.RingGeometry>();
 
+  /** cone avisado (boss_ai_ext.lua `frostbreath`): setor de raio `length` e meia abertura `half` (rad) a partir de (x, z),
+   * apontado para `angle` (atan2(dx, dz)); o preenchimento cresce do vértice para fora */
+  telegraphCone(x: number, z: number, angle: number, half: number, length: number, dur: number, onDone: () => void): Telegraph {
+    const arc = half * 2;
+    const key = Math.round(arc * 100);
+    let geo = this.arcGeos.get(key);
+    if (!geo) {
+      geo = new THREE.CircleGeometry(1, 24, -arc / 2, arc);
+      this.arcGeos.set(key, geo);
+    }
+    let edgeGeo = this.arcEdgeGeos.get(key);
+    if (!edgeGeo) {
+      edgeGeo = new THREE.RingGeometry(0.9, 1, 24, 1, -arc / 2, arc);
+      this.arcEdgeGeos.set(key, edgeGeo);
+    }
+    const mk = (g: THREE.BufferGeometry, m: THREE.Material, y: number) => {
+      const mesh = new THREE.Mesh(g, m);
+      mesh.rotation.set(-Math.PI / 2, 0, angle - Math.PI / 2);
+      mesh.position.set(x, y, z);
+      mesh.renderOrder = 2;
+      this.scene.add(mesh);
+      return mesh;
+    };
+    const outline = mk(geo, this.matOutline, 0.06);
+    outline.scale.setScalar(length);
+    const edge = new THREE.Mesh(edgeGeo, this.matEdge);
+    outline.add(edge);
+    edge.position.z = 0.01;
+    const fill = mk(geo, this.matFill, 0.08);
+    fill.scale.setScalar(0.01);
+    const tg: Telegraph = { kind: "cone", t: 0, dur, outline, fill, onDone, r: length, x, z, angle, length, width: 0 };
+    this.telegraphs.push(tg);
+    return tg;
+  }
+
   /** setor de abertura `arc` (rad) e raio `r`, apontado para `angle` (atan2(dx,dz)); o preenchimento cresce com k */
   groundArc(x: number, z: number, angle: number, arc: number, r: number): GroundArc {
     const key = Math.round(arc * 100);
@@ -508,7 +543,9 @@ export class Fx {
       const tg = this.telegraphs[i];
       tg.t += dt;
       const k = Math.min(1, tg.t / tg.dur);
-      if (tg.kind === "circle") {
+      if (tg.kind === "cone") {
+        tg.fill.scale.setScalar(Math.max(0.01, tg.r * k));
+      } else if (tg.kind === "circle") {
         tg.fill.scale.setScalar(tg.width > 0 ? tg.width + (tg.r - tg.width) * k : Math.max(0.01, tg.r * k));
       } else {
         const len = Math.max(0.01, tg.length * k);

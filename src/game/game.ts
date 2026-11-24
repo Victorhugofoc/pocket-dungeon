@@ -1650,6 +1650,14 @@ export class Game {
 
   /** `attacker`: quem bateu (JUDGEMENT devolve o golpe bloqueado pelo Aegis). */
   /** Devolve se o golpe pegou (não esquivado, não bloqueado pelo Aegis). */
+  /** enemy_attacks.lua `p.chill`: o herói anda a `mult` da velocidade por `time` s (o novo substitui o anterior) */
+  chillPlayer(mult: number, time: number): void {
+    const p = this.player;
+    if (this.time >= p.chillUntil) this.fx.text(p.x, 2.2, p.z, "Chilled", "frost");
+    p.chillUntil = this.time + time;
+    p.chillMult = mult;
+  }
+
   hurtPlayer(amount: number, source: string, attacker?: Enemy): boolean {
     void source;
     const p = this.player;
@@ -1700,11 +1708,7 @@ export class Game {
     this.run.statistics.damageTaken += Math.min(amount, p.hp);
     p.hp -= amount;
     this.relicHooks.onPlayerHit(this.relicWorld, amount);
-    if (attacker?.affixes.length) this.affixes.onHit(attacker, (mult, time) => {
-      p.chillUntil = this.time + time;
-      p.chillMult = mult;
-      this.fx.text(p.x, 2.2, p.z, "Chilled", "frost");
-    });
+    if (attacker?.affixes.length) this.affixes.onHit(attacker, (mult, time) => this.chillPlayer(mult, time));
     this.ach.playerHit(amount, Math.max(0, p.hp) / this.stats.maxHp);
     p.flash = 1;
     if (p.rig) kickRig(p.rig, -Math.sin(p.facing), -Math.cos(p.facing), 0.7);
