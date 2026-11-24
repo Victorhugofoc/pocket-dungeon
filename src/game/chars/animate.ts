@@ -273,9 +273,9 @@ export function animateChar(rig: Rig, a: AnimState): void {
         side * (0.04 + roar * 0.12 + w * 0.06 + bite * 0.12));
       a2.rotation.set(0, 0, 0);
       hb.rotation.set(Math.sin(t * 1.6 + ph - 1.4) * 0.06 + w * 0.35 + roar * 0.3 - bite * 0.45, Math.sin(t * 0.9 + ph) * 0.18, 0);
-      // boca: entreaberta no preparo e no rugido, escancarada no bote (fecha no fim dele)
+      // boca: aberta em repouso (ameaça, pedido do usuário), mais no preparo e no rugido, escancarada no bote
       const gape = u > 0 ? Math.sin(Math.min(1, u / 0.55) * Math.PI) : 0;
-      B[jw]?.rotation.set(Math.max(0, Math.sin(t * 0.8 + ph)) * 0.05 + w * 0.3 + roar * 0.55 + gape * 0.65, 0, 0);
+      B[jw]?.rotation.set(0.32 + Math.sin(t * 1.1 + ph) * 0.06 + w * 0.25 + roar * 0.4 + gape * 0.45, 0, 0);
     }
     if (!alive) {
       const e = ease(Math.min(1, a.dead * 1.5));

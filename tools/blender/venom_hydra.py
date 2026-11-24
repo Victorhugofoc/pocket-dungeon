@@ -176,8 +176,8 @@ def body():
         y = top_y(m, x, z)
         if y is None:
             continue
-        h = 0.1 * (1 - 0.35 * abs(k - 4) / 6)
-        out.append(fang("spike", (x, y - 0.025, z), (x * 2, 1, -0.6), h, h * 0.42, (0, 0, 1)))
+        h = 0.17 * (1 - 0.35 * abs(k - 4) / 6)
+        out.append(fang("spike", (x, y - 0.03, z), (x * 2, 1, -0.6), h, h * 0.42, (0, 0, 1)))
     return out
 
 
@@ -216,7 +216,7 @@ def tail():
         if r < 0.03:
             continue
         d = (C[i + 1] - C[i - 1]).normalized()
-        h = 0.09 * r / TAIL_R[0] + 0.02
+        h = 0.15 * r / TAIL_R[0] + 0.025
         out.append(fang("tspike", tuple(p + Vector((0, r * 0.6, 0))), (-d.x * 0.6, 1, -d.z * 0.6), h, h * 0.42, tuple(d)))
     return {"tail": out}
 
@@ -249,11 +249,11 @@ def neck(key):
         back = (v - tg * v.dot(tg)).normalized()
         r = NECK_R[1]
         bone = b1
-        out[bone].append(fang("nspike", tuple(p + back * r * 0.7), tuple(back - tg * 0.6), 0.055, 0.026, tuple(tg)))
+        out[bone].append(fang("nspike", tuple(p + back * r * 0.7), tuple(back - tg * 0.6), 0.085, 0.038, tuple(tg)))
     return out
 
 
-HS = 0.95  # escala das cabeças (o crítico pediu mais massa de cima)
+HS = 1.15  # escala das cabeças (o crítico pediu mais massa de cima)
 JAWS = {"C": "jaw", "L": "jawL", "R": "jawR"}
 
 
@@ -277,8 +277,9 @@ def hinge(key):
 
 
 def head(key):
-    """cabeça de réptil: crânio, focinho em cunha de ponta quadrada e arcadas; a mandíbula é peça própria (osso jaw*),
-    com o céu da boca vermelho e dentes grandes; olhos vermelho-laranja acesos; crista de placas do crânio à nuca"""
+    """cabeça de serpente-dragão (pedido do usuário, 2026-11-24): crânio chato em cunha que alarga nas bochechas, focinho
+    curto e pontudo, sobrancelha pesada em V sobre olhos acesos em fenda, dois pares de chifres para trás; a mandíbula é
+    peça própria (osso jaw*) e fica aberta em repouso, com presas longas curvas em cima e embaixo e língua bifurcada"""
     P, f, side, up = head_frame(key)
     yaw = math.atan2(f.x, f.z)
     solid, flat_, lit, jaw_s, jaw_f = [], [], [], [], []
@@ -286,15 +287,22 @@ def head(key):
     def el(c, ax):
         e = EL3(c, tuple(v * HS for v in ax))
         return (*e[:4], (0, 0, yaw), *e[5:])
+
+    def tb(name, pts, radii, col, seg=8):
+        o = tube(name, [V3(P(*q)) for q in pts], [r * HS for r in radii], seg=seg)
+        return paint(smooth(o), col)
+
+    def mirror(pts, s_):
+        return [(s_ * x, y, z) for x, y, z in pts]
     els = [
-        el(P(0, 0.04, 0.03), (0.085, 0.065, 0.1)),      # crânio
-        el(P(0, 0.025, 0.2), (0.05, 0.038, 0.15)),      # focinho comprido e estreito
-        el(P(0, 0.02, 0.34), (0.046, 0.03, 0.05)),      # ponta quadrada
-        el(P(0, 0.0, 0.14), (0.06, 0.03, 0.14)),        # borda da maxila (mais larga atrás)
+        el(P(0, 0.025, 0.02), (0.085, 0.04, 0.08)),     # crânio chato e largo
+        el(P(0, 0.018, 0.12), (0.06, 0.03, 0.085)),     # focinho curto em triângulo
+        el(P(0, 0.012, 0.19), (0.03, 0.02, 0.035)),     # ponta pontuda
     ]
-    for s_ in (-1, 1):  # arcada baixa e dura sobre o olho
-        els.append(el(P(s_ * 0.058, 0.07, 0.08), (0.034, 0.018, 0.06)))
-    m = meta(key + "_head", els, res=0.008)
+    for s_ in (-1, 1):
+        els.append(el(P(s_ * 0.075, 0.0, -0.005), (0.045, 0.04, 0.055)))  # bochechas largas atrás (víbora)
+        els.append(el(P(s_ * 0.05, 0.048, 0.06), (0.03, 0.018, 0.055)))   # arcada sobre o olho
+    m = meta(key + "_head", els, res=0.007)
     bm = bmesh.new()  # corta o que desce abaixo da maxila: ali fica a boca
     bm.from_mesh(m.data)
     cut = [v for v in bm.verts if (n3(v.co) - P(0, -0.012, 0)).dot(up) < 0]
@@ -305,41 +313,71 @@ def head(key):
     smooth(m, iters=1, target=1000)
     paint(m, skin(belly_dir=tuple(-up), belly_at=0.55, grooves=False))
     solid.append(m)
-    # céu da boca: placa vermelha sob a maxila (aparece quando a mandíbula abre)
-    flat_.append(paint(ball("palate", V3(P(0, -0.01, 0.18)), tuple(v * HS for v in (0.048, 0.16, 0.008)), rot=(0, 0, yaw), seg=(14, 6)),
-                       flat(MOUTH_D)))
-    # dentes de cima: grandes, para fora da borda, à mostra com a boca fechada
+    dark = lambda co, n: mix(GREEN_D, GREEN, 0.5 * ss(-0.3, 0.8, n3(n).y))  # noqa: E731
     for s_ in (-1, 1):
-        for k in range(7):
-            z = 0.07 + 0.042 * k
-            x = s_ * (0.058 - 0.014 * k / 6)
-            ln = 0.045 if k in (1, 4) else 0.03
-            flat_.append(paint(cone("tooth", V3(P(x, -0.008, z)), V3(P(x * 1.06, -0.008 - ln, z + 0.006)), 0.013 * HS, seg=6), flat(TOOTH)))
-    # mandíbula: osso próprio, dobradiça atrás; língua vermelha e dentes de baixo para cima
-    jw = meta(key + "_jaw", [el(P(0, -0.034, 0.16), (0.05, 0.03, 0.17)), el(P(0, -0.03, 0.02), (0.058, 0.036, 0.05))], res=0.008)
+        # sobrancelha pesada em V: alta atrás e fora, desce para a frente e para dentro
+        # sobrancelha: lâmina cônica que sai de trás e aponta para a frente e para dentro, por cima do olho
+        bb, bt = P(s_ * 0.08, 0.05, -0.005), P(s_ * 0.03, 0.05, 0.1)
+        br = cone("brow", V3(bb), V3(bt), 0.024 * HS, seg=8)
+        S = Matrix.Translation(V3(bb)) @ Matrix.Scale(0.55, 4, Vector(B(tuple(up)))) @ Matrix.Translation(-V3(bb))
+        br.data.transform(S)
+        solid.append(paint(br, dark))
+        # chifres: o grande sai de trás do crânio e varre para trás e para cima; o da bochecha, para trás e para fora
+        solid.append(tb("horn", mirror([(0.045, 0.05, -0.01), (0.068, 0.1, -0.08), (0.08, 0.125, -0.16), (0.072, 0.13, -0.23)], s_),
+                        [0.024, 0.017, 0.009, 0.002], spike_col))
+        solid.append(tb("horn2", mirror([(0.09, 0.0, -0.02), (0.125, 0.012, -0.075), (0.14, 0.022, -0.125)], s_),
+                        [0.016, 0.008, 0.002], spike_col))
+    # nuca: cobre a ponta do pescoço por baixo do crânio (a mandíbula aberta deixava ver a emenda)
+    nape = ball("nape", V3(P(0, -0.012, -0.03)), tuple(v * HS for v in (0.068, 0.07, 0.06)), rot=(0, 0, yaw), seg=(16, 10))
+    solid.append(paint(smooth(nape), skin(belly_dir=tuple(-up), belly_at=0.3, grooves=False)))
+    # crista do alto do crânio à nuca
+    for y, z, h in ((0.07, 0.04, 0.045), (0.07, -0.01, 0.06), (0.055, -0.06, 0.05)):
+        solid.append(fang("crest", tuple(P(0, y - 0.012, z)), tuple(up * 0.8 - f * 0.9), h * HS, h * HS * 0.45, tuple(f)))
+    # boca: céu e garganta escuros (aparecem com a mandíbula aberta)
+    flat_.append(paint(ball("palate", V3(P(0, -0.01, 0.09)), tuple(v * HS for v in (0.056, 0.1, 0.008)), rot=(0, 0, yaw), seg=(14, 6)),
+                       flat(MOUTH)))
+    flat_.append(paint(ball("throat", V3(P(0, -0.02, 0.0)), tuple(v * HS for v in (0.052, 0.04, 0.035)), rot=(0, 0, yaw), seg=(12, 6)),
+                       flat(MOUTH_D)))
+    for s_ in (-1, 1):
+        # presas de cima: um par longo e curvo na frente, outro menor, e a fileira miúda
+        flat_.append(tb("fang", mirror([(0.026, -0.008, 0.16), (0.03, -0.045, 0.155), (0.022, -0.085, 0.135)], s_), [0.013, 0.008, 0.001],
+                        flat(TOOTH), seg=7))
+        flat_.append(tb("fang2", mirror([(0.05, -0.008, 0.09), (0.053, -0.035, 0.085), (0.046, -0.06, 0.07)], s_), [0.01, 0.006, 0.001],
+                        flat(TOOTH), seg=6))
+        for k in range(4):
+            z = 0.03 + 0.038 * k
+            if abs(z - 0.09) < 0.015:
+                continue
+            x = s_ * (0.058 - 0.024 * k / 3)
+            flat_.append(paint(cone("tooth", V3(P(x, -0.008, z)), V3(P(x, -0.03, z + 0.004)), 0.008 * HS, seg=5), flat(TOOTH)))
+    # olhos acesos em fenda, sob a sobrancelha
+    for s_ in (-1, 1):
+        e = P(s_ * 0.06, 0.034, 0.055)
+        lit.append(paint(ball("eye", V3(e), (0.016 * HS, 0.03 * HS, 0.014 * HS), rot=(0, 0, yaw + s_ * 0.35), seg=(10, 6)), flat(EYE)))
+        flat_.append(paint(ball("pupil", V3(e + side * s_ * 0.012 * HS), (0.003 * HS, 0.004 * HS, 0.013 * HS), rot=(0, 0, yaw), seg=(6, 4)),
+                           flat(PUPIL)))
+    for s_ in (-1, 1):  # narinas
+        flat_.append(paint(ball("nostril", V3(P(s_ * 0.014, 0.026, 0.2)), tuple(v * HS for v in (0.008, 0.008, 0.006)), seg=(6, 4)),
+                           flat(PUPIL)))
+    # mandíbula: osso próprio, dobradiça atrás; fica aberta em repouso
+    jw = meta(key + "_jaw", [el(P(0, -0.03, 0.09), (0.055, 0.022, 0.085)), el(P(0, -0.026, 0.01), (0.07, 0.032, 0.05)),
+                             el(P(0, -0.03, 0.16), (0.026, 0.017, 0.03))], res=0.007)
     smooth(jw, iters=1, target=500)
     paint(jw, skin(belly_dir=tuple(-up), belly_at=0.1, grooves=False))
     jaw_s.append(jw)
-    jaw_f.append(paint(ball("tongue", V3(P(0, -0.006, 0.16)), tuple(v * HS for v in (0.038, 0.15, 0.012)), rot=(0, 0, yaw), seg=(14, 6)),
-                       flat(MOUTH)))
+    jaw_f.append(paint(ball("jawin", V3(P(0, -0.012, 0.08)), tuple(v * HS for v in (0.042, 0.09, 0.008)), rot=(0, 0, yaw), seg=(14, 6)),
+                       flat(MOUTH_D)))
+    # língua bifurcada de serpente
+    jaw_f.append(tb("tongue", [(0, -0.008, 0.01), (0, -0.004, 0.09), (0, 0.0, 0.15)], [0.011, 0.009, 0.006], flat(MOUTH)))
     for s_ in (-1, 1):
-        for k in range(6):
-            z = 0.09 + 0.042 * k
-            x = s_ * (0.046 - 0.012 * k / 5)
-            jaw_f.append(paint(cone("tooth", V3(P(x, -0.012, z)), V3(P(x, 0.018, z + 0.004)), 0.011 * HS, seg=6), flat(TOOTH)))
-    # olhos acesos, com pupila em fenda, sob a arcada
-    for s_ in (-1, 1):
-        e = P(s_ * 0.064, 0.05, 0.095)
-        lit.append(paint(ball("eye", V3(e), tuple(v * HS for v in (0.022, 0.02, 0.018)), seg=(10, 6)), flat(EYE)))
-        flat_.append(paint(ball("pupil", V3(e + side * s_ * 0.018 * HS), tuple(v * HS for v in (0.005, 0.005, 0.015)), seg=(6, 4)), flat(PUPIL)))
-    # narinas na ponta
-    for s_ in (-1, 1):
-        flat_.append(paint(ball("nostril", V3(P(s_ * 0.022, 0.046, 0.37)), tuple(v * HS for v in (0.011, 0.011, 0.008)), seg=(6, 4)),
-                           flat(PUPIL)))
-    # crista: placas triangulares do alto do crânio até a nuca, decrescendo
-    for k, (y, z, h) in enumerate(((0.08, 0.1, 0.05), (0.095, 0.05, 0.07), (0.1, -0.005, 0.085), (0.085, -0.06, 0.075), (0.055, -0.1, 0.06))):
-        d = up * 0.8 - f * 0.9
-        solid.append(fang("crest", tuple(P(0, y - 0.015, z)), tuple(d), h * HS, h * HS * 0.45, tuple(f)))
+        jaw_f.append(tb("fork", [(0, 0.0, 0.15), (s_ * 0.012, 0.004, 0.19), (s_ * 0.022, 0.006, 0.215)], [0.006, 0.004, 0.001], flat(MOUTH)))
+        # presas de baixo, curvas para cima e para dentro
+        jaw_f.append(tb("lfang", mirror([(0.022, -0.016, 0.15), (0.026, 0.015, 0.145), (0.018, 0.045, 0.13)], s_), [0.011, 0.007, 0.001],
+                        flat(TOOTH), seg=7))
+        for k in range(3):
+            z = 0.04 + 0.035 * k
+            x = s_ * (0.05 - 0.015 * k / 2)
+            jaw_f.append(paint(cone("tooth", V3(P(x, -0.014, z)), V3(P(x, 0.008, z + 0.004)), 0.007 * HS, seg=5), flat(TOOTH)))
     return solid, flat_, lit, jaw_s, jaw_f
 
 
@@ -438,4 +476,7 @@ if __name__ == "__main__":
         out = os.path.join(ROOT, ".shots")
         for name, yaw, pitch in [("side", 90, 8), ("tq", 35, 25), ("top", 0, 70), ("front", 0, 12)]:
             shot(os.path.join(out, f"bl-venom_hydra-{name}.png"), (0, 0.1, 0.5), 4.4, yaw, pitch)
+        hc = B(tuple(Vector(PIV3["head"]) + Vector((0, 0, 0.12))))
+        for name, yaw, pitch in [("head-side", 90, 5), ("head-tq", 30, 15), ("head-front", 0, 5)]:
+            shot(os.path.join(out, f"bl-venom_hydra-{name}.png"), hc, 1.0, yaw, pitch)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(ROOT, "art", "venom_hydra.blend"))

@@ -301,9 +301,9 @@ export const BOSSES: Record<string, Spec> = {
     const tb = ["tail", "tail2", "tail3", "tail4", "tail5"] as const;
     tb.forEach((bone, i) => b.joints.push({ bone, parent: i ? tb[i - 1] : "hips", at: tail[i] }));
     const necks: [readonly Bone[], [number, number, number][]][] = [
-      [["neckC", "neckC2", "head", "jaw"], [[0, 0.28, 0.28], [0, 0.695, 0.45], [0, 0.96, 0.5], [0, 0.946, 0.518]]],
-      [["neckL", "neckL2", "headL", "jawL"], [[-0.1, 0.26, 0.3], [-0.26, 0.56, 0.505], [-0.36, 0.74, 0.62], [-0.367, 0.727, 0.636]]],
-      [["neckR", "neckR2", "headR", "jawR"], [[0.1, 0.26, 0.3], [0.26, 0.56, 0.505], [0.36, 0.74, 0.62], [0.367, 0.727, 0.636]]],
+      [["neckC", "neckC2", "head", "jaw"], [[0, 0.28, 0.28], [0, 0.695, 0.45], [0, 0.96, 0.5], [0, 0.944, 0.521]]],
+      [["neckL", "neckL2", "headL", "jawL"], [[-0.1, 0.26, 0.3], [-0.26, 0.56, 0.505], [-0.36, 0.74, 0.62], [-0.368, 0.724, 0.64]]],
+      [["neckR", "neckR2", "headR", "jawR"], [[0.1, 0.26, 0.3], [0.26, 0.56, 0.505], [0.36, 0.74, 0.62], [0.368, 0.724, 0.64]]],
     ];
     for (const [bones, pts] of necks) bones.forEach((bone, i) => b.joints.push({ bone, parent: i ? bones[i - 1] : "hips", at: pts[i] }));
     const parts = modelParts("venom_hydra");
