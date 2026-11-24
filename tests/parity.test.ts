@@ -109,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra", "gorged_ooze", "rimefang_wyrm" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra", "gorged_ooze", "rimefang_wyrm", "storm_tyrant" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1281,7 +1281,8 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect(BOSS_MECHANICS.marked_prey.mult).toBe(BS.MECHANICS.marked_prey.mult);
     expect([cf.warning, cf.damage, px(cf.width), px(cf.length)]).toEqual([A.crossfire.warning, A.crossfire.dmg, A.crossfire.width, 840]);
     // o empréstimo do rei coroado: só os de `CROWN.borrow` que já existem aqui, na ordem de lá
-    const map: Record<string, string> = { nova: "nova", crossfire: "crossfire", fan: "fanvolley", spiral: "spiralvolley", venomfield: "venomfield" };
+    const map: Record<string, string> = { nova: "nova", crossfire: "crossfire", radial: "radial", fan: "fanvolley", spiral: "spiralvolley",
+      stormfield: "stormfield", venomfield: "venomfield" };
     expect(CROWN_BORROW.map((k) => map[k])).toEqual(BS.CROWN.borrow.filter((k: string) => Object.values(map).includes(k)));
   });
   it("Dune Leviathan igual ao de bosses.lua: distância, parede de areia, varrida, erupção e Burrow (M10-02)", () => {
@@ -1376,6 +1377,25 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect([B.interval, B.radius, B.time, B.dps, B.chill, B.chillTime]).toEqual([M.interval, M.radius, M.time, M.dps, M.chill, M.chillTime]);
     expect(BOSS_MECHANIC.rimefang_wyrm).toEqual({ id: build.mechanic, name: build.mechanicName });
     const m = build.mults, o = BOSS_MULTS.rimefang_wyrm;
+    expect([o.hp, o.damage, o.speed, o.projectileSpeed]).toEqual([m.hp, m.damage, m.speed, m.projectileSpeed]);
+  });
+  it("Storm Tyrant igual ao de bosses.lua: skillshot, Storm Field, Radial e a mecânica Storm Field (M10-07)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.storm_tyrant, d = BOSSES.storm_tyrant;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    expect(d.patterns.map((p) => p.kind)).toEqual(build.attacks);
+    expect(px(d.preferred)).toBe(build.preferred);
+    expect(d.relicBuild).toBe(build.relicBuild);
+    const [ss, sf, rd] = d.patterns;
+    expect([ss.warning, ss.damage, px(ss.width)]).toEqual([A.skillshot.warning, A.skillshot.dmg, A.skillshot.width]);
+    // boss_ai.lua `stormfield`: os círculos extras a 80 px do herói
+    expect([sf.warning, sf.dps, px(sf.radius), sf.count, sf.time, px(sf.around)])
+      .toEqual([A.stormfield.warning, A.stormfield.dps, A.stormfield.radius, A.stormfield.count, A.stormfield.time, 80]);
+    expect([rd.warning, rd.damage, rd.count, rd.speedMult]).toEqual([A.radial.warning, A.radial.dmg, A.radial.count, A.radial.speedMult]);
+    const M = BS.MECHANICS.storm_field, B = BOSS_MECHANICS.storm_field;
+    expect([B.interval, B.radius, B.time, B.dps, B.warning]).toEqual([M.interval, M.radius, M.time, M.dps, M.warning]);
+    expect(BOSS_MECHANIC.storm_tyrant).toEqual({ id: build.mechanic, name: build.mechanicName });
+    const m = build.mults, o = BOSS_MULTS.storm_tyrant;
     expect([o.hp, o.damage, o.speed, o.projectileSpeed]).toEqual([m.hp, m.damage, m.speed, m.projectileSpeed]);
   });
   it("cópia do Mirage Djinn (mirage_illusion) igual à de enemies.lua: atiradora, sem recompensa, meio transparente (M10-03)", () => {

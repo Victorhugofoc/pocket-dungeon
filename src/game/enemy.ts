@@ -29,6 +29,7 @@ import { makeShieldBubble, type ShieldBubble } from "./affixes";
 /** Cor das poças de veneno da Venom Hydra (Venom Field e Venom Bloom). */
 const VENOM_POOL_COLOR = 0x7ad83a;
 const FROST_POOL_COLOR = 0xbfeeff;
+const STORM_POOL_COLOR = 0x8fb8ff;
 
 /** cor do aviso do golpe, a mesma da marca no chão */
 const WARN_COLOR = 0xff5a4a;
@@ -221,6 +222,8 @@ export class Enemy {
   wakeCd: number = BOSS_MECHANICS.glacial_wake.first;
   diveT = -1;
   private diveDur = 1;
+  /** M10-07 Storm Field: s até o próximo raio no herói */
+  stormCd: number = BOSS_MECHANICS.storm_field.first;
   /** M10-05 Mitosis: última fase em que a gosma já se dividiu */
   splitPhase = 0;
   /** M10-05 Slime Wave (boss_ai.lua `updateShockwaves`): anéis que crescem e acertam o herói uma vez cada */
@@ -718,6 +721,7 @@ export class Enemy {
     this.slimeRings.length = 0;
     this.wakeCd = BOSS_MECHANICS.glacial_wake.first;
     this.diveT = -1;
+    this.stormCd = BOSS_MECHANICS.storm_field.first;
     this.dropWards(game);
     this.roarT = -1;
     this.dots.length = 0;
@@ -1152,6 +1156,18 @@ export class Enemy {
         this.wakeCd = M.interval;
         this.frostPatch(game, this.x, this.z, M.radius * TUNING.enemy.pxToUnit);
       }
+    } else if (this.mechanic === "storm_field") {
+      // boss_ai.lua `storm_field`: o relógio corre sempre; o raio cai onde o herói está quando o aviso começa
+      this.stormCd -= dt;
+      if (this.stormCd <= 0) {
+        const M = BOSS_MECHANICS.storm_field;
+        this.stormCd = M.interval;
+        const p = game.player, r = M.radius * TUNING.enemy.pxToUnit, x = p.x, z = p.z;
+        game.fx.telegraphCircle(x, z, r, M.warning, () => {
+          if (this.dead) return;
+          this.stormStrike(game, x, z, r, M.time, M.dps);
+        });
+      }
     } else if (this.mechanic === "blood_rush") {
       const r = bloodRush(this.hp / this.maxHp);
       if (r.steps > this.rushSteps) {
@@ -1344,6 +1360,19 @@ export class Enemy {
   private frostPatch(game: Game, x: number, z: number, r: number): void {
     const M = BOSS_MECHANICS.glacial_wake;
     game.affixes.addPool(x, z, r, M.time, this.dmg * M.dps * HAZARD_TICK, `${this.name} (frost)`, FROST_POOL_COLOR, { mult: M.chill, time: M.chillTime });
+  }
+
+  /** boss_ai.lua `zone(..., "storm", ...)` e o evento `storm_strike`: raio do céu e zona elétrica de `time` s, `dps` × dano/s */
+  private stormStrike(game: Game, x: number, z: number, r: number, time: number, dps: number): void {
+    const fx = game.fx;
+    fx.lib.lightning(x + (Math.random() - 0.5) * 2, 9, z + (Math.random() - 0.5) * 2, x, 0.1, z,
+      { color: STORM_POOL_COLOR, core: 0xffffff, width: 0.3, branches: 3, rate: 0.05, dur: 0.28 });
+    fx.impact(x, 0.4, z, STORM_POOL_COLOR, 1.4);
+    fx.flashLight(x, 2.5, z, STORM_POOL_COLOR, 80, 0.25);
+    fx.shockwave(x, z, r, STORM_POOL_COLOR, 0.3);
+    fx.addShake(0.12);
+    game.audio.play("zap");
+    game.affixes.addPool(x, z, r, time, this.dmg * dps * HAZARD_TICK, `${this.name} (storm)`, STORM_POOL_COLOR);
   }
 
   /** boss_ai.lua `updateShockwaves`: o anel cresce até `max`; o herói na faixa (± grossura/2 + raio dele) leva o golpe uma vez */
@@ -1615,6 +1644,42 @@ export class Enemy {
             game.affixes.addPool(c.x, c.z, r, pt.time ?? 5, this.dmg * (pt.dps ?? 0.7) * HAZARD_TICK, `${this.name} (venom)`, VENOM_POOL_COLOR);
           });
         }
+        break;
+      }
+      case "stormfield": {
+        // boss_ai.lua `stormfield`: um círculo no herói e os outros a 80 px dele em ângulo sorteado; cada um vira raio e zona
+        const r = pt.radius ?? 3.125, n = pt.count ?? 3, around = pt.around ?? 5;
+        this.casting = pt.warning;
+        this.attackAnim = 0;
+        for (let k = 1; k <= n; k++) {
+          const c = { x: p.x, z: p.z, radius: r };
+          if (k > 1) {
+            const a = Math.random() * Math.PI * 2;
+            c.x += Math.cos(a) * around;
+            c.z += Math.sin(a) * around;
+            game.keepInArena(c);
+          }
+          fx.telegraphCircle(c.x, c.z, r, pt.warning, () => {
+            if (!ok()) return;
+            this.stormStrike(game, c.x, c.z, r, pt.time ?? 4, pt.dps ?? 0.55);
+          });
+        }
+        break;
+      }
+      case "radial": {
+        // boss_ai.lua `radial`: brilho em volta dele e uma roda de tiros com ângulo inicial sorteado
+        const n = pt.count ?? 18;
+        this.casting = pt.warning;
+        fx.telegraphCircle(this.x, this.z, this.radius + 1, pt.warning, () => {
+          if (!ok()) return;
+          this.attackAnim = 0;
+          const off = Math.random() * Math.PI * 2;
+          const speed = BOSS_PROJECTILE_SPEED * TUNING.enemy.pxToUnit * (pt.speedMult ?? 0.8) * this.projK;
+          for (let i = 0; i < n; i++) {
+            game.spawnEnemyProjectile(this.x, this.z, off + (i / n) * Math.PI * 2, speed, this.dmg * pt.damage, b.projectileColor, 0.32, this, this.bloom(game));
+          }
+          fx.shockwave(this.x, this.z, 4, b.glow);
+        });
         break;
       }
       case "mark": {
