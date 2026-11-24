@@ -8,7 +8,9 @@ export type Bone =
   | "hips" | "torso" | "head" | "armL" | "armR" | "foreL" | "foreR" | "thighL" | "thighR" | "shinL" | "shinR"
   | "cape" | "tail" | "wingL" | "wingR" | "skirt" | "weapon"
   // M10-01 (forma `scorpion`): cauda em cadeia e dedo móvel das pinças
-  | "tail2" | "tail3" | "tail4" | "tail5" | "clawL" | "clawR";
+  | "tail2" | "tail3" | "tail4" | "tail5" | "clawL" | "clawR"
+  // M10-04 (forma `hydra`): três pescoços de dois gomos e as mandíbulas; a cabeça do meio é `head`
+  | "neckL" | "neckL2" | "headL" | "neckC" | "neckC2" | "neckR" | "neckR2" | "headR" | "jaw" | "jawL" | "jawR";
 /** `throwL` = arremesso com o braço esquerdo (escudo) */
 /** `spear`: escudo e lança (M9-01): os braços não balançam ao andar e só o direito estoca, ao longo da haste */
 export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "throwL" | "bite" | "spear";
@@ -17,7 +19,7 @@ export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "
  * cabeça em (0, headY, arm), patas da frente (`armL`/`armR`) em (±shoulderX, shoulderY, arm), de trás (`thighL`/`thighR`)
  * em (±hipX, 0, -thigh), tudo relativo ao quadril em hipY
  */
-export type Form = "biped" | "robed" | "bat" | "slime" | "spider" | "toad" | "wisp" | "scorpion" | "worm" | "djinn";
+export type Form = "biped" | "robed" | "bat" | "slime" | "spider" | "toad" | "wisp" | "scorpion" | "worm" | "djinn" | "hydra";
 
 // ---------------------------------------------------------------- primitivas (já pintadas por vértice)
 export const dk = (c: number, f = 0.68) => new THREE.Color(c).multiplyScalar(f).getHex();

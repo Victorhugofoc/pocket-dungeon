@@ -185,6 +185,8 @@ interface Projectile {
   hex?: { duration: number; damageMult: number };
   /** enemy_attacks.lua `pr.curve` (D-208): o tiro inimigo curva nesta taxa, em rad/s */
   curve?: number;
+  /** enemy_attacks.lua `pr.onEnd`: chamado onde o tiro inimigo acaba (acerto, parede ou alcance; Venom Bloom) */
+  onEnd?: (x: number, z: number) => void;
   /** BOOMERANG (Seraph): o escudo vai até o alcance e volta, acertando todos nos dois sentidos; `back` = voltando */
   boomerang?: { back: boolean };
 }
@@ -933,11 +935,14 @@ export class Game {
     pr.fx = undefined;
   }
 
-  /** `opt.curve`: o tiro gira a velocidade nessa taxa (rad/s; orbes do Mirage Djinn); `opt.reach`: alcance em m (padrão 26) */
+  /**
+   * `opt.curve`: o tiro gira a velocidade nessa taxa (rad/s; orbes do Mirage Djinn); `opt.reach`: alcance em m (padrão 26);
+   * `opt.onEnd`: chamado onde o tiro acaba, pelo motivo que for (poça do Venom Bloom)
+   */
   spawnEnemyProjectile(x: number, z: number, angle: number, speed: number, dmg: number, color: number, r: number, owner?: Enemy,
-    opt: { curve?: number; reach?: number } = {}): void {
+    opt: { curve?: number; reach?: number; onEnd?: (x: number, z: number) => void } = {}): void {
     this.addProjectile({ x, z, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed, r, dmg, life: (opt.reach ?? 26) / speed, friendly: false,
-      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile", owner, hex: owner?.def?.hex, curve: opt.curve });
+      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile", owner, hex: owner?.def?.hex, curve: opt.curve, onEnd: opt.onEnd });
   }
 
   /**
@@ -1155,6 +1160,7 @@ export class Game {
         this.fx.impact(pr.x, 1.15, pr.z, pr.color, 0.7);
         this.freeProjectile(pr);
         this.projectiles.splice(i, 1);
+        pr.onEnd?.(pr.x, pr.z);
       } else {
         pr.mesh.position.set(pr.x, 1.15, pr.z);
         pr.fx?.push(pr.x, 1.15, pr.z);

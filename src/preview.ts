@@ -211,6 +211,9 @@ const CRITIC_POSES: [string, { anim: string; yaw: number; view: string; freeze?:
 function faceY(a: Actor, h: number): number {
   a.rig.root.updateMatrixWorld(true);
   if (a.rig.char?.form === "slime") return h * 0.55; // rosto da gosma fica no meio da altura, não no topo
+  // hidra: a crista passa do topo; mira a cabeça do meio
+  const hd = a.rig.char?.form === "hydra" ? a.rig.char.bones.head : null;
+  if (hd) return hd.getWorldPosition(new THREE.Vector3()).y;
   const top = new THREE.Box3().setFromObject(a.rig.root).max.y;
   return Math.min(h * 0.88, top - h * 0.12);
 }
@@ -223,7 +226,7 @@ async function criticShots(prefix: string): Promise<string[]> {
     const name = `${prefix}-${pose}`;
     await shot(name, {
       anim: p.anim, yaw: p.yaw, view: p.view, freeze: p.freeze ?? null,
-      dist: p.face ? h * (lead.rig.char?.form === "slime" ? 2.4 : 1.1) : h * 3.2, lookY: p.face ? faceY(lead, h) : undefined,
+      dist: p.face ? h * (lead.rig.char?.form === "slime" ? 2.4 : lead.rig.char?.form === "hydra" ? 1.7 : 1.1) : h * 3.2, lookY: p.face ? faceY(lead, h) : undefined,
     });
     names.push(name);
   }

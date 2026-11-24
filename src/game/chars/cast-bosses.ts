@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { addModel, modelParts } from "./baked";
 import { displace, paint, prep } from "../flora";
-import { type Builder, type G, type Spec, at, bell, belt, body, bx, cap, cape, cone, cyl, dk, grp, hairLong, headBase, headMask, lathe, limb, muscleArm, muscleLeg, hang, restArm, robeMesh, sculpt, sph, ss, staff, stud, torsoMesh, torus, BONE, GOLD, IRON, LEATHER } from "./kit";
+import { type Bone, type Builder, type G, type Spec, at, bell, belt, body, bx, cap, cape, cone, cyl, dk, grp, hairLong, headBase, headMask, lathe, limb, muscleArm, muscleLeg, hang, restArm, robeMesh, sculpt, sph, ss, staff, stud, torsoMesh, torus, BONE, GOLD, IRON, LEATHER } from "./kit";
 
 export const BOSSES: Record<string, Spec> = {
   // ------------------------------------------------ chefes
@@ -291,6 +291,35 @@ export const BOSSES: Record<string, Spec> = {
     const bones = ["tail", "tail2", "tail3", "tail4"] as const;
     bones.forEach((bone, i) => b.joints.push({ bone, parent: i ? bones[i - 1] : "hips", at: tail[i] }));
     addModel(b, "mirage_djinn");
+  },
+  // M10-04: hidra de três cabeças modelada no Blender (tools/blender/venom_hydra.py, brief em docs/briefs/venom_hydra.md). Forma
+  // `hydra`: corpo no hips, cauda e os três pescoços em cadeia (pontos = PIV3 do script); 4 patas com `legfemur`/`legtibia`.
+  venom_hydra: (b) => {
+    b.form = "hydra"; b.scale = 2.4; b.style = "bite"; b.glowColor = 0xff4a14; b.rough = 0.75;
+    b.dims = { ...b.dims, hipY: 0.22 };
+    const tail: [number, number, number][] = [[0, 0.19, -0.5], [0.05, 0.13, -0.78], [0.2, 0.1, -1.0], [0.44, 0.07, -1.1], [0.66, 0.05, -1.0]];
+    const tb = ["tail", "tail2", "tail3", "tail4", "tail5"] as const;
+    tb.forEach((bone, i) => b.joints.push({ bone, parent: i ? tb[i - 1] : "hips", at: tail[i] }));
+    const necks: [readonly Bone[], [number, number, number][]][] = [
+      [["neckC", "neckC2", "head", "jaw"], [[0, 0.28, 0.28], [0, 0.695, 0.45], [0, 0.96, 0.5], [0, 0.944, 0.521]]],
+      [["neckL", "neckL2", "headL", "jawL"], [[-0.1, 0.26, 0.3], [-0.26, 0.56, 0.505], [-0.36, 0.74, 0.62], [-0.368, 0.724, 0.64]]],
+      [["neckR", "neckR2", "headR", "jawR"], [[0.1, 0.26, 0.3], [0.26, 0.56, 0.505], [0.36, 0.74, 0.62], [0.368, 0.724, 0.64]]],
+    ];
+    for (const [bones, pts] of necks) bones.forEach((bone, i) => b.joints.push({ bone, parent: i ? bones[i - 1] : "hips", at: pts[i] }));
+    const parts = modelParts("venom_hydra");
+    for (const [key, g] of parts) {
+      if (key.startsWith("leg")) continue;
+      const [bone, layer] = key.split("@");
+      if (layer === "lit") b.lit(bone, g);
+      else if (layer === "flat") b.flat(bone, g);
+      else b.add(bone, g);
+    }
+    // patas curtas abertas para o lado, como as de crocodilo; o joelho fica acima do corpo
+    for (const [az, hx, hz] of [[0.24, 0.48, 0.38], [-0.3, 0.5, -0.32]] as const) {
+      for (const s of [-1, 1]) {
+        b.ikLegs.push({ attach: [s * 0.19, -0.07, az], home: [s * hx, hz], l1: 0.21, l2: 0.2, femur: [parts.get("legfemur")!], tibia: [parts.get("legtibia")!] });
+      }
+    }
   },
   // Redesenho a partir do sprite (docs/ref/ember_matriarch.png): torso esguio de mulher sobre corpo de aranha, casca preta rachada de lava.
   // Medidas do sprite (altura 120 px): abdômen 60 px de diâmetro atrás do corpo, cefalotórax 25 px, cintura a 35% e ombros a 67% da altura,

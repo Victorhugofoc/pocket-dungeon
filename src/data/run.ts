@@ -221,6 +221,7 @@ export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: num
   deathstalker: { hp: 0.92, damage: 1.02, speed: 0.95, projectileSpeed: 0.88 },
   dune_leviathan: { hp: 1.10, damage: 1.10, speed: 1.00, projectileSpeed: 0.95 },
   mirage_djinn: { hp: 1.06, damage: 1.12, speed: 1.10, projectileSpeed: 1.05 },
+  venom_hydra: { hp: 1.05, damage: 1.05, speed: 1.06, projectileSpeed: 0.96 },
 };
 
 /** bosses.lua `BASE.projectileSpeed`: velocidade do tiro de chefe em px/s (os ataques novos multiplicam por ela) */
@@ -244,7 +245,7 @@ export const BOSS_PHASES = [
   { above: -1, speed: 1.12, attackCooldown: 0.82, contactCooldown: 0.78, skillshotCooldown: 0.82, enraged: true },
 ] as const;
 
-export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage";
+export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage" | "venom_bloom";
 
 /** bosses.lua `builds[id].mechanic` e `mechanicName`, dos 4 chefes daqui. */
 export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }> = {
@@ -255,6 +256,7 @@ export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }>
   deathstalker: { id: "marked_prey", name: "Marked Prey" },
   dune_leviathan: { id: "burrow", name: "Burrow" },
   mirage_djinn: { id: "mirage", name: "Mirage" },
+  venom_hydra: { id: "venom_bloom", name: "Venom Bloom" },
 };
 
 /**
@@ -278,4 +280,6 @@ export const BOSS_MECHANICS = {
   /** boss_ai_ext.lua `mirage` e `spawnHelpers`: a cada fase, `perPhase` cópias a `ring` px do chefe com `illusionHp` da vida
    * dele e `damage` do dano dele; as da fase anterior somem */
   mirage: { perPhase: [2, 2, 2], illusionHp: 0.07, ring: 110, damage: 0.35 },
+  /** boss_ai.lua `bolt` (D-096): todo tiro do chefe vira poça de veneno onde acaba (`poolRadius` px, `poolTime` s, `poolDps` × dano) */
+  venom_bloom: { poolTime: 2.5, poolDps: 0.45, poolRadius: 30 },
 } as const;
