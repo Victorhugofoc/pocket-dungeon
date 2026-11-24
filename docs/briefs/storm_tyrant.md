@@ -36,3 +36,4 @@ O usuário recusou a primeira versão: as gemas de ouro na gola liam como **olho
 - Nuvem 1,6× mais larga e mais baixa (o manto aparece); corpo na escala 2,8.
 - **Raio em volta dele no jogo** (`Enemy.crackle`, só visual): a cada 0,15–0,5 s um arco na coroa, um arco correndo por cima da nuvem ou um raio do céu caindo nela com clarão.
 Oscilou entre rodadas e ficou no meio: brilho do metal (porcelana clara ↔ cinza fosco). Médios restantes do crítico: ombreiras ainda lisas de perto, couraça pouco visível atrás da barba.
+- Polimento pedido pelo usuário (2026-11-24): a borda de cima da capa e o rolo da gola cortavam as conchas das ombreiras e serrilhavam com a capa balançando. A borda de cima agora fica por dentro do núcleo escuro das ombreiras e atrás da couraça (a costura nunca aparece), o rolo vai só entre as ombreiras e a gola alta nasce do rolo, sem o vão que mostrava a gola de ferro; os dois lados da gola no mesmo azul.

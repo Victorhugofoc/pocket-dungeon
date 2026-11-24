@@ -485,7 +485,8 @@ def hips():
 
 # ------------------------------------------------------------------ capa (osso cape): pesada, presa sob as ombreiras, varre o lado esquerdo
 def cape():
-    zs = RIG.P("armL")[2] + 0.1
+    # a borda de cima fica por dentro do núcleo das ombreiras e atrás da couraça: a costura nunca aparece, nem com a capa balançando
+    zs = RIG.P("armL")[2] - 0.02
     bm = bmesh.new()
     R, C = 18, 30
     grid = []
@@ -495,9 +496,9 @@ def cape():
         for j in range(C + 1):
             v = j / C * 2 - 1
             left = max(0.0, -v)
-            w = 0.6 + 0.24 * u ** 1.2                                          # cai na vertical, abre pouco embaixo
+            w = 0.52 + 0.32 * u ** 1.2                                         # cai na vertical, abre pouco embaixo
             x = v * w - 0.1 * u ** 1.3 * left
-            y = 0.27 + 0.26 * u + 0.1 * v * v * u - 0.06 * u ** 1.5 * left ** 2   # bordas para trás, sem aba rígida
+            y = 0.25 - 0.13 * v * v * (1 - u) ** 2 + 0.28 * u + 0.1 * v * v * u - 0.06 * u ** 1.5 * left ** 2   # bordas para trás
             zb = 0.4 - 0.1 * left - 0.04 * math.sin(v * 2.0 + 0.6)               # barra assimétrica, encosta na nuvem
             z = zs - (zs - zb) * u ** 0.95
             # 4 pregas fundas, rasas no ombro e fundas embaixo, empurradas para fora do eixo do corpo
@@ -531,18 +532,20 @@ def cape():
         return mix(c, NAVY_D, 0.35 * ss(zs - 0.1, zs, co.z))   # sombra sob as ombreiras
     paint(c, tint)
     # gola: a capa vira por cima dos ombros num rolo de pano preso sob as ombreiras
-    col = tube("capecollar", [(-0.56, 0.12, zs - 0.02), (-0.3, 0.26, zs + 0.02), (0.0, 0.29, zs + 0.03), (0.3, 0.26, zs + 0.02), (0.56, 0.12, zs - 0.02)],
-               [0.035, 0.045, 0.05, 0.045, 0.035], seg=10)
+    col = tube("capecollar", [(-0.3, 0.24, zs + 0.03), (-0.15, 0.28, zs + 0.045), (0.0, 0.29, zs + 0.05), (0.15, 0.28, zs + 0.045), (0.3, 0.24, zs + 0.03)],
+               [0.03, 0.045, 0.05, 0.045, 0.03], seg=10)
     smooth(col)
     paint(col, lambda co, n: mix(NAVY_D, NAVY_L, 0.3 + 0.5 * ss(0.0, 0.9, n.z)))
     # gola alta atrás da nuca: pano erguido que emoldura a cabeça
     gr = []
     for i in range(3):
         h = i / 2
-        gr.append([(0.3 * math.sin(a) * (1 + 0.25 * h), 0.24 + 0.06 * h - 0.12 * math.cos(a) * (1 - 0.3 * h), zs + 0.02 + 0.22 * h * (0.6 + 0.4 * math.cos(a)))
-                   for a in [-1.4 + 2.8 * j / 16 for j in range(17)]])
+        # nasce no rolo da capa (sem vão entre os dois) e sobe por trás da gola de ferro
+        gr.append([(0.28 * math.sin(a) * (1 + 0.25 * h), 0.285 - 0.03 * h - 0.03 * math.cos(a) * (1 - 0.3 * h), zs + 0.03 + 0.32 * h * (0.6 + 0.4 * math.cos(a)))
+                   for a in [-1.3 + 2.6 * j / 16 for j in range(17)]])
     hc = loft("highcollar", gr, closed=False, thick=0.03, flat=False)
-    paint(hc, lambda co, n: mix(NAVY_D, NAVY, 0.4 + 0.6 * ss(-0.3, 0.8, n.z + n.y * 0.3)))
+    # os dois lados do pano no mesmo azul: o de dentro não vira um buraco escuro atrás da nuca
+    paint(hc, lambda co, n: mix(NAVY_D, NAVY_L, 0.35 + 0.35 * ss(zs, zs + 0.36, co.z)))
     return {"cape": [c, col, hc]}
 
 
