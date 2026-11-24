@@ -2,8 +2,8 @@
 // hp/damage/xp são os valores canônicos; distâncias já convertidas (px / 16).
 import type { LeapSpec } from "../core/leap";
 
-export type EnemyBehavior = "melee" | "ranged" | "charger" | "summoner" | "bombardier" | "shield" | "leaper";
-export type BodyKind = "humanoid" | "brute" | "bug" | "robed" | "slime" | "toad";
+export type EnemyBehavior = "melee" | "ranged" | "charger" | "summoner" | "bombardier" | "shield" | "leaper" | "static";
+export type BodyKind = "humanoid" | "brute" | "bug" | "robed" | "slime" | "toad" | "wisp";
 
 export interface EnemyDef {
   id: string;
@@ -57,6 +57,8 @@ export interface EnemyDef {
    * (o mínimo de 70 px e a altura `hop` de 26 px): salto marcado até o lugar do herói; distâncias em m (px × TUNING.enemy.pxToUnit)
    */
   leap?: LeapSpec;
+  /** enemies.lua `helper`: ajudante de chefe, nunca na composição da onda e sem recompensa (nem orbe de cura) */
+  helper?: boolean;
   body: BodyKind;
   color: number;
   accent: number;
@@ -115,13 +117,24 @@ export const ENEMIES: Record<string, EnemyDef> = {
     body: "toad", color: 0xc8962a, accent: 0xeee0b0, scale: 1.0 },
 };
 
+/**
+ * enemies.lua `soul_ward` (1.6 D-208): o Selo de Alma do Hollow King (Soul Tether). Parado e sem dano; a vida vem do chefe
+ * (`BOSS_MECHANICS.soul_tether.wardHp`). Corpo no Blender (tools/blender/soul_ward.py). Fora de `ENEMIES` para não entrar no
+ * sorteio nem nas listas de inimigos; `enemyDef` acha os dois.
+ */
+export const HELPERS: Record<string, EnemyDef> = {
+  soul_ward: { id: "soul_ward", name: "Soul Ward", hp: 60, speed: 0, damage: 0, behavior: "static", radius: 15 / 16, xp: 0, gold: 0,
+    category: "special", cooldown: 99, helper: true, body: "wisp", color: 0x69bfa6, accent: 0x73ffcc, scale: 1 },
+};
+
 /** enemy_attacks.lua `EA.hazard`: tique padrão das poças no chão, em s */
 export const HAZARD_TICK = 0.5;
 
 /** tuning.lua `SHIELD_CYCLE` (D-178): o escudo do Shieldbearer fica erguido `up` s, pisca `warn` s e cai `down` s */
 export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
-export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral";
+export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire"
+  | "sandvolley" | "tailsweep" | "erupt";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -134,6 +147,16 @@ export interface BossPattern {
   speed?: number;
   spreadDeg?: number;
   minion?: string;
+  /** `mark`: a retícula segue o herói por `warning` s e fica travada `lock` s antes de bater */
+  lock?: number;
+  /** `mark`: quanto tempo o herói fica marcado e o multiplicador do dano do chefe nele */
+  markTime?: number;
+  markMult?: number;
+  /** `sandvolley`: buracos na parede e distância entre tiros (m); `tailsweep`: número de linhas; `tailsweep`/`erupt`: s entre um e outro */
+  gap?: number;
+  spacing?: number;
+  lines?: number;
+  stagger?: number;
 }
 
 export interface BossDef {
@@ -157,6 +180,8 @@ export interface BossDef {
   xp: number;
   /** bosses.lua `relicBuild`: as relíquias de chefe por build (§69) que este chefe dá; sem = só as universais */
   relicBuild?: string;
+  /** bosses.lua `preferred`: distância que o chefe tenta manter do herói, em m (sem = vai atrás, como lá o 0) */
+  preferred?: number;
 }
 
 /** Ordem dos 13 chefes em `bosses.lua` (`B.order`); o saco usa os que existem em `BOSSES` (M20-09, D6). */
@@ -168,9 +193,9 @@ export const BOSS_ORDER = [
 /**
  * `bosses.lua` `CROWN.borrow`: ataques que o rei coroado da onda 20 pode pegar de outro chefe. Lá são `nova`,
  * `crossfire`, `radial`, `fanvolley`, `spiralvolley`, `stormfield`, `venomfield` e `quake`; aqui só existem os
- * equivalentes de `nova`, `fanvolley` e `spiralvolley` (os outros chegam com os chefes do `M10`).
+ * equivalentes de `nova`, `crossfire` (M10-01), `fanvolley` e `spiralvolley` (os outros chegam com os chefes do `M10`).
  */
-export const CROWN_BORROW = ["nova", "fan", "spiral"] as const;
+export const CROWN_BORROW = ["nova", "crossfire", "fan", "spiral"] as const;
 
 /** Título do rei coroado (en.lua: "THE CROWNED KING", D-640). */
 export const CROWN_TITLE = "The Crowned King";
@@ -191,7 +216,7 @@ export const BOSSES: Record<string, BossDef> = {
     id: "gravekeeper", name: "Gravekeeper", title: "The Summoner", hp: 2100, damage: 12, speed: 2.6, radius: 1.4,
     attackRange: 3.0, attackCooldown: 1.7, patternCooldown: 4.4,
     patterns: [
-      { kind: "summon", warning: 0.8, damage: 0, count: 4, minion: "goblin" },
+      // M10-10 (D-199): a invocação saiu da rotação; o exército vem uma vez por fase (Army of the Damned)
       { kind: "meteors", warning: 1.0, damage: 1.2, radius: 3.0, count: 5 },
       { kind: "nova", warning: 0.6, damage: 0.8, count: 14, speed: 10 },
     ],
@@ -208,6 +233,29 @@ export const BOSSES: Record<string, BossDef> = {
       { kind: "slam", warning: 0.9, damage: 1.4, radius: 6 },
     ],
     body: "brute", color: 0x4a2a1e, accent: 0xff8a2a, glow: 0xff6a1a, scale: 2.7, projectileColor: 0xff8a2a, xp: 70,
+  },
+  // M10-01: o caçador. Fica a 230 px do herói; skillshot desde a fase 1, Mark na 2 e Crossfire na 3 (bosses.lua, px ÷ 16).
+  deathstalker: {
+    id: "deathstalker", name: "Deathstalker", title: "The Hunter", hp: 1700, damage: 12, speed: 2.9, radius: 1.5,
+    attackRange: 3.0, attackCooldown: 1.5, patternCooldown: 4.0, preferred: 230 / 16,
+    patterns: [
+      { kind: "skillshot", warning: 0.45, damage: 1.1, width: 10 / 16, length: 520 / 16, radius: 6 / 16 },
+      { kind: "mark", warning: 1.0, lock: 0.55, damage: 1.25, radius: 42 / 16, markTime: 4, markMult: 1.25 },
+      { kind: "crossfire", warning: 0.8, damage: 1.2, width: 26 / 16, length: 840 / 16 },
+    ],
+    body: "bug", color: 0x2a2d33, accent: 0xd9a23a, glow: 0x8cff7a, scale: 2.4, projectileColor: 0xb6ff7a, xp: 55,
+    relicBuild: "hunter",
+  },
+  // M10-02: a serpente da areia. Fica a 150 px; parede de areia, varrida de cauda na 2 e erupções na 3 (px ÷ 16).
+  dune_leviathan: {
+    id: "dune_leviathan", name: "Dune Leviathan", title: "The Burrower", hp: 2200, damage: 13, speed: 2.8, radius: 1.6,
+    attackRange: 3.2, attackCooldown: 1.6, patternCooldown: 4.0, preferred: 150 / 16,
+    patterns: [
+      { kind: "sandvolley", warning: 0.8, damage: 0.8, count: 15, gap: 3, spacing: 30 / 16 },
+      { kind: "tailsweep", warning: 0.7, damage: 1.2, width: 30 / 16, length: 300 / 16, lines: 3, spreadDeg: 70, stagger: 0.2 },
+      { kind: "erupt", warning: 0.8, damage: 1.2, radius: 52 / 16, count: 3, stagger: 0.45 },
+    ],
+    body: "bug", color: 0x8a6a3a, accent: 0xf0b0a8, glow: 0xffc86a, scale: 2.4, projectileColor: 0xe8c47a, xp: 60,
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,

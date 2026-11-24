@@ -19,8 +19,9 @@ import {
   LEVELUP_REROLL, RUN_MAP, RUN_START, RUN_TUNING, TOTAL_WAVES, UPGRADE_TIER_WEIGHTS, UPGRADE_TIERS, WAVE_STAGES, WAVES,
   XP_GROWTH,
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
+  BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PHASES, BOSS_PROJECTILE_SPEED, BOSS_SKILLSHOT,
 } from "../src/data/run";
-import { BOSS_ORDER, BOSSES, ENEMIES, SHIELD_CYCLE } from "../src/data/enemies";
+import { BOSS_ORDER, BOSSES, CROWN_BORROW, ENEMIES, HELPERS, SHIELD_CYCLE } from "../src/data/enemies";
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
 import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
@@ -108,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "gravekeeper", "ember_matriarch", "hollow_king" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1236,5 +1237,66 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect(BOSS.premiumChance).toBe(BS.PREMIUM_CHANCE);
     for (const id of Object.keys(BOSSES)) expect(BOSSES[id].relicBuild, id).toBe(BS.builds[id]?.relicBuild ?? undefined);
     for (const id of RELIC_IDS) expect(RELICS[id].bossBuild, id).toBe(RL[id].bossBuild ?? undefined);
+  });
+  it("Selo de Alma (soul_ward) igual ao de enemies.lua: parado, sem dano, sem recompensa, ajudante (M10-10)", () => {
+    const o: Lua = dr!["src.data.enemies"].soul_ward;
+    const d = HELPERS.soul_ward;
+    expect({ hp: d.hp, speed: d.speed, damage: d.damage, behavior: d.behavior, xp: d.xp, gold: d.gold, category: d.category,
+      cooldown: d.cooldown, helper: d.helper, radiusPx: d.radius * 16 })
+      .toEqual({ hp: o.hp, speed: o.speed, damage: o.damage, behavior: o.behavior, xp: o.xp, gold: o.gold, category: o.category,
+        cooldown: o.cooldown, helper: o.helper, radiusPx: o.radius });
+  });
+
+  it("fases e mecânicas dos chefes iguais às de bosses.lua (M10-10)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    expect(BOSS_PHASES.map((x) => ({ ...x }))).toEqual(BS.PHASES);
+    for (const id of Object.keys(BOSSES)) expect(BOSS_MECHANIC[id]?.id, id).toBe(BS.builds[id].mechanic);
+    for (const id of Object.keys(BOSSES)) expect(BOSS_MECHANIC[id]?.name, id).toBe(BS.builds[id].mechanicName);
+    const M = BS.MECHANICS, A = BS.ATTACKS;
+    expect(BOSS_MECHANICS.blood_rush).toEqual(M.blood_rush);
+    expect([...BOSS_MECHANICS.army_of_the_damned.perPhase]).toEqual(M.army_of_the_damned.perPhase);
+    expect(BOSS_MECHANICS.army_of_the_damned.minion).toBe(A.summon.minion);
+    expect(BOSS_MECHANICS.army_of_the_damned.warning).toBe(A.summon.warning);
+    expect(BOSS_MECHANICS.meteor_siege.fireTime).toBe(A.meteorstorm.fireTime);
+    expect(BOSS_MECHANICS.meteor_siege.fireDps).toBe(A.meteorstorm.fireDps);
+    expect([...BOSS_MECHANICS.soul_tether.perPhase]).toEqual(M.soul_tether.perPhase);
+    expect(BOSS_MECHANICS.soul_tether.damageTakenMult).toBe(M.soul_tether.damageTakenMult);
+    expect(BOSS_MECHANICS.soul_tether.wardHp).toBe(M.soul_tether.wardHp);
+  });
+  it("Deathstalker igual ao de bosses.lua: distância, skillshot, Mark, Crossfire e Marked Prey (M10-01)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.deathstalker, d = BOSSES.deathstalker;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    expect(d.patterns.map((p) => p.kind)).toEqual(["skillshot", "mark", "crossfire"]);
+    expect(build.attacks).toEqual(["skillshot", "mark", "crossfire"]);
+    expect(px(d.preferred)).toBe(build.preferred);
+    expect(d.relicBuild).toBe(build.relicBuild);
+    expect(BOSS_SKILLSHOT.cooldown).toBe(BS.BASE.skillshotCooldown);
+    expect(BOSS_SKILLSHOT.speed).toBe(BS.BASE.skillshotSpeed);
+    const [ss, mk, cf] = d.patterns;
+    expect([ss.warning, ss.damage, px(ss.width)]).toEqual([A.skillshot.warning, A.skillshot.dmg, A.skillshot.width]);
+    expect([mk.warning, mk.lock, mk.damage, px(mk.radius), mk.markTime, mk.markMult])
+      .toEqual([A.mark.warning, A.mark.lock, A.mark.dmg, A.mark.radius, A.mark.markTime, A.mark.markMult]);
+    expect(mk.markMult).toBe(BS.MECHANICS.marked_prey.mult);
+    expect(BOSS_MECHANICS.marked_prey.mult).toBe(BS.MECHANICS.marked_prey.mult);
+    expect([cf.warning, cf.damage, px(cf.width), px(cf.length)]).toEqual([A.crossfire.warning, A.crossfire.dmg, A.crossfire.width, 840]);
+    // o empréstimo do rei coroado: só os de `CROWN.borrow` que já existem aqui, na ordem de lá
+    const map: Record<string, string> = { nova: "nova", crossfire: "crossfire", fan: "fanvolley", spiral: "spiralvolley" };
+    expect(CROWN_BORROW.map((k) => map[k])).toEqual(BS.CROWN.borrow.filter((k: string) => Object.values(map).includes(k)));
+  });
+  it("Dune Leviathan igual ao de bosses.lua: distância, parede de areia, varrida, erupção e Burrow (M10-02)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.dune_leviathan, d = BOSSES.dune_leviathan;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    expect(d.patterns.map((p) => p.kind)).toEqual(build.attacks);
+    expect(px(d.preferred)).toBe(build.preferred);
+    expect(BOSS_PROJECTILE_SPEED).toBe(BS.BASE.projectileSpeed);
+    const [sv, ts, er] = d.patterns;
+    expect([sv.warning, sv.damage, sv.count, sv.gap, px(sv.spacing)]).toEqual([A.sandvolley.warning, A.sandvolley.dmg, A.sandvolley.count, A.sandvolley.gap, A.sandvolley.spacing]);
+    expect([ts.warning, ts.damage, px(ts.width), px(ts.length), ts.lines, ts.spreadDeg, ts.stagger])
+      .toEqual([A.tailsweep.warning, A.tailsweep.dmg, A.tailsweep.width, A.tailsweep.length, A.tailsweep.lines, A.tailsweep.spreadDeg, A.tailsweep.stagger]);
+    expect([er.warning, er.damage, px(er.radius), er.count, er.stagger]).toEqual([A.erupt.warning, A.erupt.dmg, A.erupt.radius, A.erupt.count, A.erupt.stagger]);
+    const M = BS.MECHANICS.burrow, B = BOSS_MECHANICS.burrow;
+    expect([B.interval, B.under, B.radius, B.dmg]).toEqual([M.interval, M.under, M.radius, M.dmg]);
   });
 });

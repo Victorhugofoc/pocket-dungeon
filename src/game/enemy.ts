@@ -5,7 +5,11 @@ import { bossStats, enemyStats } from "../core/wave";
 import { pacedFoe } from "../core/pace";
 import { circleInArc } from "../core/melee";
 import { reactionFor, type ReactionId, type ReactState } from "../core/reactions";
-import { BURN, CHILD_SCALE, FIRST_TIMER, MINION_SCALE, RUN_TUNING, SUMMON_CAP } from "../data/run";
+import { BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PROJECTILE_SPEED, BOSS_SKILLSHOT, BURN, CHILD_SCALE, FIRST_TIMER, MINION_SCALE, RUN_TUNING, SUMMON_CAP, type BossMechanicId } from "../data/run";
+import { type BossPhase, armyCount, bloodRush, bossRotation, markMult, phaseSteps, soulWardCount, tetherMult } from "../core/bossphase";
+import { distToSegment } from "../core/worldgen";
+import { TetherBeam } from "./tether";
+import { HAZARD_TICK, HELPERS } from "../data/enemies";
 import { SPELL_CAST } from "../data/spells";
 import { TUNING } from "../data/tuning";
 import { CROWN_TITLE, ENEMIES, SHIELD_CYCLE, type BossDef, type BossPattern, type EnemyDef } from "../data/enemies";
@@ -62,7 +66,6 @@ export class Enemy {
   straggler = false;
   maxHp: number;
   hp: number;
-  dmg: number;
   speed: number;
   radius: number;
   /** invocados e filhos da gosma não rendem ouro nem XP (`killReward`) */
@@ -192,6 +195,36 @@ export class Enemy {
   patternCd = 3;
   lastPattern = -1;
   enraged = false;
+  /** M10-10 (boss.lua `updatePhase`): fase pela vida e o que ela já deu, aplicado uma vez ao entrar */
+  phase: BossPhase = 1;
+  phaseSpeed = 1;
+  phasePatternK = 1;
+  phaseMeleeK = 1;
+  /** M10-01: skillshot com recarga própria (bosses.lua `skillshotCooldown`, ×fase) */
+  skillshotCd: number = BOSS_SKILLSHOT.cooldown;
+  phaseSkillshotK = 1;
+  /** Marked Prey: ×1,25 do dano enquanto o herói estiver marcado por este chefe (atualizado a cada quadro) */
+  markK = 1;
+  /** M10-02 Burrow: recarga, tempo desde o mergulho (ou -1) e tempo desde a emersão (ou -1) */
+  burrowCd: number = BOSS_MECHANICS.burrow.first;
+  burrowT = -1;
+  emergeT = -1;
+  /** ataques em fila (boss_ai_ext.lua: o `erupt` põe cada erupção na fila com atraso) */
+  private queued: { at: number; fn: () => void }[] = [];
+  /** retícula do Mark seguindo o herói: `left` s até travar */
+  private reticle: { tg: Telegraph; left: number } | null = null;
+  /** mecânica própria do chefe (bosses.lua `mechanic`) */
+  mechanic: BossMechanicId | null = null;
+  /** Blood Rush: degraus de 10% de vida perdida (passo e dano sobem a cada um) */
+  rushSteps = 0;
+  rushSpeed = 1;
+  rushDamage = 1;
+  /** Army of the Damned: última fase em que o chefe já ergueu o exército */
+  armyPhase = 0;
+  /** Soul Tether: última fase em que ergueu selos, os selos e as linhas de luz até ele */
+  wardPhase = 0;
+  wards: Enemy[] = [];
+  private tethers: TetherBeam[] = [];
   spiral: { left: number; timer: number; angle: number; p: BossPattern } | null = null;
   /** rugido em curso (0..1) ou -1; o chefe não ataca enquanto ruge */
   roarT = -1;
@@ -251,11 +284,14 @@ export class Enemy {
     const derived = opts.child ? CHILD_SCALE : this.summoned ? MINION_SCALE : null;
     this.maxHp = this.hp = Math.round(st.hp * (derived ? derived.hp : 1));
     this.projK = st.projectileSpeed;
-    this.dmg = st.damage * (derived ? derived.damage : 1);
+    this.baseDmg = st.damage * (derived ? derived.damage : 1);
     this.speed = def.speed * st.speed * (derived ? derived.speed : 1);
     this.radius = def.radius * (this.champion ? 1.2 : 1);
-    this.noReward = this.summoned || opts.child === true;
-    if (isBoss) this.windupDur = TUNING.enemy.telegraph.bossWindup;
+    this.noReward = this.summoned || opts.child === true || (!isBoss && (def as EnemyDef).helper === true);
+    if (isBoss) {
+      this.windupDur = TUNING.enemy.telegraph.bossWindup;
+      this.mechanic = BOSS_MECHANIC[def.id]?.id ?? null;
+    }
     else {
       const d = def as EnemyDef;
       if (d.summon) this.summonCd = d.summon.cooldown * FIRST_TIMER.summon;
@@ -322,6 +358,8 @@ export class Enemy {
 
   /** tira da cena tudo o que é deste inimigo */
   dispose(): void {
+    for (const t of this.tethers) t.dispose();
+    this.tethers.length = 0;
     this.bubble?.dispose();
     this.bubble = null;
     this.guardBand?.dispose();
@@ -348,6 +386,12 @@ export class Enemy {
     this.rig.root.rotation.y = this.facing;
     this.rig.root.visible = visible;
     game.scene.add(this.rig.root);
+  }
+
+  /** dano base pela onda; o do chefe sobe com o Blood Rush (boss_ai.lua `hit`: `e.damage × rushDamage`) */
+  baseDmg = 0;
+  get dmg(): number {
+    return this.baseDmg * this.rushDamage * this.markK;
   }
 
   /** dano do golpe e da investida: no berserker furioso, multiplicado (ai.lua `damageOf`) */
@@ -399,6 +443,18 @@ export class Enemy {
     const now = game.time;
     const p = game.player;
     const rig = this.rig;
+    if (this.tethers.length) this.updateTethers(now);
+    if (this.boss) {
+      this.markK = markMult(p.mark, now, this as Enemy);
+      if (this.reticle) this.followReticle(game, dt);
+      if (this.burrowT >= 0) this.burrowT += dt;
+      if (this.emergeT >= 0 && (this.emergeT += dt) > TUNING.boss.burrowAnim) this.emergeT = -1;
+      if (this.queued.length && !this.dead) {
+        const due = this.queued.filter((q) => q.at <= now);
+        this.queued = this.queued.filter((q) => q.at > now);
+        for (const q of due) q.fn();
+      }
+    }
 
     if (this.dead) {
       if (this.windupT >= 0) this.endSwing();
@@ -480,7 +536,7 @@ export class Enemy {
       game.fx.text(this.x, this.rig.height + 0.3, this.z, "Berserk!", "crit");
     }
     const slow = now < this.slowUntil ? 1 - this.slowPower : 1;
-    const speed = this.speed * slow * haste * (this.enraged ? 1.15 : 1) * (this.berserk && bz ? bz.speed : 1) * (this.straggler ? PACE.straggler.speed : 1);
+    const speed = this.speed * slow * haste * this.phaseSpeed * this.rushSpeed * (this.berserk && bz ? bz.speed : 1) * (this.straggler ? PACE.straggler.speed : 1);
     const dxp = p.x - this.x;
     const dzp = p.z - this.z;
     const dist = Math.hypot(dxp, dzp);
@@ -526,7 +582,7 @@ export class Enemy {
     // M9-05: salto em curso (preparo parado, voo em linha reta, pouso que acerta quem estiver no círculo)
     if (this.leap) this.stepLeap(game, dt, stunned);
 
-    if (this.airborne) this.kx = this.kz = 0;
+    if (this.airborne || this.def?.behavior === "static") this.kx = this.kz = 0;
     this.x += this.kx * dt;
     this.z += this.kz * dt;
     const kdec = Math.exp(-dt * KNOCK_DECAY);
@@ -561,7 +617,7 @@ export class Enemy {
     animateRig(rig, {
       t: now, move: stunned ? 0 : this.moveAmt, attack: this.attackAnim, air: lp?.air,
       windup: lp ? lp.crouch : this.windupT >= 0 ? this.windupT / this.windupDur : this.aimT >= 0 ? this.aimT / TUNING.enemy.telegraph.shotWindup : this.casting > 0 ? 0.6 + Math.sin(now * 20) * 0.1 : 0, dead: 0,
-      rage: this.rage, roar: this.roarT,
+      rage: this.rage, roar: this.roarT, burrow: this.boss ? this.burrowK : 0,
     });
     this.aura?.update(this.x, this.z, this.radius, now + this.rig.phase, 1);
     this.bubble?.update(this.x, this.z, this.radius, this.rig.height, this.shieldMax > 0 ? this.shield / this.shieldMax : 0, now);
@@ -619,6 +675,18 @@ export class Enemy {
     this.spiral = null;
     this.hp = this.maxHp;
     this.enraged = false;
+    this.phase = 1;
+    this.phaseSpeed = this.phasePatternK = this.phaseMeleeK = this.phaseSkillshotK = 1;
+    this.skillshotCd = BOSS_SKILLSHOT.cooldown;
+    this.burrowCd = BOSS_MECHANICS.burrow.first;
+    this.burrowT = this.emergeT = -1;
+    this.queued.length = 0;
+    if (this.reticle) this.reticle.tg.cancelled = true;
+    this.reticle = null;
+    this.rushSteps = 0;
+    this.rushSpeed = this.rushDamage = 1;
+    this.armyPhase = 0;
+    this.dropWards(game);
     this.roarT = -1;
     this.dots.length = 0;
     if (this.isBoss) game.onBossReset(this);
@@ -711,7 +779,7 @@ export class Enemy {
         const ward = this.boss ? null : game.spells.wardFor(this);
         if (ward) game.spells.hitWard(ward);
         else if (this.swingHits(p.x, p.z, range)) game.hurtPlayer(this.hitDmg, this.name, this);
-        this.cd = (this.boss ? this.boss.attackCooldown : this.def!.cooldown) * this.cdMult;
+        this.cd = (this.boss ? this.boss.attackCooldown * this.phaseMeleeK : this.def!.cooldown) * this.cdMult;
       }
       return;
     }
@@ -919,14 +987,8 @@ export class Enemy {
   private updateBoss(game: Game, dt: number, dist: number, speed: number): void {
     const b = this.boss!;
     const p = game.player;
-    if (!this.enraged && this.hp < this.maxHp * TUNING.boss.enrageAt) {
-      this.enraged = true;
-      game.fx.shockwave(this.x, this.z, 8, 0xff2a1a, 0.6);
-      game.fx.text(this.x, this.rig.height + 1, this.z, "ENRAGED!", "crit");
-      game.audio.play("boss");
-      this.startRoar(TUNING.boss.enrageRoarTime);
-      return;
-    }
+    if (this.updatePhase(game)) return;
+    this.updateMechanic(game, dt);
     if (this.spiral) {
       const s = this.spiral;
       s.timer -= dt;
@@ -946,18 +1008,235 @@ export class Enemy {
       return;
     }
     if (this.charging) return;
+    // boss_ai.lua `rotation` e `hasSkillshot`: só os padrões que a fase já abriu (o emprestado do rei coroado vem no fim
+    // e ele tem todos); o skillshot corre com recarga própria, fora da rotação
+    const { rotation, skillshot } = bossRotation(this.patterns.map((pt) => pt.kind), this.phase, this.crowned);
+    if (skillshot && this.windupT < 0) {
+      this.skillshotCd -= dt;
+      if (this.skillshotCd <= 0) {
+        this.skillshotCd = BOSS_SKILLSHOT.cooldown * this.phaseSkillshotK * this.cdMult;
+        this.startPattern(game, this.patterns.find((pt) => pt.kind === "skillshot")!, dist);
+        return;
+      }
+    }
     this.patternCd -= dt;
     if (this.patternCd <= 0 && this.windupT < 0) {
-      this.patternCd = b.patternCooldown * (this.enraged ? TUNING.boss.enrageCooldownMult : 1) * this.cdMult;
-      const list = this.patterns;
-      let idx = Math.floor(Math.random() * list.length);
-      if (idx === this.lastPattern) idx = (idx + 1) % list.length;
-      this.lastPattern = idx;
-      this.startPattern(game, list[idx], dist);
+      this.patternCd = b.patternCooldown * this.phasePatternK * this.cdMult;
+      if (rotation.length) {
+        let k = Math.floor(Math.random() * rotation.length);
+        if (rotation[k] === this.lastPattern) k = (k + 1) % rotation.length;
+        this.lastPattern = rotation[k];
+        this.startPattern(game, this.patterns[rotation[k]], dist);
+        return;
+      }
+    }
+    // bosses.lua `preferred`: o caçador mantém a distância; só vai ao golpe se o herói encostar
+    if (b.preferred && this.windupT < 0 && dist > b.attackRange + TUNING.boss.closeIn) this.keepDistance(game, dt, dist, speed, b.preferred);
+    else this.meleeStep(game, dt, dist, speed, b.attackRange);
+    void p;
+  }
+
+  /**
+   * boss_ai.lua `BA.update` (movimento com `preferred`): longe da faixa chega, perto recua, na faixa anda de lado e às
+   * vezes troca o lado. Parede da arena no recuo: anda de lado.
+   */
+  private keepDistance(game: Game, dt: number, dist: number, speed: number, pref: number): void {
+    const p = game.player;
+    const px = TUNING.enemy.pxToUnit;
+    this.face(p.x, p.z);
+    const nx = (p.x - this.x) / dist, nz = (p.z - this.z) / dist;
+    const strafe = () => {
+      this.moveToward(game, this.x - nz * this.strafe, this.z + nx * this.strafe, speed * 0.6, dt);
+      if (Math.random() < dt * 0.3) this.strafe *= -1;
+    };
+    if (dist > pref + 30 * px) this.moveToward(game, p.x, p.z, speed, dt);
+    else if (dist < pref - 50 * px) {
+      this.moveToward(game, this.x - nx, this.z - nz, speed, dt);
+      if (game.keepInArena(this)) strafe();
+    } else strafe();
+    game.keepInArena(this);
+  }
+
+  /** boss_ai.lua `mark` (`followPlayer`): a retícula vai com o herói até travar */
+  private followReticle(game: Game, dt: number): void {
+    const r = this.reticle!;
+    if (r.tg.cancelled || this.dead) {
+      r.tg.cancelled = true;
+      this.reticle = null;
       return;
     }
-    this.meleeStep(game, dt, dist, speed, b.attackRange);
-    void p;
+    r.left -= dt;
+    if (r.left <= 0) return;
+    const p = game.player;
+    r.tg.x = p.x;
+    r.tg.z = p.z;
+    r.tg.outline.position.x = r.tg.fill.position.x = p.x;
+    r.tg.outline.position.z = r.tg.fill.position.z = p.z;
+  }
+
+  /**
+   * boss.lua `updatePhase`: cada fase que a vida atravessou entra uma vez e em ordem, com os multiplicadores dela. A
+   * fase 2 dá um aviso curto; a 3 é a fúria, com rugido. Devolve true se o chefe parou para rugir.
+   */
+  private updatePhase(game: Game): boolean {
+    let roared = false;
+    for (const st of phaseSteps(this.phase, this.hp / this.maxHp)) {
+      this.phase = st.phase;
+      this.phaseSpeed *= st.speed;
+      this.phasePatternK *= st.patternCooldown;
+      this.phaseMeleeK *= st.meleeCooldown;
+      this.phaseSkillshotK *= st.skillshotCooldown;
+      if (st.enraged) {
+        this.enraged = true;
+        game.fx.shockwave(this.x, this.z, 8, 0xff2a1a, 0.6);
+        game.fx.text(this.x, this.rig.height + 1, this.z, "ENRAGED!", "crit");
+        game.audio.play("boss");
+        this.startRoar(TUNING.boss.enrageRoarTime);
+        roared = true;
+      } else {
+        game.fx.shockwave(this.x, this.z, 5, this.boss!.glow, 0.45);
+        game.fx.text(this.x, this.rig.height + 1, this.z, `PHASE ${st.phase}`, "crit");
+        game.audio.play("warn");
+      }
+    }
+    return roared;
+  }
+
+  /** boss_ai.lua `updateMechanic` e o exército do Gravekeeper (`BA.update`, D-199). */
+  private updateMechanic(game: Game, dt: number): void {
+    if (this.mechanic === "burrow") {
+      // boss_ai_ext.lua `burrow`: o relógio corre sempre; mergulha quando não está atacando
+      this.burrowCd -= dt;
+      if (this.burrowCd <= 0 && this.burrowT < 0 && this.casting <= 0 && !this.charging && !this.spiral && this.windupT < 0) {
+        this.burrowCd = BOSS_MECHANICS.burrow.interval;
+        this.startBurrow(game);
+      }
+    } else if (this.mechanic === "blood_rush") {
+      const r = bloodRush(this.hp / this.maxHp);
+      if (r.steps > this.rushSteps) {
+        game.fx.shockwave(this.x, this.z, 3.2, 0xff2a2a, 0.35);
+        game.fx.text(this.x, this.rig.height + 0.6, this.z, `Blood Rush ${r.steps}`, "crit");
+      }
+      this.rushSteps = r.steps;
+      this.rushSpeed = r.speed;
+      this.rushDamage = r.damage;
+    } else if (this.mechanic === "army_of_the_damned" && this.armyPhase < this.phase) {
+      this.armyPhase = this.phase;
+      this.raiseArmy(game, armyCount(this.phase));
+    } else if (this.mechanic === "soul_tether" && this.wardPhase < this.phase) {
+      this.wardPhase = this.phase;
+      this.raiseWards(game, soulWardCount(this.phase));
+    }
+  }
+
+  /** 0 = fora da areia, 1 = embaixo (animação do mergulho e da emersão) */
+  get burrowK(): number {
+    const A = TUNING.boss.burrowAnim;
+    if (this.burrowT >= 0) return Math.min(1, this.burrowT / A);
+    if (this.emergeT >= 0) return 1 - this.emergeT / A;
+    return 0;
+  }
+
+  /**
+   * boss_ai_ext.lua `burrow`: some na areia (sem golpe nem contato) e, depois de `under` s, emerge onde o herói estava
+   * quando mergulhou (dentro da arena), num círculo que acerta quem estiver nele.
+   */
+  private startBurrow(game: Game): void {
+    const M = BOSS_MECHANICS.burrow;
+    const px = TUNING.enemy.pxToUnit;
+    const p = game.player;
+    const r = M.radius * px;
+    let tx = p.x, tz = p.z;
+    const dx = tx - this.homeX, dz = tz - this.homeZ, d = Math.hypot(dx, dz), lim = game.layout.bossRadius - this.radius;
+    if (d > lim) { tx = this.homeX + (dx / d) * lim; tz = this.homeZ + (dz / d) * lim; }
+    this.casting = M.under + 0.2;
+    this.burrowT = 0;
+    this.endSwing();
+    game.fx.burst(this.x, 0.3, this.z, this.boss!.glow, 18, 5, 0.18, 0.6);
+    game.audio.play("warn");
+    game.fx.telegraphCircle(tx, tz, r, M.under, () => {
+      this.burrowT = -1;
+      if (this.dead || !this.aggro) return;
+      this.x = tx;
+      this.z = tz;
+      this.emergeT = 0;
+      game.explode(tx, tz, r, this.dmg * M.dmg, this.boss!.glow, this.name);
+      game.fx.burst(tx, 0.4, tz, this.boss!.projectileColor, 24, 7, 0.2, 0.7);
+      game.fx.addShake(0.4);
+    });
+  }
+
+  /** Soul Tether: dano que o chefe leva (×0,35 com algum selo de pé). */
+  get tetherK(): number {
+    return this.mechanic === "soul_tether" ? tetherMult(this.wards.filter((w) => !w.dead).length) : 1;
+  }
+
+  /**
+   * boss_ai_ext.lua `spawnHelpers` (soul_tether): n selos em roda a 150 px do chefe, com um giro sorteado de até 0,6 rad,
+   * dentro da arena; vida = 6% da vida máxima do chefe; sem recompensa. Os selos das fases anteriores continuam de pé.
+   */
+  private raiseWards(game: Game, n: number): void {
+    const M = BOSS_MECHANICS.soul_tether;
+    const px = TUNING.enemy.pxToUnit;
+    const lim = game.layout.bossRadius - 20 * px;
+    for (let k = 1; k <= n; k++) {
+      const a = (k / n) * Math.PI * 2 + Math.random() * 0.6;
+      let x = this.x + Math.cos(a) * 150 * px;
+      let z = this.z + Math.sin(a) * 150 * px;
+      const dx = x - this.homeX, dz = z - this.homeZ, d = Math.hypot(dx, dz);
+      if (d > lim) { x = this.homeX + (dx / d) * lim; z = this.homeZ + (dz / d) * lim; }
+      const w = game.spawnEnemy("soul_ward", this.level, x, z, { aggro: true });
+      w.maxHp = w.hp = Math.round(this.maxHp * M.wardHp);
+      w.lootBonus = false;
+      this.wards.push(w);
+      this.tethers.push(new TetherBeam(game.scene, this.boss!.glow));
+      game.fx.shockwave(x, z, 2, this.boss!.glow, 0.4);
+    }
+    game.audio.play("warn");
+    game.fx.text(this.x, this.rig.height + 1, this.z, "Soul Tether", "crit");
+  }
+
+  /** linhas de luz dos selos vivos até o chefe; a do selo que caiu some */
+  private updateTethers(now: number): void {
+    for (let i = this.wards.length - 1; i >= 0; i--) {
+      const w = this.wards[i];
+      if (w.dead || this.dead) {
+        this.tethers[i].dispose();
+        this.tethers.splice(i, 1);
+        this.wards.splice(i, 1);
+        continue;
+      }
+      this.tethers[i].update(w.x, 0.85 + Math.sin(now * 2.1) * 0.06, w.z, this.x, this.rig.height * 0.55, this.z, now);
+    }
+  }
+
+  /** o chefe voltou ao começo (perdeu o herói): os selos somem com ele */
+  private dropWards(game: Game): void {
+    for (const w of this.wards) if (!w.dead) { w.dead = true; w.deadT = 1; }
+    this.updateTethers(0);
+    this.wardPhase = 0;
+    void game;
+  }
+
+  /** boss_ai.lua `phaseSummon`: aviso em volta do chefe e n lacaios em roda (sem recompensa, fora do teto de invocados). */
+  private raiseArmy(game: Game, n: number): void {
+    const M = BOSS_MECHANICS.army_of_the_damned;
+    const px = TUNING.enemy.pxToUnit;
+    game.audio.play("warn");
+    game.fx.telegraphCircle(this.x, this.z, this.radius + 24 * px, M.warning, () => {
+      if (this.dead || !this.aggro) return;
+      for (let k = 1; k <= n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        let x = this.x + Math.cos(a) * 52 * px;
+        let z = this.z + Math.sin(a) * 52 * px;
+        // wd:clampToArena: dentro da arena do chefe
+        const dx = x - this.homeX, dz = z - this.homeZ, d = Math.hypot(dx, dz), lim = game.layout.bossRadius - 1;
+        if (d > lim) { x = this.homeX + (dx / d) * lim; z = this.homeZ + (dz / d) * lim; }
+        game.spawnEnemy(M.minion, this.level, x, z, { summoned: true, aggro: true });
+      }
+      game.fx.shockwave(this.x, this.z, 5, this.boss!.glow);
+      game.fx.text(this.x, this.rig.height + 1, this.z, "Army of the Damned", "crit");
+    });
   }
 
   private startPattern(game: Game, pt: BossPattern, dist: number): void {
@@ -1037,7 +1316,114 @@ export class Enemy {
           fx.telegraphCircle(x, z, r, pt.warning + i * 0.18, () => {
             if (!ok()) return;
             game.explode(x, z, r, this.dmg * pt.damage, b.glow, this.name);
+            // Meteor Siege (boss_ai.lua `meteorstorm` `after`): a cratera queima por um tempo
+            if (this.mechanic === "meteor_siege") {
+              const M = BOSS_MECHANICS.meteor_siege;
+              game.affixes.addPool(x, z, r * M.radiusMult, M.fireTime, this.dmg * M.fireDps * HAZARD_TICK, `${this.name} (fire)`, 0xff6a1a);
+            }
           });
+        }
+        break;
+      }
+      case "skillshot": {
+        // boss_ai.lua `skillshot`: linha fina até onde o herói está, e um tiro rápido nela
+        const a = Math.atan2(p.x - this.x, p.z - this.z);
+        fx.telegraphRect(this.x, this.z, a, pt.length ?? 32, pt.width ?? 0.6, pt.warning, () => {
+          if (!ok()) return;
+          this.attackAnim = 0;
+          const speed = BOSS_SKILLSHOT.speed * TUNING.enemy.pxToUnit * this.projK;
+          game.spawnEnemyProjectile(this.x, this.z, a, speed, this.dmg * pt.damage, b.projectileColor, pt.radius ?? 0.375, this);
+        });
+        break;
+      }
+      case "mark": {
+        // boss_ai.lua `mark`: retícula no herói que o segue e trava; quem estiver dentro leva o golpe e fica marcado
+        this.casting = 0.4;
+        const r = pt.radius ?? 2.6;
+        const tg = fx.telegraphCircle(p.x, p.z, r, pt.warning + (pt.lock ?? 0.55), () => {
+          this.reticle = null;
+          if (!ok()) return;
+          fx.shockwave(tg.x, tg.z, r, b.glow, 0.35);
+          const hp = game.player;
+          if (Math.hypot(hp.x - tg.x, hp.z - tg.z) > r + TUNING.enemy.telegraph.playerRadius) return;
+          if (game.hurtPlayer(this.dmg * pt.damage, this.name, this)) game.markPlayer(this, pt.markTime ?? 4, pt.markMult ?? 1.25);
+        });
+        this.reticle = { tg, left: pt.warning };
+        break;
+      }
+      case "crossfire": {
+        // boss_ai.lua `crossfire`: duas linhas em cruz passando pelo herói, num ângulo sorteado
+        const base = Math.random() * Math.PI;
+        const L = pt.length ?? 52, w = pt.width ?? 1.6;
+        const cx = p.x, cz = p.z;
+        for (const k of [0, 1]) {
+          const a = base + (k * Math.PI) / 2;
+          const s0 = { x: cx - (Math.sin(a) * L) / 2, z: cz - (Math.cos(a) * L) / 2 };
+          const s1 = { x: cx + (Math.sin(a) * L) / 2, z: cz + (Math.cos(a) * L) / 2 };
+          fx.telegraphRect(s0.x, s0.z, a, L, w, pt.warning, () => {
+            if (!ok()) return;
+            for (let i = 0; i <= 24; i++) {
+              const f = i / 24;
+              fx.spark(s0.x + (s1.x - s0.x) * f, 0.4, s0.z + (s1.z - s0.z) * f, b.glow, 0.2, 0.4, 1.5);
+            }
+            const hp = game.player;
+            if (distToSegment(hp.x, hp.z, s0, s1) <= w / 2 + TUNING.enemy.telegraph.playerRadius) game.hurtPlayer(this.dmg * pt.damage, this.name, this);
+          });
+        }
+        break;
+      }
+      case "sandvolley": {
+        // boss_ai_ext.lua `sandvolley`: parede de areia perpendicular à mira, com um vão sorteado para passar
+        const a = Math.atan2(p.x - this.x, p.z - this.z);
+        const px = TUNING.enemy.pxToUnit;
+        fx.telegraphCircle(this.x, this.z, this.radius + 14 * px, pt.warning, () => {
+          if (!ok()) return;
+          const n = pt.count ?? 15, gap = pt.gap ?? 3, sp = pt.spacing ?? 1.9;
+          const gapAt = 2 + Math.floor(Math.random() * (n - gap - 2));
+          const fwx = Math.sin(a), fwz = Math.cos(a), sx = Math.cos(a), sz = -Math.sin(a);
+          const speed = BOSS_PROJECTILE_SPEED * px * 0.8 * this.projK;
+          this.attackAnim = 0;
+          for (let k = 0; k < n; k++) {
+            if (k >= gapAt && k < gapAt + gap) continue;
+            const off = (k - (n - 1) / 2) * sp;
+            game.spawnEnemyProjectile(this.x + sx * off - fwx * 30 * px, this.z + sz * off - fwz * 30 * px, a, speed,
+              this.dmg * pt.damage, b.projectileColor, 7 * px, this);
+          }
+        });
+        break;
+      }
+      case "tailsweep": {
+        // boss_ai_ext.lua `tailsweep`: linhas em leque até o herói, uma depois da outra
+        const a0 = Math.atan2(p.x - this.x, p.z - this.z);
+        const n = pt.lines ?? 3, st = pt.stagger ?? 0.2, L = pt.length ?? 18, w = pt.width ?? 1.9;
+        const spread = ((pt.spreadDeg ?? 70) * Math.PI) / 180;
+        const x0 = this.x, z0 = this.z;
+        this.casting = pt.warning + st * n;
+        for (let k = 0; k < n; k++) {
+          const a = a0 - spread / 2 + (k / Math.max(1, n - 1)) * spread;
+          const s1 = { x: x0 + Math.sin(a) * L, z: z0 + Math.cos(a) * L };
+          fx.telegraphRect(x0, z0, a, L, w, pt.warning + k * st, () => {
+            if (!ok()) return;
+            this.attackAnim = 0;
+            for (let i = 0; i <= 16; i++) fx.spark(x0 + (s1.x - x0) * (i / 16), 0.4, z0 + (s1.z - z0) * (i / 16), b.projectileColor, 0.22, 0.4, 1.2);
+            const hp = game.player;
+            if (distToSegment(hp.x, hp.z, { x: x0, z: z0 }, s1) <= w / 2 + TUNING.enemy.telegraph.playerRadius) game.hurtPlayer(this.dmg * pt.damage, this.name, this);
+          });
+        }
+        break;
+      }
+      case "erupt": {
+        // boss_ai_ext.lua `erupt`: cada erupção entra na fila e trava onde o herói está nesse momento
+        this.casting = 0.4;
+        const r = pt.radius ?? 3.2;
+        for (let k = 0; k < (pt.count ?? 3); k++) {
+          this.queued.push({ at: game.time + k * (pt.stagger ?? 0.45), fn: () => {
+            const x = game.player.x, z = game.player.z;
+            fx.telegraphCircle(x, z, r, pt.warning, () => {
+              if (!ok()) return;
+              game.explode(x, z, r, this.dmg * pt.damage, b.projectileColor, this.name);
+            });
+          } });
         }
         break;
       }
@@ -1052,7 +1438,7 @@ export class Enemy {
 }
 
 export function enemyDef(id: string): EnemyDef {
-  const d = ENEMIES[id];
+  const d = ENEMIES[id] ?? HELPERS[id];
   if (!d) throw new Error("unknown enemy: " + id);
   return d;
 }

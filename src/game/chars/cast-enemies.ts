@@ -298,6 +298,11 @@ export const ENEMIES: Record<string, Spec> = {
     b.form = "slime"; b.style = "bite"; b.rough = 0.2; b.glowColor = 0xfff2f8;
     addModel(b, "splitter");
   },
+  soul_ward: (b) => {
+    // Selo de Alma do Hollow King (M10-10), modelado no Blender (tools/blender/soul_ward.py, brief em docs/briefs/soul_ward.md)
+    b.form = "wisp"; b.style = "bite"; b.rough = 0.65; b.scale = 1.25; b.glowColor = 0x73ffcc;
+    addModel(b, "soul_ward");
+  },
   shieldbearer: (b) => {
     // cavaleiro de escudo e lança modelado no Blender (tools/blender/shieldbearer.py, brief em docs/briefs/shieldbearer.md); escudo e
     // lança também vêm de lá, presos aos antebraços. Pose do sprite: antebraço do escudo atravessado à frente do peito, lança baixa

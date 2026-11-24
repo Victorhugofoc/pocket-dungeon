@@ -218,4 +218,59 @@ export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: num
   gravekeeper: { hp: 1.10, damage: 1.00, speed: 0.88, projectileSpeed: 0.90 },
   ember_matriarch: { hp: 1.04, damage: 1.08, speed: 0.94, projectileSpeed: 0.90 },
   hollow_king: { hp: 1.12, damage: 1.14, speed: 0.92, projectileSpeed: 1.00 },
+  deathstalker: { hp: 0.92, damage: 1.02, speed: 0.95, projectileSpeed: 0.88 },
+  dune_leviathan: { hp: 1.10, damage: 1.10, speed: 1.00, projectileSpeed: 0.95 },
 };
+
+/** bosses.lua `BASE.projectileSpeed`: velocidade do tiro de chefe em px/s (os ataques novos multiplicam por ela) */
+export const BOSS_PROJECTILE_SPEED = 210;
+
+/**
+ * bosses.lua `BASE`: o skillshot (linha fina avisada e tiro rápido) tem recarga própria, fora da rotação, e só corre
+ * quando a fase já abriu o ataque `skillshot` da lista do chefe (`BA.hasSkillshot`). Velocidade em px/s.
+ */
+export const BOSS_SKILLSHOT = { cooldown: 2.15, speed: 300 } as const;
+
+/**
+ * bosses.lua `PHASES` (§63): fase pela fração de vida (acima de 0,60 = 1, acima de 0,30 = 2, senão 3, enfurecido).
+ * Os multiplicadores valem uma vez, ao entrar na fase (`Boss.updatePhase`), e se acumulam. Aqui o chefe tem uma
+ * rotação só de padrões (lá `attackCooldown`) e o golpe corpo a corpo (lá o contato, `contactCooldown`); lá ainda há o
+ * tiro comum (`rangedCooldown`), que aqui não existe; o skillshot (`skillshotCooldown`) corre à parte desde o M10-01.
+ */
+export const BOSS_PHASES = [
+  { above: 0.60 },
+  { above: 0.30, speed: 1.10, attackCooldown: 0.90, rangedCooldown: 0.78, skillshotCooldown: 0.88 },
+  { above: -1, speed: 1.12, attackCooldown: 0.82, contactCooldown: 0.78, skillshotCooldown: 0.82, enraged: true },
+] as const;
+
+export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow";
+
+/** bosses.lua `builds[id].mechanic` e `mechanicName`, dos 4 chefes daqui. */
+export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }> = {
+  bloodfang: { id: "blood_rush", name: "Blood Rush" },
+  gravekeeper: { id: "army_of_the_damned", name: "Army of the Damned" },
+  ember_matriarch: { id: "meteor_siege", name: "Meteor Siege" },
+  hollow_king: { id: "soul_tether", name: "Soul Tether" },
+  deathstalker: { id: "marked_prey", name: "Marked Prey" },
+  dune_leviathan: { id: "burrow", name: "Burrow" },
+};
+
+/**
+ * bosses.lua `MECHANICS` (D-096), com o que cada uma pega de `ATTACKS`:
+ * - Blood Rush: a cada 10% de vida perdida, +6% de velocidade e +5% de dano.
+ * - Army of the Damned (D-199): uma invocação por fase (4, 6 e 8), aviso e lacaio de `ATTACKS.summon`; sai da rotação.
+ * - Meteor Siege: cada meteoro deixa fogo no chão (`ATTACKS.meteorstorm` `fireTime`, `fireDps` × dano do chefe, raio ×0,8).
+ * - Soul Tether (D-256): Selos de Alma por fase (2, 3, 3), cada um com 6% da vida do chefe; com selo de pé o chefe leva 35%.
+ * - Marked Prey: o ataque `mark` marca o herói (`ATTACKS.mark` `markTime`, `markMult`); marcado, ele leva ×1,25 de todo dano
+ *   desse chefe (boss_ai.lua `BA.damage`, conta na hora em que o golpe ou o tiro sai).
+ */
+export const BOSS_MECHANICS = {
+  blood_rush: { perStep: 0.10, speed: 0.06, damage: 0.05 },
+  army_of_the_damned: { perPhase: [4, 6, 8], minion: "goblin", warning: 0.8 },
+  meteor_siege: { fireTime: 2.5, fireDps: 0.35, radiusMult: 0.8 },
+  soul_tether: { perPhase: [2, 3, 3], damageTakenMult: 0.35, wardHp: 0.06 },
+  marked_prey: { mult: 1.25 },
+  /** boss_ai_ext.lua `burrow`: a cada `interval` s (o primeiro em `first`, `mechanicTimer` de boss.lua) some `under` s e
+   * emerge onde o herói estava, círculo de `radius` px com ×`dmg` */
+  burrow: { interval: 8, under: 1.2, radius: 70, dmg: 1.4, first: 3 },
+} as const;

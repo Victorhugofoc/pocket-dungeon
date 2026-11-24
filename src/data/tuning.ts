@@ -66,14 +66,16 @@ export const TUNING = {
     },
   },
   boss: {
-    enrageAt: 0.3,
-    enrageCooldownMult: 0.65,
     /** segundos em que o chefe ruge sem atacar: ao entrar na luta e ao enfurecer */
     roarTime: 1.3,
     enrageRoarTime: 0.9,
     /** segundos entre a morte do chefe e o corpo sumir */
     deathTime: 2.4,
     xpMult: 22,
+    /** chefe que mantém distância (`preferred`, M10-01): vai ao golpe quando o herói chega a esta folga além do alcance */
+    closeIn: 1.5,
+    /** M10-02: segundos que o verme leva para sumir na areia e para sair dela */
+    burrowAnim: 0.35,
   },
   world: {
     size: 240,

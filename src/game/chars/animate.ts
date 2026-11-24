@@ -85,6 +85,11 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 /** passa do alvo e volta (golpe com peso) */
 const overshoot = (t: number) => 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t - 1, 2);
 
+/** M10-01: quanto cada gomo da cauda do escorpião gira no golpe (a base tomba para a frente, a ponta se abre) */
+const STRIKE_TAIL = [0.5, 0.35, 0.1, -0.45, -0.8];
+/** M10-02: quanto cada gomo do verme gira no bote (a base fica de pé, o terço de cima enrola para baixo) */
+const WORM_BITE = [0, 0.03, 0.18, 0.3, 0.3];
+
 export function animateChar(rig: Rig, a: AnimState): void {
   const c = rig.char!;
   const B = c.bones;
@@ -180,6 +185,93 @@ export function animateChar(rig: Rig, a: AnimState): void {
     inner.scale.setScalar(1);
     // gelatina: o topo fica para trás quando acelera
     h.rotation.set(-secF * 0.25 + kf * 0.8, 0, secS * 0.25 - ks * 0.8);
+    return;
+  }
+
+  if (c.form === "wisp") {
+    // M10-10: a alma (osso head) flutua sobre o selo do chão (osso hips, parado), respira, dá um tranco ao apanhar e
+    // afunda encolhendo ao morrer
+    const h = B.head!;
+    const k = alive ? 0 : Math.min(1, a.dead);
+    const sy = 1 + Math.sin(t * 2.1) * 0.04 + bounce * 1.2;
+    h.scale.set((1 / Math.sqrt(sy)) * (1 - k * 0.7), sy * (1 - k * 0.85), (1 / Math.sqrt(sy)) * (1 - k * 0.7));
+    h.position.set(0, Math.sin(t * 2.1) * 0.06 - k * 0.1, 0);
+    h.rotation.set(Math.sin(t * 1.3) * 0.05 + kf * 0.6, Math.sin(t * 0.7) * 0.15, Math.sin(t * 1.7 + 1) * 0.06 - ks * 0.6);
+    inner.scale.setScalar(1);
+    return;
+  }
+
+  if (c.form === "scorpion") {
+    // M10-01: corpo baixo sobre as 8 patas (cinemática inversa); a cauda balança gomo a gomo; no preparo empina, arma a
+    // cauda para trás e abre as pinças; no golpe o ferrão estoca para a frente e as pinças fecham; ao morrer vira de costas
+    const h = B.hips!;
+    const rage = a.rage ?? 0;
+    const breathe = Math.sin(t * (1.6 + 2 * rage));
+    const w = alive ? a.windup : 0;
+    const at = alive && a.attack >= 0 ? a.attack : -1;
+    const strike = at >= 0 ? (at < 0.25 ? overshoot(at / 0.25) : 1 - ease((at - 0.25) / 0.75)) : 0;
+    const roar = alive && (a.roar ?? -1) >= 0 ? Math.sin(Math.min(1, a.roar!) * Math.PI) : 0;
+    h.position.set(0, c.hipY + breathe * 0.006 + w * 0.05 + roar * 0.06, strike * 0.06);
+    h.rotation.set(-w * 0.12 - roar * 0.22 + strike * 0.1 + leanF + kf * 0.4, twist * 0.4, -leanS - ks * 0.4);
+    const tail = [B.tail, B.tail2, B.tail3, B.tail4, B.tail5];
+    tail.forEach((bn, i) => {
+      if (!bn) return;
+      const lag = i * 0.6;
+      // golpe: a base da cauda tomba para a frente e a ponta se abre, levando o ferrão à frente das pinças (linha 3 do sprite)
+      bn.rotation.x = Math.sin(t * (1.4 + rage) - lag) * 0.04 - (w + roar) * 0.12 + strike * STRIKE_TAIL[i] - secF * 0.05;
+      bn.rotation.y = Math.sin(t * 0.9 - lag) * 0.05 * (1 + rage) + twist * 0.15 - secS * 0.05;
+    });
+    for (const [arm, fore, claw, s] of [[B.armL, B.foreL, B.clawL, -1], [B.armR, B.foreR, B.clawR, 1]] as const) {
+      if (!arm || !fore || !claw) continue;
+      const step = Math.sin(P.stride * 1.2 + s) * 0.05 * move;
+      // em repouso as pinças ficam erguidas (~20°), como no sprite
+      arm.rotation.set(-0.3 - w * 0.25 - roar * 0.3 + step, s * (roar * 0.4 - w * 0.08) + Math.sin(t * 0.8 + s) * 0.03, 0);
+      fore.rotation.set(-strike * 0.15, s * (w * 0.2 - strike * 0.25), 0);
+      const open = w * 0.45 + roar * 0.5 + Math.max(0, Math.sin(t * 1.1 + s)) * 0.08 * (1 - move);
+      claw.rotation.y = -s * (open - strike * 0.12);
+    }
+    if (!alive) {
+      const e = ease(Math.min(1, a.dead * 1.6));
+      h.rotation.set(0, 0, e * Math.PI * 0.92);
+      h.position.y = c.hipY + Math.sin(e * Math.PI) * 0.3 + e * 0.05;
+      for (const bn of tail) if (bn) bn.rotation.x = -0.25 * e;
+    }
+    if (c.legs.length) stepLegs(c, rig, h.position, dt, vf, vs, a.dead);
+    return;
+  }
+
+  if (c.form === "worm") {
+    // M10-02: o monte de areia (hips) fica no chão; o corpo em cadeia balança gomo a gomo; no preparo se encolhe para trás,
+    // no golpe dá o bote para a frente; mergulha e emerge na areia (burrow); ao morrer tomba de lado e afunda
+    const h = B.hips!;
+    const chain = [B.tail, B.tail2, B.tail3, B.tail4, B.tail5];
+    const hd = B.head!;
+    const rage = a.rage ?? 0;
+    const w = alive ? a.windup : 0;
+    const at = alive && a.attack >= 0 ? a.attack : -1;
+    const bite = at >= 0 ? (at < 0.3 ? overshoot(at / 0.3) : 1 - ease((at - 0.3) / 0.7)) : 0;
+    const roar = alive && (a.roar ?? -1) >= 0 ? Math.sin(Math.min(1, a.roar!) * Math.PI) : 0;
+    const under = ease(clamp(a.burrow ?? 0, 0, 1));
+    chain.forEach((bn, i) => {
+      if (!bn) return;
+      const lag = i * 0.7;
+      bn.rotation.x = Math.sin(t * (1.3 + rage) - lag) * 0.05 - (w + roar) * 0.1 + bite * WORM_BITE[i] - secF * 0.06 + kf * 0.2;
+      bn.rotation.z = Math.sin(t * 0.8 - lag) * 0.06 * (1 + rage) + secS * 0.06 - ks * 0.2;
+      bn.rotation.y = twist * 0.1;
+    });
+    // no bote só o terço de cima enrola para baixo e para a frente (linha 3 do sprite); a base fica de pé
+    hd.rotation.set(-roar * 0.4 - w * 0.15 + bite * 0.15, 0, 0);
+    // na areia: o corpo desce pelo monte e o monte afunda junto
+    const tail = B.tail!;
+    const rest = (tail.userData.rest ??= tail.position.clone()) as THREE.Vector3;
+    tail.position.set(rest.x, rest.y - under * 1.5, rest.z);
+    h.position.set(0, -under * 0.25, 0);
+    h.scale.setScalar(1 - under * 0.4);
+    if (!alive) {
+      const e = ease(Math.min(1, a.dead * 1.4));
+      tail.rotation.z = e * 1.35;
+      h.position.y = -e * 0.15;
+    }
     return;
   }
 

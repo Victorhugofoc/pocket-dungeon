@@ -6,7 +6,9 @@ import { merge, paint, prep, xf } from "../flora";
 export type G = THREE.BufferGeometry;
 export type Bone =
   | "hips" | "torso" | "head" | "armL" | "armR" | "foreL" | "foreR" | "thighL" | "thighR" | "shinL" | "shinR"
-  | "cape" | "tail" | "wingL" | "wingR" | "skirt" | "weapon";
+  | "cape" | "tail" | "wingL" | "wingR" | "skirt" | "weapon"
+  // M10-01 (forma `scorpion`): cauda em cadeia e dedo móvel das pinças
+  | "tail2" | "tail3" | "tail4" | "tail5" | "clawL" | "clawR";
 /** `throwL` = arremesso com o braço esquerdo (escudo) */
 /** `spear`: escudo e lança (M9-01): os braços não balançam ao andar e só o direito estoca, ao longo da haste */
 export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "throwL" | "bite" | "spear";
@@ -15,7 +17,7 @@ export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "
  * cabeça em (0, headY, arm), patas da frente (`armL`/`armR`) em (±shoulderX, shoulderY, arm), de trás (`thighL`/`thighR`)
  * em (±hipX, 0, -thigh), tudo relativo ao quadril em hipY
  */
-export type Form = "biped" | "robed" | "bat" | "slime" | "spider" | "toad";
+export type Form = "biped" | "robed" | "bat" | "slime" | "spider" | "toad" | "wisp" | "scorpion" | "worm";
 
 // ---------------------------------------------------------------- primitivas (já pintadas por vértice)
 export const dk = (c: number, f = 0.68) => new THREE.Color(c).multiplyScalar(f).getHex();
@@ -123,6 +125,8 @@ export class Builder {
   lights: { bone: Bone; x: number; y: number; z: number; color: number; intensity: number; distance: number }[] = [];
   /** peças de `lit` brilham na própria cor do vértice em vez de `glowColor` (para dois brilhos de cores diferentes) */
   glowByVertex = false;
+  /** ossos com posição própria (forma `scorpion`): pai e ponto no espaço do corpo (antes da escala), iguais aos pivôs do Blender */
+  joints: { bone: Bone; parent: Bone; at: [number, number, number] }[] = [];
   /** Arma de duas mãos com osso próprio (`weapon`, na mão direita, a `hand` do cotovelo). A arma é modelada ao longo de -y a partir da mão;
    * `carry` é a rotação de descanso, no golpe ela alinha com o antebraço. A mão esquerda segura a `grip` da mão direita, ao longo do cabo. */
   weapon: { hand: number; carry: THREE.Quaternion; grip: number } | null = null;

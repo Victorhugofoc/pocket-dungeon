@@ -29,6 +29,7 @@ import { SPELL_CAST, SPELL_SCHOOL, type SpellId } from "../data/spells";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, HAZARD_TICK, type BossPattern, type EnemyDef } from "../data/enemies";
 import { applyHex, hexMult, type HexState } from "../core/hex";
+import { applyMark, type MarkState } from "../core/bossphase";
 import { plagueDps } from "../core/plague";
 import { wardenFor } from "../core/ward";
 import { WardAuras } from "./ward";
@@ -239,6 +240,8 @@ export interface PlayerState {
   chillMult: number;
   /** M9-02: maldição do Hexer (`core/hex.ts`): o herói causa menos dano até ela acabar */
   hex: HexState | null;
+  /** M10-01: Marked Prey do Deathstalker (`core/bossphase.ts`): o dano de quem marcou sai ×mult até a marca acabar */
+  mark: MarkState<Enemy> | null;
   rush: { t: number; dur: number; dx: number; dz: number; hit: Set<Enemy>; speed?: number; x0: number; z0: number; fire?: TrailHandle } | null;
 }
 
@@ -272,7 +275,7 @@ export class Game {
   player: PlayerState = {
     x: 0, z: 0, facing: 0, hp: 1, rig: null, moveAmt: 0, attackAnim: -1, attackCd: 0, techCd: 0, techMax: 1, followUntil: 0,
     dashCd: 0, dashT: 0, dashDx: 0, dashDz: 0, iframes: 0, shadowUntil: 0, aegis: null, throws: 0, nestT: VENOM.broodEvery,
-    flash: 0, hurtT: 0, leap: null, rush: null, chillUntil: 0, chillMult: 1, hex: null,
+    flash: 0, hurtT: 0, leap: null, rush: null, chillUntil: 0, chillMult: 1, hex: null, mark: null,
   };
   playerAlive = true;
   playerVelX = 0;
@@ -811,6 +814,7 @@ export class Game {
     p.shadowUntil = 0;
     p.chillUntil = 0;
     p.hex = null;
+    p.mark = null;
     p.dashT = 0;
     this.playerAlive = true;
     this.epics.reset();
@@ -1275,7 +1279,7 @@ export class Game {
     const warden = wardenFor(e, this.enemies);
     if (warden) amount *= warden.def!.support!.damageMult;
     // M9-06 (damage.lua): Armored corta, o Arcane Shield come primeiro; qualquer dano zera a pausa do Regenerating
-    amount *= e.dmgTakenMult;
+    amount *= e.dmgTakenMult * e.tetherK;
     amount = Math.max(1, Math.round(amount));
     e.idle = 0;
     if (e.shield > 0) {
@@ -1366,7 +1370,7 @@ export class Game {
         this.spawnEnemy(split.id, e.level, e.x + Math.cos(a) * 0.8, e.z + Math.sin(a) * 0.8, { summoned: true, child: true, aggro: true });
       }
     }
-    if (!e.summoned) this.rollHealOrb(e);
+    if (!e.noReward) this.rollHealOrb(e);
     if (e.hasAffix("explosive")) this.affixes.explode(e);
     if (e.def?.plague) this.plagueBurst(e, e.def.plague);
     if (e.isBoss) this.onBossKilled(e);
@@ -1717,6 +1721,16 @@ export class Game {
     this.audio.play("hex");
   }
 
+  /** M10-01 (boss_ai.lua `mark`): o chefe marca o herói por `time` s; o dano dele sai ×`mult` (troca a marca anterior). */
+  markPlayer(by: Enemy, time: number, mult: number): void {
+    const p = this.player;
+    if (!this.playerAlive) return;
+    p.mark = applyMark(this.time, time, mult, by);
+    this.fx.text(p.x, 2.2, p.z, "MARKED", "crit");
+    this.fx.burst(p.x, 1.6, p.z, by.boss?.glow ?? 0xff5a4a, 12, 3, 0.12, 0.5);
+    this.audio.play("hex");
+  }
+
   /**
    * M21-10: barril explodindo. Fere todos no raio por fração da vida máxima (inimigo comum, campeão, chefe), o herói
    * também, empurra para fora do centro (pode jogar no fosso) e acende os barris vizinhos.
@@ -1789,7 +1803,7 @@ export class Game {
     this.bossDead = true;
     this.hitstop = 0.25;
     this.fx.addShake(1);
-    for (const m of this.enemies) if (m.summoned && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
+    for (const m of this.enemies) if ((m.summoned || m.def?.helper) && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
     // D-150: a emboscada é um nó de risco: dá a relíquia de risco (1 de 2), não a escolha de chefe
     if (e.ambush) {
       this.pendingPoolRelic = "risk";
