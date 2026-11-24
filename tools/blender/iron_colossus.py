@@ -223,10 +223,9 @@ def torso():
     dense(glow)
     paint(glow, lambda co, n: mix(hexc(0xff9a30), hexc(0xff5a0c), ss(fz - fh, fz + fh, co.z)))
     fire = [glow, back]
-    # ombreiras: três chapas em arco por cima do ombro, como telhas, facetadas; núcleo escuro por baixo
-    for s in (-1, 1):
-        out += pauldron(s, 1.06 if s < 0 else 1.0)
-    return {"torso": out, "torso@lit": fire, "torso@flat": bars}
+    # ombreiras: chapas em arco por cima do ombro, como telhas; em ossos próprios que sobem com o braço (`shoulderFollow`)
+    return {"torso": out, "torso@lit": fire, "torso@flat": bars,
+            "shoulderL": pauldron(-1, 1.06), "shoulderR": pauldron(1, 1.0)}
 
 
 def pauldron(s, scale):

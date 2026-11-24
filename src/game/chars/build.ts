@@ -255,6 +255,10 @@ export function buildChar(id: string, scaleMult: number, variant: "champion" | "
     mk("foreL", mk("armL", torso, -sx, b.dims.shoulderY, 0), 0, -b.dims.arm, 0);
     mk("foreR", mk("armR", torso, sx, b.dims.shoulderY, 0), 0, -b.dims.arm, 0);
     bones.armL!.rotation.order = bones.armR!.rotation.order = "YXZ"; // o giro do ombro (y) vem por último: mira o braço no chão
+    if (b.shoulderFollow > 0) {
+      mk("shoulderL", torso, -sx, b.dims.shoulderY, 0);
+      mk("shoulderR", torso, sx, b.dims.shoulderY, 0);
+    }
     if (b.weapon) mk("weapon", bones.foreR!, 0, -b.weapon.hand, 0);
     mk("cape", torso, 0, 0.52, -0.2 * k);
     if (b.form !== "djinn") mk("tail", hips, 0, 0, -0.16 * k);
@@ -379,7 +383,7 @@ export function buildChar(id: string, scaleMult: number, variant: "champion" | "
     root, inner, body: inner, head: inner, armL: null, armR: null, legL: null, legR: null, wings: [],
     mats, baseEmissive: mats.map((m) => m.emissive.clone()), kind: "humanoid", height, phase: Math.random() * 10,
     char: { bones, legs, style: b.style, poseR: b.poseR, poseL: b.poseL, form: b.form, shot: 0,
-      lean: b.lean, crouch: b.crouch, stance: b.stance, swingHit: b.swingHit, armOut: b.armOut, weight, hipY: b.dims.hipY, weapon: b.weapon, ribbons, phys: newPhys() },
+      lean: b.lean, crouch: b.crouch, stance: b.stance, swingHit: b.swingHit, armOut: b.armOut, shoulderFollow: b.shoulderFollow, weight, hipY: b.dims.hipY, weapon: b.weapon, ribbons, phys: newPhys() },
   };
 }
 

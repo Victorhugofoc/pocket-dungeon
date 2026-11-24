@@ -21,6 +21,8 @@ export interface CharState {
   /** fim do golpe "swing" de uma mão: ver `Builder.swingHit` */
   swingHit: [number, number];
   armOut: number;
+  /** ver `Builder.shoulderFollow` */
+  shoulderFollow: number;
   weight: number;
   /** altura do quadril em repouso */
   hipY: number;
@@ -664,6 +666,12 @@ export function animateChar(rig: Rig, a: AnimState): void {
       B.shinL!.rotation.x = 0.9 * limp;
       B.shinR!.rotation.x = 0.3 * limp;
     }
+  }
+  // M10-08: a ombreira sobe com o braço (uma fração do giro além da pose de descanso), para o braço erguido não atravessá-la
+  if (B.shoulderL && B.shoulderR) {
+    const f = c.shoulderFollow;
+    B.shoulderR.rotation.set((armR.rotation.x - c.poseR[0]) * f, 0, (armR.rotation.z - c.armOut - (c.poseR[2] ?? 0)) * f);
+    B.shoulderL.rotation.set((armL.rotation.x - c.poseL[0]) * f, 0, (armL.rotation.z + c.armOut + (c.poseL[2] ?? 0)) * f);
   }
   // por último: as patas seguem a altura final do corpo (rugido, morte)
   if (c.legs.length) stepLegs(c, rig, hips.position, dt, vf, vs, a.dead);
