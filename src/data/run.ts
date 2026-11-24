@@ -226,6 +226,7 @@ export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: num
   rimefang_wyrm: { hp: 1.04, damage: 1.06, speed: 1.08, projectileSpeed: 0.92 },
   storm_tyrant: { hp: 0.98, damage: 1.08, speed: 1.00, projectileSpeed: 0.82 },
   iron_colossus: { hp: 1.30, damage: 1.14, speed: 0.86, projectileSpeed: 0.78 },
+  void_reaver: { hp: 0.96, damage: 1.10, speed: 0.92, projectileSpeed: 1.02 },
 };
 
 /** bosses.lua `BASE.projectileSpeed`: velocidade do tiro de chefe em px/s (os ataques novos multiplicam por ela) */
@@ -262,7 +263,7 @@ export const BOSS_PHASES = [
   { above: -1, speed: 1.12, attackCooldown: 0.82, contactCooldown: 0.78, skillshotCooldown: 0.82, enraged: true },
 ] as const;
 
-export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage" | "venom_bloom" | "mitosis" | "glacial_wake" | "storm_field" | "earthbreaker";
+export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage" | "venom_bloom" | "mitosis" | "glacial_wake" | "storm_field" | "earthbreaker" | "riftwalk";
 
 /** bosses.lua `builds[id].mechanic` e `mechanicName`, dos 4 chefes daqui. */
 export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }> = {
@@ -278,6 +279,7 @@ export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }>
   rimefang_wyrm: { id: "glacial_wake", name: "Glacial Wake" },
   storm_tyrant: { id: "storm_field", name: "Storm Field" },
   iron_colossus: { id: "earthbreaker", name: "Earthbreaker" },
+  void_reaver: { id: "riftwalk", name: "Riftwalk" },
 };
 
 /**

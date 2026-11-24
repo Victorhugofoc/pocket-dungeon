@@ -145,7 +145,7 @@ export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire"
   | "sandvolley" | "tailsweep" | "erupt" | "orbitals" | "prismbeam" | "miragedash" | "venomfield"
   | "acidlob" | "slimewave" | "frostbreath" | "iciclerain" | "glacierdive" | "stormfield" | "radial"
-  | "quake" | "armorbreak" | "leap";
+  | "quake" | "armorbreak" | "leap" | "riftcross";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -172,7 +172,7 @@ export interface BossPattern {
   curve?: number;
   reach?: number;
   stepDeg?: number;
-  /** `miragedash`: s sumido, distância do herói onde reaparece (m), tiros da nova e o dano deles */
+  /** `miragedash` e `riftcross`: s sumido, distância do herói onde reaparece (m), tiros da nova e o dano deles */
   blink?: number;
   away?: number;
   nova?: number;
@@ -366,6 +366,18 @@ export const BOSSES: Record<string, BossDef> = {
     ],
     body: "brute", color: 0xb3b8c7, accent: 0x4a4e58, glow: 0xff8a3a, scale: 2.4, projectileColor: 0x8a7a6a, xp: 70,
     relicBuild: "iron_colossus", guard: true, boulder: true, phaseSpeed: [1, 1.15, 1.35 / 1.15],
+  },
+  // M10-09: o ceifador do vazio. Fica a 130 px; os três ataques são Riftcross (bosses.lua, px ÷ 16): some, reaparece a 120 px
+  // do herói e corta linhas em cruz sobre ele. Riftwalk: cada fase adiciona uma linha (fase + 1).
+  void_reaver: {
+    id: "void_reaver", name: "Void Reaver", title: "The Riftwalker", hp: 2000, damage: 13, speed: 3.0, radius: 1.4,
+    attackRange: 3.0, attackCooldown: 1.5, patternCooldown: 4.0, preferred: 130 / 16,
+    patterns: [
+      { kind: "riftcross", warning: 1.0, blink: 0.5, damage: 1.3, width: 24 / 16, length: 840 / 16, away: 120 / 16 },
+      { kind: "riftcross", warning: 1.0, blink: 0.5, damage: 1.3, width: 24 / 16, length: 840 / 16, away: 120 / 16 },
+      { kind: "riftcross", warning: 1.0, blink: 0.5, damage: 1.3, width: 24 / 16, length: 840 / 16, away: 120 / 16 },
+    ],
+    body: "robed", color: 0x3a1f5a, accent: 0xd8d0e8, glow: 0xb35aff, scale: 2.4, projectileColor: 0xb35aff, xp: 70,
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,
