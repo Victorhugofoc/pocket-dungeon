@@ -335,6 +335,7 @@ export function animateChar(rig: Rig, a: AnimState): void {
   const crouch = c.crouch + 0.1 * run;
   let hipY = c.hipY - crouch * 0.1;
   if (c.form === "robed") hipY = c.hipY + 0.06 + Math.sin(t * 2.4) * 0.05 + Math.abs(cw) * 0.02 * move;
+  else if (c.form === "djinn") hipY = c.hipY + 0.14 + Math.sin(t * 1.9) * 0.07; // flutua sobre a fumaça, sem passada
   else if (c.form === "spider") hipY = c.hipY + Math.sin(t * 1.8) * 0.012 + Math.abs(cw) * 0.015 * move;
   else hipY -= (0.5 - Math.abs(cw) * 0.5) * 0.1 * move * (1 + run * 0.6) * W;
   hips.position.set(sway * 0.025 + sw * 0.02 * sN, hipY, 0);
@@ -394,7 +395,15 @@ export function animateChar(rig: Rig, a: AnimState): void {
   }
   // peças soltas arrastam com a velocidade e oscilam como mola
   if (B.cape) B.cape.rotation.set(0.1 + secF + Math.sin(t * 3.1) * 0.04 * (1 + move), 0, -secS + leanS);
-  if (B.tail && c.form !== "spider") B.tail.rotation.set(0.2 + secF * 0.6 + Math.sin(t * 2.6) * 0.12, Math.sin(t * 2.1) * 0.5 + twist * 2 - secS, 0);
+  if (c.form === "djinn") {
+    // M10-03: a cauda de fumaça ondula gomo a gomo (a onda desce da cintura à ponta), arrasta para trás ao andar e enrola
+    // mais no preparo
+    [B.tail, B.tail2, B.tail3, B.tail4].forEach((bn, i) => {
+      if (!bn) return;
+      const lag = i * 0.9;
+      bn.rotation.set(Math.sin(t * 1.9 - lag) * 0.07 + secF * 0.14 - kf * 0.2, Math.sin(t * 1.3 - lag) * 0.12 + twist * 0.3, Math.sin(t * 1.6 - lag + 1) * 0.08 - secS * 0.14 + ks * 0.2);
+    });
+  } else if (B.tail && c.form !== "spider") B.tail.rotation.set(0.2 + secF * 0.6 + Math.sin(t * 2.6) * 0.12, Math.sin(t * 2.1) * 0.5 + twist * 2 - secS, 0);
 
   // ---- rugido de chefe: encolhe puxando o ar, depois peito para fora, cabeça para trás e braços abertos, tremendo
   const roar = a.roar ?? -1;

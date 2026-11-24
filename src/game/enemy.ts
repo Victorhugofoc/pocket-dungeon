@@ -17,7 +17,7 @@ import { guardBlocks, shieldPhase, turnToward } from "../core/guard";
 import { type Leap, canLeap, leapHits, startLeap, stepLeap } from "../core/leap";
 import { makeGuardBand, type GuardBand } from "./guard";
 import type { StatusKind } from "../data/heroes";
-import { animateRig, disposeRig, flashRig, tintRig, type Rig } from "./models";
+import { animateRig, disposeRig, fadeRig, flashRig, tintRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
 import * as THREE from "three";
 import { type BossRing, type ChampionAura, type GroundArc, type Telegraph, makeBossRing, makeChampionAura } from "./fx";
@@ -209,6 +209,10 @@ export class Enemy {
   burrowCd: number = BOSS_MECHANICS.burrow.first;
   burrowT = -1;
   emergeT = -1;
+  /** M10-03 Mirage: cópias vivas, a fase em que nasceram e o tempo sumido no Mirage Dash (ou -1) */
+  illusions: Enemy[] = [];
+  miragePhase = 0;
+  dashBlinkT = -1;
   /** ataques em fila (boss_ai_ext.lua: o `erupt` põe cada erupção na fila com atraso) */
   private queued: { at: number; fn: () => void }[] = [];
   /** retícula do Mark seguindo o herói: `left` s até travar */
@@ -374,6 +378,13 @@ export class Enemy {
 
   private makeRig(): Rig {
     const variant = this.champion ? "champion" : this.summoned ? "summoned" : null;
+    // enemies.lua `sprite`/`alpha`: a cópia do Mirage Djinn usa o corpo dele, meio transparente
+    const look = this.def?.look;
+    if (look) {
+      const rig = characterRig(look.model, "boss", null);
+      fadeRig(rig, look.opacity);
+      return rig;
+    }
     return characterRig(this.boss ? this.boss.id : this.def!.id, this.boss ? "boss" : "enemy", variant);
   }
 
@@ -448,6 +459,7 @@ export class Enemy {
       this.markK = markMult(p.mark, now, this as Enemy);
       if (this.reticle) this.followReticle(game, dt);
       if (this.burrowT >= 0) this.burrowT += dt;
+      if (this.mechanic === "mirage") fadeRig(this.rig, this.dashBlinkT >= 0 ? TUNING.boss.blinkFade : 1);
       if (this.emergeT >= 0 && (this.emergeT += dt) > TUNING.boss.burrowAnim) this.emergeT = -1;
       if (this.queued.length && !this.dead) {
         const due = this.queued.filter((q) => q.at <= now);
@@ -680,7 +692,9 @@ export class Enemy {
     this.skillshotCd = BOSS_SKILLSHOT.cooldown;
     this.burrowCd = BOSS_MECHANICS.burrow.first;
     this.burrowT = this.emergeT = -1;
+    this.dashBlinkT = -1;
     this.queued.length = 0;
+    this.dropIllusions();
     if (this.reticle) this.reticle.tg.cancelled = true;
     this.reticle = null;
     this.rushSteps = 0;
@@ -1123,10 +1137,26 @@ export class Enemy {
     } else if (this.mechanic === "army_of_the_damned" && this.armyPhase < this.phase) {
       this.armyPhase = this.phase;
       this.raiseArmy(game, armyCount(this.phase));
+    } else if (this.mechanic === "mirage" && this.miragePhase < this.phase) {
+      this.miragePhase = this.phase;
+      this.raiseIllusions(game);
     } else if (this.mechanic === "soul_tether" && this.wardPhase < this.phase) {
       this.wardPhase = this.phase;
       this.raiseWards(game, soulWardCount(this.phase));
     }
+  }
+
+  /** boss_ai_ext.lua `line`: faixa avisada a partir de (x0, z0); quem estiver nela quando fecha leva o golpe */
+  private beam(game: Game, x0: number, z0: number, a: number, L: number, w: number, warn: number, dmg: number): void {
+    const b = this.boss!;
+    const s1 = { x: x0 + Math.sin(a) * L, z: z0 + Math.cos(a) * L };
+    game.fx.telegraphRect(x0, z0, a, L, w, warn, () => {
+      if (this.dead || !this.aggro) return;
+      this.attackAnim = 0;
+      for (let i = 0; i <= 20; i++) game.fx.spark(x0 + (s1.x - x0) * (i / 20), 0.6, z0 + (s1.z - z0) * (i / 20), b.glow, 0.22, 0.35, 1.4);
+      const hp = game.player;
+      if (distToSegment(hp.x, hp.z, { x: x0, z: z0 }, s1) <= w / 2 + TUNING.enemy.telegraph.playerRadius) game.hurtPlayer(dmg, this.name, this);
+    });
   }
 
   /** 0 = fora da areia, 1 = embaixo (animação do mergulho e da emersão) */
@@ -1164,6 +1194,43 @@ export class Enemy {
       game.fx.burst(tx, 0.4, tz, this.boss!.projectileColor, 24, 7, 0.2, 0.7);
       game.fx.addShake(0.4);
     });
+  }
+
+  /**
+   * boss_ai_ext.lua `mirage` (`spawnHelpers`): as cópias da fase anterior somem e nascem `perPhase` novas em roda a 110 px
+   * dele, com um giro sorteado de até 0,6 rad, dentro da arena; 7% da vida e 35% do dano dele; sem recompensa.
+   */
+  private raiseIllusions(game: Game): void {
+    const M = BOSS_MECHANICS.mirage;
+    const px = TUNING.enemy.pxToUnit;
+    const phase = this.phase;
+    this.dropIllusions();
+    this.miragePhase = phase;
+    const n = M.perPhase[phase - 1] ?? 0;
+    const lim = game.layout.bossRadius - 20 * px;
+    for (let k = 1; k <= n; k++) {
+      const a = (k / Math.max(1, n)) * Math.PI * 2 + Math.random() * 0.6;
+      let x = this.x + Math.cos(a) * M.ring * px;
+      let z = this.z + Math.sin(a) * M.ring * px;
+      const dx = x - this.homeX, dz = z - this.homeZ, d = Math.hypot(dx, dz);
+      if (d > lim) { x = this.homeX + (dx / d) * lim; z = this.homeZ + (dz / d) * lim; }
+      const il = game.spawnEnemy("mirage_illusion", this.level, x, z, { aggro: true });
+      il.maxHp = il.hp = Math.round(this.maxHp * M.illusionHp);
+      il.baseDmg = this.baseDmg * M.damage;
+      il.lootBonus = false;
+      this.illusions.push(il);
+      game.fx.burst(x, 1.4, z, this.boss!.glow, 16, 4, 0.16, 0.5);
+    }
+    game.fx.shockwave(this.x, this.z, 3, this.boss!.glow, 0.4);
+    game.audio.play("warn");
+    game.fx.text(this.x, this.rig.height + 1, this.z, "Mirage", "crit");
+  }
+
+  /** as cópias somem sem recompensa (troca de fase, chefe voltou ao começo) */
+  private dropIllusions(): void {
+    for (const il of this.illusions) if (!il.dead) { il.dead = true; il.deadT = 1; }
+    this.illusions.length = 0;
+    this.miragePhase = 0;
   }
 
   /** Soul Tether: dano que o chefe leva (×0,35 com algum selo de pé). */
@@ -1425,6 +1492,66 @@ export class Enemy {
             });
           } });
         }
+        break;
+      }
+      case "orbitals": {
+        // boss_ai_ext.lua `orbitals`: brilho em volta dele e orbes em roda que curvam, todos no mesmo sentido sorteado
+        const px = TUNING.enemy.pxToUnit;
+        fx.telegraphCircle(this.x, this.z, this.radius + 18 * px, pt.warning, () => {
+          if (!ok()) return;
+          this.attackAnim = 0;
+          const n = pt.count ?? 8, off = Math.random() * Math.PI * 2, dir = Math.random() < 0.5 ? 1 : -1;
+          const speed = BOSS_PROJECTILE_SPEED * px * (pt.speedMult ?? 1) * this.projK;
+          for (let k = 1; k <= n; k++) {
+            game.spawnEnemyProjectile(this.x, this.z, off + (k / n) * Math.PI * 2, speed, this.dmg * pt.damage, b.projectileColor, 7 * px, this,
+              { curve: (pt.curve ?? 1.6) * dir, reach: pt.reach });
+          }
+          fx.shockwave(this.x, this.z, 3, b.glow, 0.35);
+        });
+        break;
+      }
+      case "prismbeam": {
+        // boss_ai_ext.lua `prismbeam`: leque de feixes a partir dele, varrendo de um lado sorteado, um depois do outro
+        const a0 = Math.atan2(p.x - this.x, p.z - this.z);
+        const n = pt.lines ?? 6, st = pt.stagger ?? 0.16, L = pt.length ?? 37.5, w = pt.width ?? 1.4;
+        const step = ((pt.stepDeg ?? 22) * Math.PI) / 180;
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        const start = a0 - (dir * step * (n - 1)) / 2;
+        const x0 = this.x, z0 = this.z;
+        this.casting = pt.warning + st * n;
+        for (let k = 0; k < n; k++) this.beam(game, x0, z0, start + dir * step * k, L, w, pt.warning + k * st, this.dmg * pt.damage);
+        break;
+      }
+      case "miragedash": {
+        // boss_ai_ext.lua `miragedash`: some e reaparece a 140 px do herói, num ângulo sorteado; dali uma linha até o herói
+        // e uma nova de tiros
+        const px = TUNING.enemy.pxToUnit;
+        const blink = pt.blink ?? 0.45;
+        const a = Math.random() * Math.PI * 2;
+        let tx = p.x + Math.cos(a) * (pt.away ?? 8.75), tz = p.z + Math.sin(a) * (pt.away ?? 8.75);
+        const dx = tx - this.homeX, dz = tz - this.homeZ, d = Math.hypot(dx, dz), lim = game.layout.bossRadius - this.radius;
+        if (d > lim) { tx = this.homeX + (dx / d) * lim; tz = this.homeZ + (dz / d) * lim; }
+        this.casting = blink + pt.warning;
+        this.dashBlinkT = 0;
+        this.endSwing();
+        fx.burst(this.x, this.rig.height * 0.5, this.z, b.glow, 20, 5, 0.18, 0.5);
+        fx.telegraphCircle(tx, tz, this.radius + 6 * px, blink, () => {
+          this.dashBlinkT = -1;
+          if (!ok()) return;
+          this.x = tx;
+          this.z = tz;
+          this.rig.root.position.set(tx, 0, tz);
+          fx.burst(tx, this.rig.height * 0.5, tz, b.glow, 24, 6, 0.2, 0.6);
+          const hp = game.player;
+          const ang = Math.atan2(hp.x - tx, hp.z - tz);
+          this.face(hp.x, hp.z);
+          this.beam(game, tx, tz, ang, pt.length ?? 43.75, pt.width ?? 1.6, pt.warning, this.dmg * pt.damage);
+          const n = pt.nova ?? 8, off = Math.random() * Math.PI * 2;
+          const speed = BOSS_PROJECTILE_SPEED * px * (pt.speedMult ?? 0.7) * this.projK;
+          for (let k = 1; k <= n; k++) {
+            game.spawnEnemyProjectile(tx, tz, off + (k / n) * Math.PI * 2, speed, this.dmg * (pt.novaDamage ?? 0.6), b.projectileColor, 7 * px, this);
+          }
+        });
         break;
       }
       case "spiral":

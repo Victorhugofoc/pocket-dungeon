@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crownAttack, drawBoss, type BossBagState } from "../src/core/bossbag";
+import { bossAllowed, crownAttack, drawBoss, type BossBagState } from "../src/core/bossbag";
 import { RunRng, checkpoint, continueRun, newRun } from "../src/core/run";
 import { Rng } from "../src/core/rng";
 import { BOSSES, BOSS_ORDER, CROWN_BORROW } from "../src/data/enemies";
@@ -15,7 +15,17 @@ function draws(seed: number, n: number): string[] {
 
 describe("saco de chefes (boss_bag.lua)", () => {
   it("o saco tem os chefes que já lutam aqui, na ordem de bosses.lua", () => {
-    expect(POOL).toEqual(["bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king"]);
+    expect(POOL).toEqual(["bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn"]);
+  });
+
+  it("chefe só da Hard (minDifficulty) fica fora do saco na Easy e na Normal (boss_bag.lua `allowed`)", () => {
+    expect(bossAllowed("hard", "normal")).toBe(false);
+    expect(bossAllowed("hard", "easy")).toBe(false);
+    expect(bossAllowed("hard", "hard")).toBe(true);
+    expect(bossAllowed(undefined, "easy")).toBe(true);
+    const normal = POOL.filter((id) => bossAllowed(BOSSES[id].minDifficulty, "normal"));
+    expect(normal).not.toContain("hollow_king");
+    expect(normal).not.toContain("mirage_djinn");
   });
 
   it("mesma seed, mesma ordem; seeds diferentes, ordens diferentes", () => {

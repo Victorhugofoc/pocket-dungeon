@@ -109,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1298,5 +1298,34 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect([er.warning, er.damage, px(er.radius), er.count, er.stagger]).toEqual([A.erupt.warning, A.erupt.dmg, A.erupt.radius, A.erupt.count, A.erupt.stagger]);
     const M = BS.MECHANICS.burrow, B = BOSS_MECHANICS.burrow;
     expect([B.interval, B.under, B.radius, B.dmg]).toEqual([M.interval, M.under, M.radius, M.dmg]);
+  });
+  it("Mirage Djinn igual ao de bosses.lua: distância, orbes, feixe prismático, investida e Mirage (M10-03)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.mirage_djinn, d = BOSSES.mirage_djinn;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    expect(d.patterns.map((p) => p.kind)).toEqual(build.attacks);
+    expect(px(d.preferred)).toBe(build.preferred);
+    const [ob, pb, md] = d.patterns;
+    expect([ob.warning, ob.damage, ob.count, ob.curve, ob.speedMult, px(ob.reach)])
+      .toEqual([A.orbitals.warning, A.orbitals.dmg, A.orbitals.count, A.orbitals.curve, A.orbitals.speedMult, 900]);
+    expect([pb.warning, pb.damage, px(pb.width), px(pb.length), pb.lines, pb.stepDeg, pb.stagger])
+      .toEqual([A.prismbeam.warning, A.prismbeam.dmg, A.prismbeam.width, A.prismbeam.length, A.prismbeam.lines, A.prismbeam.stepDeg, A.prismbeam.stagger]);
+    // boss_ai_ext.lua `miragedash`: reaparece a 140 px, linha de 700 px, nova a 0,7 da velocidade
+    expect([md.warning, md.blink, md.damage, px(md.width), md.nova, md.novaDamage, px(md.away), px(md.length), md.speedMult])
+      .toEqual([A.miragedash.warning, A.miragedash.blink, A.miragedash.dmg, A.miragedash.width, A.miragedash.nova, A.miragedash.novaDmg, 140, 700, 0.7]);
+    const M = BS.MECHANICS.mirage, B = BOSS_MECHANICS.mirage;
+    expect([[...B.perPhase], B.illusionHp]).toEqual([M.perPhase, M.illusionHp]);
+    // boss_bag.lua: só da Hard para cima
+    for (const id of Object.keys(BOSSES)) expect(BOSSES[id].minDifficulty, id).toBe(BS.builds[id].minDifficulty ?? undefined);
+  });
+  it("cópia do Mirage Djinn (mirage_illusion) igual à de enemies.lua: atiradora, sem recompensa, meio transparente (M10-03)", () => {
+    const o: Lua = dr!["src.data.enemies"].mirage_illusion;
+    const d = HELPERS.mirage_illusion;
+    expect({ hp: d.hp, speedPx: d.speed * 16, damage: d.damage, behavior: d.behavior, xp: d.xp, gold: d.gold, category: d.category,
+      cooldown: d.cooldown, helper: d.helper, radiusPx: d.radius * 16, rangePx: (d.range ?? 0) * 16, projPx: (d.projectileSpeed ?? 0) * 16,
+      alpha: d.look?.opacity, look: d.look?.model })
+      .toEqual({ hp: o.hp, speedPx: o.speed, damage: o.damage, behavior: o.behavior, xp: o.xp, gold: o.gold, category: o.category,
+        cooldown: o.cooldown, helper: o.helper, radiusPx: o.radius, rangePx: o.range, projPx: o.projectileSpeed,
+        alpha: o.alpha, look: o.sprite.replace("boss_", "") });
   });
 });

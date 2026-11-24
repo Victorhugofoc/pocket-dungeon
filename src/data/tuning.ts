@@ -76,6 +76,8 @@ export const TUNING = {
     closeIn: 1.5,
     /** M10-02: segundos que o verme leva para sumir na areia e para sair dela */
     burrowAnim: 0.35,
+    /** M10-03: opacidade do Mirage Djinn enquanto some no Mirage Dash (lá desenhado como silhueta apagada) */
+    blinkFade: 0.15,
   },
   world: {
     size: 240,

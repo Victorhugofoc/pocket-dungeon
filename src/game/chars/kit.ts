@@ -17,7 +17,7 @@ export type Style = "swing" | "shoot" | "dual" | "cast" | "thrust" | "throw" | "
  * cabeça em (0, headY, arm), patas da frente (`armL`/`armR`) em (±shoulderX, shoulderY, arm), de trás (`thighL`/`thighR`)
  * em (±hipX, 0, -thigh), tudo relativo ao quadril em hipY
  */
-export type Form = "biped" | "robed" | "bat" | "slime" | "spider" | "toad" | "wisp" | "scorpion" | "worm";
+export type Form = "biped" | "robed" | "bat" | "slime" | "spider" | "toad" | "wisp" | "scorpion" | "worm" | "djinn";
 
 // ---------------------------------------------------------------- primitivas (já pintadas por vértice)
 export const dk = (c: number, f = 0.68) => new THREE.Color(c).multiplyScalar(f).getHex();

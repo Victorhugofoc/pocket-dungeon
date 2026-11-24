@@ -33,7 +33,7 @@ import { applyMark, type MarkState } from "../core/bossphase";
 import { plagueDps } from "../core/plague";
 import { wardenFor } from "../core/ward";
 import { WardAuras } from "./ward";
-import { crownAttack, drawBoss } from "../core/bossbag";
+import { bossAllowed, crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { POOL_RELIC_CHOICES, POOL_TITLE, RELICS, RELIC_IDS, type RelicPool } from "../data/relics";
@@ -183,6 +183,8 @@ interface Projectile {
   owner?: Enemy;
   /** M9-02: tiro de maldição do Hexer (`EnemyDef.hex`) */
   hex?: { duration: number; damageMult: number };
+  /** enemy_attacks.lua `pr.curve` (D-208): o tiro inimigo curva nesta taxa, em rad/s */
+  curve?: number;
   /** BOOMERANG (Seraph): o escudo vai até o alcance e volta, acertando todos nos dois sentidos; `back` = voltando */
   boomerang?: { back: boolean };
 }
@@ -931,9 +933,11 @@ export class Game {
     pr.fx = undefined;
   }
 
-  spawnEnemyProjectile(x: number, z: number, angle: number, speed: number, dmg: number, color: number, r: number, owner?: Enemy): void {
-    this.addProjectile({ x, z, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed, r, dmg, life: 26 / speed, friendly: false,
-      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile", owner, hex: owner?.def?.hex });
+  /** `opt.curve`: o tiro gira a velocidade nessa taxa (rad/s; orbes do Mirage Djinn); `opt.reach`: alcance em m (padrão 26) */
+  spawnEnemyProjectile(x: number, z: number, angle: number, speed: number, dmg: number, color: number, r: number, owner?: Enemy,
+    opt: { curve?: number; reach?: number } = {}): void {
+    this.addProjectile({ x, z, vx: Math.sin(angle) * speed, vz: Math.cos(angle) * speed, r, dmg, life: (opt.reach ?? 26) / speed, friendly: false,
+      pierce: 0, ricochet: 0, ricochetDamage: 1, color, source: "projectile", owner, hex: owner?.def?.hex, curve: opt.curve });
   }
 
   /**
@@ -1048,6 +1052,13 @@ export class Game {
       const held = !pr.friendly && this.rifts.list.length > 0 && this.rifts.inside(pr.x, pr.z);
       if (!held) {
         pr.life -= dt;
+        if (pr.curve) {
+          const c = Math.cos(pr.curve * dt), sn = Math.sin(pr.curve * dt);
+          const vx = pr.vx * c - pr.vz * sn;
+          pr.vz = pr.vx * sn + pr.vz * c;
+          pr.vx = vx;
+          pr.mesh.rotation.y = Math.atan2(pr.vx, pr.vz);
+        }
         pr.x += pr.vx * dt;
         pr.z += pr.vz * dt;
       }
@@ -1934,7 +1945,7 @@ export class Game {
     this.showRing(true);
     const boss = this.wave.isBossWave;
     // D6/M20-09: o chefe sai do saco (boss_bag.lua) ao começar a onda; continuar do checkpoint tira o mesmo
-    this.waveBoss = boss ? drawBoss(this.run, this.rng.get("bosses"), Game.BOSS_POOL) : null;
+    this.waveBoss = boss ? drawBoss(this.run, this.rng.get("bosses"), this.bossPool()) : null;
     this.crown = boss && n === BOSS.final.wave ? this.crownPattern(this.waveBoss!) : null;
     const room = this.mods.room;
     const sub = this.waveBoss ? `${n === BOSS.final.wave ? CROWN_TITLE : BOSSES[this.waveBoss].name} approaches` : room ? `${room.name}` : this.zone.name;
@@ -2084,6 +2095,11 @@ export class Game {
   /** Chefes que podem sair do saco: os de `bosses.lua` que já têm luta aqui (hoje os 4; os do `M10` entram depois). */
   static readonly BOSS_POOL: readonly string[] = BOSS_ORDER.filter((id) => id in BOSSES);
 
+  /** boss_bag.lua `rebuild`: os chefes do saco nesta dificuldade (`minDifficulty`, M10-03). */
+  private bossPool(): readonly string[] {
+    return Game.BOSS_POOL.filter((id) => bossAllowed(BOSSES[id].minDifficulty, this.run.difficultyId));
+  }
+
   /** `WaveSystem.crownAttack`: o padrão de outro chefe, de um tipo que o rei não tem (D-640). */
   private crownPattern(id: string): BossPattern | null {
     const own = BOSSES[id].patterns.map((p) => p.kind);
@@ -2102,7 +2118,7 @@ export class Game {
 
   /** §7.9/§70 Emboscada: um chefe enfraquecido entra na onda normal; sai do mesmo saco das ondas de chefe. */
   private queueAmbush(): void {
-    const id = drawBoss(this.run, this.rng.get("bosses"), Game.BOSS_POOL);
+    const id = drawBoss(this.run, this.rng.get("bosses"), this.bossPool());
     this.queueSpawn({ id, champion: false }, true);
     this.events.toast(`Boss Ambush: ${BOSSES[id].name}!`, "#ff7a5a");
   }
