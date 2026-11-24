@@ -181,7 +181,7 @@ interface Prepared {
   detail: Map<Bone | string, G>;
   glow: Map<Bone | string, G>;
   pelt: Map<Bone | string, G>;
-  legs: { femur: G; tibia: G }[];
+  legs: { femur: G; tibia: G; foot: G | null }[];
 }
 
 /** M16-01: esculpir e fundir um personagem leva de 5 a 15 ms; cada inimigo que nascia refazia tudo (e o descarte não
@@ -197,7 +197,7 @@ function prepare(id: string): Prepared {
   const fuseAll = (m: Map<Bone | string, G[]>) => new Map([...m].map(([k, list]) => [k, fuse(list)] as const));
   const p: Prepared = {
     b, solid: fuseAll(b.solid), detail: fuseAll(b.detail), glow: fuseAll(b.glow), pelt: fuseAll(b.pelt),
-    legs: b.ikLegs.map((spec) => ({ femur: fuse(spec.femur), tibia: fuse(spec.tibia) })),
+    legs: b.ikLegs.map((spec) => ({ femur: fuse(spec.femur), tibia: fuse(spec.tibia), foot: spec.foot ? fuse(spec.foot) : null })),
   };
   PREPARED.set(id, p);
   return p;
@@ -303,14 +303,23 @@ export function buildChar(id: string, scaleMult: number, variant: "champion" | "
     femur.add(tibia);
     root.add(femur);
     inner.add(root);
-    for (const [bone, geo] of [[femur, P.legs[i].femur], [tibia, P.legs[i].tibia]] as const) {
+    let paw: THREE.Group | undefined;
+    const parts: [THREE.Group, G][] = [[femur, P.legs[i].femur], [tibia, P.legs[i].tibia]];
+    if (P.legs[i].foot) {
+      paw = new THREE.Group();
+      paw.position.z = spec.l2;
+      paw.rotation.order = "XYZ";
+      tibia.add(paw);
+      parts.push([paw, P.legs[i].foot!]);
+    }
+    for (const [bone, geo] of parts) {
       const mesh = new THREE.Mesh(geo, legMat);
       mesh.castShadow = true;
       bone.add(mesh, new THREE.Mesh(geo, outline));
     }
     const side = spec.attach[0] < 0 ? 0 : 1;
     return {
-      root, femur, tibia, l1: spec.l1, l2: spec.l2, attach: new THREE.Vector3(...spec.attach), home: new THREE.Vector2(...spec.home),
+      root, femur, tibia, paw, l1: spec.l1, l2: spec.l2, attach: new THREE.Vector3(...spec.attach), home: new THREE.Vector2(...spec.home),
       foot: new THREE.Vector3(), from: new THREE.Vector3(), u: -1, group: (Math.floor(i / 2) + side) % 2,
     };
   });

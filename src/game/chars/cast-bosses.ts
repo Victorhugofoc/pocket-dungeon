@@ -321,7 +321,7 @@ export const BOSSES: Record<string, Spec> = {
     // patas retas, de pé (não abertas como as da hidra)
     for (const [ax, ay, az, hx, hz] of [[0.13, -0.1, 0.18, 0.15, 0.28], [0.14, -0.08, -0.31, 0.16, -0.22]] as const) {
       for (const s of [-1, 1]) {
-        b.ikLegs.push({ attach: [s * ax, ay, az], home: [s * hx, hz], l1: 0.24, l2: 0.24, femur: [parts.get("legfemur")!], tibia: [parts.get("legtibia")!] });
+        b.ikLegs.push({ attach: [s * ax, ay, az], home: [s * hx, hz], l1: 0.24, l2: 0.24, femur: [parts.get("legfemur")!], tibia: [parts.get("legtibia")!], foot: [parts.get("legfoot")!] });
       }
     }
   },

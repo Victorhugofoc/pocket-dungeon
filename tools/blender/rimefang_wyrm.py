@@ -404,19 +404,22 @@ def legs():
     sk = skin(belly_at=0.7, bands=False)
     # canela na cor do corpo, azul-marinho só do meio para o tornozelo (z do three = -y do Blender, ao longo da pata)
     tib = paint(smooth(tib, iters=1, target=320), lambda co, n: mix(sk(co, n), navy(co, n), ss(L2 * 0.1, L2 * 0.45, -co[1])))
-    # pé: a tíbia acaba no chão em +z; o pé deita para a frente (y do Blender = -z do three... aqui o "para a frente" do pé
-    # é -y do Blender quando a pata está de pé, o que no espaço da malha é o eixo y)
-    toe = lambda co, n: mix(SKIN_D, SKIN, 0.3 + 0.5 * ss(-0.3, 0.9, n3(n).dot(LIGHT3)))  # noqa: E731
-    # o fim da tíbia (z = L2) é o chão. No jogo, o -y local da tíbia aponta para a frente do bicho (a cinemática inversa
-    # dobra o joelho para trás): dedos e garras abertos para -y, um pouco acima do chão; esporão para +y
-    paw = paint(smooth(ball("paw", B((0, -0.035, L2 * 0.95)), (0.08, 0.085, 0.04), seg=(14, 8))), navy)
-    claws = []
+    # tornozelo: fecha a ponta da tíbia (o pé é peça à parte)
+    ankle = paint(smooth(ball("ankle", B((0, 0, L2 * 0.92)), (0.05, 0.05, 0.05), seg=(12, 8))), navy)
+    return [fem], [tib, ankle], foot(navy)
+
+
+def foot(navy):
+    """pé, peça própria (`legfoot`) no espaço do corpo: origem no ponto que pisa, dedos para a frente (+z do three) deitados
+    no chão. O jogo o mantém nivelado e de frente para o corpo (`IkLeg.paw`), então nada depende da dobra do joelho."""
+    out = [paint(smooth(ball("paw", B((0, 0.035, 0.02)), (0.075, 0.08, 0.04), seg=(14, 8))), navy)]
     for k in (-1, 0, 1):
-        # dedos deitados no chão, a garra curta nasce na ponta do dedo e curva para baixo
-        a, b_ = (k * 0.035, -0.05, L2 * 0.96), (k * 0.075, -0.15, L2 * 0.97)
-        claws.append(paint(smooth(tube("toe", [B(a), B(b_)], [0.032, 0.024], seg=8)), navy))
-        claws.append(paint(cone("claw", B((k * 0.078, -0.155, L2 * 0.965)), B((k * 0.095, -0.22, L2 * 1.0)), 0.022, seg=6), flat(CLAW)))
-    return [fem], [tib, paw] + claws
+        a, b_ = (k * 0.035, 0.03, 0.04), (k * 0.075, 0.024, 0.13)
+        out.append(paint(smooth(tube("toe", [B(a), B(b_)], [0.032, 0.024], seg=8)), navy))
+        # garra curta na ponta do dedo, curvando até o chão
+        out.append(paint(cone("claw", B((k * 0.078, 0.024, 0.13)), B((k * 0.095, 0.004, 0.2)), 0.022, seg=6), flat(CLAW)))
+    out.append(paint(cone("spur", B((0, 0.04, -0.03)), B((0, 0.02, -0.09)), 0.016, seg=5), flat(CLAW)))
+    return out
 
 
 PIV3 = {"hips": (0, HIP_Y, 0)}
@@ -429,7 +432,7 @@ PIV3["jaw"] = tuple(hinge())
 PIV3["wingL"] = (-WING_ROOT[0], WING_ROOT[1], WING_ROOT[2])
 PIV3["wingR"] = WING_ROOT
 PIV = {k: B(v) for k, v in PIV3.items()}
-PIV["legfemur"] = PIV["legtibia"] = (0, 0, 0)
+PIV["legfemur"] = PIV["legtibia"] = PIV["legfoot"] = (0, 0, 0)
 
 
 def build():
@@ -440,14 +443,14 @@ def build():
     parts["head"], parts["head@flat"], parts["head@lit"] = solid, fl, lit
     parts["jaw"], parts["jaw@flat"] = js, jf
     parts["wingL"], parts["wingR"] = wing(-1), wing(1)
-    fem, tib = legs()
-    parts["legfemur"], parts["legtibia"] = fem, tib
+    fem, tib, ft = legs()
+    parts["legfemur"], parts["legtibia"], parts["legfoot"] = fem, tib, ft
     ao = [o for k, objs in parts.items() if "@" not in k and not k.startswith("leg") and not k.startswith("wing") for o in objs]
     bake_ao(ao, strength=0.35, distance=0.08)
     return {k: v for k, v in parts.items() if v}
 
 
-def preview_legs(fem, tib):
+def preview_legs(fem, tib, ft):
     """só para as capturas do Blender: as 4 patas na pose de repouso (o jogo resolve por cinemática inversa)"""
     out = []
     for ax, ay, az, hx, hz in LEGS:
@@ -463,7 +466,7 @@ def preview_legs(fem, tib):
             m_root = Matrix.Translation(V3(at)) @ Matrix.Rotation(yaw, 4, "Z")
             m_fem = m_root @ Matrix.Rotation(-upa, 4, "X")
             m_tib = m_fem @ Matrix.Translation((0, -L1, 0)) @ Matrix.Rotation(math.pi - knee, 4, "X")
-            for src, mm in ((fem, m_fem), (tib, m_tib)):
+            for src, mm in ((fem, m_fem), (tib, m_tib), (ft, Matrix.Translation(V3(foot)))):
                 for so in src:
                     c = so.copy()
                     c.data = so.data.copy()
@@ -481,10 +484,10 @@ if __name__ == "__main__":
     print("TRIS", sum(counts.values()), counts)
     print("PIV3", {k: tuple(round(v, 3) for v in p) for k, p in PIV3.items()})
     if "review" in ARGS:
-        for k in ("legfemur", "legtibia"):
+        for k in ("legfemur", "legtibia", "legfoot"):
             for o in parts[k]:
                 o.hide_render = True
-        preview_legs(parts["legfemur"], parts["legtibia"])
+        preview_legs(parts["legfemur"], parts["legtibia"], parts["legfoot"])
         review_setup((0, 0, 0))
         out = os.path.join(ROOT, ".shots")
         for name, yaw, pitch in [("side", 90, 8), ("tq", 35, 25), ("top", 0, 70), ("front", 0, 12)]:

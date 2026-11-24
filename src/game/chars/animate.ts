@@ -48,6 +48,8 @@ export interface IkLeg {
   root: THREE.Group;
   femur: THREE.Group;
   tibia: THREE.Group;
+  /** M10-06: pé que fica deitado no chão e de frente para o corpo (desfaz o giro do encaixe e as dobras da pata) */
+  paw?: THREE.Group;
   l1: number;
   l2: number;
   attach: THREE.Vector3;
@@ -810,6 +812,8 @@ function stepLegs(c: CharState, rig: Rig, hip: THREE.Vector3, dt: number, vf: nu
     l.root.rotation.y = Math.atan2(ox, oz);
     l.femur.rotation.x = -up;
     l.tibia.rotation.x = Math.PI - knee;
+    // a ponta da tíbia gira com o joelho e com o encaixe; o pé desfaz os dois: Rx(-a) · Ry(-giro), a = -up + π - knee
+    l.paw?.rotation.set(up - Math.PI + knee, -l.root.rotation.y, 0);
   }
 }
 

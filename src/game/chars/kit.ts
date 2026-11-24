@@ -75,6 +75,9 @@ export interface LegSpec {
   l2: number;
   femur: G[];
   tibia: G[];
+  /** M10-06: pé na ponta da tíbia, desenhado no espaço do corpo (y para cima, frente em +z, origem no ponto que pisa);
+   * a animação o mantém deitado no chão e de frente para onde o corpo olha, qualquer que seja a dobra do joelho */
+  foot?: G[];
 }
 
 /** Fita solta com física: presa em `at` no osso, cai com a gravidade, arrasta com o movimento e não atravessa o corpo nem o chão.
