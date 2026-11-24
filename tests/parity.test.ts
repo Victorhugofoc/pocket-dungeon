@@ -19,7 +19,7 @@ import {
   LEVELUP_REROLL, RUN_MAP, RUN_START, RUN_TUNING, TOTAL_WAVES, UPGRADE_TIER_WEIGHTS, UPGRADE_TIERS, WAVE_STAGES, WAVES,
   XP_GROWTH,
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
-  BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PHASES, BOSS_SKILLSHOT,
+  BOSS_MECHANIC, BOSS_MECHANICS, BOSS_PHASES, BOSS_PROJECTILE_SPEED, BOSS_SKILLSHOT,
 } from "../src/data/run";
 import { BOSS_ORDER, BOSSES, CROWN_BORROW, ENEMIES, HELPERS, SHIELD_CYCLE } from "../src/data/enemies";
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
@@ -109,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "hollow_king" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1283,5 +1283,20 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     // o empréstimo do rei coroado: só os de `CROWN.borrow` que já existem aqui, na ordem de lá
     const map: Record<string, string> = { nova: "nova", crossfire: "crossfire", fan: "fanvolley", spiral: "spiralvolley" };
     expect(CROWN_BORROW.map((k) => map[k])).toEqual(BS.CROWN.borrow.filter((k: string) => Object.values(map).includes(k)));
+  });
+  it("Dune Leviathan igual ao de bosses.lua: distância, parede de areia, varrida, erupção e Burrow (M10-02)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.dune_leviathan, d = BOSSES.dune_leviathan;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    expect(d.patterns.map((p) => p.kind)).toEqual(build.attacks);
+    expect(px(d.preferred)).toBe(build.preferred);
+    expect(BOSS_PROJECTILE_SPEED).toBe(BS.BASE.projectileSpeed);
+    const [sv, ts, er] = d.patterns;
+    expect([sv.warning, sv.damage, sv.count, sv.gap, px(sv.spacing)]).toEqual([A.sandvolley.warning, A.sandvolley.dmg, A.sandvolley.count, A.sandvolley.gap, A.sandvolley.spacing]);
+    expect([ts.warning, ts.damage, px(ts.width), px(ts.length), ts.lines, ts.spreadDeg, ts.stagger])
+      .toEqual([A.tailsweep.warning, A.tailsweep.dmg, A.tailsweep.width, A.tailsweep.length, A.tailsweep.lines, A.tailsweep.spreadDeg, A.tailsweep.stagger]);
+    expect([er.warning, er.damage, px(er.radius), er.count, er.stagger]).toEqual([A.erupt.warning, A.erupt.dmg, A.erupt.radius, A.erupt.count, A.erupt.stagger]);
+    const M = BS.MECHANICS.burrow, B = BOSS_MECHANICS.burrow;
+    expect([B.interval, B.under, B.radius, B.dmg]).toEqual([M.interval, M.under, M.radius, M.dmg]);
   });
 });

@@ -219,7 +219,11 @@ export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: num
   ember_matriarch: { hp: 1.04, damage: 1.08, speed: 0.94, projectileSpeed: 0.90 },
   hollow_king: { hp: 1.12, damage: 1.14, speed: 0.92, projectileSpeed: 1.00 },
   deathstalker: { hp: 0.92, damage: 1.02, speed: 0.95, projectileSpeed: 0.88 },
+  dune_leviathan: { hp: 1.10, damage: 1.10, speed: 1.00, projectileSpeed: 0.95 },
 };
+
+/** bosses.lua `BASE.projectileSpeed`: velocidade do tiro de chefe em px/s (os ataques novos multiplicam por ela) */
+export const BOSS_PROJECTILE_SPEED = 210;
 
 /**
  * bosses.lua `BASE`: o skillshot (linha fina avisada e tiro rápido) tem recarga própria, fora da rotação, e só corre
@@ -239,7 +243,7 @@ export const BOSS_PHASES = [
   { above: -1, speed: 1.12, attackCooldown: 0.82, contactCooldown: 0.78, skillshotCooldown: 0.82, enraged: true },
 ] as const;
 
-export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey";
+export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow";
 
 /** bosses.lua `builds[id].mechanic` e `mechanicName`, dos 4 chefes daqui. */
 export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }> = {
@@ -248,6 +252,7 @@ export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }>
   ember_matriarch: { id: "meteor_siege", name: "Meteor Siege" },
   hollow_king: { id: "soul_tether", name: "Soul Tether" },
   deathstalker: { id: "marked_prey", name: "Marked Prey" },
+  dune_leviathan: { id: "burrow", name: "Burrow" },
 };
 
 /**
@@ -265,4 +270,7 @@ export const BOSS_MECHANICS = {
   meteor_siege: { fireTime: 2.5, fireDps: 0.35, radiusMult: 0.8 },
   soul_tether: { perPhase: [2, 3, 3], damageTakenMult: 0.35, wardHp: 0.06 },
   marked_prey: { mult: 1.25 },
+  /** boss_ai_ext.lua `burrow`: a cada `interval` s (o primeiro em `first`, `mechanicTimer` de boss.lua) some `under` s e
+   * emerge onde o herói estava, círculo de `radius` px com ×`dmg` */
+  burrow: { interval: 8, under: 1.2, radius: 70, dmg: 1.4, first: 3 },
 } as const;

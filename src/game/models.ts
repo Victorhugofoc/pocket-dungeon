@@ -231,6 +231,8 @@ export interface AnimState {
   bossDeath?: boolean;
   /** M9-05: voo do salto 0..1 (patas esticadas, corpo inclinado) */
   air?: number;
+  /** M10-02: verme na areia, 0 fora .. 1 embaixo (mergulho e emersão) */
+  burrow?: number;
 }
 
 export function animateRig(rig: Rig, a: AnimState): void {

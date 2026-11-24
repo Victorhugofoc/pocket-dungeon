@@ -15,7 +15,7 @@ function draws(seed: number, n: number): string[] {
 
 describe("saco de chefes (boss_bag.lua)", () => {
   it("o saco tem os chefes que já lutam aqui, na ordem de bosses.lua", () => {
-    expect(POOL).toEqual(["bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "hollow_king"]);
+    expect(POOL).toEqual(["bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king"]);
   });
 
   it("mesma seed, mesma ordem; seeds diferentes, ordens diferentes", () => {

@@ -270,6 +270,16 @@ export const BOSSES: Record<string, Spec> = {
       }
     }
   },
+  // M10-02: verme da areia modelado no Blender (tools/blender/dune_leviathan.py, brief em docs/briefs/dune_leviathan.md). Forma
+  // `worm`: o monte de areia no hips (no chão); os pontos da cadeia são os de SPINE no script.
+  dune_leviathan: (b) => {
+    b.form = "worm"; b.scale = 2.8; b.style = "bite"; b.glowColor = 0xffc86a; b.rough = 0.8;
+    b.dims = { ...b.dims, hipY: 0 };
+    const spine: [number, number, number][] = [[0, 0.04, -0.12], [0, 0.38, -0.18], [0, 0.72, -0.14], [0, 1.0, 0.02], [0, 1.14, 0.25], [0, 1.11, 0.5]];
+    const bones = ["tail", "tail2", "tail3", "tail4", "tail5", "head"] as const;
+    bones.forEach((bone, i) => b.joints.push({ bone, parent: i ? bones[i - 1] : "hips", at: spine[i] }));
+    addModel(b, "dune_leviathan");
+  },
   // Redesenho a partir do sprite (docs/ref/ember_matriarch.png): torso esguio de mulher sobre corpo de aranha, casca preta rachada de lava.
   // Medidas do sprite (altura 120 px): abdômen 60 px de diâmetro atrás do corpo, cefalotórax 25 px, cintura a 35% e ombros a 67% da altura,
   // patas longas com o joelho acima do corpo. As rachaduras vêm do shader (`surface = "lava"`); as patas usam cinemática inversa.

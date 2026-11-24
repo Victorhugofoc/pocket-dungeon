@@ -74,6 +74,8 @@ export const TUNING = {
     xpMult: 22,
     /** chefe que mantém distância (`preferred`, M10-01): vai ao golpe quando o herói chega a esta folga além do alcance */
     closeIn: 1.5,
+    /** M10-02: segundos que o verme leva para sumir na areia e para sair dela */
+    burrowAnim: 0.35,
   },
   world: {
     size: 240,

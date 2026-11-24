@@ -87,6 +87,8 @@ const overshoot = (t: number) => 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t
 
 /** M10-01: quanto cada gomo da cauda do escorpião gira no golpe (a base tomba para a frente, a ponta se abre) */
 const STRIKE_TAIL = [0.5, 0.35, 0.1, -0.45, -0.8];
+/** M10-02: quanto cada gomo do verme gira no bote (a base fica de pé, o terço de cima enrola para baixo) */
+const WORM_BITE = [0, 0.03, 0.18, 0.3, 0.3];
 
 export function animateChar(rig: Rig, a: AnimState): void {
   const c = rig.char!;
@@ -235,6 +237,41 @@ export function animateChar(rig: Rig, a: AnimState): void {
       for (const bn of tail) if (bn) bn.rotation.x = -0.25 * e;
     }
     if (c.legs.length) stepLegs(c, rig, h.position, dt, vf, vs, a.dead);
+    return;
+  }
+
+  if (c.form === "worm") {
+    // M10-02: o monte de areia (hips) fica no chão; o corpo em cadeia balança gomo a gomo; no preparo se encolhe para trás,
+    // no golpe dá o bote para a frente; mergulha e emerge na areia (burrow); ao morrer tomba de lado e afunda
+    const h = B.hips!;
+    const chain = [B.tail, B.tail2, B.tail3, B.tail4, B.tail5];
+    const hd = B.head!;
+    const rage = a.rage ?? 0;
+    const w = alive ? a.windup : 0;
+    const at = alive && a.attack >= 0 ? a.attack : -1;
+    const bite = at >= 0 ? (at < 0.3 ? overshoot(at / 0.3) : 1 - ease((at - 0.3) / 0.7)) : 0;
+    const roar = alive && (a.roar ?? -1) >= 0 ? Math.sin(Math.min(1, a.roar!) * Math.PI) : 0;
+    const under = ease(clamp(a.burrow ?? 0, 0, 1));
+    chain.forEach((bn, i) => {
+      if (!bn) return;
+      const lag = i * 0.7;
+      bn.rotation.x = Math.sin(t * (1.3 + rage) - lag) * 0.05 - (w + roar) * 0.1 + bite * WORM_BITE[i] - secF * 0.06 + kf * 0.2;
+      bn.rotation.z = Math.sin(t * 0.8 - lag) * 0.06 * (1 + rage) + secS * 0.06 - ks * 0.2;
+      bn.rotation.y = twist * 0.1;
+    });
+    // no bote só o terço de cima enrola para baixo e para a frente (linha 3 do sprite); a base fica de pé
+    hd.rotation.set(-roar * 0.4 - w * 0.15 + bite * 0.15, 0, 0);
+    // na areia: o corpo desce pelo monte e o monte afunda junto
+    const tail = B.tail!;
+    const rest = (tail.userData.rest ??= tail.position.clone()) as THREE.Vector3;
+    tail.position.set(rest.x, rest.y - under * 1.5, rest.z);
+    h.position.set(0, -under * 0.25, 0);
+    h.scale.setScalar(1 - under * 0.4);
+    if (!alive) {
+      const e = ease(Math.min(1, a.dead * 1.4));
+      tail.rotation.z = e * 1.35;
+      h.position.y = -e * 0.15;
+    }
     return;
   }
 

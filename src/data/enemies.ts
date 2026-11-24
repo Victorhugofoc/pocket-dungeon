@@ -133,7 +133,8 @@ export const HAZARD_TICK = 0.5;
 /** tuning.lua `SHIELD_CYCLE` (D-178): o escudo do Shieldbearer fica erguido `up` s, pisca `warn` s e cai `down` s */
 export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
-export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire";
+export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire"
+  | "sandvolley" | "tailsweep" | "erupt";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -151,6 +152,11 @@ export interface BossPattern {
   /** `mark`: quanto tempo o herói fica marcado e o multiplicador do dano do chefe nele */
   markTime?: number;
   markMult?: number;
+  /** `sandvolley`: buracos na parede e distância entre tiros (m); `tailsweep`: número de linhas; `tailsweep`/`erupt`: s entre um e outro */
+  gap?: number;
+  spacing?: number;
+  lines?: number;
+  stagger?: number;
 }
 
 export interface BossDef {
@@ -239,6 +245,17 @@ export const BOSSES: Record<string, BossDef> = {
     ],
     body: "bug", color: 0x2a2d33, accent: 0xd9a23a, glow: 0x8cff7a, scale: 2.4, projectileColor: 0xb6ff7a, xp: 55,
     relicBuild: "hunter",
+  },
+  // M10-02: a serpente da areia. Fica a 150 px; parede de areia, varrida de cauda na 2 e erupções na 3 (px ÷ 16).
+  dune_leviathan: {
+    id: "dune_leviathan", name: "Dune Leviathan", title: "The Burrower", hp: 2200, damage: 13, speed: 2.8, radius: 1.6,
+    attackRange: 3.2, attackCooldown: 1.6, patternCooldown: 4.0, preferred: 150 / 16,
+    patterns: [
+      { kind: "sandvolley", warning: 0.8, damage: 0.8, count: 15, gap: 3, spacing: 30 / 16 },
+      { kind: "tailsweep", warning: 0.7, damage: 1.2, width: 30 / 16, length: 300 / 16, lines: 3, spreadDeg: 70, stagger: 0.2 },
+      { kind: "erupt", warning: 0.8, damage: 1.2, radius: 52 / 16, count: 3, stagger: 0.45 },
+    ],
+    body: "bug", color: 0x8a6a3a, accent: 0xf0b0a8, glow: 0xffc86a, scale: 2.4, projectileColor: 0xe8c47a, xp: 60,
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,
