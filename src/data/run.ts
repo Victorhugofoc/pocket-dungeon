@@ -222,6 +222,7 @@ export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: num
   dune_leviathan: { hp: 1.10, damage: 1.10, speed: 1.00, projectileSpeed: 0.95 },
   mirage_djinn: { hp: 1.06, damage: 1.12, speed: 1.10, projectileSpeed: 1.05 },
   venom_hydra: { hp: 1.05, damage: 1.05, speed: 1.06, projectileSpeed: 0.96 },
+  gorged_ooze: { hp: 1.28, damage: 1.00, speed: 0.82, projectileSpeed: 0.85 },
 };
 
 /** bosses.lua `BASE.projectileSpeed`: velocidade do tiro de chefe em px/s (os ataques novos multiplicam por ela) */
@@ -245,7 +246,7 @@ export const BOSS_PHASES = [
   { above: -1, speed: 1.12, attackCooldown: 0.82, contactCooldown: 0.78, skillshotCooldown: 0.82, enraged: true },
 ] as const;
 
-export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage" | "venom_bloom";
+export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage" | "venom_bloom" | "mitosis";
 
 /** bosses.lua `builds[id].mechanic` e `mechanicName`, dos 4 chefes daqui. */
 export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }> = {
@@ -257,6 +258,7 @@ export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }>
   dune_leviathan: { id: "burrow", name: "Burrow" },
   mirage_djinn: { id: "mirage", name: "Mirage" },
   venom_hydra: { id: "venom_bloom", name: "Venom Bloom" },
+  gorged_ooze: { id: "mitosis", name: "Mitosis" },
 };
 
 /**
@@ -282,4 +284,7 @@ export const BOSS_MECHANICS = {
   mirage: { perPhase: [2, 2, 2], illusionHp: 0.07, ring: 110, damage: 0.35 },
   /** boss_ai.lua `bolt` (D-096): todo tiro do chefe vira poça de veneno onde acaba (`poolRadius` px, `poolTime` s, `poolDps` × dano) */
   venom_bloom: { poolTime: 2.5, poolDps: 0.45, poolRadius: 30 },
+  /** boss_ai_ext.lua `mitosis`: ao entrar em cada fase solta `perPhase` crias (`minion`, MINION_SCALE, sem recompensa) a
+   * `ring` px dele, em ângulos iguais */
+  mitosis: { perPhase: [0, 3, 3], minion: "splitter", ring: 40 },
 } as const;

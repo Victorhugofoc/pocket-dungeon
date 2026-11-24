@@ -292,6 +292,12 @@ export const BOSSES: Record<string, Spec> = {
     bones.forEach((bone, i) => b.joints.push({ bone, parent: i ? bones[i - 1] : "hips", at: tail[i] }));
     addModel(b, "mirage_djinn");
   },
+  // M10-05: gosma de boca enorme modelada no Blender (tools/blender/gorged_ooze.py, brief em docs/briefs/gorged_ooze.md). Forma
+  // `slime`: um osso só, o hips, que achata e estica tudo; o lábio de baixo é parte da malha da gosma.
+  gorged_ooze: (b) => {
+    b.form = "slime"; b.scale = 2.0; b.style = "bite"; b.rough = 0.4; b.glowColor = 0xffffff;
+    addModel(b, "gorged_ooze");
+  },
   // M10-04: hidra de três cabeças modelada no Blender (tools/blender/venom_hydra.py, brief em docs/briefs/venom_hydra.md). Forma
   // `hydra`: corpo no hips, cauda e os três pescoços em cadeia (pontos = PIV3 do script); 4 patas com `legfemur`/`legtibia`.
   venom_hydra: (b) => {

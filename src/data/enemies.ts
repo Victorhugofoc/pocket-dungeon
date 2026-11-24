@@ -143,7 +143,8 @@ export const HAZARD_TICK = 0.5;
 export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
 export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire"
-  | "sandvolley" | "tailsweep" | "erupt" | "orbitals" | "prismbeam" | "miragedash" | "venomfield";
+  | "sandvolley" | "tailsweep" | "erupt" | "orbitals" | "prismbeam" | "miragedash" | "venomfield"
+  | "acidlob" | "slimewave";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -183,6 +184,10 @@ export interface BossPattern {
   time?: number;
   dps?: number;
   around?: number;
+  /** `acidlob`: raio da poça (× raio do círculo); `slimewave`: miolo seguro (× raio) e grossura do anel (m) */
+  poolScale?: number;
+  inner?: number;
+  thickness?: number;
 }
 
 export interface BossDef {
@@ -298,6 +303,18 @@ export const BOSSES: Record<string, BossDef> = {
     ],
     body: "brute", color: 0x3f7a2a, accent: 0xd8cf8a, glow: 0x9be84a, scale: 2.4, projectileColor: 0x8ce63a, xp: 65,
     relicBuild: "venom_hydra",
+  },
+  // M10-05: a gosma devoradora. Vai atrás do herói (preferred 0); ácido, onda de lodo na 2 e bote na 3 (bosses.lua, px ÷ 16).
+  // Mitosis: 3 splitters invocados ao entrar nas fases 2 e 3 (BOSS_MECHANICS.mitosis).
+  gorged_ooze: {
+    id: "gorged_ooze", name: "Gorged Ooze", title: "The Devourer", hp: 2600, damage: 13, speed: 2.4, radius: 1.8,
+    attackRange: 3.2, attackCooldown: 1.6, patternCooldown: 4.0,
+    patterns: [
+      { kind: "acidlob", warning: 1.0, damage: 0.9, radius: 44 / 16, count: 3, stagger: 0.15, around: 75 / 16, time: 4, dps: 0.35, poolScale: 0.85 },
+      { kind: "slimewave", warning: 0.9, damage: 1.1, radius: 130 / 16, inner: 0.35, speed: 220 / 16, thickness: 22 / 16 },
+      { kind: "charge", warning: 0.8, damage: 1.5, length: 320 / 16, width: 48 / 16, speed: 300 / 16 },
+    ],
+    body: "brute", color: 0x99f259, accent: 0x2f5a1a, glow: 0xb6ff5a, scale: 2.0, projectileColor: 0x9be84a, xp: 70,
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,

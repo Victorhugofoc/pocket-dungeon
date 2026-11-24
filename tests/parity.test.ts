@@ -109,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra", "gorged_ooze" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1336,6 +1336,27 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect(fv.speed).toBeUndefined(); // o leque sai em BOSS_PROJECTILE_SPEED, como o `bolt` de lá
     const M = BS.MECHANICS.venom_bloom, B = BOSS_MECHANICS.venom_bloom;
     expect([B.poolTime, B.poolDps, B.poolRadius]).toEqual([M.poolTime, M.poolDps, M.poolRadius]);
+  });
+  it("Gorged Ooze igual à de bosses.lua: ácido, onda de lodo, bote e Mitosis (M10-05)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.gorged_ooze, d = BOSSES.gorged_ooze;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    const lua: Record<string, string> = { charge: "engulf" };
+    expect(d.patterns.map((p) => lua[p.kind] ?? p.kind)).toEqual(build.attacks);
+    expect(d.preferred).toBeUndefined(); // preferred = 0: vai atrás do herói
+    expect(build.preferred).toBe(0);
+    expect(d.relicBuild).toBeUndefined();
+    const [al, sw, en] = d.patterns;
+    // boss_ai_ext.lua `acidlob`: extras a 75 px do herói, +0,15 s de aviso cada, poça com 0,85 do raio
+    expect([al.warning, al.damage, px(al.radius), al.count, al.time, al.dps, al.stagger, px(al.around), al.poolScale])
+      .toEqual([A.acidlob.warning, A.acidlob.dmg, A.acidlob.radius, A.acidlob.count, A.acidlob.poolTime, A.acidlob.poolDps, 0.15, 75, 0.85]);
+    // `slimewave`: o raio é o `slamRadius` do chefe
+    expect([sw.warning, sw.damage, px(sw.radius), sw.inner, px(sw.speed), px(sw.thickness)])
+      .toEqual([A.slimewave.warning, A.slimewave.dmg, build.slamRadius, A.slimewave.safeInner, A.slimewave.ringSpeed, A.slimewave.thickness]);
+    expect([en.warning, en.damage, px(en.speed), px(en.length), px(en.width)])
+      .toEqual([A.engulf.warning, A.engulf.dmg, A.engulf.speed, A.engulf.length, A.engulf.width]);
+    const M = BS.MECHANICS.mitosis, B = BOSS_MECHANICS.mitosis;
+    expect([[...B.perPhase], B.minion, B.ring]).toEqual([M.perPhase, M.minion, 40]);
   });
   it("cópia do Mirage Djinn (mirage_illusion) igual à de enemies.lua: atiradora, sem recompensa, meio transparente (M10-03)", () => {
     const o: Lua = dr!["src.data.enemies"].mirage_illusion;

@@ -24,6 +24,8 @@ export interface Telegraph {
   angle: number;
   length: number;
   width: number;
+  /** aviso em anel (miolo seguro): a geometria é dele e sai junto */
+  ownGeometry?: boolean;
 }
 
 interface Transient {
@@ -314,17 +316,21 @@ export class Fx {
     this.scene.add(mesh);
   }
 
-  telegraphCircle(x: number, z: number, r: number, dur: number, onDone: () => void): Telegraph {
-    const outline = new THREE.Mesh(this.circleGeo, this.matOutline);
+  /** círculo avisado; com `inner` (m) é um anel, e o miolo fica de fora (seguro) */
+  telegraphCircle(x: number, z: number, r: number, dur: number, onDone: () => void, inner = 0): Telegraph {
+    const geo = inner > 0 ? new THREE.RingGeometry(inner / r, 1, 48) : this.circleGeo;
+    const outline = new THREE.Mesh(geo, this.matOutline);
     outline.scale.setScalar(r);
     this.ground(outline, x, z, 0.06);
     const edge = new THREE.Mesh(this.ringGeo, this.matEdge);
     outline.add(edge);
     edge.position.z = 0.01;
-    const fill = new THREE.Mesh(this.circleGeo, this.matFill);
-    fill.scale.setScalar(0.01);
+    // no anel, o preenchimento é uma faixa que anda do miolo até a borda (o caminho da onda)
+    const fill = new THREE.Mesh(inner > 0 ? new THREE.RingGeometry(0.88, 1, 48) : geo, this.matFill);
+    fill.scale.setScalar(inner > 0 ? inner : 0.01);
     this.ground(fill, x, z, 0.08);
-    const tg: Telegraph = { kind: "circle", t: 0, dur, outline, fill, onDone, r, x, z, angle: 0, length: 0, width: 0 };
+    // `width` guarda o miolo do anel (o círculo não usa largura)
+    const tg: Telegraph = { kind: "circle", t: 0, dur, outline, fill, onDone, r, x, z, angle: 0, length: 0, width: inner, ownGeometry: inner > 0 };
     this.telegraphs.push(tg);
     return tg;
   }
@@ -400,12 +406,12 @@ export class Fx {
   }
 
   /** anel que se expande e some */
-  shockwave(x: number, z: number, r: number, color: number, dur = 0.35): void {
+  shockwave(x: number, z: number, r: number, color: number, dur = 0.35, from = 0.2): void {
     const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
     const mesh = new THREE.Mesh(this.waveGeo, m);
     this.ground(mesh, x, z, 0.12);
-    mesh.scale.setScalar(0.2);
-    this.transients.push({ mesh, t: 0, dur, grow: r, base: 0.2, ownGeometry: false });
+    mesh.scale.setScalar(from);
+    this.transients.push({ mesh, t: 0, dur, grow: r, base: from, ownGeometry: false });
   }
 
   /** arco de golpe corpo a corpo */
@@ -503,7 +509,7 @@ export class Fx {
       tg.t += dt;
       const k = Math.min(1, tg.t / tg.dur);
       if (tg.kind === "circle") {
-        tg.fill.scale.setScalar(Math.max(0.01, tg.r * k));
+        tg.fill.scale.setScalar(tg.width > 0 ? tg.width + (tg.r - tg.width) * k : Math.max(0.01, tg.r * k));
       } else {
         const len = Math.max(0.01, tg.length * k);
         tg.fill.scale.set(tg.width, len, 1);
@@ -512,6 +518,7 @@ export class Fx {
       if (k >= 1 || tg.cancelled) {
         tg.outline.removeFromParent();
         tg.fill.removeFromParent();
+        if (tg.ownGeometry) { tg.outline.geometry.dispose(); tg.fill.geometry.dispose(); }
         this.telegraphs.splice(i, 1);
         if (!tg.cancelled) tg.onDone();
       }
@@ -607,6 +614,7 @@ export class Fx {
     for (const tg of this.telegraphs) {
       tg.outline.removeFromParent();
       tg.fill.removeFromParent();
+      if (tg.ownGeometry) { tg.outline.geometry.dispose(); tg.fill.geometry.dispose(); }
     }
     this.telegraphs.length = 0;
     for (const tr of this.transients) tr.mesh.removeFromParent();
