@@ -216,6 +216,10 @@ export class Enemy {
   illusions: Enemy[] = [];
   miragePhase = 0;
   dashBlinkT = -1;
+  /** M10-05 Mitosis: última fase em que a gosma já se dividiu */
+  splitPhase = 0;
+  /** M10-05 Slime Wave (boss_ai.lua `updateShockwaves`): anéis que crescem e acertam o herói uma vez cada */
+  private slimeRings: { x: number; z: number; r: number; max: number; speed: number; thick: number; dmg: number; hit: boolean }[] = [];
   /** ataques em fila (boss_ai_ext.lua: o `erupt` põe cada erupção na fila com atraso) */
   private queued: { at: number; fn: () => void }[] = [];
   /** retícula do Mark seguindo o herói: `left` s até travar */
@@ -703,6 +707,8 @@ export class Enemy {
     this.rushSteps = 0;
     this.rushSpeed = this.rushDamage = 1;
     this.armyPhase = 0;
+    this.splitPhase = 0;
+    this.slimeRings.length = 0;
     this.dropWards(game);
     this.roarT = -1;
     this.dots.length = 0;
@@ -1004,6 +1010,7 @@ export class Enemy {
   private updateBoss(game: Game, dt: number, dist: number, speed: number): void {
     const b = this.boss!;
     const p = game.player;
+    if (this.slimeRings.length) this.updateSlimeRings(game, dt);
     if (this.updatePhase(game)) return;
     this.updateMechanic(game, dt);
     if (this.spiral) {
@@ -1143,6 +1150,9 @@ export class Enemy {
     } else if (this.mechanic === "mirage" && this.miragePhase < this.phase) {
       this.miragePhase = this.phase;
       this.raiseIllusions(game);
+    } else if (this.mechanic === "mitosis" && this.splitPhase < this.phase) {
+      this.splitPhase = this.phase;
+      this.divide(game);
     } else if (this.mechanic === "soul_tether" && this.wardPhase < this.phase) {
       this.wardPhase = this.phase;
       this.raiseWards(game, soulWardCount(this.phase));
@@ -1289,6 +1299,45 @@ export class Enemy {
   }
 
   /** boss_ai.lua `phaseSummon`: aviso em volta do chefe e n lacaios em roda (sem recompensa, fora do teto de invocados). */
+  /**
+   * boss_ai_ext.lua `mitosis`: ao entrar na fase, `perPhase` crias (splitter invocado: MINION_SCALE, sem recompensa) a 40 px
+   * dele, em ângulos iguais, dentro da arena. Ao morrer, cada uma ainda se divide como o splitter comum.
+   */
+  private divide(game: Game): void {
+    const M = BOSS_MECHANICS.mitosis;
+    const n = M.perPhase[this.phase - 1] ?? 0;
+    if (n <= 0) return;
+    const px = TUNING.enemy.pxToUnit;
+    const lim = game.layout.bossRadius - 1;
+    for (let k = 1; k <= n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      let x = this.x + Math.cos(a) * M.ring * px;
+      let z = this.z + Math.sin(a) * M.ring * px;
+      const dx = x - this.homeX, dz = z - this.homeZ, d = Math.hypot(dx, dz);
+      if (d > lim) { x = this.homeX + (dx / d) * lim; z = this.homeZ + (dz / d) * lim; }
+      game.spawnEnemy(M.minion, this.level, x, z, { summoned: true, aggro: true });
+      game.fx.burst(x, 0.8, z, this.boss!.glow, 14, 4, 0.18, 0.5);
+    }
+    game.fx.shockwave(this.x, this.z, 4, this.boss!.glow, 0.45);
+    game.fx.text(this.x, this.rig.height + 1, this.z, "Mitosis", "crit");
+    game.audio.play("warn");
+  }
+
+  /** boss_ai.lua `updateShockwaves`: o anel cresce até `max`; o herói na faixa (± grossura/2 + raio dele) leva o golpe uma vez */
+  private updateSlimeRings(game: Game, dt: number): void {
+    const p = game.player;
+    const pr = TUNING.enemy.telegraph.playerRadius;
+    for (let i = this.slimeRings.length - 1; i >= 0; i--) {
+      const s = this.slimeRings[i];
+      s.r = Math.min(s.max, s.r + s.speed * dt);
+      if (!s.hit && game.playerAlive && Math.abs(Math.hypot(p.x - s.x, p.z - s.z) - s.r) <= s.thick / 2 + pr) {
+        s.hit = true;
+        game.hurtPlayer(s.dmg, this.name, this);
+      }
+      if (s.r >= s.max) this.slimeRings.splice(i, 1);
+    }
+  }
+
   private raiseArmy(game: Game, n: number): void {
     const M = BOSS_MECHANICS.army_of_the_damned;
     const px = TUNING.enemy.pxToUnit;
@@ -1418,6 +1467,42 @@ export class Enemy {
           const speed = BOSS_SKILLSHOT.speed * TUNING.enemy.pxToUnit * this.projK;
           game.spawnEnemyProjectile(this.x, this.z, a, speed, this.dmg * pt.damage, b.projectileColor, pt.radius ?? 0.375, this, this.bloom(game));
         });
+        break;
+      }
+      case "acidlob": {
+        // boss_ai_ext.lua `acidlob`: um círculo no herói e os outros a 75 px dele, cada um com aviso mais longo; viram poça
+        const r = pt.radius ?? 2.75, n = pt.count ?? 3, around = pt.around ?? 75 / 16;
+        this.casting = 0.6;
+        this.attackAnim = 0;
+        for (let k = 1; k <= n; k++) {
+          const c = { x: p.x, z: p.z, radius: r };
+          if (k > 1) {
+            const a = Math.random() * Math.PI * 2;
+            c.x += Math.cos(a) * around;
+            c.z += Math.sin(a) * around;
+            game.keepInArena(c);
+          }
+          fx.telegraphCircle(c.x, c.z, r, pt.warning + (k - 1) * (pt.stagger ?? 0.15), () => {
+            if (!ok()) return;
+            game.explode(c.x, c.z, r, this.dmg * pt.damage, b.glow, `${this.name} (acid)`);
+            game.affixes.addPool(c.x, c.z, r * (pt.poolScale ?? 0.85), pt.time ?? 4, this.dmg * (pt.dps ?? 0.35) * HAZARD_TICK, `${this.name} (acid)`, VENOM_POOL_COLOR);
+          });
+        }
+        break;
+      }
+      case "slimewave": {
+        // boss_ai_ext.lua `slimewave`: anel avisado em volta dele (o miolo é seguro); depois um anel de lodo cresce até a borda
+        const R = pt.radius ?? 8, r0 = R * (pt.inner ?? 0.35), speed = pt.speed ?? 13.75, thick = pt.thickness ?? 1.375;
+        const x = this.x, z = this.z;
+        this.casting = pt.warning + R / speed;
+        fx.telegraphCircle(x, z, R, pt.warning, () => {
+          if (!ok()) return;
+          this.attackAnim = 0;
+          const max = R - thick / 2;
+          this.slimeRings.push({ x, z, r: r0, max, speed, thick, dmg: this.dmg * pt.damage, hit: false });
+          fx.shockwave(x, z, R, b.glow, (max - r0) / speed, r0 + thick / 2); // borda de fora do anel, de r0 até R
+          fx.addShake(0.35);
+        }, r0);
         break;
       }
       case "venomfield": {
