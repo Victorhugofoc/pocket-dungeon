@@ -17,7 +17,7 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 GREEN, GREEN_D, GREEN_L, PLATE = hexc(0x2f6a22), hexc(0x0e260b), hexc(0x6aa83a), hexc(0x4f8e30)
 CREAM, CREAM_D = hexc(0xd8cf86), hexc(0xa8994e)
 SPIKE, SPIKE_D = hexc(0xecd88a), hexc(0x9a8a44)
-MOUTH, MOUTH_D, TOOTH, EYE, PUPIL = hexc(0x8a1a1a), hexc(0x3a0606), hexc(0xeedcaa), hexc(0xff4a14), hexc(0x1a0a04)
+MOUTH, MOUTH_D, TOOTH, EYE, PUPIL = hexc(0x8a1a1a), hexc(0x3a0606), hexc(0xeedcaa), hexc(0xffa21e), hexc(0x1a0a04)
 LIGHT3 = Vector((-0.35, 0.82, 0.45)).normalized()  # luz de cima, da frente-esquerda (three)
 
 HIP_Y = 0.3
@@ -301,7 +301,7 @@ def head(key):
     ]
     for s_ in (-1, 1):
         els.append(el(P(s_ * 0.075, 0.0, -0.005), (0.045, 0.04, 0.055)))  # bochechas largas atrás (víbora)
-        els.append(el(P(s_ * 0.05, 0.048, 0.06), (0.03, 0.018, 0.055)))   # arcada sobre o olho
+        els.append(el(P(s_ * 0.05, 0.056, 0.055), (0.03, 0.014, 0.05)))   # arcada sobre o olho
     m = meta(key + "_head", els, res=0.007)
     bm = bmesh.new()  # corta o que desce abaixo da maxila: ali fica a boca
     bm.from_mesh(m.data)
@@ -317,7 +317,7 @@ def head(key):
     for s_ in (-1, 1):
         # sobrancelha pesada em V: alta atrás e fora, desce para a frente e para dentro
         # sobrancelha: lâmina cônica que sai de trás e aponta para a frente e para dentro, por cima do olho
-        bb, bt = P(s_ * 0.08, 0.05, -0.005), P(s_ * 0.03, 0.05, 0.1)
+        bb, bt = P(s_ * 0.08, 0.064, -0.01), P(s_ * 0.034, 0.062, 0.095)
         br = cone("brow", V3(bb), V3(bt), 0.024 * HS, seg=8)
         S = Matrix.Translation(V3(bb)) @ Matrix.Scale(0.55, 4, Vector(B(tuple(up)))) @ Matrix.Translation(-V3(bb))
         br.data.transform(S)
@@ -327,6 +327,15 @@ def head(key):
                         [0.024, 0.017, 0.009, 0.002], spike_col))
         solid.append(tb("horn2", mirror([(0.09, 0.0, -0.02), (0.125, 0.012, -0.075), (0.14, 0.022, -0.125)], s_),
                         [0.016, 0.008, 0.002], spike_col))
+    for x in (-0.028, 0.028):
+        for k in range(4):
+            z = 0.16 - k * 0.045
+            q = P(x, 0.0, z)
+            y = top_y(m, q.x, q.z)
+            if y is None:
+                continue
+            solid.append(spike("knob", (q.x, y - 0.006, q.z), tuple(up * 1.0 - f * 0.35 + side * x * 8), (0.022 + 0.004 * k) * HS,
+                               0.012 * HS))
     # nuca: cobre a ponta do pescoço por baixo do crânio (a mandíbula aberta deixava ver a emenda)
     nape = ball("nape", V3(P(0, -0.012, -0.03)), tuple(v * HS for v in (0.068, 0.07, 0.06)), rot=(0, 0, yaw), seg=(16, 10))
     solid.append(paint(smooth(nape), skin(belly_dir=tuple(-up), belly_at=0.3, grooves=False)))
@@ -344,17 +353,21 @@ def head(key):
                         flat(TOOTH), seg=7))
         flat_.append(tb("fang2", mirror([(0.05, -0.008, 0.09), (0.053, -0.035, 0.085), (0.046, -0.06, 0.07)], s_), [0.01, 0.006, 0.001],
                         flat(TOOTH), seg=6))
-        for k in range(4):
-            z = 0.03 + 0.038 * k
-            if abs(z - 0.09) < 0.015:
+        for k in range(7):
+            z = 0.02 + 0.022 * k
+            if abs(z - 0.09) < 0.01:
                 continue
-            x = s_ * (0.058 - 0.024 * k / 3)
+            x = s_ * (0.06 - 0.03 * k / 6)
             flat_.append(paint(cone("tooth", V3(P(x, -0.008, z)), V3(P(x, -0.03, z + 0.004)), 0.008 * HS, seg=5), flat(TOOTH)))
     # olhos acesos em fenda, sob a sobrancelha
     for s_ in (-1, 1):
-        e = P(s_ * 0.06, 0.034, 0.055)
-        lit.append(paint(ball("eye", V3(e), (0.016 * HS, 0.03 * HS, 0.014 * HS), rot=(0, 0, yaw + s_ * 0.35), seg=(10, 6)), flat(EYE)))
-        flat_.append(paint(ball("pupil", V3(e + side * s_ * 0.012 * HS), (0.003 * HS, 0.004 * HS, 0.013 * HS), rot=(0, 0, yaw), seg=(6, 4)),
+        e = P(s_ * 0.07, 0.036, 0.058)
+        ey = yaw + s_ * 0.3
+        flat_.append(paint(ball("socket", V3(e - side * s_ * 0.004 * HS), (0.025 * HS, 0.045 * HS, 0.027 * HS), rot=(0, 0, ey), seg=(12, 8)),
+                           flat(GREEN_D)))
+        lit.append(paint(ball("eye", V3(e + side * s_ * 0.004 * HS), (0.019 * HS, 0.036 * HS, 0.021 * HS), rot=(0, 0, ey), seg=(12, 8)),
+                         flat(EYE)))
+        flat_.append(paint(ball("pupil", V3(e + side * s_ * 0.021 * HS), (0.004 * HS, 0.005 * HS, 0.018 * HS), rot=(0, 0, ey), seg=(6, 4)),
                            flat(PUPIL)))
     for s_ in (-1, 1):  # narinas
         flat_.append(paint(ball("nostril", V3(P(s_ * 0.014, 0.026, 0.2)), tuple(v * HS for v in (0.008, 0.008, 0.006)), seg=(6, 4)),
@@ -374,9 +387,9 @@ def head(key):
         # presas de baixo, curvas para cima e para dentro
         jaw_f.append(tb("lfang", mirror([(0.022, -0.016, 0.15), (0.026, 0.015, 0.145), (0.018, 0.045, 0.13)], s_), [0.011, 0.007, 0.001],
                         flat(TOOTH), seg=7))
-        for k in range(3):
-            z = 0.04 + 0.035 * k
-            x = s_ * (0.05 - 0.015 * k / 2)
+        for k in range(5):
+            z = 0.03 + 0.024 * k
+            x = s_ * (0.052 - 0.02 * k / 4)
             jaw_f.append(paint(cone("tooth", V3(P(x, -0.014, z)), V3(P(x, 0.008, z + 0.004)), 0.007 * HS, seg=5), flat(TOOTH)))
     return solid, flat_, lit, jaw_s, jaw_f
 
