@@ -28,6 +28,7 @@ class Rig:
             "thighL": (-hipX, hipY - 0.02, 0), "thighR": (hipX, hipY - 0.02, 0),
             "shinL": (-hipX, hipY - 0.02 - thigh, 0), "shinR": (hipX, hipY - 0.02 - thigh, 0),
             "cape": (0, T + 0.52, -0.2 * bulk), "skirt": (0, hipY, 0),
+            "shoulderL": (-shoulderX, T + shoulderY, 0), "shoulderR": (shoulderX, T + shoulderY, 0),
         }
         self.piv = {k: B(v) for k, v in self.p3.items()}
 

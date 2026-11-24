@@ -36,6 +36,7 @@ const QUALITY = ["low", "medium", "high"];
 /** Nome e cor de cada estado de relíquia na fileira do HUD (`updateRelicRow`). */
 const RELIC_STATUS: Record<string, { label: string; color: string; tip: string }> = {
   hex: { label: "Hex", color: "#7ad94a", tip: "Hex: you deal less damage" },
+  armorbreak: { label: "Armorbreak", color: "#b3b8c7", tip: "Armorbreak: less Armor, you take more damage from every hit" },
   marked: { label: "Marked", color: "#ff5a4a", tip: "Marked: the boss that marked you deals more damage to you" },
   momentum: { label: "Momentum", color: "#73e0ff", tip: "Momentum: damage bonus while moving" },
   overshield: { label: "Shield", color: "#e0485a", tip: "Blood Engine: shield from overhealing" },
@@ -553,6 +554,9 @@ export class Ui {
     const mk = this.game.player.mark;
     const markPct = mk ? Math.round((mk.mult - 1) * 100) : 0;
     if (mk && mk.until > this.game.time && !mk.by.dead) list.unshift({ id: "marked", left: mk.until - this.game.time, total: mk.total });
+    // M10-08: o Armorbreak do Iron Colossus (status_icons.lua "armorbreak")
+    const ab = this.game.player.armorBreak;
+    if (ab && ab.until > this.game.time) list.unshift({ id: "armorbreak", left: ab.until - this.game.time, total: ab.total });
     const key = list.map((st) => `${st.id}:${Math.round((st.left / Math.max(1e-6, st.total)) * 20)}:${Math.ceil(st.left)}:${st.count ?? ""}`).join("|");
     const row = this.r.relicRow;
     if (row.dataset.key === key) return;
@@ -566,6 +570,7 @@ export class Ui {
         : st.id === "momentum" || st.id === "hoard" || st.id === "oath" ? ` +${Math.round(st.left * 100)}%`
         : st.id === "hex" ? ` -${Math.round((1 - (this.game.player.hex?.mult ?? 1)) * 100)}%`
         : st.id === "marked" ? ` +${markPct}%`
+        : st.id === "armorbreak" ? ` ${ab?.armor ?? 0}`
         : st.count !== undefined ? ` x${st.count}` : "";
       return `<span class="rs" title="${tip}" style="--c:${info.color};--f:${f}"><i></i>${info.label}${value}</span>`;
     }).join("");

@@ -50,6 +50,8 @@ describe("fases do chefe (M10-10)", () => {
     expect(bossRotation(k, 3, false)).toEqual({ rotation: [1, 2], skillshot: true });
     expect(bossRotation(["nova", "fan", "slam"], 3, false)).toEqual({ rotation: [0, 1, 2], skillshot: false });
     expect(phaseSteps(1, 0).map((x) => x.skillshotCooldown)).toEqual([0.88, 0.82]);
+    // M10-08: a recarga do tiro comum de lá (só a pedra do Iron Colossus usa) encurta na fase 2
+    expect(phaseSteps(1, 0).map((x) => x.rangedCooldown)).toEqual([0.78, 1]);
   });
   it("Marked Prey: só o dano de quem marcou sai ×1,25, até a marca acabar; a nova troca a velha", () => {
     const a = {}, b = {};

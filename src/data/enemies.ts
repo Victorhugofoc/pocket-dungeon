@@ -144,7 +144,8 @@ export const SHIELD_CYCLE = { up: 6, warn: 1, down: 5 } as const;
 
 export type BossPatternKind = "slam" | "charge" | "nova" | "fan" | "summon" | "meteors" | "spiral" | "skillshot" | "mark" | "crossfire"
   | "sandvolley" | "tailsweep" | "erupt" | "orbitals" | "prismbeam" | "miragedash" | "venomfield"
-  | "acidlob" | "slimewave" | "frostbreath" | "iciclerain" | "glacierdive" | "stormfield" | "radial";
+  | "acidlob" | "slimewave" | "frostbreath" | "iciclerain" | "glacierdive" | "stormfield" | "radial"
+  | "quake" | "armorbreak" | "leap";
 
 export interface BossPattern {
   kind: BossPatternKind;
@@ -190,6 +191,8 @@ export interface BossPattern {
   thickness?: number;
   /** `frostbreath`: meia abertura do cone (graus) e s de Chilled em quem leva; `iciclerain`: distância entre círculos (m) */
   halfAngleDeg?: number;
+  /** `armorbreak`: armadura que o herói perde (negativa) por `time` s */
+  armor?: number;
   chill?: number;
   step?: number;
 }
@@ -219,6 +222,12 @@ export interface BossDef {
   preferred?: number;
   /** bosses.lua `minDifficulty` (boss_bag.lua `Bag.allowed`): só sai do saco dessa dificuldade para cima */
   minDifficulty?: "hard";
+  /** M10-08 (bosses.lua `guard`, §65): levanta a guarda de frente de tempos em tempos (`BOSS_GUARD`) */
+  guard?: boolean;
+  /** M10-08 (bosses.lua `boulder`, D-219): arremessa pedra no herói na recarga do tiro comum (`BOSS_BOULDER`) */
+  boulder?: boolean;
+  /** M10-08 (bosses.lua `phaseSpeed`, D-219): multiplicador do passo ao entrar em cada fase, além do da fase */
+  phaseSpeed?: readonly [number, number, number];
 }
 
 /** Ordem dos 13 chefes em `bosses.lua` (`B.order`); o saco usa os que existem em `BOSSES` (M20-09, D6). */
@@ -230,10 +239,10 @@ export const BOSS_ORDER = [
 /**
  * `bosses.lua` `CROWN.borrow`: ataques que o rei coroado da onda 20 pode pegar de outro chefe. Lá são `nova`,
  * `crossfire`, `radial`, `fanvolley`, `spiralvolley`, `stormfield`, `venomfield` e `quake`; aqui só existem os
- * equivalentes de `nova`, `crossfire` (M10-01), `radial` e `stormfield` (M10-07), `fanvolley`, `spiralvolley` e `venomfield`
- * (M10-04); o `quake` chega com o Iron Colossus.
+ * equivalentes de todos: `nova`, `crossfire` (M10-01), `radial` e `stormfield` (M10-07), `fanvolley`, `spiralvolley`,
+ * `venomfield` (M10-04) e `quake` (M10-08).
  */
-export const CROWN_BORROW = ["nova", "crossfire", "radial", "fan", "spiral", "stormfield", "venomfield"] as const;
+export const CROWN_BORROW = ["nova", "crossfire", "radial", "fan", "spiral", "stormfield", "venomfield", "quake"] as const;
 
 /** Título do rei coroado (en.lua: "THE CROWNED KING", D-640). */
 export const CROWN_TITLE = "The Crowned King";
@@ -344,6 +353,19 @@ export const BOSSES: Record<string, BossDef> = {
     ],
     body: "robed", color: 0x8c99ff, accent: 0xe8d27a, glow: 0xbfd0ff, scale: 2.5, projectileColor: 0x9fc8ff, xp: 65,
     relicBuild: "stormcaller",
+  },
+  // M10-08: o colosso de ferro. Vai atrás do herói (lento); Quake em anel, Armorbreak na 2 e salto na fúria (bosses.lua,
+  // px ÷ 16). Earthbreaker: cada um desses golpes deixa chão rachado. Levanta a guarda, arremessa pedras e acelera por fase.
+  iron_colossus: {
+    id: "iron_colossus", name: "Iron Colossus", title: "The Juggernaut", hp: 2600, damage: 14, speed: 2.4, radius: 1.8,
+    attackRange: 3.4, attackCooldown: 1.7, patternCooldown: 4.0,
+    patterns: [
+      { kind: "quake", warning: 0.9, damage: 1.1, radius: 145 / 16, inner: 0.45, speed: 260 / 16, thickness: 20 / 16 },
+      { kind: "armorbreak", warning: 0.9, damage: 1.2, radius: 64 / 16, armor: -15, time: 6 },
+      { kind: "leap", warning: 1.0, damage: 1.4, radius: 92 / 16 },
+    ],
+    body: "brute", color: 0xb3b8c7, accent: 0x4a4e58, glow: 0xff8a3a, scale: 2.4, projectileColor: 0x8a7a6a, xp: 70,
+    relicBuild: "iron_colossus", guard: true, boulder: true, phaseSpeed: [1, 1.15, 1.35 / 1.15],
   },
   hollow_king: {
     id: "hollow_king", name: "Hollow King", title: "The Lich", hp: 3000, damage: 14, speed: 3.0, radius: 1.5,

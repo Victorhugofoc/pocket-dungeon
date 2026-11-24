@@ -21,6 +21,8 @@ export interface PhaseStep {
   meleeCooldown: number;
   /** recarga do skillshot (lá `skillshotCooldown`, M10-01) */
   skillshotCooldown: number;
+  /** recarga do tiro comum (lá `rangedCooldown`); aqui só a pedra do Iron Colossus usa (M10-08) */
+  rangedCooldown: number;
   enraged: boolean;
 }
 
@@ -32,9 +34,9 @@ export function phaseSteps(from: BossPhase, frac: number): PhaseStep[] {
   const out: PhaseStep[] = [];
   for (let p = from + 1; p <= phaseFor(frac); p++) {
     const P = BOSS_PHASES[p - 1] as { above: number; speed?: number; attackCooldown?: number; contactCooldown?: number;
-      skillshotCooldown?: number; enraged?: boolean };
+      skillshotCooldown?: number; rangedCooldown?: number; enraged?: boolean };
     out.push({ phase: p as BossPhase, speed: P.speed ?? 1, patternCooldown: P.attackCooldown ?? 1, meleeCooldown: P.contactCooldown ?? 1,
-      skillshotCooldown: P.skillshotCooldown ?? 1, enraged: P.enraged === true });
+      skillshotCooldown: P.skillshotCooldown ?? 1, rangedCooldown: P.rangedCooldown ?? 1, enraged: P.enraged === true });
   }
   return out;
 }

@@ -301,6 +301,15 @@ export const BOSSES: Record<string, Spec> = {
     b.dims = { hipY: 0.95, headY: 0.6, shoulderY: 0.5, shoulderX: 0.46, arm: 0.34, hipX: 0, thigh: 0.42 };
     addModel(b, "storm_tyrant");
   },
+  // M10-08: colosso de ferro enferrujado com fornalha no peito, modelado no Blender (tools/blender/iron_colossus.py, brief em
+  // docs/briefs/iron_colossus.md). Bípede; as ombreiras ficam no tronco. Dims iguais ao RIG do script
+  iron_colossus: (b) => {
+    b.scale = 2.8; b.style = "swing"; b.rough = 0.9; b.glowColor = 0xff8a24; b.glowByVertex = true;
+    b.lean = 0.22; b.crouch = 0.35; b.armOut = 0.3; b.shoulderFollow = 0.65;
+    b.poseR = [-0.7, -0.35]; b.poseL = [-0.1, -0.2];
+    b.dims = { hipY: 0.8, headY: 0.34, shoulderY: 0.42, shoulderX: 0.44, arm: 0.3, hipX: 0.32, thigh: 0.38 };
+    addModel(b, "iron_colossus");
+  },
   // M10-05: gosma de boca enorme modelada no Blender (tools/blender/gorged_ooze.py, brief em docs/briefs/gorged_ooze.md). Forma
   // `slime`: um osso só, o hips, que achata e estica tudo; o lábio de baixo é parte da malha da gosma.
   gorged_ooze: (b) => {

@@ -7,6 +7,8 @@ export type G = THREE.BufferGeometry;
 export type Bone =
   | "hips" | "torso" | "head" | "armL" | "armR" | "foreL" | "foreR" | "thighL" | "thighR" | "shinL" | "shinR"
   | "cape" | "tail" | "wingL" | "wingR" | "skirt" | "weapon"
+  // M10-08: ombreiras com osso próprio no ombro (`Builder.shoulderFollow`)
+  | "shoulderL" | "shoulderR"
   // M10-01 (forma `scorpion`): cauda em cadeia e dedo móvel das pinças
   | "tail2" | "tail3" | "tail4" | "tail5" | "clawL" | "clawR"
   // M10-04 (forma `hydra`): três pescoços de dois gomos e as mandíbulas; a cabeça do meio é `head`
@@ -126,6 +128,12 @@ export class Builder {
   lean = 0.05;
   crouch = 0.14;
   armOut = 0.14;
+  /**
+   * M10-08: ombreiras grandes nos ossos `shoulderL`/`shoulderR` (no tronco, no pivô do ombro), que seguem essa fração do giro
+   * do braço além da pose de descanso. Presas só ao tronco, o braço erguido no golpe atravessava a ombreira; presas ao braço,
+   * tombariam com ele. 0 = sem esses ossos.
+   */
+  shoulderFollow = 0;
   /** luzes pontuais presas a um osso (lanterna, orbe) */
   lights: { bone: Bone; x: number; y: number; z: number; color: number; intensity: number; distance: number }[] = [];
   /** peças de `lit` brilham na própria cor do vértice em vez de `glowColor` (para dois brilhos de cores diferentes) */

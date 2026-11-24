@@ -225,6 +225,7 @@ export const BOSS_MULTS: Record<string, { hp: number; damage: number; speed: num
   gorged_ooze: { hp: 1.28, damage: 1.00, speed: 0.82, projectileSpeed: 0.85 },
   rimefang_wyrm: { hp: 1.04, damage: 1.06, speed: 1.08, projectileSpeed: 0.92 },
   storm_tyrant: { hp: 0.98, damage: 1.08, speed: 1.00, projectileSpeed: 0.82 },
+  iron_colossus: { hp: 1.30, damage: 1.14, speed: 0.86, projectileSpeed: 0.78 },
 };
 
 /** bosses.lua `BASE.projectileSpeed`: velocidade do tiro de chefe em px/s (os ataques novos multiplicam por ela) */
@@ -235,6 +236,19 @@ export const BOSS_PROJECTILE_SPEED = 210;
  * quando a fase já abriu o ataque `skillshot` da lista do chefe (`BA.hasSkillshot`). Velocidade em px/s.
  */
 export const BOSS_SKILLSHOT = { cooldown: 2.15, speed: 300 } as const;
+
+/**
+ * M10-08: bosses.lua `BASE.rangedCooldown` (× `mults.rangedCooldown` do Iron Colossus, 1,00) e `ATTACKS.boulder`. Lá o tiro
+ * comum de todo chefe sai nessa recarga; aqui não há tiro comum (B2), só a pedra do Iron Colossus, que o substitui
+ * (`build.boulder`, D-219): círculo de `radius` px no herói com `warning` s de aviso, `damage` × dano.
+ */
+export const BOSS_BOULDER = { cooldown: 4, warning: 1.1, damage: 1.0, radius: 58 } as const;
+
+/**
+ * bosses.lua `GUARD` (§65, só no Iron Colossus): a guarda sobe por `active` s a cada `cooldown` s (a primeira na metade),
+ * de frente para o herói e girando a `turnRate` rad/s; o golpe que vem do arco de `arcDeg` leva `damageMult`.
+ */
+export const BOSS_GUARD = { arcDeg: 78, damageMult: 0.15, active: 2.5, cooldown: 9.0, turnRate: 0.6 } as const;
 
 /**
  * bosses.lua `PHASES` (§63): fase pela fração de vida (acima de 0,60 = 1, acima de 0,30 = 2, senão 3, enfurecido).
@@ -248,7 +262,7 @@ export const BOSS_PHASES = [
   { above: -1, speed: 1.12, attackCooldown: 0.82, contactCooldown: 0.78, skillshotCooldown: 0.82, enraged: true },
 ] as const;
 
-export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage" | "venom_bloom" | "mitosis" | "glacial_wake" | "storm_field";
+export type BossMechanicId = "blood_rush" | "army_of_the_damned" | "meteor_siege" | "soul_tether" | "marked_prey" | "burrow" | "mirage" | "venom_bloom" | "mitosis" | "glacial_wake" | "storm_field" | "earthbreaker";
 
 /** bosses.lua `builds[id].mechanic` e `mechanicName`, dos 4 chefes daqui. */
 export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }> = {
@@ -263,6 +277,7 @@ export const BOSS_MECHANIC: Record<string, { id: BossMechanicId; name: string }>
   gorged_ooze: { id: "mitosis", name: "Mitosis" },
   rimefang_wyrm: { id: "glacial_wake", name: "Glacial Wake" },
   storm_tyrant: { id: "storm_field", name: "Storm Field" },
+  iron_colossus: { id: "earthbreaker", name: "Earthbreaker" },
 };
 
 /**
@@ -298,4 +313,7 @@ export const BOSS_MECHANICS = {
   /** boss_ai.lua `storm_field`: a cada `interval` s (o primeiro em `first`, `mechanicTimer` de boss.lua) um círculo de
    * `radius` px no herói, com `warning` s de aviso, vira raio e zona elétrica de `time` s, `dps` × dano/s */
   storm_field: { interval: 5.0, radius: 44, time: 3.5, dps: 0.45, warning: 0.9, first: 3 },
+  /** boss_ai.lua `earthbreakerCrack`: depois do Quake, do Armorbreak e do Leap, chão rachado de `crackRadius` px onde o golpe
+   * caiu, por `crackTime` s, `crackDps` × dano/s (dano físico) */
+  earthbreaker: { crackTime: 3.0, crackDps: 0.35, crackRadius: 60 },
 } as const;
