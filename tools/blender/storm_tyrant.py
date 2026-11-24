@@ -17,13 +17,13 @@ RIG = Rig(hipY=0.95, headY=0.6, shoulderY=0.5, shoulderX=0.46, arm=0.34, hipX=0.
 HAND = 0.34
 HEAD_LIFT, HEAD_SCALE = 0.19, 1.3
 
-ST_L, ST_M, ST_D, ST_K = hexc(0xf6f8fa), hexc(0xb0b6be), hexc(0x5c6068), hexc(0x24262c)
+ST_L, ST_M, ST_D, ST_K = hexc(0xe8ecf0), hexc(0x8a919a), hexc(0x464b53), hexc(0x121417)
 NAVY, NAVY_D, NAVY_L = hexc(0x22305e), hexc(0x10183a), hexc(0x3c4f8e)
 GOLD, GOLD_D, GOLD_L = hexc(0xe2b04a), hexc(0x9a6a1a), hexc(0xfff0b0)
 GEM, GEM_L = hexc(0x0a9ad8), hexc(0x5fe0ff)
-SKIN, SKIN_D, SKIN_L = hexc(0xf4c09a), hexc(0xc08462), hexc(0xffe4cc)
+SKIN, SKIN_D, SKIN_L = hexc(0xe8a674), hexc(0xa86440), hexc(0xffd2a8)
 WHITE, WHITE_D = hexc(0xfffaf0), hexc(0xb8b4ac)
-LEATHER, LEATHER_D = hexc(0x9a6638), hexc(0x4e3220)
+LEATHER, LEATHER_D = hexc(0xa86c3c), hexc(0x52341e)
 CLOUD_D, CLOUD, CLOUD_L = hexc(0x20262e), hexc(0x434c5a), hexc(0x707c8a)
 SWIRL = hexc(0x7a8694)
 DARK = hexc(0x0a0a12)
@@ -183,129 +183,160 @@ def head():
     top = meta("hairtop", [EL((0, 0.015, 0.07), (0.105, 0.115, 0.06)),   # cabelo branco dentro da coroa
                            EL((0, 0.05, -0.02), (0.11, 0.09, 0.11)),     # e cobrindo a nuca até a gola
                            EL((0, 0.06, -0.12), (0.1, 0.07, 0.08)),
-                           EL((0, 0.08, -0.22), (0.11, 0.06, 0.09))], res=0.006)   # cabelo longo caindo até os ombros
+                           EL((0, 0.1, -0.22), (0.13, 0.08, 0.12)),
+                           EL((0, 0.12, -0.32), (0.12, 0.06, 0.08))], res=0.006)   # cabelo longo caindo até os ombros
     smooth(top, iters=1, target=420)
     paint(top, hair)
     parts["solid"].append(top)
     return parts
 
 
-# ------------------------------------------------------------------ tronco: peitoral de aço, gola com gemas, cinto de couro
+# ------------------------------------------------------------------ armadura de ferro: placas em loft, facetadas, com quinas
+def loft(name, rows, closed=True, thick=0.022, flat=True):
+    """malha por fileiras de pontos (todas com o mesmo número); com espessura e faces chapadas (ferro batido)"""
+    bm = bmesh.new()
+    grid = [[bm.verts.new(p) for p in row] for row in rows]
+    n = len(rows[0])
+    for i in range(len(grid) - 1):
+        for j in range(n if closed else n - 1):
+            k = (j + 1) % n
+            bm.faces.new((grid[i][j], grid[i][k], grid[i + 1][k], grid[i + 1][j]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    o = new_mesh(name, bm)
+    if thick:
+        sol = o.modifiers.new("thick", "SOLIDIFY")
+        sol.thickness = thick
+        sol.offset = 0
+        apply_mods(o)
+    for p in o.data.polygons:
+        p.use_smooth = not flat
+    return o
+
+
+def section(z, w, d, db, ridge=0.0, seg=20, cx=0.0, cy=0.0):
+    """corte horizontal do tronco: frente funda d com quilha (ridge), costas db; a=0 na frente (-y)"""
+    pts = []
+    for j in range(seg):
+        a = 2 * math.pi * j / seg
+        ca = math.cos(a)
+        y = -(d * ca + ridge * max(0.0, ca) ** 6) if ca > 0 else -db * ca
+        pts.append((cx + w * math.sin(a), cy + y, z))
+    return pts
+
+
+def iron(z_lo, z_hi):
+    """ferro: tom médio frio, faixa escura na borda de baixo e um filete claro só na aresta de cima de cada placa"""
+    def f(co, n):
+        k = ss(z_lo, z_hi, co.z)
+        c = mix(ST_D, ST_M, 0.3 + 0.7 * ss(-0.6, 0.7, n.z - 0.3 * n.y))
+        c = mix(ST_K, c, 0.3 + 0.7 * ss(0.0, 0.3, k))
+        return mix(c, ST_L, 0.95 * ss(0.8, 0.95, k) * ss(-0.4, 0.4, n.z - 0.3 * n.y))
+    return f
+
+
+def rivets(pts, r=0.014):
+    out = []
+    for p in pts:
+        b = sball("rivet", p, (r, r, r), seg=(8, 5))
+        paint(b, lambda co, n: mix(ST_M, ST_L, ss(0.0, 0.9, n.z - n.y)))
+        out.append(b)
+    return out
+
+
+# ------------------------------------------------------------------ tronco: couraça de ferro facetada, gola em lâminas, cinto
 def torso():
     z0 = RIG.P("torso")[2]
     sx = RIG.shoulderX
     t = meta("torso", [
-        EL((0, 0.0, z0 + 0.04), (0.24, 0.18, 0.12)),                # cintura
-        EL((0, -0.02, z0 + 0.17), (0.28, 0.21, 0.14)),
-        EL((0, -0.01, z0 + 0.36), (0.38, 0.24, 0.21)),              # peito largo
-        EL((0, 0.08, z0 + 0.42), (0.28, 0.14, 0.17)),               # costas
-        EL((-sx + 0.08, 0.0, z0 + 0.48), (0.13, 0.13, 0.11)),       # ombros
+        EL((0, 0.0, z0 + 0.04), (0.24, 0.18, 0.12)),
+        EL((0, -0.0, z0 + 0.3), (0.33, 0.21, 0.24)),
+        EL((-sx + 0.08, 0.0, z0 + 0.48), (0.13, 0.13, 0.11)),
         EL((sx - 0.08, 0.0, z0 + 0.48), (0.13, 0.13, 0.11)),
-    ], res=0.01)
-    smooth(t, iters=2, target=1400)
-
-    def tint(co, n):
-        c = steel(co, n)
-        # sulco no meio do peitoral e borda de baixo da placa
-        g = 0.55 * (1 - ss(0.0, 0.016, abs(co.z - (z0 + 0.13))))
-        return mix(c, ST_K, g)
-    paint(t, tint)
+    ], res=0.012)
+    smooth(t, iters=1, target=700)
+    paint(t, lambda co, n: mix(ST_K, ST_D, 0.5))   # forro escuro por baixo das placas
     out = [t]
-    # peitoral: casca de placa por cima do peito, cortada embaixo (a borda vira a quina com contorno)
-    pl = meta("breast", [EL((0, -0.02, z0 + 0.37), (0.36, 0.23, 0.21), stiff=6.0),           # placa só, em barril, frente chata
-                         EL((0, -0.08, z0 + 0.36), (0.3, 0.17, 0.19), stiff=6.0)], res=0.007)
-    delete_faces(pl, lambda c, n: c.z < z0 + 0.24 or c.y > 0.06 or c.z > z0 + 0.55)
-    smooth(pl, target=900)
-    shell(pl, 0.012, 0.02)
-    def ptint(co, n):
-        c = steel(co, n)
-        g = 0.55 * (1 - ss(0.0, 0.05, co.z - (z0 + 0.25)))                    # borda de baixo da placa
-        g = max(g, 0.5 * ss(z0 + 0.46, z0 + 0.54, co.z))                       # sombra sob a gola
-        g = max(g, 0.4 * (1 - ss(0.1, 0.18, abs(co.x))) * ss(z0 + 0.3, z0 + 0.45, co.z))   # atrás da barba
-        c = mix(c, ST_D, g)
-        return mix(c, ST_L, 0.5 * (1 - ss(0.006, 0.02, abs(co.x))) * (co.y < -0.15))   # aresta central
-    paint(pl, ptint)
+    # peitoral: barril facetado com quilha no meio, da gola até a primeira lâmina
+    rows = []
+    for zz, w, d, rd in ((z0 + 0.2, 0.34, 0.24, 0.03), (z0 + 0.27, 0.39, 0.265, 0.045), (z0 + 0.36, 0.415, 0.275, 0.05),
+                         (z0 + 0.45, 0.4, 0.26, 0.045), (z0 + 0.52, 0.35, 0.225, 0.03), (z0 + 0.58, 0.26, 0.18, 0.0)):
+        rows.append(section(zz, w, d, 0.19 + 0.04 * (zz < z0 + 0.5), rd * 1.6, seg=48, cy=0.01))
+    pl = loft("breast", rows, thick=0.026, flat=False)
+
+    def ctint(co, n):
+        c = iron(z0 + 0.2, z0 + 0.58)(co, n)
+        c = mix(c, ST_L, 0.7 * (1 - ss(0.008, 0.028, abs(co.x))) * (co.y < -0.12))     # aresta central viva
+        return mix(c, ST_K, 0.45 * ss(z0 + 0.5, z0 + 0.57, co.z))                       # sombra sob a gola
+    paint(pl, ctint)
     out.append(pl)
-    # frisos em relevo: borda de baixo da placa e volta da gola, pousados na placa por raios (quina com contorno)
-    import mathutils.bvhtree as bvt
-    tree = bvt.BVHTree.FromObject(pl, bpy.context.evaluated_depsgraph_get())
-
-    def ring_on(zc, rx, n=40, lift=0.012):
-        pts = []
-        for k in range(n + 1):
-            a = -math.pi * 0.95 + 1.9 * math.pi * k / n     # frente e lados; atrás fica sob a capa
-            d = Vector((math.sin(a), -math.cos(a), 0))
-            hit, nrm, _, _ = tree.ray_cast(Vector((0, -0.02, zc)) + d * 1.0, -d)
-            if hit:
-                pts.append(hit + nrm * lift)
-        return pts
-    for zc in (z0 + 0.255,):
-        pts = ring_on(zc, 0.36)
-        if len(pts) > 4:
-            rb = tube("platerim", pts, [0.02] * len(pts), seg=6, squash=(1.0, 0.7), cap=False)
-            paint(rb, lambda co, n: mix(ST_D, ST_L, 0.25 + 0.75 * ss(-0.3, 0.9, n.z)))
-            out.append(rb)
-    for k in range(2):   # duas lâminas da barriga com degrau, entre a placa e o cinto
-        zz = z0 + 0.19 - k * 0.075
-        lm = tube("lame", [(0, -0.01, zz - 0.045), (0, -0.01, zz + 0.03)], [0.3 - 0.012 * k - 0.025, 0.3 - 0.012 * k], seg=28)
-        lm.data.transform(Matrix.Diagonal((1.0, 0.82, 1.0, 1.0)))
-        paint(lm, lambda co, n: mix(steel(co, n), ST_L, 0.35 * ss(0.4, 0.9, n.z)))
+    # três lâminas da barriga (faldas), cada uma por baixo da de cima, abrindo um pouco embaixo
+    for k, (zt, zb) in enumerate(((z0 + 0.215, z0 + 0.125), (z0 + 0.14, z0 + 0.05))):
+        w0, d0 = 0.335 - 0.02 * k, 0.24 - 0.01 * k
+        lm = loft(f"fauld{k}", [section(zb, w0 + 0.014, d0 + 0.014, 0.2, 0.02, seg=40, cy=0.01),
+                                section(zt, w0 - 0.01, d0 - 0.01, 0.19, 0.02, seg=40, cy=0.01)], thick=0.03, flat=False)
+        paint(lm, iron(zb, zt))
         out.append(lm)
-
-    # gola alta de aço em volta do pescoço
-    gor = tube("gorget", [(0, 0.03, z0 + 0.52), (0, 0.03, z0 + 0.58), (0, 0.035, z0 + 0.62)], [0.19, 0.16, 0.13], seg=20)
-    paint(gor, steel)
-    out.append(gor)
-    gems = []
-    for s in (-1, 1):   # engaste de ouro e gema ciano de cada lado da gola, sobre o peito alto
-        st = sball("setting", (s * 0.27, -0.17, z0 + 0.56), (0.066, 0.026, 0.066), rot=(0.7, 0, 0), seg=(14, 8))
-        paint(st, gold)
-        out.append(st)
-        gems.append(gem_at("chestgem", (s * 0.27, -0.192, z0 + 0.572), (0.05, 0.02, 0.05)))
-    # cinto largo de couro com fivela de prata e gema ciano
-    belt = tube("belt", [(0, 0.0, z0 - 0.08), (0, 0.0, z0 + 0.05)], [0.27, 0.262], seg=24)
+    # gola: duas lâminas altas em volta do pescoço
+    for k, (zb, zt, r0, r1) in enumerate(((z0 + 0.55, z0 + 0.62, 0.22, 0.19), (z0 + 0.61, z0 + 0.69, 0.19, 0.17))):
+        g = loft(f"gorget{k}", [section(zb, r0, r0 * 0.95, r0 * 0.9, 0.0, seg=18, cy=0.03),
+                                section(zt, r1, r1 * 0.95, r1 * 0.9, 0.0, seg=18, cy=0.03)], thick=0.02)
+        paint(g, iron(zb, zt))
+        out.append(g)
+    # cinto largo de couro com fivela de ferro e gema ciano
+    belt = tube("belt", [(0, 0.0, z0 - 0.11), (0, 0.0, z0 + 0.07)], [0.3, 0.295], seg=28)
     belt.data.transform(Matrix.Diagonal((1.0, 0.8, 1.0, 1.0)))
     paint(belt, lambda co, n: mix(LEATHER_D, LEATHER, 0.4 + 0.6 * ss(-0.6, 0.7, n.z - 0.3 * n.y)))
-    buckle = sball("buckle", (0, -0.218, z0 - 0.015), (0.08, 0.028, 0.065), seg=(12, 8))
-    paint(buckle, steel)
+    buckle = loft("buckle", [[(0.085 * math.cos(q), -0.245, z0 - 0.02 + 0.085 * math.sin(q)) for q in [2 * math.pi * j / 20 for j in range(20)]],
+                             [(0.065 * math.cos(q), -0.262, z0 - 0.02 + 0.065 * math.sin(q)) for q in [2 * math.pi * j / 20 for j in range(20)]]],
+                  thick=0.02, flat=False)
+    paint(buckle, lambda co, n: mix(ST_D, ST_L, 0.3 + 0.7 * ss(-0.3, 0.9, n.z - n.y)))
     out += [belt, buckle]
-    gems.append(gem_at("beltgem", (0, -0.244, z0 - 0.015), (0.032, 0.014, 0.032)))
+    gems = [gem_at("beltgem", (0, -0.262, z0 - 0.02), (0.042, 0.016, 0.042))]
     return {"torso": out, "torso@lit": gems}
 
 
-# ------------------------------------------------------------------ braços: ombreiras enormes em lâminas, aço até o punho, mãos nuas
-def lames(name, center, r, count, drop, shrink, squash, rot):
-    """lâminas sobrepostas: domos achatados empilhados, cada um com um friso escuro na borda (quina dura)"""
-    from mathutils import Euler
+# ------------------------------------------------------------------ braços: ombreiras de ferro em cúpula e lâminas, manoplas
+def pauldron(side, s, scale):
+    """ombreira como no sprite: chapas em arco por cima do ombro, da gola (aba erguida) para fora e para baixo, cada uma
+    por cima da de baixo, como telhas; pontas da frente e de trás arredondadas"""
+    ax, ay, az = RIG.P("arm" + side)
     out = []
-    R = Euler(rot).to_matrix()
-    for k in range(count):
-        c = Vector(center) + Vector(drop) * k
-        rr = r * (1 - shrink * k)
-        o = sball(f"{name}{k}", c, (rr, rr * 1.05, rr * squash), rot=rot, seg=(24, 14))
-        paint(o, steel)
-        rim = tube(f"{name}rim{k}", [c + R @ Vector((rr * math.cos(a), rr * 1.05 * math.sin(a), -rr * squash * 0.12))
-                                     for a in [j * 2 * math.pi / 32 for j in range(33)]], [0.012] * 33, seg=6, cap=False)
-        paint(rim, lambda co, n: mix(ST_D, ST_M, 0.4 + 0.6 * ss(-0.5, 0.8, n.z)))
-        out += [o, rim]
+    plates = [   # (centro x, centro z, raio, ângulo inicial, ângulo final, meio comprimento frente-trás)
+        (0.02, 0.0, 0.24, -0.75, 1.15, 0.3),
+        (0.05, -0.06, 0.25, 0.75, 1.45, 0.24),
+        (0.08, -0.11, 0.255, 1.05, 1.7, 0.2),
+    ]
+    core = sball("paulcore", (ax + s * 0.07 * scale, ay, az - 0.04), (0.2 * scale, 0.22 * scale, 0.2 * scale), seg=(20, 12))
+    paint(core, lambda co, n: mix(ST_K, ST_D, 0.5 + 0.5 * ss(-0.5, 0.8, n.z)))
+    out.append(core)
+    for k, (dx, dz, r, f0, f1, L) in enumerate(plates):
+        r *= scale
+        L *= scale
+        rows = []
+        for i in range(13):
+            q = -1 + 2 * i / 12
+            end = math.sqrt(max(0.0, 1 - q * q))             # pontas fecham em cúpula, sem o "C" visto de frente e de trás
+            rr = r * ((0.3 + 0.7 * end) if k == 0 else (0.75 + 0.25 * end))   # só a de cima fecha em cúpula
+            row = []
+            for j in range(15):
+                f = f0 + (f1 - f0) * j / 14
+                row.append((ax + s * (dx * scale + rr * math.sin(f)), ay + q * L, az + 0.03 + dz * scale + rr * math.cos(f) - r * 0.3))
+            rows.append(row)
+        pl = loft(f"pauldron{k}", rows, closed=False, thick=0.034, flat=False)
+        zt = az + 0.03 + dz * scale + r * math.cos(f0) - r * 0.3
+        zb = az + 0.03 + dz * scale + r * math.cos(f1) - r * 0.3
+
+        def tint(co, n, f0=f0, f1=f1, dx=dx, dz=dz, r=r):
+            # brilho duro na aresta de cima da chapa (perto de f0), sombra embaixo (perto de f1)
+            vx, vz = s * (co.x - ax) - dx * scale, co.z - (az + 0.03 + dz * scale - r * 0.3)
+            f = math.atan2(vx, vz)
+            k_ = 1 - ss(f0, f1, f)
+            c = mix(ST_D, ST_M, 0.35 + 0.65 * ss(-0.6, 0.7, n.z - 0.3 * n.y))
+            c = mix(ST_K, c, 0.25 + 0.75 * ss(0.0, 0.3, k_))
+            return mix(c, ST_L, 0.95 * ss(0.72, 0.92, k_))
+        paint(pl, tint)
+        out.append(pl)
     return out
-
-
-def open_hand(x, y, z, s):
-    """mão aberta: palma achatada, quatro dedos curvos, polegar na frente"""
-    els = [EL((x, y, z), (0.058, 0.085, 0.08))]
-    for dy in (-0.055, -0.019, 0.019, 0.055):
-        L = 0.15 - abs(dy) * 0.6
-        a = (x, y + dy, z - 0.05)
-        b = (x - s * 0.012, y + dy * 1.6, z - 0.05 - L * 0.55)
-        c = (x - s * 0.04, y + dy * 2.0, z - 0.05 - L)
-        els += [CAP(a, b, 0.02, stiff=3.0), CAP(b, c, 0.017, stiff=3.0)]
-    els += [CAP((x - s * 0.01, y - 0.06, z + 0.01), (x - s * 0.04, y - 0.11, z - 0.03), 0.022, stiff=3.0),
-            CAP((x - s * 0.04, y - 0.11, z - 0.03), (x - s * 0.05, y - 0.13, z - 0.08), 0.018, stiff=3.0)]
-    f = meta("hand", els, res=0.006)
-    smooth(f, iters=1, target=420)
-    paint(f, skin)
-    return [f]
 
 
 def palm_hand(x, y, z, s):
@@ -338,41 +369,45 @@ def fist(x, y, z, s):
     return [f]
 
 
+def ring_band(name, x, y, z_lo, z_hi, r_lo, r_hi, seg=12):
+    """anel de ferro facetado em volta de um membro (z_lo embaixo)"""
+    o = loft(name, [[(x + r_lo * math.cos(a), y + r_lo * math.sin(a), z_lo) for a in [2 * math.pi * j / seg for j in range(seg)]],
+                    [(x + r_hi * math.cos(a), y + r_hi * math.sin(a), z_hi) for a in [2 * math.pi * j / seg for j in range(seg)]]],
+             thick=0.018, flat=False)
+    paint(o, iron(z_lo, z_hi))
+    return o
+
+
 def arms():
     out = {}
     for side, s in (("L", -1), ("R", 1)):
         ax, ay, az = RIG.P("arm" + side)
-        a = tube("arm" + side, [(ax, ay, az - 0.02), (ax, ay, az - RIG.arm - 0.02)], [0.1, 0.095], seg=18)
-        for p_ in a.data.polygons:
-            p_.use_smooth = True
-        paint(a, steel)
-        rings = []
-        for zz in (az - 0.14, az - 0.24):   # braçadeira em dois anéis encaixados, borda clara
-            rg = tube("rerebrace", [(ax, ay, zz + 0.05), (ax, ay, zz - 0.04)], [0.108, 0.122], seg=18)
-            for p_ in rg.data.polygons:
-                p_.use_smooth = True
-            paint(rg, lambda co, n: mix(steel(co, n), ST_L, 0.3 * ss(-0.2, 0.6, n.z)))
-            rings.append(rg)
-        # ombreira enorme: três lâminas que descem pelo braço, mais larga que a cabeça, com gema na de cima
-        pad = lames("pauldron", (ax + s * 0.03, ay, az + 0.03), 0.185, 3, (s * 0.045, 0, -0.09), 0.1, 0.62, (0, s * 0.95, 0))
-        out["arm" + side] = [a] + rings + pad
+        a = loft("arm" + side, [[(ax + r * math.cos(q), ay + r * math.sin(q), zz) for q in [2 * math.pi * j / 20 for j in range(20)]]
+                                for zz, r in ((az - RIG.arm + 0.01, 0.088), (az - 0.2, 0.094), (az - 0.08, 0.096), (az, 0.09))],
+                 thick=0.018, flat=False)
+        paint(a, iron(az - RIG.arm, az))
+        bands = [ring_band("rerebrace", ax, ay, az - 0.2, az - 0.15, 0.104, 0.098, seg=20)]
+        # a ombreira do lado da capa (L, à esquerda da tela) é a maior, como no sprite
+        out["arm" + side] = [a] + bands
+        out.setdefault("torso", []).extend(pauldron(side, s, 1.12 if side == "L" else 1.0))
         fx, fy, fz = RIG.P("fore" + side)
-        f = meta("fore" + side, [CAP((fx, fy, fz), (fx, fy, fz - 0.24), 0.095),
-                                  EL((fx, fy, fz - 0.17), (0.12, 0.12, 0.1))], res=0.012)
-        smooth(f, iters=1, target=320)
-        paint(f, steel)
-        # cotovelo e manopla de punho largo
-        el = sball("elbow", (fx, fy + 0.02, fz), (0.1, 0.1, 0.08), seg=(10, 6))
-        paint(el, steel)
-        cuff = tube("cuff", [(fx, fy, fz - 0.15), (fx, fy, fz - 0.2)], [0.118, 0.13], seg=16)
-        cuff2 = tube("cuff2", [(fx, fy, fz - 0.2), (fx, fy, fz - 0.26)], [0.128, 0.145], seg=16)
-        paint(cuff, steel)
-        paint(cuff2, steel)
+        f = loft("fore" + side, [[(fx + r * math.cos(a), fy + r * math.sin(a), zz) for a in [2 * math.pi * j / 24 for j in range(24)]]
+                                 for zz, r in ((fz - 0.28, 0.145), (fz - 0.24, 0.132), (fz - 0.16, 0.11), (fz - 0.06, 0.112), (fz + 0.02, 0.1))],
+                 thick=0.02, flat=False)
+        paint(f, iron(fz - 0.28, fz + 0.02))
+        # cotoveleira em cúpula e manopla de duas lâminas que abre no punho
+        el = loft("elbow", [[(fx + 0.1 * math.cos(a) * math.sin(t), fy + 0.02 + 0.1 * math.sin(a) * math.sin(t), fz + 0.06 * math.cos(t))
+                             for a in [2 * math.pi * j / 12 for j in range(12)]] for t in (0.3, 0.9, 1.4, 1.75)], thick=0.016)
+        paint(el, iron(fz - 0.03, fz + 0.06))
+        g1 = ring_band("gaunt1", fx, fy, fz - 0.285, fz - 0.245, 0.158, 0.148, seg=24)
+        paint(g1, lambda co, n: mix(ST_D, ST_L, 0.25 + 0.6 * ss(-0.5, 0.9, n.z - 0.3 * n.y)))
+        spike = cone("couter", (fx, fy + 0.1, fz + 0.01), (fx, fy + 0.19, fz - 0.03), 0.05, seg=8)
+        paint(spike, iron(fz - 0.05, fz + 0.03))
         hand = fist(fx, fy, fz - HAND + 0.03, s) if side == "L" else palm_hand(fx, fy, fz - HAND + 0.03, s)
         hp = Vector((fx, fy, fz - 0.27))
-        for o in hand:   # mãos grandes (1,35×), a partir do punho
-            o.data.transform(Matrix.Translation(hp) @ Matrix.Diagonal((1.6, 1.6, 1.6, 1)) @ Matrix.Translation(-hp))
-        out["fore" + side] = [f, el, cuff, cuff2] + hand
+        for o in hand:   # mãos grandes (1,6×), a partir do punho
+            o.data.transform(Matrix.Translation(hp) @ Matrix.Diagonal((1.35, 1.35, 1.35, 1)) @ Matrix.Translation(-hp))
+        out["fore" + side] = [f, el, g1, spike] + hand
     return out
 
 
@@ -391,7 +426,7 @@ def hips():
         u = i / 6
         z = zt - 0.04 - (zt - 0.04 - 0.42) * u
         r = 0.25 + 0.34 * u ** 1.5
-        rings.append(((0, 0.02 * u, z), (0, 0, -1), r, r * 0.86, 7, 0.09 * u))
+        rings.append(((0, 0.02 * u, z), (0, 0, -1), r, r * 0.86, 9, 0.12 * u))
     sk = ring_loft("skirt", rings, seg=36, thick=0.02)
     paint(sk, navy)
     out.append(sk)
@@ -402,7 +437,7 @@ def hips():
             u = i / 6
             z = zt - 0.06 - (zt - 0.06 - 0.45) * u
             r = (0.25 + 0.34 * u ** 1.5) * 0.86 * (1 + 0.09 * u) + 0.016
-            pts.append((s * (0.07 + 0.08 * u), 0.02 * u - r * math.cos(0.28 + 0.14 * u), z))
+            pts.append((s * (0.05 + 0.17 * u), 0.02 * u - r * math.cos(0.2 + 0.32 * u), z))
         g = tube("goldtrim", pts, [0.016] * len(pts), seg=6, squash=(1.0, 0.5), ref=(0, 1, 0))
         paint(g, gold)
         out.append(g)
@@ -416,7 +451,7 @@ def hips():
     for x, y, z, r in ((0, 0, 0.22, 0.38), (0.25, -0.15, 0.14, 0.2), (-0.25, 0.15, 0.14, 0.2), (0.62, 0.12, 0.24, 0.13),
                        (-0.64, -0.1, 0.22, 0.13), (0.1, -0.58, 0.24, 0.13)):
         els.append(EL((x, y, z), (r, r, r * 0.8)))
-    els = [(t, (co[0] * 1.35, co[1] * 1.3, co[2]), r * 1.12, size, rot, neg, st) for t, co, r, size, rot, neg, st in els]
+    els = [(t, (co[0] * 1.6, co[1] * 1.55, co[2] * 0.8 - 0.04), r * 1.22, size, rot, neg, st) for t, co, r, size, rot, neg, st in els]
     cl = meta("cloud", els, res=0.012, thresh=0.6)
     smooth(cl, iters=1, target=2200)
     paint(cl, puff_col)
@@ -428,7 +463,7 @@ def hips():
     for cx, cy, cz, rr in ((0.38, -0.3, 0.32, 0.12), (-0.38, -0.3, 0.33, 0.12), (0.0, -0.44, 0.3, 0.12), (0.52, 0.02, 0.32, 0.11),
                            (-0.52, 0.02, 0.32, 0.11), (0.2, -0.42, 0.44, 0.08), (-0.2, -0.4, 0.46, 0.08),
                            (-0.36, 0.34, 0.33, 0.12), (0.02, 0.46, 0.3, 0.12), (0.38, 0.32, 0.34, 0.12)):
-        cx, cy = cx * 1.35, cy * 1.3   # a nuvem foi alargada
+        cx, cy, cz = cx * 1.6, cy * 1.55, cz * 0.8 - 0.04   # a nuvem foi alargada e baixada
         c = Vector((cx, cy, cz))
         d = Vector((cx, cy, 0)).normalized()
         up = Vector((0, 0, 1))
@@ -436,7 +471,7 @@ def hips():
         pts = []
         for k in range(16):
             ang = k * 0.5
-            rad = rr * (0.15 + 0.85 * k / 15)
+            rad = rr * 1.25 * (0.15 + 0.85 * k / 15)
             o = c + sd * math.cos(ang) * rad + up * math.sin(ang) * rad * 0.85
             hit, nrm, _, _ = tree.ray_cast(o + d * 0.6, -d)
             if hit:
@@ -448,43 +483,67 @@ def hips():
     return {"hips": out, "hips@flat": swirls}
 
 
-# ------------------------------------------------------------------ capa (osso cape): azul-marinho, dos ombros até a nuvem
+# ------------------------------------------------------------------ capa (osso cape): pesada, presa sob as ombreiras, varre o lado esquerdo
 def cape():
-    zs = RIG.P("armL")[2] + 0.04
+    zs = RIG.P("armL")[2] + 0.1
     bm = bmesh.new()
-    R, C = 10, 16
+    R, C = 18, 30
     grid = []
     for i in range(R + 1):
         u = i / R
-        z = zs - (zs - 0.74) * u
-        w = 0.42 + 0.26 * u
         row = []
         for j in range(C + 1):
             v = j / C * 2 - 1
-            x = v * w + 0.08 * u * u           # cai um pouco para o lado esquerdo do rei (direita na tela de frente)
-            # as bordas envolvem os lados e vêm para a frente sobre as ombreiras; pregas fundas embaixo
-            y = 0.24 + 0.3 * u - (0.22 - 0.02 * u) * v * v + 0.07 * (0.25 + u) * math.sin(v * math.pi * 4.5)
-            zz = z + ((0.07 if j % 2 else -0.03) if i == R else 0) - 0.08 * (1 - u) ** 3 * v * v
-            row.append(bm.verts.new((x, y, zz)))
+            left = max(0.0, -v)
+            w = 0.6 + 0.24 * u ** 1.2                                          # cai na vertical, abre pouco embaixo
+            x = v * w - 0.1 * u ** 1.3 * left
+            y = 0.27 + 0.26 * u + 0.1 * v * v * u - 0.06 * u ** 1.5 * left ** 2   # bordas para trás, sem aba rígida
+            zb = 0.4 - 0.1 * left - 0.04 * math.sin(v * 2.0 + 0.6)               # barra assimétrica, encosta na nuvem
+            z = zs - (zs - zb) * u ** 0.95
+            # 4 pregas fundas, rasas no ombro e fundas embaixo, empurradas para fora do eixo do corpo
+            fold = (0.01 + 0.1 * u ** 1.2) * (math.sin(v * math.pi * 4.2 + u * 1.0) + 0.25 * math.sin(v * math.pi * 7.3 + 2.0))
+            rd = Vector((x, y - 0.05, 0))
+            rd = rd.normalized() if rd.length > 1e-4 else Vector((0, 1, 0))
+            x, y = x + rd.x * fold, y + rd.y * fold
+            if i == R:   # barra que ondula
+                z += 0.025 * math.sin(v * 11.0) + 0.02 * math.sin(v * 5.0 + 1.0)
+            row.append(bm.verts.new((x, y, z)))
         grid.append(row)
     for i in range(R):
         for j in range(C):
             bm.faces.new((grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j]))
     c = new_mesh("cape", bm)
     sol = c.modifiers.new("thick", "SOLIDIFY")
-    sol.thickness = 0.028
+    sol.thickness = 0.034
     sol.offset = 0
     apply_mods(c)
     for p in c.data.polygons:
         p.use_smooth = True
 
     def tint(co, n):
-        if n.y < -0.25:   # forro
-            return mix(NAVY_D, NAVY, 0.6)
-        c = mix(NAVY_D, NAVY, (0.45 + 0.55 * ss(0.5, zs, co.z)) * (0.6 + 0.4 * abs(n.y)))
-        return mix(c, NAVY_L, 0.5 * ss(0.45, 0.6, abs(co.x)))
+        rd = Vector((co.x, co.y - 0.05, 0))
+        rd = rd.normalized() if rd.length > 1e-4 else Vector((0, 1, 0))
+        out_ = n.x * rd.x + n.y * rd.y
+        if out_ < -0.2:   # forro, por dentro: azul médio, aparece na borda
+            return mix(NAVY, NAVY_L, 0.35)
+        crest = ss(0.3, 0.97, out_)                        # crista da prega mais clara, o vale azul bem escuro
+        c = mix(mix(hexc(0x0a1028), NAVY, 0.15 + 0.85 * crest), NAVY_L, 0.5 * crest ** 2)
+        return mix(c, NAVY_D, 0.35 * ss(zs - 0.1, zs, co.z))   # sombra sob as ombreiras
     paint(c, tint)
-    return {"cape": [c]}
+    # gola: a capa vira por cima dos ombros num rolo de pano preso sob as ombreiras
+    col = tube("capecollar", [(-0.56, 0.12, zs - 0.02), (-0.3, 0.26, zs + 0.02), (0.0, 0.29, zs + 0.03), (0.3, 0.26, zs + 0.02), (0.56, 0.12, zs - 0.02)],
+               [0.035, 0.045, 0.05, 0.045, 0.035], seg=10)
+    smooth(col)
+    paint(col, lambda co, n: mix(NAVY_D, NAVY_L, 0.3 + 0.5 * ss(0.0, 0.9, n.z)))
+    # gola alta atrás da nuca: pano erguido que emoldura a cabeça
+    gr = []
+    for i in range(3):
+        h = i / 2
+        gr.append([(0.3 * math.sin(a) * (1 + 0.25 * h), 0.24 + 0.06 * h - 0.12 * math.cos(a) * (1 - 0.3 * h), zs + 0.02 + 0.22 * h * (0.6 + 0.4 * math.cos(a)))
+                   for a in [-1.4 + 2.8 * j / 16 for j in range(17)]])
+    hc = loft("highcollar", gr, closed=False, thick=0.03, flat=False)
+    paint(hc, lambda co, n: mix(NAVY_D, NAVY, 0.4 + 0.6 * ss(-0.3, 0.8, n.z + n.y * 0.3)))
+    return {"cape": [c, col, hc]}
 
 
 if __name__ == "__main__":
