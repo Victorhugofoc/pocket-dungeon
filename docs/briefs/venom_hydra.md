@@ -22,3 +22,6 @@ Parado: corpo respira, cauda e pescoços balançam com atraso entre eles. Andar:
 2. Três cabeças separadas e visíveis de cima.
 3. Verde domina; creme na barriga, na frente dos pescoços e nos espinhos.
 4. Patas apoiadas no chão, sem peças soltas.
+
+## 6. Crítico e usuário (2026-11-23 e 24)
+2 rodadas do crítico. Corrigido: patas de mesa viraram patas abertas de crocodilo com pé de garras e corpo rente ao chão; bocas fechadas no golpe viraram mandíbulas articuladas (`jaw`, `jawL`, `jawR`); anéis pretos nas emendas dos pescoços e da cauda (o contorno de 0,02 passava da pele nas juntas) sumiram com pescoço e cauda em malha única (dobram na base e na cabeça); cauda longa que enrola para o lado. Depois o usuário achou a cabeça "crocodilo com dinossauro" e mandou referências: refeita como serpente-dragão (crânio chato em cunha, chifres para trás, sobrancelha em V, olhos grandes saltados e acesos com órbita escura, calombos pontudos no alto, boca aberta em repouso com presas curvas e língua bifurcada) e espinhos das costas maiores. Cores do sprite mantidas. Aprovada pelo usuário em 2026-11-24. ~18 mil triângulos.
