@@ -4,9 +4,10 @@
 import { allDepths, allPerks, bestDepths, normalizeDepths, type DepthsSave } from "./depths";
 import { ACHIEVEMENT_BY_ID, ACHIEVEMENT_RULES as R, ACHIEVEMENTS, LOCKED_BY, UNLOCK_REWARDS, type AchievementDef, type UnlockKind } from "../data/achievements";
 import { FULL_TABLE_SYNERGIES } from "../data/synergies";
+import { codexDefeat, codexMark, emptySeen, CODEX_KINDS, type CodexKind } from "./codex";
 
-/** "spell": as evoluções de spell já feitas (codex.lua `seen("spell", evo)`, para Forge e Complete Grimoire) */
-export type CodexKind = "boss" | "enemy" | "relic" | "spell";
+export type { CodexKind };
+
 
 export interface AchievementState {
   version: 1;
@@ -16,8 +17,14 @@ export interface AchievementState {
   fresh: Record<string, true>;
   /** codex.lua `medalRank`: a maior dificuldade vencida com cada herói (1 fácil, 2 normal, 3 difícil) */
   medals: Record<string, number>;
-  /** códex: o que já foi derrotado ou achado */
+  /** códex (core/codex.ts): o que já foi derrotado ou achado; "spell" tem as spells e as evoluções */
   seen: Record<CodexKind, string[]>;
+  /** M13-04: quantos de cada inimigo e chefe já foram derrotados (id) */
+  defeated: Record<string, number>;
+  /** M13-04: entradas do códex com "NOVO" até abrir (`kind:id`) */
+  codexNew: Record<string, true>;
+  /** M13-04: o códex já foi semeado pelo save antigo e pelo registro de partidas */
+  codexSeeded: boolean;
   /** heróis que já tiveram partida (um save antigo não tranca quem já jogou) */
   played: string[];
   /** M13-02: o progresso das Depths por herói (core/depths.ts; lá fica em depths.sav) */
@@ -27,7 +34,7 @@ export interface AchievementState {
 export const DIFF_RANK: Readonly<Record<string, number>> = { easy: 1, normal: 2, hard: 3 };
 
 export function emptyAchievements(): AchievementState {
-  return { version: 1, unlocked: {}, counters: {}, fresh: {}, medals: {}, seen: { boss: [], enemy: [], relic: [], spell: [] }, played: [], depths: {} };
+  return { version: 1, unlocked: {}, counters: {}, fresh: {}, medals: {}, seen: emptySeen(), defeated: {}, codexNew: {}, codexSeeded: false, played: [], depths: {} };
 }
 
 /** Lê o que veio do save, completando o que faltar; null quando não é um estado de conquistas. */
@@ -40,7 +47,8 @@ export function normalizeAchievements(x: unknown): AchievementState | null {
   const seen = obj(d.seen, e.seen);
   return {
     version: 1, unlocked: obj(d.unlocked, {}), counters: obj(d.counters, {}), fresh: obj(d.fresh, {}),
-    medals: obj(d.medals, {}), seen: { boss: arr(seen.boss), enemy: arr(seen.enemy), relic: arr(seen.relic), spell: arr(seen.spell) }, played: arr(d.played),
+    medals: obj(d.medals, {}), seen: Object.fromEntries(CODEX_KINDS.map((k) => [k, arr(seen[k])])) as Record<CodexKind, string[]>,
+    defeated: obj(d.defeated, {}), codexNew: obj(d.codexNew, {}), codexSeeded: d.codexSeeded === true, played: arr(d.played),
     depths: normalizeDepths(d.depths),
   };
 }
@@ -66,9 +74,7 @@ export function addCounter(s: AchievementState, name: string, n = 1): void {
 }
 
 export function markSeen(s: AchievementState, kind: CodexKind, id: string): boolean {
-  if (s.seen[kind].includes(id)) return false;
-  s.seen[kind].push(id);
-  return true;
+  return codexMark(s, kind, id);
 }
 
 export function achievementCount(s: AchievementState): number {
@@ -159,7 +165,7 @@ export function checkSaved(s: AchievementState, c: AchievementContent, opts: { r
     kingslayer: () => codexAll("boss", c.bosses),
     reliquary: () => codexAll("relic", c.relics),
     // achievements.lua `spellEvolutions` e `relicEvolutions`: contam o que o códex já viu
-    forge: () => s.seen.spell.length >= 1,
+    forge: () => !!c.spellEvolutions?.some((id) => s.seen.spell.includes(id)),
     grimoire: () => !!c.spellEvolutions?.length && c.spellEvolutions.every((id) => s.seen.spell.includes(id)),
     alchemy: () => !!c.relicEvolutions?.some((id) => s.seen.relic.includes(id)),
     // M13-02: as Depths
@@ -192,6 +198,8 @@ export class AchievementTracker {
   private bosses = new Map<object, number>();
   /** quem já deu a medalha nesta partida (a vitória conta uma vez) */
   private won = false;
+  /** M13-04: entradas novas do códex por derrota (o jogo avisa e esvazia) */
+  codexNews: { kind: CodexKind; id: string }[] = [];
   /** a partida teve atalho de teste: não libera nada pela vitória (achievements.lua `devUsed`) */
   devUsed = false;
 
@@ -256,11 +264,17 @@ export class AchievementTracker {
     if (k.source === "dot") addCounter(this.state, "dot_kills");
     if (k.boss) {
       // first_blood e kingslayer leem o códex
-      if (markSeen(this.state, "boss", k.id)) this.check();
+      if (codexDefeat(this.state, true, k.id)) {
+        this.codexNews.push({ kind: "boss", id: k.id });
+        this.check();
+      }
       const t0 = this.bosses.get(k.key);
       if (t0 !== undefined && k.elapsed - t0 < R.lightningDuel) this.unlock("lightning_duel");
       this.bosses.delete(k.key);
-    } else if (markSeen(this.state, "enemy", k.id)) this.check();
+    } else if (codexDefeat(this.state, false, k.id)) {
+      this.codexNews.push({ kind: "enemy", id: k.id });
+      this.check();
+    }
   }
 
   /** achievements.lua `synergy_activated`: Full Table com 3 sinergias ativas ao mesmo tempo. */

@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:q": "vitest run --reporter=dot --silent --slowTestThreshold=60000",
     "typecheck": "tsc --noEmit",
     "refs": "node tools/make-refs.mjs",
     "icons": "node tools/copy-icons.mjs"

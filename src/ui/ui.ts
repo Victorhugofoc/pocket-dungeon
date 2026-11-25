@@ -40,6 +40,8 @@ import { eventAvailable } from "../core/events";
 import { depthsHudHtml, depthsHudKey, depthsPanelHtml, depthsPerksHtml, depthsResultHtml } from "./depths-view";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
+import { codexDetailHtml, codexList, codexScreenHtml, type CodexFormat, type CodexView } from "./codex-view";
+import { CODEX_TABS, codexOpened, type CodexTab } from "../core/codex";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
 const QUALITY = ["low", "medium", "high"];
@@ -195,6 +197,10 @@ export class Ui {
   private seedText = "";
   /** o teclado da tela de seleção (setas, 1 a 4, Enter, Esc), enquanto ela está aberta */
   private titleKeys: ((code: string) => void) | null = null;
+  /** M13-04: o teclado do códex enquanto ele está aberto */
+  private codexKeys: ((e: KeyboardEvent) => void) | null = null;
+  /** M13-04: aba, seleção e busca do códex (ficam entre aberturas) */
+  private codexView: CodexView = { tab: "hero", sel: HERO_ORDER[0], query: "" };
   private storage = safeStorage();
   private r: Record<string, HTMLElement> = {};
 
@@ -260,6 +266,10 @@ export class Ui {
   }
 
   private onKey(e: KeyboardEvent): void {
+    if (this.overlayKind === "codex" && this.codexKeys) {
+      this.codexKeys(e);
+      return;
+    }
     if (e.repeat) return;
     if (this.overlayKind === "title" && this.titleKeys) {
       if (e.code.startsWith("Arrow") || e.code === "Enter") e.preventDefault();
@@ -412,6 +422,7 @@ export class Ui {
           <div><h1>DUNGEON REIGN</h1><p class="tag">${records}</p></div>
           <div class="hs-top-actions">
             ${save ? `<button class="primary" data-act="continue">Continue · ${HEROES[save.run.heroId]?.name ?? "?"} · ${DIFFICULTIES[save.run.difficultyId].name} · wave ${save.wave} · Lv ${save.run.level}</button>` : ""}
+            <button data-act="codex">Codex</button>
             ${runLog ? `<button data-act="runlog">Export run log (${runLog})</button>` : ""}
           </div>
         </header>
@@ -522,6 +533,9 @@ export class Ui {
         this.titleKeys = null;
         const c = continueRun(save);
         this.begin(c.run, c.rng);
+      } else if (act === "codex") {
+        this.titleKeys = null;
+        this.showCodex("title");
       } else if (act === "go") go();
     };
     // setas andam na grade de 3 colunas dos retratos
@@ -1356,10 +1370,11 @@ export class Ui {
         <kbd>F3</kbd><span>Show frames per second</span>
       </div>
       <div class="row end"><button data-act="quality">Quality: ${QUALITY[g.quality]}</button><button data-act="mute">${g.audio.muted ? "Sound on" : "Sound off"}</button>
-        <button data-act="title">Quit to title</button><button class="primary" data-act="close">Resume</button></div>`;
+        <button data-act="codex">Codex</button><button data-act="title">Quit to title</button><button class="primary" data-act="close">Resume</button></div>`;
     panel.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
       if (act === "close") this.close();
+      else if (act === "codex") this.showCodex("pause");
       else if (act === "quality") {
         g.setQuality((g.quality + 2) % 3);
         this.showPause();
@@ -1371,6 +1386,125 @@ export class Ui {
         this.showTitle();
       }
     };
+  }
+
+  // ---------------------------------------------------------------- códex (M13-04; codex.lua)
+  /**
+   * O códex, do título ou da pausa: abas (Q/E), lista (setas), busca (/), ficha. Abrir a entrada tira o "NOVO".
+   * A lista e as abas só se redesenham ao trocar de aba ou de busca; andar pela lista troca só a ficha.
+   */
+  private showCodex(back: "title" | "pause"): void {
+    const g = this.game;
+    g.codexReady();
+    const ach = g.ach.state;
+    const v = this.codexView;
+    const panel = this.open("codex", "codex");
+    panel.classList.add("codex");
+    const kills = loadRecords(this.storage).kills;
+    const fmt: CodexFormat = {
+      heroKit: (h) => heroKit(h, h.technique.cooldown),
+      relicLines: (d) => relicLines(d),
+      upgradeLines: (u) => u.effects.map((e) => upgradeLine(e)).join(""),
+    };
+    const list = () => codexList(ach, v);
+    const detail = () => {
+      const host = panel.querySelector<HTMLElement>("[data-r=cx-detail]")!;
+      if (codexOpened(ach, v.tab, v.sel)) {
+        g.saveAchievements();
+        const li = panel.querySelector<HTMLElement>(`[data-entry="${CSS.escape(v.sel)}"] .cx-new`);
+        li?.remove();
+        this.codexTabBadges(panel);
+      }
+      host.innerHTML = codexDetailHtml(ach, v, fmt, kills);
+      // M13-04 parte 3: o modelo 3D de herói, inimigo e chefe; o que não foi visto (ou está trancado) é silhueta
+      const stage = host.querySelector<HTMLElement>("[data-r=cx-stage]");
+      if (stage) g.stage.show(stage, v.sel, stage.classList.contains("dark"), v.tab as "hero" | "enemy" | "boss");
+      else g.stage.hide();
+    };
+    const pick = (id: string) => {
+      v.sel = id;
+      panel.querySelectorAll(".cx-list li.sel").forEach((n) => n.classList.remove("sel"));
+      const li = panel.querySelector<HTMLElement>(`[data-entry="${CSS.escape(id)}"]`);
+      li?.classList.add("sel");
+      li?.scrollIntoView({ block: "nearest" });
+      detail();
+    };
+    const render = (keepSearchFocus = false) => {
+      const L = list();
+      if (!L.some((e) => e.id === v.sel)) v.sel = L[0]?.id ?? "";
+      panel.innerHTML = codexScreenHtml(ach, v);
+      const input = panel.querySelector<HTMLInputElement>("[data-r=cx-search]")!;
+      input.oninput = () => {
+        v.query = input.value;
+        render(true);
+      };
+      if (keepSearchFocus) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+      panel.querySelector(".cx-list li.sel")?.scrollIntoView({ block: "nearest" });
+      detail();
+    };
+    const setTab = (tab: CodexTab) => {
+      v.tab = tab;
+      v.sel = "";
+      render();
+    };
+    const leave = () => {
+      this.codexKeys = null;
+      if (back === "title") this.showTitle();
+      else this.showPause();
+    };
+    render();
+    panel.onclick = (ev) => {
+      const t = ev.target as HTMLElement;
+      const tab = t.closest<HTMLElement>("[data-tab]")?.dataset.tab;
+      if (tab) return setTab(tab as CodexTab);
+      const entry = t.closest<HTMLElement>("[data-entry]")?.dataset.entry;
+      if (entry) return pick(entry);
+      if (t.closest<HTMLElement>("[data-act=back]")) leave();
+    };
+    this.codexKeys = (e) => {
+      const typing = document.activeElement?.classList.contains("cx-search");
+      if (e.code === "Escape") {
+        e.preventDefault();
+        if (typing && v.query) {
+          v.query = "";
+          return render();
+        }
+        if (typing) return (document.activeElement as HTMLElement).blur();
+        return leave();
+      }
+      if (typing) {
+        if (e.code === "ArrowDown" || e.code === "Enter") (document.activeElement as HTMLElement).blur();
+        else return;
+      }
+      if (e.code === "Slash") {
+        e.preventDefault();
+        panel.querySelector<HTMLInputElement>("[data-r=cx-search]")?.focus();
+        return;
+      }
+      const tabs = CODEX_TABS.map((x) => x.id as CodexTab);
+      const ti = tabs.indexOf(v.tab);
+      if (e.code === "KeyQ" || e.code === "KeyE") return setTab(tabs[(ti + (e.code === "KeyE" ? 1 : tabs.length - 1)) % tabs.length]);
+      if (e.code === "ArrowDown" || e.code === "ArrowUp" || e.code === "PageDown" || e.code === "PageUp") {
+        e.preventDefault();
+        const L = list();
+        if (!L.length) return;
+        const step = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 }[e.code]!;
+        const i = Math.max(0, L.findIndex((x) => x.id === v.sel));
+        pick(L[Math.min(L.length - 1, Math.max(0, i + step))].id);
+      }
+    };
+  }
+
+  /** As bolinhas de "NOVO" das abas, depois de abrir uma entrada. */
+  private codexTabBadges(panel: HTMLElement): void {
+    const fresh = panel.querySelectorAll<HTMLElement>(".cx-list .cx-new").length;
+    const tab = panel.querySelector<HTMLElement>(".cx-tab.sel .cx-new");
+    if (!tab) return;
+    if (fresh) tab.textContent = String(fresh);
+    else tab.remove();
   }
 
   // ---------------------------------------------------------------- fim da partida (results.lua, victory_choice.lua)
