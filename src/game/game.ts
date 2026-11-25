@@ -4308,6 +4308,8 @@ export class Game {
     }
     this.input.endFrame();
     updateLamps();
+    // M13-04: o palco do códex aberto na pausa desenha antes da cena, que cobre o canto que ele usou
+    if (this.stage.active) this.stage.frame(raw);
     this.pipeline.render();
     this.adaptResolution(raw);
     this.probe.end(real * 1000, this.time);

@@ -493,7 +493,7 @@ input.seed:focus { outline: none; border-color: var(--gold); }
 .cx-detail { overflow-y: auto; padding: 4px 8px; }
 .cx-detail h3 { margin: 8px 0 4px; font-size: 1.4em; }
 .cx-icon { display: flex; justify-content: center; padding: 10px 0; }
-.cx-stage { height: clamp(220px, 34vh, 380px); border-radius: 12px; background: radial-gradient(ellipse at 50% 70%, #2a2440, #12131a 75%); border: 1px solid var(--line); }
+.cx-stage { position: relative; overflow: hidden; height: clamp(220px, 34vh, 380px); border-radius: 12px; background: radial-gradient(ellipse at 50% 70%, #2a2440, #12131a 75%); border: 1px solid var(--line); }
 .cx-stage canvas { width: 100%; height: 100%; display: block; }
 .cx-line { margin: 4px 0; line-height: 1.4; }
 .cx-line.dim { color: var(--muted); }

@@ -754,6 +754,7 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 
 **M13-04 · Conquistas e registro** · P
 - Porta de `achievements.lua`; bestiário com os modelos 3D dos inimigos derrotados.
+- **Feita em 2026-11-25** em 3 partes, com as melhorias escolhidas pelo usuário (todas menos os links entre fichas): parte 1, núcleo (`core/codex.ts`: os 9 tipos e as 10 abas de `codex.lua`, NOVO por entrada, derrotados por id, semeadura pelo save e pelo registro de partidas, avisos); parte 2, tela (`ui/codex-view.ts`, título e pausa, busca, Q/E e setas); parte 3, modelo 3D de herói, inimigo e chefe na ficha (`HeroStage` com `StageKind`), silhueta para o não visto.
 
 **M13-05 · Seed diária** · P [paridade P5] · **última prioridade de todo o roadmap** (usuário, 2026-11-25)
 - Porta de `core/daily.lua`: a data escolhe seed, herói, dificuldade e um pacto; só a primeira tentativa do dia conta; histórico e sequência de dias no save. Depende do `M13-03` (pactos).

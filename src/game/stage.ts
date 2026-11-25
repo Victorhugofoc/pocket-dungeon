@@ -3,6 +3,7 @@
 // Usa o renderer do jogo numa cena própria (sem segundo contexto WebGL): desenha num canto do canvas do jogo,
 // que está tapado pela tela de título, e copia para um canvas 2D dentro do palco. Só roda com a tela aberta.
 import * as THREE from "three";
+import { BOSSES, ENEMIES } from "../data/enemies";
 import { HEROES, HERO_ORDER } from "../data/heroes";
 import { animateRig, type Rig } from "./models";
 import { characterRig } from "./rigs";
@@ -34,6 +35,12 @@ function floorTexture(): THREE.CanvasTexture {
   return t;
 }
 
+/** Quem sobe ao palco: herói (tela de seleção) ou, no códex (M13-04 parte 3), inimigo e chefe. */
+export type StageKind = "hero" | "enemy" | "boss";
+
+const stageColor = (kind: StageKind, id: string): number =>
+  (kind === "hero" ? HEROES[id]?.color : kind === "boss" ? BOSSES[id]?.color : ENEMIES[id]?.color) ?? 0x888888;
+
 export class HeroStage {
   readonly canvas = document.createElement("canvas");
   private ctx = this.canvas.getContext("2d")!;
@@ -41,6 +48,7 @@ export class HeroStage {
   private camera = new THREE.PerspectiveCamera(30, 1, 0.3, 80);
   private bounds = new Map<string, { top: number; half: number }>();
   private rigs = new Map<string, Rig>();
+  /** a chave (`kind:id`) de quem está no palco */
   private heroId = "";
   private locked = false;
   private host: HTMLElement | null = null;
@@ -115,21 +123,7 @@ export class HeroStage {
   /** monta os 9 heróis e compila os shaders de uma vez, para a troca não travar */
   private warm(): void {
     if (this.rigs.size) return;
-    for (const id of HERO_ORDER) {
-      const rig = characterRig(id, "hero");
-      rig.root.traverse((o) => {
-        if ((o as THREE.Mesh).isMesh) o.castShadow = true;
-      });
-      this.scene.add(rig.root);
-      this.rigs.set(id, rig);
-      animateRig(rig, { t: 0, move: 0, attack: -1, windup: 0, dead: 0 });
-      // medida real em pé (coroa, chifres, cajado), para o enquadramento do palco
-      rig.root.position.set(0, 0, 0);
-      rig.root.rotation.y = 0;
-      rig.root.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(rig.root);
-      this.bounds.set(id, { top: box.max.y, half: Math.max(-box.min.x, box.max.x, -box.min.z, box.max.z) });
-    }
+    for (const id of HERO_ORDER) this.add("hero", id);
     // a silhueta (herói trancado) entra num plano minúsculo, para o programa dela já existir
     const probe = new THREE.Mesh(new THREE.PlaneGeometry(0.01, 0.01), this.silhouette);
     probe.castShadow = true;
@@ -139,9 +133,35 @@ export class HeroStage {
     probe.geometry.dispose();
   }
 
+  /** Monta um personagem no palco (escondido) e mede a altura e o raio dele em pé. */
+  private add(kind: StageKind, id: string): Rig {
+    const key = `${kind}:${id}`;
+    const rig = characterRig(id, kind);
+    rig.root.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) o.castShadow = true;
+    });
+    rig.root.visible = false;
+    this.scene.add(rig.root);
+    this.rigs.set(key, rig);
+    animateRig(rig, { t: 0, move: 0, attack: -1, windup: 0, dead: 0 });
+    // medida real em pé (coroa, chifres, cajado), para o enquadramento do palco
+    rig.root.position.set(0, 0, 0);
+    rig.root.rotation.y = 0;
+    rig.root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(rig.root);
+    this.bounds.set(key, { top: box.max.y, half: Math.max(-box.min.x, box.max.x, -box.min.z, box.max.z) });
+    return rig;
+  }
+
   /** Mostra (ou atualiza) o palco dentro de `host`; chamado a cada redesenho da tela. */
-  show(host: HTMLElement, heroId: string, locked: boolean): void {
+  show(host: HTMLElement, id: string, locked: boolean, kind: StageKind = "hero"): void {
     this.warm();
+    const heroId = `${kind}:${id}`;
+    // inimigo e chefe montam na primeira vez que aparecem (o códex), e o shader compila junto
+    if (!this.rigs.has(heroId)) {
+      this.add(kind, id);
+      this.renderer.compile(this.scene, this.camera);
+    }
     this.open = true;
     if (this.host !== host) {
       this.host = host;
@@ -150,7 +170,7 @@ export class HeroStage {
     if (heroId !== this.heroId) {
       this.heroId = heroId;
       this.since = 0;
-      const c = new THREE.Color(HEROES[heroId].color);
+      const c = new THREE.Color(stageColor(kind, id));
       this.rim.color.copy(c).lerp(new THREE.Color(0xffffff), 0.35);
       (this.glow.material as THREE.MeshBasicMaterial).color.copy(c);
       (this.ring.material as THREE.MeshBasicMaterial).color.copy(c);
@@ -212,8 +232,10 @@ export class HeroStage {
     const mid = new THREE.Vector3();
     const rimColor = this.rim.color.clone();
     this.faces = {};
-    for (const [id, rig] of this.rigs) {
-      for (const [k, other] of this.rigs) other.root.visible = k === id;
+    for (const id of HERO_ORDER) {
+      const key = `hero:${id}`;
+      const rig = this.rigs.get(key)!;
+      for (const [k, other] of this.rigs) other.root.visible = k === key;
       rig.root.position.set(0, 0, 0);
       rig.root.rotation.y = -0.32;
       rig.inner.scale.setScalar(1);
@@ -231,7 +253,7 @@ export class HeroStage {
       cam.updateProjectionMatrix();
       this.rim.color.set(HEROES[id].color).lerp(new THREE.Color(0xffffff), 0.35);
       const shot = (locked: boolean): string => {
-        this.heroId = id;
+        this.heroId = key;
         this.shade(locked);
         this.scene.background = new THREE.Color(locked ? 0x2a2d3a : HEROES[id].color).multiplyScalar(locked ? 1 : 0.55);
         r.render(this.scene, cam);
@@ -306,7 +328,7 @@ export class HeroStage {
     const ht = rig.height;
     const b = this.bounds.get(this.heroId) ?? { top: ht * 1.1, half: ht * 0.4 };
     const name = this.host.parentElement?.querySelector<HTMLElement>(".hs-name");
-    const nameBottom = name ? name.getBoundingClientRect().bottom - rect.top : h * 0.2;
+    const nameBottom = name ? name.getBoundingClientRect().bottom - rect.top : h * 0.02;
     const tan = Math.tan((this.camera.fov * Math.PI) / 360);
     const aspect = w / h;
     const yTop = 1 - (2 * (nameBottom + STAGE_FRAME.gap * h)) / h;

@@ -1416,6 +1416,10 @@ export class Ui {
         this.codexTabBadges(panel);
       }
       host.innerHTML = codexDetailHtml(ach, v, fmt, kills);
+      // M13-04 parte 3: o modelo 3D de herói, inimigo e chefe; o que não foi visto (ou está trancado) é silhueta
+      const stage = host.querySelector<HTMLElement>("[data-r=cx-stage]");
+      if (stage) g.stage.show(stage, v.sel, stage.classList.contains("dark"), v.tab as "hero" | "enemy" | "boss");
+      else g.stage.hide();
     };
     const pick = (id: string) => {
       v.sel = id;
