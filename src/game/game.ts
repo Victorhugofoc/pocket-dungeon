@@ -30,7 +30,8 @@ import { EVENT_IDS, PACT_BY_ID, PACT_IDS } from "../data/events";
 import { isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE, depthsLevel } from "../data/run";
 import { SHOP_OFFERS } from "../data/shop";
-import { depthsSummary, mutation, recordDepthsWin } from "../core/depths";
+import { canUseZonePerk, depthsSources, depthsSummary, mutation, recordDepthsWin, reservePotion, runPerk, stockedShopBonus, useZonePerk } from "../core/depths";
+import { PERK_BY_ID } from "../data/depths";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { buildElements, executes, isBehind, primedReactions, reactionFor, type ReactionId } from "../core/reactions";
@@ -112,6 +113,11 @@ const TECH_FX = {
 
 /** banir uma oferta da escolha de relíquia (run_drafts.lua `banRelic`) */
 export type RelicBan = (index: number, current: readonly string[]) => string[] | null;
+/** M13-02 Relic Reroll (run_drafts.lua `rerollRelics`): sorteia a escolha de novo, uma vez por zona */
+export interface RelicReroll {
+  can(): boolean;
+  roll(current: readonly string[]): string[] | null;
+}
 
 export interface GameEvents {
   toast(msg: string, color?: string): void;
@@ -119,7 +125,7 @@ export interface GameEvents {
    * abriu uma escolha de relíquia; `ban(i, atual)` bane a oferta `i` e devolve a escolha nova (null se não deu),
    * quando a fonte deixa banir
    */
-  relicChoice(ids: string[], pick: (id: string) => void, title?: string, ban?: RelicBan): void;
+  relicChoice(ids: string[], pick: (id: string) => void, title?: string, ban?: RelicBan, reroll?: RelicReroll): void;
   /** abriu (ou mudou) a escolha de melhoria de nível; o estado está em `Game.levelUp` */
   levelUp(): void;
   /** abriu a oferta de evolução de spell; as opções estão em `Game.evolutionOffer` */
@@ -558,6 +564,7 @@ export class Game {
     this.challenges = new ChallengeTracker(run);
     this.saveAchievements();
     this.prepareWave(Math.max(1, run.wave), true);
+    this.openStartPick();
   }
 
   /** 0 baixo, 1 médio, 2 alto: sombras, bloom e resolução */
@@ -638,6 +645,8 @@ export class Game {
     sources.push(shopStats(this.run.shop));
     // M11-08 e M13-03: o evento da onda, o ouro do Blood Altar e os pactos
     sources.push(...eventSources(this.run));
+    // M13-02 Greed (`depths:greed`)
+    sources.push(...depthsSources(this.run));
     this.refreshSynergies();
     sources.push(...synergySources(this.run.activeSynergies, this.run.buildEvolutions));
     this.stats = computeStats(sources, this.hero.style);
@@ -719,7 +728,7 @@ export class Game {
     this.events.relicChoice(offer, (id) => {
       this.addRelic(id);
       this.poolOpen = false;
-    }, POOL_TITLE[pool], this.relicBan((k) => this.drawPoolRelics(pool, k)));
+    }, POOL_TITLE[pool], this.relicBan((k) => this.drawPoolRelics(pool, k)), this.relicReroll((k) => this.drawPoolRelics(pool, k)));
     return true;
   }
 
@@ -750,12 +759,60 @@ export class Game {
     };
   }
 
+  /**
+   * M13-02 Relic Reroll (run_drafts.lua `rerollRelics`, D-302): só com a vantagem ligada; uma vez por zona, a escolha
+   * aberta sai de novo da mesma fonte (`draw(n)`), diferente da atual quando der (até 5 tentativas).
+   */
+  private relicReroll(draw: (k: number) => string[]): RelicReroll | undefined {
+    if (!runPerk(this.run, "relic_reroll")) return undefined;
+    const seg = () => segmentOf(Math.max(1, this.run.wave));
+    return {
+      can: () => canUseZonePerk(this.run, "relic_reroll", seg()),
+      roll: (current) => {
+        if (!useZonePerk(this.run, "relic_reroll", seg())) return null;
+        const old = [...current].sort().join();
+        let next = draw(current.length);
+        for (let i = 0; i < 4 && next.length && [...next].sort().join() === old; i++) next = draw(current.length);
+        this.audio.play("pickup");
+        return next.length ? next : null;
+      },
+    };
+  }
+
+  /**
+   * M13-02 Starting Relic (run_map_flow.lua `openStartPick`, D-228): 1 de 3 incomuns do sorteio normal. Fica pendente
+   * no checkpoint até ser escolhida, então continuar a partida na onda 1 oferece de novo.
+   */
+  private openStartPick(): void {
+    const run = this.run;
+    if (!run.pendingStartPick) return;
+    const rr = this.rng.get("relics");
+    const list = this.relicPool().filter((id) => RELICS[id].rarity === "uncommon");
+    const choices: string[] = [];
+    while (list.length && choices.length < (PERK_BY_ID.relic_pick.count ?? 3)) choices.push(list.splice(Math.floor(rr.next() * list.length), 1)[0]);
+    if (!choices.length) {
+      run.pendingStartPick = false;
+      return;
+    }
+    this.events.relicChoice(choices, (id) => {
+      run.pendingStartPick = false;
+      this.addRelic(id);
+      if (this.phase === "walk") this.saveCheckpoint();
+    }, "Starting Relic");
+  }
+
   /** Relíquias que podem entrar no sorteio normal agora (abertas, que o herói não tem nem baniu, as de spell com a spell). */
   private relicPool(): string[] {
     return relicDraftPool(this.run, this.relicOpen());
   }
 
   /** Avisa as conquistas liberadas e grava. */
+  /** Confere as conquistas guardadas (ex.: Well Equipped depois de comprar uma vantagem fora da partida) e avisa. */
+  checkAchievements(): void {
+    this.ach.check();
+    this.flushAchievements();
+  }
+
   private flushAchievements(): void {
     const news = this.ach.take();
     if (!news.length) return;
@@ -1863,6 +1920,16 @@ export class Game {
     if (amount <= 0) return true;
     this.run.statistics.damageTaken += Math.min(amount, p.hp);
     p.hp -= amount;
+    // M13-02 Reserve Potion (damage.lua, D-228): uma vez por partida, abaixo de 20% cura 30% (sem o corte da Wounds)
+    const potion = reservePotion(this.run, p.hp, this.stats.maxHp);
+    if (potion > 0) {
+      p.hp += potion;
+      this.run.statistics.healed += potion;
+      this.fx.text(p.x, 3.2, p.z, "Reserve Potion", "heal");
+      this.fx.text(p.x, 2.6, p.z, "+" + Math.round(potion), "heal");
+      this.fx.burst(p.x, 1.2, p.z, 0x5fd35f, 18, 4, 0.14, 0.6, 2);
+      this.audio.play("pickup");
+    }
     this.challenges.hit(amount);
     this.flushChallenges();
     this.relicHooks.onPlayerHit(this.relicWorld, amount);
@@ -2009,7 +2076,8 @@ export class Game {
         this.addRelic(id);
         // escolhida já na onda seguinte (entrou no portal antes): o checkpoint dela precisa da relíquia
         if (this.phase === "walk") this.saveCheckpoint();
-      }, undefined, this.relicBan((k) => this.drawRelics(k)));
+      }, undefined, this.relicBan((k) => this.drawRelics(k)), this.relicReroll((k) => bossRelicOffer(owned, e.boss?.relicBuild,
+        (j) => this.drawRelics(j), k, () => rr.next(), BOSS.premiumChance).offer));
     };
   }
 
@@ -2447,6 +2515,7 @@ export class Game {
    */
   private offerMap(index: number): boolean {
     const run = this.run;
+    this.gateIndex = index;
     this.gates.hide();
     this.nearGate = -1;
     if (needsMap(run, run.wave)) {
@@ -2462,6 +2531,27 @@ export class Game {
     const spots = arcSpots(from, this.layout.segments[index], Math.min(3, cards.length), Math.max(G.minRing, from.r * G.ring),
       (G.spread * Math.PI) / 180, 0, G.minGap);
     this.gates.show(spots, cards.slice(0, spots.length));
+    return true;
+  }
+
+  /** o trecho dos portões abertos agora (Card Swap os refaz no mesmo lugar) */
+  private gateIndex = 0;
+
+  /** M13-02 Card Swap (run_map_flow.lua `canSwapMap`): portões abertos e a vantagem ainda não usada nesta zona. */
+  get canSwapGates(): boolean {
+    return !!this.mapCards && !this.mapResolved && this.phase === "walk" && !this.shrineOpen && !this.shopVisit
+      && !this.eventOffer && !this.pactOffer && canUseZonePerk(this.run, "card_swap", segmentOf(this.run.wave));
+  }
+
+  /** `swapMap` (D-228): uma vez por zona, sorteia os portões de novo, no mesmo lugar. Devolve se trocou. */
+  swapGates(): boolean {
+    if (!this.canSwapGates || !useZonePerk(this.run, "card_swap", segmentOf(this.run.wave))) return false;
+    this.run.mapOffer = null;
+    this.offerMap(this.gateIndex);
+    const p = this.player;
+    this.fx.text(p.x, 2.8, p.z, "Card Swap", "gold");
+    this.audio.play("pickup");
+    this.saveCheckpoint();
     return true;
   }
 
@@ -2661,7 +2751,7 @@ export class Game {
         this.addRelic(id);
         this.shrineOpen = false;
         this.resolveMap();
-      }, "Relic Shrine", this.relicBan((k) => this.drawRelics(k)));
+      }, "Relic Shrine", this.relicBan((k) => this.drawRelics(k)), this.relicReroll((k) => this.drawRelics(k)));
       return;
     }
     if (step === "shop") {
@@ -2778,8 +2868,10 @@ export class Game {
     // a automática abre no fim da onda (vale para a seguinte); a do portão, na caminhada da própria onda
     // M13-02 Depths 2 (Pricey Shop, shop_system.lua `offerCount`, `priceMult`): 1 oferta a menos e +25%
     const pricey = mutation(depthsLevel(this.run.difficultyId), "pricey_shop");
-    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, () => this.shopRelic(),
-      SHOP_OFFERS - (pricey?.fewerOffers ?? 0));
+    const wave = auto ? this.run.wave + 1 : this.run.wave;
+    // Stocked Shop (D-228): +1 oferta na primeira loja de cada zona
+    const v = rollShop(this.run, this.rng.get("shop"), wave, () => this.shopRelic(),
+      SHOP_OFFERS - (pricey?.fewerOffers ?? 0) + stockedShopBonus(this.run, segmentOf(wave)));
     this.shopVisit = { ...v, auto, priceMult: this.stats.shopPrice * (pricey?.priceMult ?? 1) };
     this.audio.play("pickup");
     this.events.shop();

@@ -91,3 +91,84 @@ describe("partida", () => {
     expect(r.best["frostine/depths2"].score).toBeCloseTo(r.best["frostine/hard"].score * 1.4, 6);
   });
 });
+
+// M13-02 parte 2: as vantagens
+import { buyPerk, canUseZonePerk, depthsSources, perkExtraBans, reservePotion, runPerk, runPerks, stockedShopBonus, togglePerk, useZonePerk } from "../src/core/depths";
+import { checkpoint, continueRun, newRun, RunRng } from "../src/core/run";
+import { relicBansLeft } from "../src/core/relics";
+import { HEROES } from "../src/data/heroes";
+import { PERKS, PERK_BY_ID, type PerkId } from "../src/data/depths";
+
+const mkRun = (difficultyId: "hard" | "depths1", perks: PerkId[]) => newRun({ heroId: "frostine", difficultyId,
+  startingSpell: HEROES.frostine.startingSpells[0], randomSeed: 42, depthsPerks: perks });
+
+describe("vantagens", () => {
+  it("comprar paga as Marcas uma vez e já liga; desligar tira da partida", () => {
+    const s: DepthsSave = { frostine: { best: 1, wins: { 1: 1 }, marks: 6, owned: {}, enabled: {} } };
+    expect(buyPerk(s, "frostine", "reserve_potion")).toBeNull();
+    expect(s.frostine.marks).toBe(1);
+    expect(buyPerk(s, "frostine", "reserve_potion")).toBe("already bought");
+    expect(buyPerk(s, "frostine", "purse")).toBe("not enough Marks");
+    expect(runPerks(s, "frostine")).toEqual(["reserve_potion"]);
+    expect(togglePerk(s, "frostine", "reserve_potion")).toBe(true);
+    expect(runPerks(s, "frostine")).toEqual([]);
+    expect(togglePerk(s, "frostine", "purse")).toBe(false);
+  });
+
+  it("Well Equipped com as 9 compradas por um herói", () => {
+    const a = emptyAchievements();
+    a.depths.frostine = { best: 1, wins: {}, marks: 99, owned: {}, enabled: {} };
+    for (const p of PERKS) buyPerk(a.depths, "frostine", p.id);
+    expect(checkSaved(a, { heroes: ["frostine"], bosses: [], enemies: [], relics: [] }, { quiet: true })).toContain("well_equipped");
+  });
+
+  it("só valem nas Depths; ouro, troca grátis, Greed, banimento e relíquia inicial no começo", () => {
+    const all = PERKS.map((p) => p.id);
+    const hard = mkRun("hard", all);
+    expect(hard.depthsPerks).toEqual([]);
+    expect(runPerk(hard, "greed")).toBeNull();
+    const d = mkRun("depths1", all);
+    expect(d.gold).toBe(hard.gold + PERK_BY_ID.purse.gold!);
+    expect(d.freeRerolls).toBe(1);
+    expect(depthsSources(d)).toEqual([{ goldPct: 0.05 }]);
+    expect(perkExtraBans(d)).toBe(1);
+    expect(relicBansLeft(d)).toBe(3);
+    expect(relicBansLeft(hard)).toBe(2);
+    expect(d.pendingStartPick).toBe(true);
+  });
+
+  it("Stocked Shop na primeira loja de cada zona; Card Swap e Relic Reroll uma vez por zona", () => {
+    const d = mkRun("depths1", ["full_shop", "card_swap", "relic_reroll"]);
+    expect(stockedShopBonus(d, 1)).toBe(1);
+    expect(stockedShopBonus(d, 1)).toBe(0);
+    expect(stockedShopBonus(d, 2)).toBe(1);
+    expect(useZonePerk(d, "card_swap", 1)).toBe(true);
+    expect(canUseZonePerk(d, "card_swap", 1)).toBe(false);
+    expect(canUseZonePerk(d, "relic_reroll", 1)).toBe(true);
+    expect(canUseZonePerk(d, "card_swap", 2)).toBe(true);
+    expect(canUseZonePerk(mkRun("depths1", []), "card_swap", 1)).toBe(false);
+  });
+
+  it("Reserve Potion: uma vez, abaixo de 20% e vivo, cura 30%", () => {
+    const d = mkRun("depths1", ["reserve_potion"]);
+    expect(reservePotion(d, 25, 100)).toBe(0);
+    expect(reservePotion(d, 0, 100)).toBe(0);
+    expect(reservePotion(d, 15, 100)).toBe(30);
+    expect(reservePotion(d, 5, 100)).toBe(0);
+  });
+
+  it("as cargas vão no checkpoint (recarregar não devolve)", () => {
+    const d = mkRun("depths1", ["reserve_potion", "card_swap"]);
+    reservePotion(d, 10, 100);
+    useZonePerk(d, "card_swap", 1);
+    const back = continueRun(JSON.parse(JSON.stringify(checkpoint(d, new RunRng(d.seed), 1)))).run;
+    expect(back.potionUsed).toBe(true);
+    expect(back.cardSwaps).toEqual([1]);
+    // checkpoint de antes da parte 2
+    const old = JSON.parse(JSON.stringify(checkpoint(d, new RunRng(d.seed), 1)));
+    delete old.run.depthsPerks; delete old.run.potionUsed; delete old.run.cardSwaps;
+    const o = continueRun(old).run;
+    expect(o.depthsPerks).toEqual([]);
+    expect(o.cardSwaps).toEqual([]);
+  });
+});

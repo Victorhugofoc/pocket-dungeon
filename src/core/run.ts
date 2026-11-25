@@ -5,7 +5,8 @@
 import { buildIdentity } from "./synergies";
 import { Rng, hashStr } from "./rng";
 import { DIFFICULTIES, RUN_START, depthsLevel, type DifficultyId } from "../data/run";
-import { depthsScoreMult } from "./depths";
+import { depthsScoreMult, ensureDepthsRunState, newDepthsRunState, startDepthsRun, type DepthsRunState } from "./depths";
+import type { PerkId } from "../data/depths";
 import { HEROES } from "../data/heroes";
 import type { UpgradeTier } from "./levelup";
 import { newShopState, type ShopState } from "./shop";
@@ -102,7 +103,7 @@ export interface RunStatistics {
 }
 
 /** M20-13: os desafios da partida ficam nos campos de `ChallengeRunState` (core/challenges.ts). */
-export interface RunState extends ChallengeRunState, EventRunState {
+export interface RunState extends ChallengeRunState, EventRunState, DepthsRunState {
   seed: number;
   seedCode: string;
   /** a seed veio do jogador (replay de uma partida) */
@@ -196,6 +197,8 @@ export interface NewRunOptions {
   randomSeed: number;
   /** hora de início (ISO), para o registro de partidas; sem ela fica vazia */
   startedAt?: string;
+  /** M13-02: as vantagens das Depths ligadas (`Depths.runPerks`); só valem nas Depths */
+  depthsPerks?: readonly PerkId[];
 }
 
 /** game_state.lua `newRun`. */
@@ -205,7 +208,7 @@ export function newRun(opts: NewRunOptions): RunState {
   if (!DIFFICULTIES[opts.difficultyId]) throw new Error(`invalid difficulty: ${opts.difficultyId}`);
   if (!hero.startingSpells.includes(opts.startingSpell as never)) throw new Error(`invalid starting spell: ${opts.startingSpell}`);
   const seed = normalizeSeed(opts.seed ?? opts.randomSeed);
-  return {
+  const run: RunState = {
     seed,
     seedCode: encodeSeed(seed),
     customSeed: opts.seed !== undefined,
@@ -259,7 +262,10 @@ export function newRun(opts: NewRunOptions): RunState {
     depthsReward: null,
     ...newChallengeState(),
     ...newEventState(),
+    ...newDepthsRunState(),
   };
+  startDepthsRun(run, opts.depthsPerks ?? []);
+  return run;
 }
 
 export function newSpellSlot(id: string): SpellSlot {
@@ -298,6 +304,8 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   ensureChallengeState(run);
   // checkpoints de antes do M11-08
   ensureEventState(run);
+  // checkpoints de antes da M13-02 parte 2
+  ensureDepthsRunState(run);
   run.depthsReward ??= null;
   // checkpoints de antes do M20-03
   run.upgradeTiers ??= run.upgradesTaken.map(() => "common");

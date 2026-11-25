@@ -451,3 +451,18 @@ input.seed:focus { outline: none; border-color: var(--gold); }
 .hs-depths small { margin-left: 6px; color: #e2c6ff; }
 .hs-mut { margin: 4px 0 0; padding-left: 16px; font-size: 11px; color: var(--muted); max-width: 360px; }
 .hs-mut b { color: #e2c6ff; }
+/* M13-02 parte 2: vantagens das Depths na tela de herói e cargas no HUD */
+.dp-perks { list-style: none; margin: 4px 0 10px; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.dp-perk { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-left: 2px solid #c07cff55; background: rgba(192,124,255,.05); }
+.dp-perk > div { flex: 1; min-width: 0; }
+.dp-perk b { display: block; font-size: 12px; color: #e2c6ff; }
+.dp-perk small { display: block; font-size: 10.5px; color: var(--muted); line-height: 1.25; }
+.dp-perk button { min-width: 78px; padding: 2px 6px; font-size: 11px; border-color: #c07cff77; }
+.dp-perk.on { border-left-color: #c07cff; }
+.dp-perk.on button { color: #9ff59f; border-color: #5fd35f; }
+.dp-perk.off b, .dp-perk.off button { color: var(--muted); }
+.dp-perk.confirm button { color: #ffd34d; border-color: #ffd34d; }
+.dp-perk.poor { opacity: .6; }
+.dp-charges { display: flex; gap: 3px; margin-top: 2px; }
+.dp-charge { font-style: normal; font-size: 10px; padding: 0 4px; border: 1px solid #c07cff; border-radius: 3px; color: #e2c6ff; }
+.dp-charge.used { opacity: .4; text-decoration: line-through; }

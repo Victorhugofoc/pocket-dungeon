@@ -80,6 +80,9 @@ export interface RunLogEntry {
   /** M13-02: nível das Depths (0 fora) e as Marcas pagas pela vitória */
   depths?: number;
   depthsMarks?: number;
+  /** M13-02 parte 2: as vantagens ligadas e as cargas usadas (poção, Card Swap e Relic Reroll por zona) */
+  depthsPerks?: string[];
+  depthsUsed?: { potion: boolean; cardSwaps: number[]; relicRerolls: number[] };
   /** M11-08: eventos escolhidos (onda, id, resultado da aposta) */
   events?: { wave: number; id: string; gamble?: "win" | "lose" }[];
   /** M13-03: pactos aceitos (onda, id) */
@@ -133,6 +136,7 @@ export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string,
     mapHistory: [...run.mapHistory], detours: run.detours.map((d) => ({ ...d })), bossHistory: [...run.bossHistory],
     waves: last ? [...run.waveLog, last] : [...run.waveLog],
     depths: depthsLevel(run.difficultyId), depthsMarks: run.depthsReward?.marks ?? 0,
+    depthsPerks: [...(run.depthsPerks ?? [])], depthsUsed: { potion: !!run.potionUsed, cardSwaps: [...(run.cardSwaps ?? [])], relicRerolls: [...(run.relicRerolls ?? [])] },
     events: (run.eventLog ?? []).map((e) => ({ ...e })),
     pacts: (run.pactLog ?? []).map((e) => ({ ...e })),
     challenges: {

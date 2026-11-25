@@ -1879,7 +1879,9 @@ describe.skipIf(!dr)("paridade: Depths (M13-02 parte 1)", () => {
     expect(DEPTHS_SCORE_PER_LEVEL).toBe(D.SCORE_PER_LEVEL);
     expect(FIRST_WIN_BONUS).toBe(D.FIRST_WIN_BONUS);
     expect(MUTATIONS).toEqual(D.MUTATIONS);
-    expect(PERKS).toEqual(D.PERKS);
+    // M13-02 parte 2 (com o usuário): a Starting Relic diz "uncommon", que é o que o sorteio de lá dá (o en.lua diz "common")
+    expect(PERKS).toEqual(D.PERKS.map((p: { id: string; text: string }) =>
+      p.id === "relic_pick" ? { ...p, text: p.text.replace("3 common relics", "3 uncommon relics") } : p));
     expect(DEPTHS_SKINS).toEqual(D.SKINS);
     // marksFor é função lá: 4 + 2 × nível na primeira vitória, 1 depois (D-294)
     for (let l = 1; l <= 5; l++) {
