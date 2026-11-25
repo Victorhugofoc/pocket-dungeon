@@ -2,6 +2,7 @@
 // copiados por `npm run icons` para `src/assets/{relics,ui,upgrades}` e entram no build (PNG pequeno vira base64).
 // Nomes como em asset_manifest.lua: `spell_*` (três com nome curto), `evo_<evolução>`, `tech_<técnica>`, `up_<melhoria>`
 // (pasta `upgrades`) e os gerais (`coin`, `heart`, `xp`, `sword`, `skull`, `relic`...).
+import { TECHNIQUES } from "../data/techniques";
 const load = (files: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(files).map(([path, url]) => [path.slice(path.lastIndexOf("/") + 1, -4), url]));
 
@@ -17,7 +18,8 @@ const SPELL_FILE: Record<string, string> = {
 export const relicIconUrl = (id: string): string | undefined => RELIC[id];
 export const spellIconUrl = (id: string): string | undefined => UI[SPELL_FILE[id] ?? `spell_${id}`];
 export const evolutionIconUrl = (id: string): string | undefined => UI[`evo_${id}`];
-export const techniqueIconUrl = (id: string): string | undefined => UI[`tech_${id}`];
+/** a alternativa da maestria (M21-11) usa o ícone da técnica original */
+export const techniqueIconUrl = (id: string): string | undefined => UI[`tech_${TECHNIQUES[id]?.base ?? id}`];
 export const upgradeIconUrl = (id: string): string | undefined => UPGRADE[id];
 export const uiIconUrl = (name: string): string | undefined => UI[name];
 

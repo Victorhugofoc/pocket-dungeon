@@ -50,7 +50,7 @@ export interface TechStats {
   shatter?: boolean;
   maxHpFraction?: number; leapTime?: number;
   dashTime?: number; burnDps?: number; burnDuration?: number; ringMult?: number; fireTrail?: number;
-  behind?: number; alwaysCrit?: boolean; echoDelay?: number; echoFraction?: number;
+  behind?: number; alwaysCrit?: boolean; pickWeakest?: boolean; echoDelay?: number; echoFraction?: number;
   healFraction?: number; sanctumTime?: number;
   spiders?: number; poisonDuration?: number; poisonStacks?: number; poolTime?: number;
 }
@@ -161,6 +161,7 @@ export function techniqueStats(id: string, level: number, ctx: TechContext): Tec
     case "shadowstep":
       st.damage = ctx.autoDamage * (def.autoMult ?? 1) * scale;
       st.alwaysCrit = true;
+      if (def.pickWeakest) st.pickWeakest = true;
       st.behind = px(num(def, "behind") ?? 0);
       if (evolved) {
         st.echoDelay = num(def, "evoEchoDelay");

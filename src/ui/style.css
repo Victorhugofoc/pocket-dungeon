@@ -519,3 +519,16 @@ input.seed:focus { outline: none; border-color: var(--gold); }
 .cx-medals span { padding: 2px 10px; border-radius: 6px; border: 1px solid #4a4060; color: var(--muted); font-size: 0.85em; }
 .cx-medals span.got { border-color: var(--gold); color: var(--gold); background: #3a2f1066; }
 .cx-keys { color: var(--muted); font-size: 0.85em; margin-right: auto; }
+
+/* M21-11: maestria na seleção de herói */
+.hs-mastery { display: flex; flex-direction: column; gap: 6px; }
+.hs-mlv { display: flex; align-items: center; gap: 8px; }
+.hs-mlv > b { color: var(--hc); min-width: 34px; }
+.hs-mlv i { flex: 1; height: 6px; background: #1b1e2b; border-radius: 3px; overflow: hidden; }
+.hs-mlv i b { display: block; height: 100%; background: var(--hc); }
+.hs-mlv small { color: #9aa0b4; min-width: 52px; text-align: right; }
+.hs-mrow { display: flex; align-items: center; gap: 6px; }
+.hs-mrow > span { min-width: 72px; color: #9aa0b4; font-size: 0.85em; }
+.hs-mrow button { padding: 3px 10px; font-size: 0.85em; border-radius: 999px; }
+.hs-mrow button.sel { border-color: var(--hc); color: var(--hc); }
+.hs-mrow button:disabled { opacity: 0.5; cursor: default; }

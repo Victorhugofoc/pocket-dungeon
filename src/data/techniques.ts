@@ -64,6 +64,10 @@ export interface TechDef {
   invuln?: number;
   freeze?: number;
   stun?: number;
+  /** M21-11: técnica alternativa da maestria; `base` é a original do herói (ícone, testes de paridade) */
+  base?: string;
+  /** M21-11 (Cull): o Shadow Step escolhe o inimigo mais fraco por perto em vez do mais forte */
+  pickWeakest?: boolean;
   [extra: string]: unknown;
   milestones: TechMilestone[];
   evolution: { name: string; text: string };
@@ -195,6 +199,67 @@ export const TECHNIQUES: Record<string, TechDef> = {
     evoPoolTime: 3.0,
   },
 };
+
+// ---------------------------------------------------------------------------------------------------------------
+// M21-11: técnicas alternativas da maestria (não vêm do Dungeon Reign). Mesmo tipo e mesmo código da original, outra
+// forma e uma troca: nunca mais fortes (tests/mastery.test.ts compara dano por recarga em cada nível). Herdam os
+// marcos e a evolução da original, a não ser que digam outra coisa.
+const alt = (base: string, d: Partial<TechDef> & { id: string; name: string; text: string }): TechDef =>
+  ({ ...TECHNIQUES[base], ...d, base });
+
+export const ALT_TECHNIQUES: Record<string, TechDef> = {
+  flicker_step: alt("storm_step", {
+    id: "flicker_step", name: "Flicker Step", cooldown: 4.5, range: 130, baseDamage: 15, damageScale: 0.4, trail: 0.8,
+    evoTrail: 1.5, evoShockRadius: 50,
+    text: "A short teleport to the mouse, hitting everything in the way, with about half the cooldown. 0.3 s invulnerable and a short electric trail.",
+    evolution: { name: "TEMPEST STEP", text: "The trail lasts 1.5 s and the arrival releases a small shock (radius 50)." },
+  }),
+  collapse: alt("time_rift", {
+    id: "collapse", name: "Collapse", cooldown: 6.0, radius: 60, duration: 1.2, riftSlow: 0.85, baseDamage: 13, damageScale: 0.45,
+    text: "A small rift at the mouse: enemies 85% slower and enemy shots frozen; it implodes after 1.2 s.",
+  }),
+  deadeye: alt("fan_the_hammer", {
+    id: "deadeye", name: "Deadeye", cooldown: 5.0, range: 340, shots: 2, spread: 0.04, autoFraction: 2.0,
+    text: "Two aimed shots in a tight line, each with 200% of the basic attack damage, and longer reach.",
+  }),
+  frost_pillar: alt("glacial_wall", {
+    id: "frost_pillar", name: "Frost Pillar", cooldown: 5.0, minRange: 30, maxRange: 160, length: 60, thickness: 20,
+    duration: 3.0, freeze: 2.0, baseDamage: 6, damageScale: 0.18,
+    text: "A short, thick block of ice toward the mouse for 3 s: whoever bumps into it is frozen for 2 s.",
+  }),
+  ground_breaker: alt("execution_leap", {
+    id: "ground_breaker", name: "Ground Breaker", cooldown: 10.0, range: 200, radius: 110, baseDamage: 20, maxHpFraction: 0.03,
+    stun: 1.2, evoMaxHpFraction: 0.06,
+    text: "A shorter leap to the mouse: a wide landing that stuns everyone for 1.2 s; the biggest enemy loses 3% of its max HP.",
+    evolution: { name: "KINGSLAYER", text: "Now takes 6% of the target's max HP, with 30% less cooldown." },
+  }),
+  flame_dash: alt("inferno_charge", {
+    id: "flame_dash", name: "Flame Dash", cooldown: 5.5, range: 280, width: 24, radius: 45, baseDamage: 12, damageScale: 0.25,
+    burnDps: 3, ringMult: 0.8,
+    text: "A long, fast rush in flames to the mouse, burning the path, and a small burst at the end.",
+  }),
+  cull: alt("shadow_step", {
+    id: "cull", name: "Cull", cooldown: 4.5, range: 200, autoMult: 1.9, pickWeakest: true,
+    text: "Vanishes for 0.6 s (invulnerable) and reappears behind the weakest nearby enemy with a strike that always crits.",
+  }),
+  flash_of_light: alt("aegis", {
+    id: "flash_of_light", name: "Flash of Light", cooldown: 6.0, radius: 70, duration: 0.6, baseDamage: 12, damageScale: 0.33,
+    healFraction: 0.05,
+    text: "A quick flash of light: blocks hits for 0.6 s, then bursts around you (damage) and heals 5% HP.",
+  }),
+  swarm: alt("brood", {
+    id: "swarm", name: "Swarm", cooldown: 9.0, duration: 3.5, spiders: 4, baseDamage: 7, damageScale: 0.24,
+    text: "Summons 4 big wasps for 3.5 s that fly to enemies and sting, applying Poison.",
+    milestones: [
+      m(2, "LONG SWARM", "+1 s duration", { durationFlat: 1 }),
+      m(3, "QUICK HATCH", "-10% cooldown", { cooldownPct: -0.10 }),
+      m(4, "VENOM FANGS", "+25% damage", { damagePct: 0.25 }),
+      m(5, "BROODMOTHER", "Evolution: 5 wasps, and one that expires leaves a venom pool", {}),
+    ],
+    evolution: { name: "BROODMOTHER", text: "5 big wasps; when one expires it leaves a venom pool for 3 s." },
+  }),
+};
+Object.assign(TECHNIQUES, ALT_TECHNIQUES);
 
 export const TECHNIQUE_ORDER = [
   "storm_step", "time_rift", "fan_the_hammer", "glacial_wall", "execution_leap", "inferno_charge",

@@ -3,6 +3,9 @@
 // O que é mostrado vem dos dados dos heróis; nenhum número de balanceamento novo.
 import { computeStats, type FinalStats } from "../core/stats";
 import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
+import { masteryInfo, masteryOpen, type Loadout } from "../core/mastery";
+import { ALT_AUTOS, ALT_TECHNIQUE, MASTERY } from "../data/mastery";
+import { TECHNIQUES } from "../data/techniques";
 
 /** Uma barra: o valor do herói e a fração do maior dos 9 (0 a 1). */
 export interface HeroBar {
@@ -67,4 +70,31 @@ export function attackLine(h: HeroDef): string {
   if (a.status) extra.push(`applies ${a.status.kind}`);
   if (a.backstab) extra.push("bonus from behind");
   return `${h.weaponName} · ${kind} · ${a.rate.toFixed(1)} attacks/s · ${a.range} m${extra.length ? ` · ${extra.join(" · ")}` : ""}`;
+}
+
+/**
+ * M21-11: o bloco de maestria da tela de seleção. Nível e barra de pontos, e duas escolhas (ataque e técnica):
+ * a original ou a alternativa, trancada até o nível. `pick` já vem sem o que está trancado (`allowedLoadout`).
+ */
+export function masteryHtml(id: string, points: number, pick: Loadout, all: boolean): string {
+  const m = masteryInfo(points);
+  const open = masteryOpen(points, all);
+  const frac = m.next > m.from ? (points - m.from) / (m.next - m.from) : 1;
+  const h = HEROES[id];
+  const alt = ALT_AUTOS[id];
+  const tech = TECHNIQUES[ALT_TECHNIQUE[id]];
+  const row = (kind: "auto" | "technique", label: string, base: string, baseTip: string, altName: string, altTip: string, need: number) => {
+    const ok = open[kind];
+    const on = pick[kind] === true;
+    return `<div class="hs-mrow"><span>${label}</span>
+      <button class="${on ? "" : "sel"}" data-mastery="${kind}" data-on="0" title="${baseTip}">${base}</button>
+      <button class="${on ? "sel" : ""}" data-mastery="${kind}" data-on="1" ${ok ? "" : "disabled"} title="${ok ? altTip : `Reach Mastery ${need} with ${h.name} to unlock. ${altTip}`}">${ok ? "" : "🔒 "}${altName}</button></div>`;
+  };
+  return `<div class="section">Mastery <small>· alternatives, not more power</small></div>
+    <div class="hs-mastery" title="Every wave won with ${h.name} gives ${MASTERY.waveClear} point; every boss defeated, ${MASTERY.bossKill} more">
+      <div class="hs-mlv"><b>Lv ${m.level}</b><i><b style="width:${Math.round(frac * 100)}%"></b></i>
+        <small>${m.level < m.maxLevel ? `${points} / ${m.next}` : `${points} · max`}</small></div>
+      ${row("auto", "Attack", "Default", h.weaponName, alt.name, alt.text, MASTERY.autoLevel)}
+      ${row("technique", "Technique", h.technique.name, h.technique.text, tech.name, tech.text, MASTERY.techniqueLevel)}
+    </div>`;
 }

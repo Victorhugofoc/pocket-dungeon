@@ -1,6 +1,7 @@
 // Conquistas e desbloqueios, puro (dungeon-idle/src/core/achievements.lua e src/core/unlocks.lua, D-630).
 // O estado fica salvo entre partidas (core/save.ts). O que vem do progresso salvo (medalhas, códex, contadores) é
 // conferido em `check`; o resto vem dos eventos da partida, que o jogo chama no AchievementTracker.
+import { wavePoints, type Loadout } from "./mastery";
 import { allDepths, allPerks, bestDepths, normalizeDepths, type DepthsSave } from "./depths";
 import { ACHIEVEMENT_BY_ID, ACHIEVEMENT_RULES as R, ACHIEVEMENTS, LOCKED_BY, UNLOCK_REWARDS, type AchievementDef, type UnlockKind } from "../data/achievements";
 import { FULL_TABLE_SYNERGIES } from "../data/synergies";
@@ -29,12 +30,16 @@ export interface AchievementState {
   played: string[];
   /** M13-02: o progresso das Depths por herói (core/depths.ts; lá fica em depths.sav) */
   depths: DepthsSave;
+  /** M21-11: pontos de maestria por herói (core/mastery.ts) */
+  mastery: Record<string, number>;
+  /** M21-11: a alternativa escolhida por herói na tela de seleção */
+  loadouts: Record<string, Loadout>;
 }
 
 export const DIFF_RANK: Readonly<Record<string, number>> = { easy: 1, normal: 2, hard: 3 };
 
 export function emptyAchievements(): AchievementState {
-  return { version: 1, unlocked: {}, counters: {}, fresh: {}, medals: {}, seen: emptySeen(), defeated: {}, codexNew: {}, codexSeeded: false, played: [], depths: {} };
+  return { version: 1, unlocked: {}, counters: {}, fresh: {}, medals: {}, seen: emptySeen(), defeated: {}, codexNew: {}, codexSeeded: false, played: [], depths: {}, mastery: {}, loadouts: {} };
 }
 
 /** Lê o que veio do save, completando o que faltar; null quando não é um estado de conquistas. */
@@ -50,6 +55,9 @@ export function normalizeAchievements(x: unknown): AchievementState | null {
     medals: obj(d.medals, {}), seen: Object.fromEntries(CODEX_KINDS.map((k) => [k, arr(seen[k])])) as Record<CodexKind, string[]>,
     defeated: obj(d.defeated, {}), codexNew: obj(d.codexNew, {}), codexSeeded: d.codexSeeded === true, played: arr(d.played),
     depths: normalizeDepths(d.depths),
+    mastery: Object.fromEntries(Object.entries(obj<Record<string, unknown>>(d.mastery, {}))
+      .filter(([, v]) => typeof v === "number" && Number.isFinite(v) && v >= 0)) as Record<string, number>,
+    loadouts: obj(d.loadouts, {}),
   };
 }
 
@@ -198,6 +206,9 @@ export class AchievementTracker {
   private bosses = new Map<object, number>();
   /** quem já deu a medalha nesta partida (a vitória conta uma vez) */
   private won = false;
+  /** M21-11: o herói da partida e os chefes derrotados na onda (pontos de maestria) */
+  private hero = "";
+  private waveBosses = 0;
   /** M13-04: entradas novas do códex por derrota (o jogo avisa e esvazia) */
   codexNews: { kind: CodexKind; id: string }[] = [];
   /** a partida teve atalho de teste: não libera nada pela vitória (achievements.lua `devUsed`) */
@@ -222,6 +233,7 @@ export class AchievementTracker {
 
   runStart(heroId: string): void {
     if (!this.state.played.includes(heroId)) this.state.played.push(heroId);
+    this.hero = heroId;
     this.won = false;
     this.devUsed = false;
     this.bosses.clear();
@@ -229,6 +241,7 @@ export class AchievementTracker {
 
   waveStart(wave: number, spells: ReadonlyArray<{ id: string; level: number }> = [], maxLevel = Infinity): void {
     this.wave = { hit: false, lowest: 1, number: wave };
+    this.waveBosses = 0;
     this.maxSpells(spells, maxLevel);
   }
 
@@ -263,6 +276,7 @@ export class AchievementTracker {
     if (k.source === "auto") addCounter(this.state, "auto_kills");
     if (k.source === "dot") addCounter(this.state, "dot_kills");
     if (k.boss) {
+      this.waveBosses++;
       // first_blood e kingslayer leem o códex
       if (codexDefeat(this.state, true, k.id)) {
         this.codexNews.push({ kind: "boss", id: k.id });
@@ -306,6 +320,8 @@ export class AchievementTracker {
     if (w.bossWave && !this.wave.hit) this.unlock("untouchable");
     if (w.wave >= R.endlessWave) this.unlock("endless");
     if (!w.gameOver) {
+      // M21-11: a onda vencida dá pontos de maestria ao herói (partida com atalho de teste não conta)
+      if (this.hero && !this.devUsed) this.state.mastery[this.hero] = (this.state.mastery[this.hero] ?? 0) + wavePoints(this.waveBosses);
       if (w.bossWave && this.wave.lowest <= R.byAThread) this.unlock("by_a_thread");
       if (w.wave <= R.miserWave && w.gold >= R.miserGold) this.unlock("miser");
     }

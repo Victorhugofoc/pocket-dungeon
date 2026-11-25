@@ -1,4 +1,5 @@
 // Loop principal: herói, combate, progressão e as ondas da partida (cada zona = 5 ondas, D13).
+import { loadoutHero } from "../core/mastery";
 import { CAMP_RANK_OFFSET } from "../data/camps";
 import * as THREE from "three";
 import { armorReduction, computeStats, type FinalStats, type StatBlock } from "../core/stats";
@@ -567,7 +568,8 @@ export class Game {
     this.run = run;
     this.perfLog.reset();
     this.rng = rng;
-    this.hero = HEROES[run.heroId];
+    // M21-11: o herói com as alternativas da maestria escolhidas (ataque básico e técnica)
+    this.hero = loadoutHero(run.heroId, run.loadout);
     if (this.player.rig) disposeRig(this.player.rig);
     const h = this.hero;
     this.player.rig = characterRig(h.id, "hero");
@@ -757,7 +759,9 @@ export class Game {
     this.elements = this.buildElements();
     const tid = this.hero.technique.id;
     this.tech = TECHNIQUES[tid]
-      ? techniqueStats(tid, this.run.technique.level, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range, autoDamage: this.hero.auto.damage,
+      ? techniqueStats(tid, this.run.technique.level, { cooldownMult: this.stats.cooldownMult, area: this.stats.area, range: this.stats.range,
+        // a técnica escala com o ataque básico original, mesmo com o alternativo (o dele tem outro ritmo)
+        autoDamage: HEROES[this.run.heroId].auto.damage,
         permafrost: this.stats.permafrost, staticCharge: this.stats.staticCharge, riftDuration: this.stats.riftDuration })
       : null;
     this.spells.refresh();
@@ -3599,10 +3603,11 @@ export class Game {
         // Umbra: some e reaparece atrás do inimigo mais forte por perto, com um golpe que sempre é crítico
         const T = this.tech!;
         let target: Enemy | null = null;
-        let best = -1;
+        let best = -Infinity;
         for (const e of this.enemies) {
           if (e.dead || Math.hypot(e.x - p.x, e.z - p.z) > T.range) continue;
-          const score = (e.isBoss ? 1e9 : 0) + (e.champion ? 1e6 : 0) + e.hp;
+          // Cull (M21-11): o mais fraco por perto; o Shadow Step vai no mais forte
+          const score = T.pickWeakest ? -e.hp : (e.isBoss ? 1e9 : 0) + (e.champion ? 1e6 : 0) + e.hp;
           if (score > best) {
             best = score;
             target = e;
@@ -4462,7 +4467,7 @@ export class Game {
   /** M17-01 parte 3: a foto do mundo que o bot lê (`core/simsteer.ts`), em m. Só leitura. */
   botView(): BotWorld {
     const p = this.player;
-    const hero = HEROES[this.run.heroId];
+    const hero = this.hero;
     const fighting = this.phase === "fight" || this.phase === "intro";
     const zones = this.hazards.zones();
     const telegraphs: BotTelegraph[] = this.fx.telegraphs.filter((tg) => !tg.cancelled).map((tg) => {

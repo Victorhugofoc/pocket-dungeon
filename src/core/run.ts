@@ -2,6 +2,7 @@
 // A partida tem uma seed; cada finalidade sorteia no seu fluxo (RUN_STREAMS), então um sorteio a mais em um
 // não muda os outros. O checkpoint é a partida inteira mais o estado dos fluxos, gravado antes de cada onda;
 // continuar refaz a partida dali e recomeça aquela onda.
+import { loadoutTechnique, type Loadout } from "./mastery";
 import { buildIdentity } from "./synergies";
 import { Rng, hashStr } from "./rng";
 import { DIFFICULTIES, RUN_START, depthsLevel, type DifficultyId } from "../data/run";
@@ -112,6 +113,8 @@ export interface RunState extends ChallengeRunState, EventRunState, DepthsRunSta
   heroId: string;
   difficultyId: DifficultyId;
   startingSpell: string;
+  /** M21-11: as alternativas da maestria em uso (ausente = as originais) */
+  loadout?: Loadout;
   /** onda atual (0 antes da primeira) */
   wave: number;
   gold: number;
@@ -202,6 +205,8 @@ export interface NewRunOptions {
   startedAt?: string;
   /** M13-02: as vantagens das Depths ligadas (`Depths.runPerks`); só valem nas Depths */
   depthsPerks?: readonly PerkId[];
+  /** M21-11: as alternativas da maestria (quem chama já tirou o que está trancado, `allowedLoadout`) */
+  loadout?: Loadout;
 }
 
 /** game_state.lua `newRun`. */
@@ -218,6 +223,7 @@ export function newRun(opts: NewRunOptions): RunState {
     heroId: hero.id,
     difficultyId: opts.difficultyId,
     startingSpell: opts.startingSpell,
+    ...(opts.loadout?.auto || opts.loadout?.technique ? { loadout: { ...opts.loadout } } : {}),
     wave: 0,
     gold: RUN_START.gold,
     lootBank: [],
@@ -228,7 +234,7 @@ export function newRun(opts: NewRunOptions): RunState {
     pendingLevelUps: 0,
     hp: null,
     spells: [newSpellSlot(opts.startingSpell)],
-    technique: newSpellSlot(hero.technique.id),
+    technique: newSpellSlot(loadoutTechnique(hero.id, opts.loadout)),
     relics: [],
     bannedRelics: [],
     relicVersion: 0,

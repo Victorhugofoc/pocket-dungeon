@@ -60,6 +60,8 @@ export interface RunLogEntry {
   heroId: string;
   difficultyId: string;
   startingSpell: string;
+  /** M21-11: as alternativas da maestria em uso (ataque básico, técnica) */
+  loadout?: { auto: boolean; technique: boolean };
   seedCode: string;
   customSeed: boolean;
   /** o DEV Grimoire foi aberto: a partida não vale como teste de balanceamento */
@@ -130,6 +132,7 @@ export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string,
   return {
     v: RUNLOG_VERSION, runId: run.runId || runId(run.seedCode, endedAt), startedAt: run.startedAt, endedAt, build, outcome,
     heroId: run.heroId, difficultyId: run.difficultyId, startingSpell: run.startingSpell, seedCode: run.seedCode,
+    loadout: { auto: run.loadout?.auto === true, technique: run.loadout?.technique === true },
     customSeed: run.customSeed, devUsed: run.devUsed, resumes: run.resumes, wave: run.wave, level: run.level,
     victory: run.victory, endless: run.endless, killedBy: run.killedBy, gold: run.gold,
     statistics: {
