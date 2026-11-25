@@ -22,6 +22,8 @@ export interface SimOptions {
   seed: number;
   /** tempo máximo de jogo, em s */
   maxTime?: number;
+  /** M17-01 parte 4: o lote do `npm run sim` (o relatório lê só as linhas dele) */
+  batch?: string;
 }
 
 export interface SimResult {
@@ -275,7 +277,7 @@ async function run(o: SimOptions): Promise<SimResult> {
     victory: game.run.victory, killedBy: game.run.killedBy ?? null, time: Math.round(game.run.statistics.elapsed),
     wall: Math.round((performance.now() - t0) / 100) / 10, uses,
   };
-  game.botMeta = { seed: o.seed, outcome, stuckAt: outcome === "stuck" ? lastKey : undefined, wall: res.wall, uses };
+  game.botMeta = { batch: o.batch, seed: o.seed, outcome, stuckAt: outcome === "stuck" ? lastKey : undefined, wall: res.wall, uses };
   game.logRunEnd(outcome);
   game.botMeta = null;
   out.textContent = JSON.stringify(res);
