@@ -29,6 +29,10 @@ import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game, RelicBan } from "../game/game";
 import { relicBansLeft } from "../core/relics";
+import { buildIdentity, tagCount } from "../core/synergies";
+import { BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_THRESHOLD, IDENTITIES, PATH_NAMES, SYNERGY_BY_ID } from "../data/synergies";
+import { iconHtml, modifierIconHtml, slotIconUrl, spellIconUrl, techniqueIconUrl, uiIconUrl, upgradeIconUrl, evolutionIconUrl } from "./icons";
+import { buildPanelHtml, RARITY_COLOR, relicIconHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
@@ -362,7 +366,7 @@ export class Ui {
         return `<button class="${id === this.selectedDifficulty ? "sel" : ""}" data-diff="${id}" style="--cc:${DIFF_COLOR[id]}" title="${tip}">${d.name}</button>`;
       }).join("");
       const spells = h.startingSpells.map((id, i) => `<button class="${id === this.selectedSpell ? "sel" : ""}" data-spell="${id}"
-        title="${SPELL_TEXT[id]}"><span>${SPELL_ICON[id] ?? "✦"}</span><b class="sn">${spellName(id)}</b><kbd>${i + 1}</kbd></button>`).join("");
+        title="${SPELL_TEXT[id]}">${iconHtml(spellIconUrl(id), 28)}<b class="sn">${spellName(id)}</b><kbd>${i + 1}</kbd></button>`).join("");
       panel.innerHTML = `
         <header class="hs-top">
           <div><h1>DUNGEON REIGN</h1><p class="tag">${records}</p></div>
@@ -518,8 +522,8 @@ export class Ui {
         <div class="relic-row" data-r="relicRow"></div>
         <div class="skills">
           <div class="level-badge"><div><small>LEVEL</small><span data-r="level"></span></div></div>
-          <div class="skill"><kbd>LMB</kbd>⚔️</div>
-          <div class="skill-wrap"><div class="skill big" data-r="techBox"><kbd>RMB</kbd>✨<div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div></div>
+          <div class="skill"><kbd>LMB</kbd>${iconHtml(uiIconUrl("sword"), 36, "ricon sk")}</div>
+          <div class="skill-wrap"><div class="skill big" data-r="techBox"><kbd>RMB</kbd><span data-r="techIcon"></span><div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div></div>
             <small class="skill-name" data-r="techName"></small></div>
           ${[0, 1].map((i) => `<div class="skill-wrap"><div class="skill spell" data-r="spBox${i}"><kbd>${i + 1}</kbd><span data-r="spIcon${i}"></span><div class="cd" data-r="spCd${i}"></div><div class="cdn" data-r="spN${i}"></div></div>
             <small class="skill-name" data-r="spName${i}"></small></div>`).join("")}
@@ -586,9 +590,13 @@ export class Ui {
       const box = r[`spBox${i}`];
       box.classList.toggle("empty", !slot);
       const name = slot ? `${spellName(slot.id)} ${slot.level}` : "";
+      const iconKey = slot ? `${slot.id}:${slot.evolution ?? ""}` : "";
+      if (r[`spIcon${i}`].dataset.k !== iconKey) {
+        r[`spIcon${i}`].dataset.k = iconKey;
+        r[`spIcon${i}`].innerHTML = slot ? iconHtml(slotIconUrl(slot.id, slot.evolution), 36, "ricon sk") : "";
+      }
       if (r[`spName${i}`].textContent !== name) {
         r[`spName${i}`].textContent = name;
-        r[`spIcon${i}`].textContent = slot ? (SPELL_ICON[slot.id] ?? "✦") : "";
         box.title = slot && isSpellKey(slot.id)
           ? `${spellName(slot.id)} — ${SPELL_TEXT[slot.id]}${AURA_SPIKE_TEXT[slot.id] ? ` Aura: casts itself. ${AURA_SPIKE_TEXT[slot.id]}` : ""}`
           : "Empty spell slot";
@@ -631,6 +639,7 @@ export class Ui {
     const tn = evo?.name ?? g.hero.technique.name;
     if (r.techName.textContent !== tn) {
       r.techName.textContent = tn;
+      r.techIcon.innerHTML = iconHtml(techniqueIconUrl(g.hero.technique.id), 44, "ricon sk");
       r.techBox.title = `${tn} — ${evo?.text ?? g.hero.technique.text}`;
     }
     this.updateSpellHud();
@@ -791,7 +800,7 @@ export class Ui {
         ? `<button data-g="lv" data-id="${id}">Lv +</button><button data-g="lv5" data-id="${id}">Lv ${SPELL_MAX_LEVEL}</button>`
         : `<button data-g="equip" data-id="${id}">Equip</button>`;
       return `<div class="g-spell${sel === id ? " on" : ""}${slot ? " owned" : ""}">
-        <button class="g-name" data-g="pick" data-id="${id}" title="${SPELL_TEXT[id]}">${SPELL_ICON[id] ?? "✦"} ${SPELLS[id].name} <small>(${status})</small></button>${btns}</div>`;
+        <button class="g-name" data-g="pick" data-id="${id}" title="${SPELL_TEXT[id]}">${iconHtml(spellIconUrl(id), 20)} ${SPELLS[id].name} <small>(${status})</small></button>${btns}</div>`;
     }).join("");
     const tslot = run.technique;
     const tdef = TECHNIQUES[g.hero.technique.id];
@@ -896,8 +905,8 @@ export class Ui {
     const h = g.hero;
     const panel = this.overlayKind === "status" ? (this.overlay!.firstChild as HTMLElement) : this.open("status", "status");
     const pct = (v: number) => `${Math.round(v * 100)}%`;
-    const spellLine = (name: string, level: number, note: string, mods = "", idx = -1) =>
-      `<div class="relic spell-row"${idx >= 0 ? ` data-spell-slot="${idx}"` : ""}>${name} <small>Lv ${level}/${SPELL_MAX_LEVEL}${note ? " · " + note : ""}</small>${mods}</div>`;
+    const spellLine = (name: string, level: number, note: string, mods = "", idx = -1, icon = "") =>
+      `<div class="relic spell-row with-icon"${idx >= 0 ? ` data-spell-slot="${idx}"` : ""}>${iconHtml(icon, 28)}<div>${name} <small>Lv ${level}/${SPELL_MAX_LEVEL}${note ? " · " + note : ""}</small>${mods}</div></div>`;
     // hud/panel.lua: cada spell com os modificadores comprados ("NOME x2"), ou "no modifiers"
     const modLine = (id: string, mods: readonly string[]) => {
       if (!isSpellKey(id)) return "";
@@ -906,10 +915,10 @@ export class Ui {
     };
     const spells = [
       spellLine(run.technique.level >= TECH_MAX_LEVEL ? TECHNIQUES[h.technique.id]?.evolution.name ?? h.technique.name : h.technique.name,
-        run.technique.level, run.technique.level >= TECH_MAX_LEVEL ? "technique · evolved" : "technique"),
+        run.technique.level, run.technique.level >= TECH_MAX_LEVEL ? "technique · evolved" : "technique", "", -1, techniqueIconUrl(h.technique.id)),
       ...run.spells.map((sp, i) => spellLine(
         sp.evolution ? EVOLUTIONS[sp.evolution as keyof typeof EVOLUTIONS]?.name ?? spellName(sp.id) : spellName(sp.id),
-        sp.level, sp.evolution ? "evolved" : "", modLine(sp.id, sp.modifiers), i)),
+        sp.level, sp.evolution ? "evolved" : "", modLine(sp.id, sp.modifiers), i, slotIconUrl(sp.id, sp.evolution))),
     ];
     panel.innerHTML = `
       <div>
@@ -940,11 +949,12 @@ export class Ui {
         <div class="section">Upgrades (${run.upgradesTaken.length})</div>
         <div class="relics">${run.upgradesTaken.length ? run.upgradesTaken.map((id, i) => {
           const t = run.upgradeTiers[i] ?? "common";
-          return `<div class="relic" style="border-color:${TIER_COLOR[t]}" title="${TIER_LABEL[t]}">${UPGRADE_BY_ID[id] ? upgradeName(UPGRADE_BY_ID[id], this.game.hero.style) : id}</div>`;
+          return `<div class="relic with-icon" style="border-color:${TIER_COLOR[t]}" title="${TIER_LABEL[t]}">${iconHtml(upgradeIconUrl(id), 24)}${UPGRADE_BY_ID[id] ? upgradeName(UPGRADE_BY_ID[id], this.game.hero.style) : id}</div>`;
         }).join("") : `<span style="color:var(--muted)">Level up and choose at the end of the wave.</span>`}</div>
         <div class="section">Relics (${run.relics.length})</div>
-        <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic" data-relic="${id}" style="border-color:${hex(RELICS[id].color)}">${RELICS[id].name}</div>`).join("")
+        <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic with-icon" data-relic="${id}" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}</div>`).join("")
           : `<span style="color:var(--muted)">Defeat a boss to pick the first one.</span>`}</div>
+        ${buildPanelHtml(run)}
         <div class="row end"><button data-act="close">Close (I)</button></div>
       </div>`;
     panel.onclick = (ev) => {
@@ -959,7 +969,21 @@ export class Ui {
       const rel = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]");
       if (rel) {
         const d = RELICS[rel.dataset.relic!];
-        return this.showTip(`<h4 style="color:${hex(d.color)}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>${relicLines(d)}`, ev);
+        return this.showTip(`<div class="tip-head">${relicIconHtml(d.id, 40)}<div><h4 style="color:${RARITY_COLOR[d.rarity]}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic ${tagListHtml(d.tags)}</div></div></div>${relicLines(d)}`, ev);
+      }
+      const evoEl = (ev.target as HTMLElement).closest<HTMLElement>("[data-evo]");
+      if (evoEl && BUILD_EVOLUTION_BY_ID[evoEl.dataset.evo!]) {
+        const b = BUILD_EVOLUTION_BY_ID[evoEl.dataset.evo!];
+        const on = run.buildEvolutions.includes(b.id);
+        const meta = on ? "Build evolution · lasts the whole run"
+          : `Build evolution · ${PATH_NAMES[b.path]} ${Math.min(tagCount(run.tags, b.path), BUILD_EVOLUTION_THRESHOLD)}/${BUILD_EVOLUTION_THRESHOLD}`;
+        return this.showTip(`<h4 style="color:#d9a6ff">${b.name}</h4><div class="meta">${meta}</div><p>${b.text}</p>`, ev);
+      }
+      const syn = (ev.target as HTMLElement).closest<HTMLElement>("[data-syn]");
+      if (syn) {
+        const d = SYNERGY_BY_ID[syn.dataset.syn!];
+        const on = run.activeSynergies.includes(d.id);
+        return this.showTip(`<h4 style="color:${on ? "var(--gold)" : "var(--text)"}">${d.name}</h4><div class="meta">${on ? "Active" : "Synergy"} · ${requiresText(run.tags, d.requires)}</div><p>${d.text}</p>`, ev);
       }
       this.tip.classList.add("hidden");
     };
@@ -988,8 +1012,8 @@ export class Ui {
         const d = RELICS[id];
         const evo = wanted[id] ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
         const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
-        return `<div class="card" data-relic="${id}" style="--cc:${hex(d.color)}"><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${relicLines(d)}${evo}${b}</div>`;
+        return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
+          <h3>${d.name}</h3>${relicLines(d)}${evo}${synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
@@ -1077,8 +1101,8 @@ export class Ui {
         const u = UPGRADE_BY_ID[id];
         const t = L.tiers[i];
         const body = u.hideEffects ? "" : effectsFor(u, t).map((e) => upgradeLine(e, g.hero.style)).join("");
-        return `<div class="card" data-up="${i}" style="--cc:${TIER_COLOR[t]}"><div class="meta">${TIER_LABEL[t]}</div>
-          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}</div>`;
+        return `<div class="card icon-card" data-up="${i}" style="--cc:${TIER_COLOR[t]}">${iconHtml(upgradeIconUrl(u.id), 56, "ricon big")}<div class="meta">${TIER_LABEL[t]}</div>
+          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${synergyCardHtml(g.run.tags, u.tags, g.run.buildEvolutions)}</div>`;
       }).join("")}</div>
       <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost} gold${left > 0 ? "" : " (already rerolled)"}</button></div>`;
     panel.onclick = (ev) => {
@@ -1105,7 +1129,7 @@ export class Ui {
       <div class="cards">${offer.map((o, i) => {
         const evo = EVOLUTIONS[o.evoId];
         const recipe = evo.requires.map((r) => RELICS[r]?.name ?? prettyId(r)).join(" or ");
-        return `<div class="card" data-evo="${i}" style="--cc:#c77dff"><div class="meta">${spellName(evo.spell)} (slot ${o.slotIndex + 1})</div>
+        return `<div class="card icon-card" data-evo="${i}" style="--cc:#c77dff">${iconHtml(evolutionIconUrl(o.evoId), 56, "ricon big")}<div class="meta">${spellName(evo.spell)} (slot ${o.slotIndex + 1})</div>
           <h3>${evo.name}</h3><p>${evo.text}</p><p class="evo">${evoStatLine(evo)}</p>
           <p class="note">Recipe: ${recipe}</p><p class="note">(relics are NOT consumed)</p></div>`;
       }).join("")}</div>
@@ -1196,6 +1220,7 @@ export class Ui {
     const best = rec.best[`${run.heroId}/${run.difficultyId}`];
     const setup: RunSetup = { heroId: run.heroId, difficultyId: run.difficultyId, startingSpell: run.startingSpell };
     const s = run.statistics;
+    const identity = buildIdentity(run.tags);
     const n = (v: number) => Math.round(v).toLocaleString("en-US");
     const diff = DIFFICULTIES[run.difficultyId].name;
     const sub = kind === "death"
@@ -1207,6 +1232,7 @@ export class Ui {
       <div class="results-cols">
         <div>
           <div class="kv"><span>Hero</span><b>${g.hero.name} · ${diff}</b></div>
+          ${identity !== "UNDEFINED" ? `<div class="kv"><span>Build</span><b style="color:var(--gold)" title="${IDENTITIES[identity]}">${identity}</b></div>` : ""}
           <div class="kv"><span>Wave / level</span><b>${run.wave} / ${run.level}</b></div>
           <div class="kv"><span>Kills</span><b>${n(s.kills)}</b></div>
           <div class="kv"><span>Damage dealt</span><b>${n(s.damage)}</b></div>
@@ -1218,7 +1244,7 @@ export class Ui {
         </div>
         <div>
           <div class="section">Relics (${run.relics.length})</div>
-          <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic" style="border-color:${hex(RELICS[id].color)}">${RELICS[id].name}</div>`).join("") : `<p class="note">No relics this run.</p>`}</div>
+          <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic with-icon" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}</div>`).join("") : `<p class="note">No relics this run.</p>`}</div>
           <div class="section">Seed</div><p><b style="letter-spacing:2px">${run.seedCode}</b></p>
           <div class="section">Score</div>
           <p style="color:${isBest ? "var(--gold)" : "inherit"}">${isBest ? `New record! (${g.hero.name} · ${diff})` : `Record (${g.hero.name} · ${diff}): wave ${best.wave}, ${n(best.kills)} kills`}</p>
@@ -1235,12 +1261,6 @@ export class Ui {
 }
 
 /** Nome da spell (spells.lua `name`); técnica sem definição aqui cai no id com espaços ("storm_step" → "Storm Step"). */
-/** Ícone provisório de cada spell no HUD (até haver ícones desenhados por código). */
-const SPELL_ICON: Record<string, string> = {
-  fireball: "🔥", iceball: "❄️", chain_lightning: "⚡", arcane_bolt: "🔮", healing_field: "✚", blade_orbit: "🗡️",
-  venom_nova: "☠️", cyclone: "🌪️", rune_traps: "ᚱ", prism_beam: "🔆", quake_totem: "🗿",
-};
-
 function isSpellKey(id: string): id is SpellId {
   return id in SPELLS;
 }
@@ -1294,16 +1314,22 @@ function spellName(id: string): string {
 }
 
 /** Uma oferta da loja: tipo, nome, o que faz, preço e, se inválida, o motivo (shop.lua). */
+/** synergy_view.lua: "Fire 2/3" de cada tag que a sinergia pede. */
+function requiresText(tags: Readonly<Record<string, number>>, requires: Record<string, number>): string {
+  return Object.keys(requires).sort().map((t) => `${PATH_NAMES[t] ?? t} ${Math.min(tagCount(tags, t), requires[t])}/${requires[t]}`).join("  ");
+}
+
 function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
   const ev = evaluateOffer(g.run, g.shopVisit!, o);
   const slot = g.run.spells.find((s) => s.id === o.spell);
-  let meta = "", name = "", body = "", color = "#ffd34d";
+  let meta = "", name = "", body = "", color = "#ffd34d", icon = "";
   const tech = o.kind === "spell_upgrade" && o.spell === g.run.technique.id ? TECHNIQUES[o.spell] : undefined;
   if (tech) {
     // S19 (D-252): a técnica sobe de nível na loja; no nível 5 vira a evolução
     const lv = g.run.technique.level;
     meta = "Technique upgrade";
     name = tech.name;
+    icon = iconHtml(techniqueIconUrl(o.spell!), 56, "ricon big");
     body = `<p>Lv ${lv} → ${Math.min(lv + 1, TECH_MAX_LEVEL)}</p>`;
     const ms = tech.milestones.find((m) => m.level === lv + 1);
     if (lv + 1 === TECH_MAX_LEVEL) body += `<p class="evo">EVOLVES ${tech.evolution.name}: ${tech.evolution.text}</p>`;
@@ -1312,6 +1338,7 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
   } else if (o.kind === "spell_upgrade") {
     meta = "Spell upgrade";
     name = spellName(o.spell!);
+    icon = iconHtml(slotIconUrl(o.spell!, slot?.evolution), 56, "ricon big");
     body = slot ? `<p>Lv ${slot.level} → ${Math.min(slot.level + 1, SPELL_MAX_LEVEL)}</p>` : "";
     const ms = isSpellKey(o.spell!) && slot ? SPELLS[o.spell!].milestones.find((m) => m.level === slot.level + 1) : undefined;
     if (ms) body += `<p class="evo">Lv${ms.level} ${ms.id}: ${ms.text}</p>`;
@@ -1319,28 +1346,34 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
   } else if (o.kind === "spell_modifier") {
     const m = isSpellKey(o.spell!) ? SPELLS[o.spell!].modifiers.find((x) => x.id === o.modifier) : undefined;
     meta = `${spellName(o.spell!)} modifier (shop)`;
+    icon = modifierIconHtml(o.spell!, 56);
     name = m?.name ?? prettyId(o.modifier!);
     body = `<p>${isSpellKey(o.spell!) ? modifierText(o.spell!, o.modifier!, slot?.evolution ?? null) : ""}</p>`;
     color = "#4fa3ff";
   } else if (o.kind === "new_spell") {
     meta = "New spell";
     name = spellName(o.spell!);
+    icon = iconHtml(spellIconUrl(o.spell!), 56, "ricon big");
     body = `<p class="note">Takes a free spell slot, starts at Lv 1.</p>`;
     color = "#b36bff";
   } else if (o.kind === "relic") {
     const d = RELICS[o.relic!];
     meta = `${RELIC_RARITY[d.rarity]} relic`;
     name = d.name;
+    icon = relicIconHtml(d.id, 56, "ricon big");
     body = relicLines(d);
     const evo = wantedRelics(g.run)[o.relic!];
     if (evo) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
+    if (!o.bought) body += synergyCardHtml(g.run.tags, d.tags, g.run.buildEvolutions);
     const left = relicBansLeft(g.run);
     if (!o.bought) body += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
-    color = hex(d.color);
+    color = RARITY_COLOR[d.rarity];
   } else {
     const item = SHOP_ITEMS[o.kind];
     meta = "Item";
     name = item.name;
+    // shop.lua: Vitality com o coração, Arcane Tome com o ícone do Arcane Power, a arma com a espada
+    icon = iconHtml(o.kind === "vitality" ? uiIconUrl("heart") : o.kind === "arcane_tome" ? upgradeIconUrl("arcane_power") : uiIconUrl("sword"), 56, "ricon big");
     body = `<p>${item.text}</p>`;
   }
   const afford = ev.cost !== null && g.run.gold >= ev.cost;
@@ -1348,7 +1381,7 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     : !ev.valid ? `<div class="price bad">${ev.reason}${ev.cost !== null ? ` · ${ev.cost} gold` : ""}</div>`
     : `<div class="price${afford ? "" : " bad"}">${ev.cost} gold</div>`;
   const off = o.bought || !ev.valid ? " off" : "";
-  return `<div class="card${off}" data-offer="${i}" style="--cc:${color}"><div class="meta">${meta}</div><h3>${name}</h3>${body}${price}</div>`;
+  return `<div class="card${off}" data-offer="${i}" style="--cc:${color}">${icon}<div class="meta">${meta}</div><h3>${name}</h3>${body}${price}</div>`;
 }
 
 /** Dica da oferta: a ficha da spell equipada (M6-08), ou os números da spell nova no nível 1. */

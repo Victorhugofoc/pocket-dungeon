@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "refs": "node tools/make-refs.mjs"
+    "refs": "node tools/make-refs.mjs",
+    "icons": "node tools/copy-icons.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

@@ -89,7 +89,12 @@ export type StatKey =
   | "oathPct" // Berserker's Oath: isto de dano a cada 10% de vida perdida
   | "noCombatHeal" // Berserker's Oath: sem cura durante a onda
   | "championHpPct" // vida dos campeões (custo do Champion's Trophy e do Last Rites)
-  | "shopPricePct"; // preços da loja (custo do Hoarder's Crown)
+  | "shopPricePct" // preços da loja (custo do Hoarder's Crown)
+  // M12-06: sinergias Sanctuary e Lifewell (stats.lua, planos)
+  | "healFieldHealFlat" // Healing Field: cura a mais por pulso
+  | "healFieldDurationFlat" // Healing Field: duração a mais (s)
+  // M12-09: evolução de build Thunderlord (stats.lua `chainRangeMult`)
+  | "chainRangePct"; // salto do raio (Chain Lightning)
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -105,6 +110,7 @@ export const STAT_KEYS: StatKey[] = [
   "windPct", "runePct", "lightPct", "earthPct", "lightningTargets", "echoChance", "volatileChance", "spellCritChance",
   "slowedDamagePct", "chainEscalate", "burnSpread", "frostbite", "untouchedPct", "arcaneDominion", "castHealPct", "prismCycle",
   "killStreak", "lastRites", "hoardPct", "oathPct", "noCombatHeal", "championHpPct", "shopPricePct",
+  "healFieldHealFlat", "healFieldDurationFlat", "chainRangePct",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -175,6 +181,9 @@ export const STAT_LABEL: Record<StatKey, string> = {
   spellCritChance: "Spell Crit",
   slowedDamagePct: "damage vs. Slowed targets",
   chainEscalate: "Lightning jump damage",
+  healFieldHealFlat: "Healing Field heal per pulse",
+  healFieldDurationFlat: "s Healing Field duration",
+  chainRangePct: "Lightning jump",
   burnSpread: "Burn spread",
   frostbite: "Frostbite",
   untouchedPct: "damage while untouched",
@@ -212,7 +221,8 @@ const MECH_TEXT: Partial<Record<StatKey, (pct: number, v: number) => string>> = 
 const FLAT: Partial<Record<StatKey, true>> = { spellPower: true, damage: true, maxHp: true, armor: true, regen: true, lifeOnKill: true, burnStacks: true, poisonStacks: true,
   doubleShot: true, coneShot: true, pierce: true, fanShots: true,
   permafrost: true, staticCharge: true, riftDurationFlat: true, wildfire: true, nightfall: true, judgement: true, contagion: true,
-  shieldBoomerang: true, shieldRicochet: true, lightningTargets: true };
+  shieldBoomerang: true, shieldRicochet: true, lightningTargets: true,
+  healFieldHealFlat: true, healFieldDurationFlat: true };
 
 export function isFlat(k: StatKey): boolean {
   return FLAT[k] === true;
@@ -318,6 +328,11 @@ export interface FinalStats {
   slowedDamage: number;
   /** Conduit Ring: dano a mais por salto do raio */
   chainEscalate: number;
+  /** M12-06 (Sanctuary, Lifewell): cura a mais por pulso e duração a mais do Healing Field */
+  healFieldHeal: number;
+  healFieldDuration: number;
+  /** M12-09 (Thunderlord): multiplicador do salto do raio */
+  chainRangeMult: number;
   /** M12-05 (stats.lua `championHpMult`, `shopPriceMult`): vida dos campeões e preços da loja */
   championHp: number;
   shopPrice: number;
@@ -460,6 +475,9 @@ export function computeStats(sources: StatBlock[], style: AutoStyle = "normal"):
     spellCritChance: stackChance(L("spellCritChance")),
     slowedDamage: Math.max(0.1, m("slowedDamagePct")),
     chainEscalate: g("chainEscalate"),
+    healFieldHeal: Math.max(0, g("healFieldHealFlat")),
+    healFieldDuration: Math.max(0, g("healFieldDurationFlat")),
+    chainRangeMult: Math.max(0.1, m("chainRangePct")),
     championHp: Math.max(0.1, m("championHpPct")),
     shopPrice: Math.max(0.1, m("shopPricePct")),
   };

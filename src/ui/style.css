@@ -270,6 +270,61 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .card .stat.neg { color: #ff8a7a; }
 .card .note { color: var(--muted); }
 .card .evo { color: var(--gold); font-size: 12px; font-weight: 600; }
+/* M12-06 parte 2: ícones (D19), bolinhas de caminho e painel da build */
+.ricon { image-rendering: pixelated; flex: none; }
+.ricon.big { display: block; margin: 0 auto 8px; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--cc, #fff) 35%, transparent)); }
+.relic-card, .cards.shop .card { text-align: center; }
+.relic-card .st, .cards.shop .card .st { text-align: center; }
+.syn-foot { margin-top: auto; padding-top: 10px; display: flex; flex-direction: column; gap: 5px; text-align: left; }
+.syn-act { background: rgba(255, 211, 77, 0.12); border: 1px solid rgba(255, 211, 77, 0.45); border-radius: 6px; padding: 5px 8px; font-size: 12px; line-height: 1.35; }
+.syn-act b { display: block; color: var(--gold); font-size: 11px; letter-spacing: 0.5px; }
+.syn-act span { color: #f1e7c4; }
+.syn-chip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; font-size: 12px; color: var(--muted); }
+.syn-chip .tag { color: #cfd3e2; min-width: 52px; }
+.syn-chip .to { white-space: nowrap; }
+.syn-chip .to { font-size: 11px; }
+.pips { display: inline-flex; gap: 3px; }
+.pip { width: 9px; height: 9px; border-radius: 50%; border: 1px solid #5a6078; display: inline-block; }
+.pip.f { background: #aab1c8; border-color: #aab1c8; }
+.pip.nw { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 6px rgba(255, 211, 77, 0.7); }
+.relic.with-icon { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 3px; }
+/* M14-10: ícones do original em toda a interface */
+.icon-card { text-align: center; }
+.ricon.sk { position: absolute; inset: 0; margin: auto; pointer-events: none; }
+.skill.big .ricon.sk { width: 44px; height: 44px; }
+.hs-spells button .ricon { flex: none; }
+.spell-row.with-icon { align-items: flex-start; }
+.mod-icon { position: relative; display: block; width: var(--s); height: var(--s); margin: 0 auto 8px; }
+.mod-icon .ricon.big { margin: 0; }
+.mod-badge { position: absolute; right: -6px; bottom: -4px; width: 20px; height: 20px; border-radius: 50%; background: #4fa3ff; color: #0b1830;
+  font: 800 15px/20px system-ui; font-style: normal; text-align: center; border: 2px solid #10131d; box-shadow: 0 0 6px rgba(79, 163, 255, 0.7); }
+.tip-head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.tip-head .meta { margin: 0; }
+.rtags { color: #cfd3e2; }
+.syn-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.syn-badge { background: rgba(255, 211, 77, 0.12); border: 1px solid rgba(255, 211, 77, 0.45); border-radius: 6px; padding: 3px 8px; font-size: 12px; color: #f1e7c4; }
+.syn-badge b { color: var(--gold); font-size: 11px; letter-spacing: 0.5px; margin-right: 4px; }
+.muted { color: var(--muted); font-size: 12px; }
+.paths { display: flex; flex-direction: column; }
+.path-row { display: grid; grid-template-columns: 84px auto 1fr; gap: 10px; align-items: center; font-size: 12px; padding: 5px 0; border-bottom: 1px solid #262a3a; }
+.path-row small { color: var(--muted); }
+.path-row .next { color: var(--muted); }
+.path-row .next b { color: #cfd3e2; font-weight: 600; cursor: default; }
+.syn-list { margin-top: 10px; font-size: 12px; }
+.syn-list summary { cursor: pointer; color: var(--muted); }
+.syn-list > div { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-top: 6px; }
+.syn-all { display: flex; flex-direction: column; padding: 3px 6px; border-left: 2px solid #3a3f52; color: var(--muted); }
+.syn-all b { color: #9aa0b4; font-size: 11px; }
+.syn-all small { font-size: 10px; }
+.syn-all.on { border-color: var(--gold); color: var(--text); }
+.syn-all.on b { color: var(--gold); }
+.syn-act.evo, .syn-badge.evo { background: rgba(199, 125, 255, 0.13); border-color: rgba(199, 125, 255, 0.55); }
+.syn-act.evo b, .syn-badge.evo b, .path-row .next b.evo-name { color: #d9a6ff; }
+.syn-all.evo { border-left-color: #4a3a5e; }
+.syn-all.evo.on { border-color: #c77dff; }
+.syn-all.evo.on b { color: #d9a6ff; }
+.identity { margin: 14px 0 0; font-size: 12px; color: var(--muted); }
+.identity b { color: var(--gold); letter-spacing: 1px; margin-right: 6px; }
 /* banir relíquia (M12-10) */
 .cards.relics .card { display: flex; flex-direction: column; }
 .card .ban { margin-top: auto; align-self: flex-start; padding: 3px 10px; font-size: 11px; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; cursor: pointer; }

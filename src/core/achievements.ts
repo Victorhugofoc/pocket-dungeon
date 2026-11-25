@@ -2,6 +2,7 @@
 // O estado fica salvo entre partidas (core/save.ts). O que vem do progresso salvo (medalhas, códex, contadores) é
 // conferido em `check`; o resto vem dos eventos da partida, que o jogo chama no AchievementTracker.
 import { ACHIEVEMENT_BY_ID, ACHIEVEMENT_RULES as R, ACHIEVEMENTS, LOCKED_BY, UNLOCK_REWARDS, type AchievementDef, type UnlockKind } from "../data/achievements";
+import { FULL_TABLE_SYNERGIES } from "../data/synergies";
 
 export type CodexKind = "boss" | "enemy" | "relic";
 
@@ -241,6 +242,16 @@ export class AchievementTracker {
       if (t0 !== undefined && k.elapsed - t0 < R.lightningDuel) this.unlock("lightning_duel");
       this.bosses.delete(k.key);
     } else if (markSeen(this.state, "enemy", k.id)) this.check();
+  }
+
+  /** achievements.lua `synergy_activated`: Full Table com 3 sinergias ativas ao mesmo tempo. */
+  synergiesActive(n: number): void {
+    if (n >= FULL_TABLE_SYNERGIES) this.unlock("full_table");
+  }
+
+  /** achievements.lua `build_evolution`: Identity com a primeira evolução de build. */
+  buildEvolution(): void {
+    this.unlock("identity");
   }
 
   relicFound(id: string): void {
