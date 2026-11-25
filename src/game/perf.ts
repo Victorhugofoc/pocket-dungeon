@@ -125,6 +125,7 @@ export class PerfLog {
   private rGpuN = 0;
   private spikes: PerfSpike[] = [];
   private tagCount: Record<string, number> = {};
+  private transitions: { wave: number; ms: number; worst: number }[] = [];
   minScale = 1;
   private med = 16.7;
   /** quadros a ignorar depois de `reset` (o primeiro desenho da partida compila sombra e pós-processamento) */
@@ -138,6 +139,7 @@ export class PerfLog {
     this.wGpu = this.wGpuN = this.rGpu = this.rGpuN = 0;
     this.spikes = [];
     this.tagCount = {};
+    this.transitions = [];
     this.minScale = 1;
     this.warmup = 10;
     this.prevTags = [];
@@ -147,7 +149,7 @@ export class PerfLog {
   add(ms: number, cpu: number, gpu: number, scale: number, tags: string[], wave: number, at: number): void {
     const prev = this.prevTags;
     this.prevTags = tags;
-    if (ms > 1000) return; // aba oculta
+    if (ms > 1000 || ms <= 0) return; // aba oculta; relógio fora de ordem (quadros dados pelo console) daria negativo
     if (this.warmup > 0) { this.warmup--; return; }
     this.wTimes.push(ms); this.wCpu.push(cpu); this.rTimes.push(ms); this.rCpu.push(cpu);
     if (gpu >= 0) { this.wGpu += gpu; this.wGpuN++; this.rGpu += gpu; this.rGpuN++; }
@@ -168,6 +170,12 @@ export class PerfLog {
     }
   }
 
+  /** M16-08: uma troca de zona coberta terminou (os quadros dela não entram nas séries nem nos picos) */
+  transition(wave: number, ms: number, worst: number): void {
+    this.transitions.push({ wave, ms: Math.round(ms), worst: +worst.toFixed(1) });
+    this.prevTags = [];
+  }
+
   /** fecha a onda: devolve o resumo dela e começa a próxima */
   takeWave(): FrameStats {
     const s = frameStats(this.wTimes.view(), this.wCpu.view(), this.wGpu, this.wGpuN);
@@ -185,6 +193,7 @@ export class PerfLog {
     return {
       env, total: frameStats(this.rTimes.view(), this.rCpu.view(), this.rGpu, this.rGpuN), minScale: +this.minScale.toFixed(2),
       spikes: this.spikes.slice(), spikeTags: { ...this.tagCount },
+      ...(this.transitions.length ? { transitions: this.transitions.slice() } : {}),
     };
   }
 }

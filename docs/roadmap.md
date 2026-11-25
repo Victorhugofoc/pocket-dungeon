@@ -875,7 +875,7 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 **M16-07 · Dividir arquivos grandes** · M
 - `game.ts` (1.245 linhas) em `combat.ts`, `player.ts`, `loot.ts`, `progression.ts`; `chars.ts` conforme `M0-01`. Sem mudar comportamento.
 
-**M16-08 · Troca de zona sem travada** · M [pedido do usuário, 2026-11-16]
+**M16-08 · Troca de zona sem travada** · M [pedido do usuário, 2026-11-16] (feita em 2026-11-25)
 - Problema: ao matar o chefe da zona (ondas 5, 10, 15) e entrar no portal, o jogo para um instante montando a zona nova e parece que travou.
 - Passos: medir onde vai o tempo (geração, montagem da cena, compilação de shaders); cobrir a troca com uma transição (escurecer a tela com o nome da zona nova, por exemplo) e montar a zona por trás dela; se der, pré-compilar os materiais (`renderer.compileAsync`) e espalhar a montagem em vários quadros.
 - Pronto quando: a troca não congela a imagem; o jogador vê a transição em vez da tela parada.

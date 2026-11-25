@@ -48,6 +48,8 @@ export interface RunPerf {
   spikes: PerfSpike[];
   /** quantas vezes cada marca apareceu num pico (aponta a causa mais comum) */
   spikeTags: Record<string, number>;
+  /** M16-08: cada troca de zona coberta (fora dos quadros e dos picos): duração total e o pior quadro dela, em ms */
+  transitions?: { wave: number; ms: number; worst: number }[];
 }
 
 export const PERF_SPIKES = 20;

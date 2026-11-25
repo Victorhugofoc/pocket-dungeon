@@ -322,6 +322,16 @@ export class Game {
   bossEngaged = false;
   bossDead = false;
   nearPortal = false;
+  /**
+   * M16-08: troca de zona coberta. `out` escurece com o jogo parado, `hold` monta a zona por trás (sem desenhar a cena)
+   * até os shaders ficarem prontos e o letreiro ter aparecido o bastante, `in` clareia. Nulo fora da troca.
+   */
+  fade: { stage: "out" | "hold" | "in"; t: number; wave: number; fresh: boolean; ready: boolean; name: string; sub: string;
+    after: (() => void) | null; worst: number; total: number } | null = null;
+  /** o desenho que sobe a geometria da zona nova, guardado por `enterZone` até os shaders compilarem */
+  private pendingWarm: (() => void) | null = null;
+  /** sobe a geometria e solta as peças de aquecimento (uma vez só: pela compilação ou pelo teto do letreiro) */
+  private fadeFinish: (() => void) | null = null;
   /** a onda em andamento (core/wave.ts) e os modificadores dela; null entre as ondas */
   wave: WaveState | null = null;
   /** chefe da onda de chefe atual (saco de chefes) e o ataque emprestado do rei coroado */
@@ -581,8 +591,10 @@ export class Game {
     this.codexSync();
     this.challenges = new ChallengeTracker(run);
     this.saveAchievements();
-    this.prepareWave(Math.max(1, run.wave), true);
-    this.openStartPick();
+    if (this.sim) {
+      this.prepareWave(Math.max(1, run.wave), true);
+      this.openStartPick();
+    } else this.beginFade(Math.max(1, run.wave), true, () => this.openStartPick());
   }
 
   /** 0 baixo, 1 médio, 2 alto: sombras, bloom e resolução */
@@ -632,6 +644,77 @@ export class Game {
 
   stop(): void {
     this.started = false;
+    this.fade = null;
+  }
+
+  /** Vai para a onda: se a zona muda, pela troca coberta (`beginFade`); senão, direto. */
+  goToWave(wave: number): void {
+    const run = this.run;
+    const z = Game.zoneOfWave(wave);
+    const changes = !this.world || this.zone.id !== z.zoneId || this.layout.seed !== zoneSeed(run.seed, z.zoneId, z.visit);
+    if (this.sim || !changes) this.prepareWave(wave);
+    else this.beginFade(wave, false, null);
+  }
+
+  /**
+   * M16-08: começa a troca coberta. Partida nova ou continuada já começa no escuro (vem do título); o portal escurece antes.
+   * O letreiro é o da zona de destino, com as ondas dela.
+   */
+  private beginFade(wave: number, fresh: boolean, after: (() => void) | null): void {
+    const z = ZONES[Game.zoneOfWave(wave).zoneId] ?? ZONES.bosque;
+    const first = wave - ((wave - 1) % WAVES_PER_ZONE);
+    this.fade = { stage: fresh ? "hold" : "out", t: 0, wave, fresh, ready: false, name: z.name,
+      sub: `${z.subtitle} · waves ${first}–${first + WAVES_PER_ZONE - 1}`, after, worst: 0, total: 0 };
+    if (fresh) this.fadeBuild();
+  }
+
+  /** a tela está coberta: monta a zona e compila os shaders sem travar o quadro; `ready` quando der para desenhar */
+  private fadeBuild(): void {
+    const f = this.fade!;
+    this.prepareWave(f.wave, f.fresh);
+    const warm = this.pendingWarm;
+    this.pendingWarm = null;
+    if (!warm) {
+      f.ready = true;
+      return;
+    }
+    let warmed = false;
+    const done = (): void => {
+      if (warmed) return;
+      warmed = true;
+      this.pipeline.pinPrograms(); // antes que o descarte das peças de aquecimento solte os programas
+      warm();
+      if (this.fade === f) f.ready = true;
+    };
+    this.fadeFinish = done;
+    this.pipeline.compileAsync(this.scene, this.camera).then(done, done);
+  }
+
+  /** um quadro da troca (tempo real, também em pausa); devolve se a cena deve ser desenhada */
+  private fadeStep(dt: number, ms: number): boolean {
+    const f = this.fade!;
+    const T = TUNING.zoneFade;
+    f.t += dt;
+    f.total += ms;
+    f.worst = Math.max(f.worst, ms);
+    if (f.stage === "out" && f.t >= T.out) {
+      f.stage = "hold";
+      f.t = 0;
+      this.fadeBuild();
+      return false;
+    }
+    if (f.stage === "hold" && ((f.ready && f.t >= T.card) || f.t >= T.cap)) {
+      // passou do teto: o resto compila agora, de uma vez, e as peças de aquecimento saem antes de a cena aparecer
+      if (!f.ready) this.fadeFinish?.();
+      this.fadeFinish = null;
+      f.stage = "in";
+      f.t = 0;
+    } else if (f.stage === "in" && f.t >= T.in) {
+      this.fade = null;
+      this.perfLog.transition(f.wave, f.total, f.worst);
+      f.after?.();
+    }
+    return f.stage !== "hold";
   }
 
   /** build_system.lua `refresh`: as tags mudaram (nível, relíquia, loja); liga e desliga as sinergias e avisa. */
@@ -989,16 +1072,23 @@ export class Game {
       r.root.position.set(this.layout.spawn.x, 0, this.layout.spawn.z);
       this.scene.add(r.root);
     }
-    this.pipeline.compile(this.scene, this.camera);
     // compilar não sobe a geometria: um desenho num alvo minúsculo, sem recorte, sobe os buffers agora e não no
     // primeiro inimigo (picos "geo" no começo da onda 1, registro de 2026-11-22)
-    for (const r of warmRigs) r.root.traverse((o) => (o.frustumCulled = false));
-    const prevTarget = this.renderer.getRenderTarget();
-    this.renderer.setRenderTarget(Game.warmTarget);
-    this.renderer.render(this.scene, this.camera);
-    this.renderer.setRenderTarget(prevTarget);
-    for (const r of warmRigs) disposeRig(r);
-    this.fx.lib.clear();
+    const upload = (): void => {
+      for (const r of warmRigs) r.root.traverse((o) => (o.frustumCulled = false));
+      const prevTarget = this.renderer.getRenderTarget();
+      this.renderer.setRenderTarget(Game.warmTarget);
+      this.renderer.render(this.scene, this.camera);
+      this.renderer.setRenderTarget(prevTarget);
+      for (const r of warmRigs) disposeRig(r);
+      this.fx.lib.clear();
+    };
+    // M16-08: com a tela coberta, os shaders compilam em paralelo (`beginFade`) e o upload vem depois
+    if (this.fade) this.pendingWarm = upload;
+    else {
+      this.pipeline.compile(this.scene, this.camera);
+      upload();
+    }
 
     this.boss = null;
     this.bossEngaged = false;
@@ -2249,7 +2339,7 @@ export class Game {
       this.pendingShop = null;
       // M21-08: o mapa da onda seguinte sai em portões, na caminhada (`prepareWave`)
       if (isBossWave(this.run.wave)) this.openPortal();
-      else this.prepareWave(this.run.wave + 1);
+      else this.goToWave(this.run.wave + 1);
     }
   }
 
@@ -3815,7 +3905,7 @@ export class Game {
     // portal
     this.nearPortal = this.phase === "portal" && this.world !== null && this.world.portal.visible
       && Math.hypot(p.x - this.world.portal.position.x, p.z - this.world.portal.position.z) < 2.6;
-    if (this.nearPortal && input.wasPressed("KeyE")) this.prepareWave(this.run.wave + 1);
+    if (this.nearPortal && input.wasPressed("KeyE")) this.goToWave(this.run.wave + 1);
     if (input.wasPressed("KeyH") && canHasten(this.wave)) this.hastenWave();
     // durante a onda a clareira fecha: o herói não sai dela
     if (this.phase === "intro" || this.phase === "fight") {
@@ -4419,15 +4509,18 @@ export class Game {
       this.input.endFrame();
       return;
     }
-    if (!this.paused) this.tick(raw);
+    // M16-08: na troca de zona o jogo fica parado; no escuro, a cena nem desenha (desenhar compilaria tudo de uma vez)
+    const fading = this.fade !== null;
+    const draw = fading ? this.fadeStep(raw, Math.max(0, real * 1000)) : true;
+    if (!this.paused && !fading) this.tick(raw);
     this.input.endFrame();
     updateLamps();
     // M13-04: o palco do códex aberto na pausa desenha antes da cena, que cobre o canto que ele usou
     if (this.stage.active) this.stage.frame(raw);
-    this.pipeline.render();
-    this.adaptResolution(raw);
+    if (draw) this.pipeline.render();
+    if (!fading) this.adaptResolution(raw);
     this.probe.end(real * 1000, this.time);
-    if (!this.paused && this.run.wave >= 1) {
+    if (!this.paused && !fading && this.run.wave >= 1) {
       this.perfLog.add(real * 1000, this.probe.lastCpu, this.pipeline.gpuMs, this.resScale, this.probe.lastTags, this.run.wave, this.run.statistics.elapsed);
     }
   }

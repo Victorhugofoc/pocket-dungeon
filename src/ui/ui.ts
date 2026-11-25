@@ -587,6 +587,7 @@ export class Ui {
       <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold"><span data-r="gold"></span><span class="bank hidden" data-r="bank" title="BANKED LOOT: orbs left on the floor were banked. Enemies with the coin under them drop double until it runs out."></span></p><div class="points hidden" data-r="points"></div><div class="challenges" data-r="challenges"></div><div class="challenges" data-r="eventsHud"></div></div>
       <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
       <div id="banner" data-r="banner"></div>
+      <div id="zonefade" class="hidden" data-r="zoneFade"><div><h1 data-r="zoneFadeName"></h1><p data-r="zoneFadeSub"></p></div></div>
       <canvas id="minimap" width="176" height="176"></canvas>
       <div class="hud-help">1 and 2 spells · H hasten the wave · I status · Esc pause<br>F3 performance${TUNING.devTools ? " · F1 DEV grimoire" : ""}</div>
       <div id="bossbar" class="hidden" data-r="boss"><h3 data-r="bossName"></h3><div class="bar"><i data-r="bossFill"></i><span data-r="bossText"></span></div></div>
@@ -697,6 +698,24 @@ export class Ui {
     this.r.zoneSub.textContent = `${z.subtitle} · waves ${first}–${first + 4}`;
   }
 
+  /** M16-08: a cortina da troca de zona, com o nome da zona de destino; segue `game.fade` a cada quadro */
+  private updateZoneFade(): void {
+    const f = this.game.fade;
+    const el = this.r.zoneFade;
+    if (!f) {
+      if (!el.classList.contains("hidden")) el.classList.add("hidden");
+      return;
+    }
+    const T = TUNING.zoneFade;
+    if (el.classList.contains("hidden")) {
+      this.r.zoneFadeName.textContent = f.name;
+      this.r.zoneFadeSub.textContent = f.sub;
+      el.classList.remove("hidden");
+    }
+    const a = f.stage === "out" ? f.t / T.out : f.stage === "in" ? 1 - f.t / T.in : 1;
+    el.style.opacity = Math.max(0, Math.min(1, a)).toFixed(3);
+  }
+
   /** M20-13: a lista de desafios do HUD, redesenhada só quando algum muda */
   private updateChallenges(): void {
     const g = this.game;
@@ -729,6 +748,7 @@ export class Ui {
     const p = g.player;
     const s = g.stats;
     const r = this.r;
+    this.updateZoneFade();
     this.updateArrows();
     r.hpFill.style.width = `${(p.hp / s.maxHp) * 100}%`;
     r.hpText.textContent = `${Math.ceil(p.hp)} / ${s.maxHp}`;
@@ -995,7 +1015,7 @@ export class Ui {
         case "boss":
           this.grimoireMsg = `next wave: ${nextBoss}`;
           this.close();
-          g.prepareWave(nextBoss);
+          g.goToWave(nextBoss);
           return;
       }
       g.recompute();
