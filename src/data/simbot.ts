@@ -129,3 +129,23 @@ export const BOT_SHOP = {
   rerollReserve: 250,
   maxRerolls: 3,
 } as const;
+
+/** O laço da partida simulada (M17-01 parte 2). */
+export const BOT_RUN = {
+  /** passo fixo do jogo, em s */
+  dt: 1 / 60,
+  /** passos por fatia antes de devolver o controle ao navegador */
+  stepsPerSlice: 600,
+  /** tempo máximo de jogo de uma partida, em s (lá, `MAX_TIME` = 1500 só de luta) */
+  maxTime: 3600,
+  /** sem trocar de onda nem de fase por tanto tempo de jogo, a partida está presa */
+  stuckTime: 300,
+} as const;
+
+/** A pilotagem provisória (parte 2; a parte 3 troca pela de `balance_sim.lua`). */
+export const BOT_PILOT = {
+  /** distância ideal ao alvo, em fração do alcance do ataque */
+  keep: 0.75,
+  /** folga em volta da distância ideal antes de andar */
+  slack: 0.15,
+} as const;

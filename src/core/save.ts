@@ -102,6 +102,9 @@ export function discardLegacySave(storage: Storage | undefined): boolean {
 }
 
 export function safeStorage(): Storage | undefined {
+  // M17-01: o modo simulação grava numa memória própria, nunca no save de quem joga
+  const sim = (globalThis as { __simStorage?: Storage }).__simStorage;
+  if (sim) return sim;
   try {
     return window.localStorage;
   } catch {

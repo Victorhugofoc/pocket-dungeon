@@ -484,7 +484,15 @@ export class Game {
   /** palco 3D da tela de seleção de herói (M14-08) */
   stage: HeroStage;
 
-  constructor(private canvas: HTMLCanvasElement, textLayer: HTMLElement) {
+  /** M17-01: o modo simulação (bot): sem laço de `requestAnimationFrame` nem desenho; quem chama dá os passos por `simStep` */
+  readonly sim: boolean;
+  /** M17-01: a mira do bot no chão; substitui a do mouse */
+  aimOverride: { x: number; z: number } | null = null;
+  /** M17-01: marca do bot na linha do registro de partidas */
+  botMeta: Record<string, unknown> | null = null;
+
+  constructor(private canvas: HTMLCanvasElement, textLayer: HTMLElement, opts: { sim?: boolean } = {}) {
+    this.sim = !!opts.sim;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -526,7 +534,7 @@ export class Game {
 
     window.addEventListener("resize", () => this.resize());
     this.resize();
-    requestAnimationFrame((t) => this.frame(t));
+    if (!this.sim) requestAnimationFrame((t) => this.frame(t));
   }
 
   private resize(): void {
@@ -696,7 +704,8 @@ export class Game {
       last.travel = Math.round(this.waveTravel * 10) / 10;
     }
     const env = { gpu: gpuName(this.renderer), width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio, quality: this.quality };
-    storeRunLog(this.storage, runLogEntry(run, outcome, new Date().toISOString(), BUILD, last, this.perfLog.run(env)), beacon);
+    const entry = runLogEntry(run, outcome, new Date().toISOString(), BUILD, last, this.sim ? undefined : this.perfLog.run(env));
+    storeRunLog(this.storage, this.botMeta ? { ...entry, bot: this.botMeta } : entry, beacon);
   }
 
   saveAchievements(): void {
@@ -3035,6 +3044,10 @@ export class Game {
 
   // ---------------------------------------------------------------- herói
   private updateAim(): void {
+    if (this.aimOverride) {
+      this.aim.set(this.aimOverride.x, 0, this.aimOverride.z);
+      return;
+    }
     const ndc = new THREE.Vector2((this.input.mouseX / window.innerWidth) * 2 - 1, -(this.input.mouseY / window.innerHeight) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
     this.raycaster.ray.intersectPlane(this.groundPlane, this.aim);
@@ -4290,6 +4303,40 @@ export class Game {
     }
   }
 
+  /** Um passo do jogo (tudo menos o desenho); `raw` é o tempo real do quadro, sem o hitstop. */
+  private tick(raw: number): void {
+    let dt = raw;
+    if (this.hitstop > 0) {
+      this.hitstop -= raw;
+      dt *= 0.06;
+    }
+    this.time += dt;
+    this.run.statistics.elapsed += raw;
+    this.updatePlayer(dt);
+    this.updateWave(dt, raw);
+    this.flushAchievements();
+    this.updateEnemies(dt);
+    if (!this.sim) {
+      this.hpBars.update(this.enemies, this.camera);
+      this.statusIcons.update(this.enemies, { now: this.time, volatile: this.spells.volatile, brittleChill: this.spells.brittle, primed: (e) => this.primed(e) }, this.camera, this.fx, dt);
+    }
+    this.updateProjectiles(dt);
+    const inp = this.input;
+    this.spells.update(dt, [inp.wasPressed("Digit1") || inp.wasPressed("Numpad1"), inp.wasPressed("Digit2") || inp.wasPressed("Numpad2")]);
+    this.updateAllies(dt);
+    this.updateDrops(dt);
+    this.collectLoot(dt);
+    this.fx.update(dt, this.camera, window.innerWidth, window.innerHeight);
+    this.updateCamera(dt);
+  }
+
+  /** M17-01: um passo do modo simulação, sem desenhar; o bot responde às telas entre um passo e outro. */
+  simStep(dt: number): void {
+    if (!this.started) return;
+    if (!this.paused) this.tick(dt);
+    this.input.endFrame();
+  }
+
   private frame(t: number): void {
     requestAnimationFrame((n) => this.frame(n));
     const real = (t - this.lastFrame) / 1000 || 0.016;
@@ -4303,29 +4350,7 @@ export class Game {
       this.input.endFrame();
       return;
     }
-    if (!this.paused) {
-      let dt = raw;
-      if (this.hitstop > 0) {
-        this.hitstop -= raw;
-        dt *= 0.06;
-      }
-      this.time += dt;
-      this.run.statistics.elapsed += raw;
-      this.updatePlayer(dt);
-      this.updateWave(dt, raw);
-      this.flushAchievements();
-      this.updateEnemies(dt);
-      this.hpBars.update(this.enemies, this.camera);
-      this.statusIcons.update(this.enemies, { now: this.time, volatile: this.spells.volatile, brittleChill: this.spells.brittle, primed: (e) => this.primed(e) }, this.camera, this.fx, dt);
-      this.updateProjectiles(dt);
-      const inp = this.input;
-      this.spells.update(dt, [inp.wasPressed("Digit1") || inp.wasPressed("Numpad1"), inp.wasPressed("Digit2") || inp.wasPressed("Numpad2")]);
-      this.updateAllies(dt);
-      this.updateDrops(dt);
-      this.collectLoot(dt);
-      this.fx.update(dt, this.camera, window.innerWidth, window.innerHeight);
-      this.updateCamera(dt);
-    }
+    if (!this.paused) this.tick(raw);
     this.input.endFrame();
     updateLamps();
     // M13-04: o palco do códex aberto na pausa desenha antes da cena, que cobre o canto que ele usou

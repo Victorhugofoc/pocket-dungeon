@@ -57,7 +57,14 @@ export class Input {
     return this.pressed.has(code);
   }
 
+  /** M17-01: direção de movimento do bot (qualquer ângulo); substitui WASD */
+  simAxis: { x: number; z: number } | null = null;
+
   axis(): { x: number; z: number } {
+    if (this.simAxis) {
+      const l = Math.hypot(this.simAxis.x, this.simAxis.z);
+      return l > 1e-6 ? { x: this.simAxis.x / l, z: this.simAxis.z / l } : { x: 0, z: 0 };
+    }
     let x = 0;
     let z = 0;
     if (this.down.has("KeyW") || this.down.has("ArrowUp")) z -= 1;
@@ -66,6 +73,17 @@ export class Input {
     if (this.down.has("KeyD") || this.down.has("ArrowRight")) x += 1;
     const len = Math.hypot(x, z);
     return len > 0 ? { x: x / len, z: z / len } : { x: 0, z: 0 };
+  }
+
+  /** M17-01: o bot segura ou solta uma tecla */
+  simHold(code: string, on: boolean): void {
+    if (on) this.down.add(code);
+    else this.down.delete(code);
+  }
+
+  /** M17-01: o bot toca uma tecla (vale no próximo passo) */
+  simTap(code: string): void {
+    this.pressed.add(code);
   }
 
   endFrame(): void {
