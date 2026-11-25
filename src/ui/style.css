@@ -433,3 +433,12 @@ input.seed:focus { outline: none; border-color: var(--gold); }
 .ch-card.failed { border-left-color: #ff7a6a; opacity: .7; } .ch-card.failed .ch-head b { color: #ff7a6a; text-decoration: line-through; }
 .order { color: #7fd4ff; letter-spacing: 1px; }
 .ch-gate { margin: 6px 0 0; color: #7fd4ff; font-weight: 700; font-size: 12px; }
+
+/* M11-08 e M13-03: eventos e pactos (escolha, confirmação, portão, HUD) */
+.pact-confirm { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.pact-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pact-table td { padding: 3px 6px; border-bottom: 1px solid #2c3550; }
+.pact-table tr.neg td { color: #ff9a8a; } .pact-table tr.good td { color: #9be89a; }
+.pact-chip { display: inline-block; margin: 2px 4px 0 0; padding: 1px 8px; border-radius: 10px; border: 1px solid #ff5a5a; color: #ffb0a8; font-size: 12px; }
+.ev-gate { margin: 6px 0 0; color: #ff9a5a; font-weight: 700; font-size: 12px; }
+.card .note.neg { color: #ff7a6a; }

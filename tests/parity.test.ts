@@ -33,7 +33,12 @@ import { ChallengeTracker, challengeRows } from "../src/core/challenges";
 import { CHALLENGES } from "../src/data/challenges";
 import { relicDraft, relicDraftPool, relicDraftWeight } from "../src/core/relics";
 import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, POOL_TICK, ROOM_BIAS, ROOM_BY_ID, ROOMS, STORM } from "../src/data/rooms";
-import { generateMap, type MapRng } from "../src/core/runmap";
+import { generateMap, waveLayer, type MapRng } from "../src/core/runmap";
+import {
+  addPact, applyEvent, eventAvailable, eventDraft, eventMods, eventSources, expireEvents, newEventState, pactChampionChance,
+  pactLayer, pactsForMap, type EventRun,
+} from "../src/core/events";
+import { EVENT_CHOICES, EVENT_IDS, EVENTS, PACT_IDS, PACT_MAX_ACTIVE, PACTS } from "../src/data/events";
 import { ambushFor, biasedComposition, bossStats, killReward, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, stepWave, survivorReward, targetCount, waveMods } from "../src/core/wave";
 import { Rng } from "../src/core/rng";
 import { generalCost, modifierCost, newShopState, rollShop, spellCost } from "../src/core/shop";
@@ -74,7 +79,7 @@ const MODULES = [
   "src.data.waves", "src.data.tuning", "src.data.run_map", "src.data.difficulties", "src.data.bosses",
   "src.progression.level_up", "src.data.enemies", "src.data.affixes", "src.data.upgrades", "src.data.rooms",
   "src.data.achievements", "src.data.unlocks", "src.data.shop", "src.data.relics",
-  "src.data.synergies",
+  "src.data.synergies", "src.data.events", "src.data.pacts",
 ];
 /** Até que onda as fórmulas são comparadas (passa da 20 para cobrir o modo sem fim). */
 const WAVE_CHECK = 40;
@@ -288,11 +293,94 @@ end)()`;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Lua = any;
 
+/** M11-08: cada evento com e sem ouro, a aposta ganha e perdida; a onda vencida é a 3 (o mapa da 4). */
+const EVENT_SCEN = EVENT_IDS.flatMap((id) => [40, 300].flatMap((gold) => [0.3, 0.7].map((u) => ({ id, gold, u, hp: 150, wave: 3 }))));
+/** M13-03: pactos já tomados, trechos já usados e a onda do mapa. */
+const PACT_SCEN: { owned: string[]; segs: number[]; wave: number; noPacts?: boolean }[] = [
+  { owned: [], segs: [], wave: 2 },
+  { owned: ["blood_oath"], segs: [1], wave: 3 },
+  { owned: ["blood_oath"], segs: [1], wave: 7 },
+  { owned: ["glass_covenant", "champions_call"], segs: [1, 2], wave: 12 },
+  { owned: ["hunters_pact", "gilded_hunt", "arcane_bet"], segs: [1, 2, 3], wave: 17 },
+  { owned: ["swarm_covenant", "iron_bargain"], segs: [2], wave: 4 },
+  { owned: [], segs: [], wave: 8, noPacts: true },
+];
+const DRAFT_U = (() => {
+  let x = 777;
+  const rnd = () => { x = (x * 16807) % 2147483647; return x / 2147483647; };
+  return Array.from({ length: 12 }, () => Array.from({ length: 20 }, rnd));
+})();
+const luaList = (l: readonly string[]) => `{${l.map((x) => JSON.stringify(x)).join(",")}}`;
+const EVENT_LIFE = `=(function()
+  package.loaded["src.core.codex"] = { mark = function() end }
+  package.loaded["src.core.unlocks"] = { isOpen = function() return true end, filter = function(_, l) return l end }
+  package.loaded["src.progression.xp"] = { addXp = function(run, x) run._xp = (run._xp or 0) + x end }
+  package.loaded["src.core.game_state"] = { refreshMaxHp = function() end }
+  package.loaded["src.run.run_map"] = nil
+  local RM, P, Eng, R, DF = require("src.run.run_map"), require("src.data.pacts"), require("src.run.modifier_engine"), require("src.core.rng"), require("src.data.difficulties")
+  require("src.relics.relic_system").draftPool = function() return { 1 } end
+  local function stats()
+    local s = { src = {} }
+    function s:addSource(k, e) self.src[k] = e end
+    function s:removeSource(k) self.src[k] = nil end
+    function s:hasSource(k) return self.src[k] ~= nil end
+    function s:compute() return { xpMult = 1 } end
+    return s
+  end
+  local function block(st)
+    local b = {}
+    for _, e in pairs(st.src) do for _, x in ipairs(e) do b[x.stat] = (b[x.stat] or 0) + x.value end end
+    return b
+  end
+  local out = { apply = {}, pacts = {}, drafts = {} }
+  for i, sc in ipairs({${EVENT_SCEN.map((c) => `{ id = ${JSON.stringify(c.id)}, gold = ${c.gold}, u = ${c.u}, hp = ${c.hp}, wave = ${c.wave} }`).join(",")}}) do
+    local run = { gold = sc.gold, hp = sc.hp, maxHp = 200, wave = sc.wave, xp = 0, xpToNext = 50, pacts = {},
+      statistics = { goldEarned = 0, goldSpent = 0 }, stats = stats() }
+    local ok = RM.eventAvailable(run, sc.id)
+    local pool
+    if ok then pool = RM.applyEvent(run, sc.id, { chance = function(_, p) return sc.u < p end }) end
+    local o = { ok = ok, pool = pool or "none", gold = run.gold, hp = run.hp, free = run.freeRerolls or 0,
+      event = run.event and run.event.id or "none", bonus = run.bossRelicBonus or 0, gamble = run.lastGamble or "none",
+      levels = run._xp ~= nil, spent = run.statistics.goldSpent, earned = run.statistics.goldEarned,
+      delayed = run.delayedMods and run.delayedMods[1] and run.delayedMods[1].wave or 0, stats = block(run.stats) }
+    run.wave = sc.wave + 1
+    o.l1 = Eng.waveLayer(run)
+    RM.expireWaveScope(run)
+    o.goldLeft = run.eventGold and run.eventGold.waves or 0
+    o.stats2 = block(run.stats)
+    run.wave = sc.wave + 2
+    o.l2 = Eng.waveLayer(run)
+    RM.expireWaveScope(run)
+    o.goldLeft2 = run.eventGold and run.eventGold.waves or 0
+    out.apply[i] = o
+  end
+  for i, sc in ipairs({${PACT_SCEN.map((c) => `{ owned = ${luaList(c.owned)}, segs = {${c.segs.join(",")}}, wave = ${c.wave}, noPacts = ${c.noPacts ? "true" : "false"} }`).join(",")}}) do
+    local run = { pacts = {}, pactSegments = {}, noPacts = sc.noPacts, stats = stats(), wave = sc.wave - 1, difficulty = DF.normal }
+    for _, id in ipairs(sc.owned) do RM.addPact(run, id) end
+    for _, s in ipairs(sc.segs) do run.pactSegments[s] = true end
+    local pool = RM.nodePool(run, sc.wave)
+    local has = false
+    for _, n in ipairs(pool) do if n.item == "pact" or n.id == "pact" then has = true end end
+    run.wave = sc.wave
+    local m = Eng.compute(run)
+    out.pacts[i] = { has = has, unowned = RM.unownedPacts(run), layer = Eng.pactLayer(run), champ = Eng.championChance(run),
+      stats = block(run.stats), reward = m.reward, enemyHp = m.enemyHp, enemyDamage = m.enemyDamage, enemySpeed = m.enemySpeed,
+      enemyCount = m.enemyCount, bossHp = m.bossHp, spawn = m.spawn, durationMult = m.durationMult, championChance = m.championChance,
+      add = RM.addPact(run, "blood_oath") }
+  end
+  for i, u in ipairs({${DRAFT_U.map((u) => `{${u.join(",")}}`).join(",")}}) do
+    local j = 0
+    local rng = setmetatable({ random = function() j = j + 1 return u[((j - 1) % #u) + 1] end }, { __index = R })
+    out.drafts[i] = RM.eventDraft({}, rng)
+  end
+  return out
+end)()`;
+
 function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
   // expressões longas vão por arquivo (`@caminho`): a linha de comando do Windows tem limite
   const dir = mkdtempSync(join(tmpdir(), "dr-dump-"));
-  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE, HERO_LIFE, RELIC_LIFE, BUILD_LIFE, CHALLENGE_LIFE].map((code, i) => {
+  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE, HERO_LIFE, RELIC_LIFE, BUILD_LIFE, CHALLENGE_LIFE, EVENT_LIFE].map((code, i) => {
     if (code.length < 2000) return code;
     const f = join(dir, `arg${i}.lua`);
     writeFileSync(f, code);
@@ -1703,5 +1791,74 @@ describe.skipIf(!dr)("paridade dos desafios da partida com o Dungeon Reign (M20-
     const all = L.flatMap((x) => arr(x.notes));
     for (const d of CHALLENGES) expect(all.some((n: Lua) => n[1] === d.id && n[0] === "challenge_done"), `${d.id} completo`).toBe(true);
     expect(all.some((n: Lua) => n[0] === "challenge_failed")).toBe(true);
+  });
+});
+
+describe.skipIf(!dr)("paridade: eventos e pactos (M11-08, M13-03)", () => {
+  const L: Lua = dr?.[EVENT_LIFE];
+  const strip = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([k, v]) => v !== undefined && k !== "lines"));
+
+  it("os 17 eventos e os 8 pactos com os números de events.lua e pacts.lua, na mesma ordem", () => {
+    const EV: Lua = dr!["src.data.events"], PA: Lua = dr!["src.data.pacts"];
+    expect(EVENT_IDS).toEqual(EV.order);
+    for (const e of EVENTS) expect(strip({ ...e }), e.id).toEqual(strip({ ...EV.list[e.id] }));
+    expect(EVENT_CHOICES).toBe(EV.CHOICES);
+    expect(PACT_IDS).toEqual(PA.order);
+    for (const p of PACTS) expect(strip({ ...p }), p.id).toEqual(strip({ ...PA.list[p.id] }));
+    expect(PACT_MAX_ACTIVE).toBe(PA.MAX_ACTIVE);
+  });
+
+  it(`applyEvent, a camada da onda, o atraso do Omen e o fim do escopo iguais aos de run_map.lua em ${EVENT_SCEN.length} cenários`, () => {
+    EVENT_SCEN.forEach((sc, i) => {
+      const o = L.apply[i + 1 - 1], ctx = `${sc.id} ${sc.gold}g u=${sc.u}`;
+      const run: EventRun = { ...newEventState(), gold: sc.gold, freeRerolls: 0, statistics: { goldEarned: 0, goldSpent: 0 } };
+      expect(eventAvailable(run, sc.id), ctx).toBe(o.ok);
+      let hp = sc.hp, pool = "none", gamble = "none", levels = false;
+      if (o.ok) {
+        const out = applyEvent(run, sc.id, sc.wave + 1, { hp: sc.hp, maxHp: 200, chance: (p) => sc.u < p });
+        hp = out.hp; pool = out.poolRelic ?? "none"; gamble = out.gamble ?? "none"; levels = out.levelUps > 0;
+      }
+      const merged = (b: Record<string, number>[]) => b.reduce<Record<string, number>>((a, x) => { for (const [k, v] of Object.entries(x)) a[k] = (a[k] ?? 0) + v; return a; }, {});
+      expect({ pool, gold: run.gold, hp, free: run.freeRerolls, event: run.event ?? "none", bonus: run.bossRelicBonus, gamble, levels,
+        spent: run.statistics.goldSpent, earned: run.statistics.goldEarned, delayed: run.delayedMods[0]?.wave ?? 0 }, ctx)
+        .toEqual({ pool: o.pool, gold: o.gold, hp: o.hp, free: o.free, event: o.event, bonus: o.bonus, gamble: o.gamble, levels: o.levels,
+          spent: o.spent, earned: o.earned, delayed: o.delayed });
+      expect(merged(eventSources(run) as Record<string, number>[]), ctx).toEqual(o.stats);
+      expect(waveLayer(null, eventMods(run, sc.wave + 1)), `${ctx} onda+1`).toEqual(o.l1);
+      expect(expireEvents(run, sc.wave + 1)).toBeUndefined();
+      expect(run.eventGold?.waves ?? 0, ctx).toBe(o.goldLeft);
+      expect(merged(eventSources(run) as Record<string, number>[]), `${ctx} depois`).toEqual(o.stats2);
+      expect(waveLayer(null, eventMods(run, sc.wave + 2)), `${ctx} onda+2`).toEqual(o.l2);
+      expireEvents(run, sc.wave + 2);
+      expect(run.eventGold?.waves ?? 0, ctx).toBe(o.goldLeft2);
+    });
+  });
+
+  it(`pactos: carta no mapa, os que faltam, camada, campeão e a conta final iguais em ${PACT_SCEN.length} cenários`, () => {
+    PACT_SCEN.forEach((sc, i) => {
+      const o = L.pacts[i + 1 - 1], ctx = `#${i}`;
+      const run: EventRun = { ...newEventState(), gold: 0, freeRerolls: 0, statistics: { goldEarned: 0, goldSpent: 0 }, noPacts: sc.noPacts };
+      for (const id of sc.owned) run.pacts.push(id);
+      run.pactSegments = [...sc.segs];
+      expect(pactsForMap(run, sc.wave).length > 0, ctx).toBe(o.has);
+      expect(pactsForMap({ ...run, noPacts: false, pactSegments: [] }, sc.wave), ctx).toEqual(run.pacts.length >= PACT_MAX_ACTIVE ? [] : (Array.isArray(o.unowned) ? o.unowned : []));
+      expect(pactLayer(run.pacts), ctx).toEqual(o.layer);
+      expect(pactChampionChance(run.pacts), ctx).toBeCloseTo(o.champ, 12);
+      const merged = eventSources(run).reduce<Record<string, number>>((a, x) => { for (const [k, v] of Object.entries(x)) a[k] = (a[k] ?? 0) + (v as number); return a; }, {});
+      expect(merged, ctx).toEqual(o.stats);
+      const m = waveMods(sc.wave, "normal", null, {}, { pact: pactLayer(run.pacts), championChance: pactChampionChance(run.pacts) });
+      for (const k of ["reward", "enemyHp", "enemyDamage", "enemySpeed", "enemyCount", "bossHp"] as const) expect(m[k], `${ctx} ${k}`).toBeCloseTo(o[k], 12);
+      expect(m.spawnRate, ctx).toBeCloseTo(o.spawn, 12);
+      expect(m.duration, ctx).toBeCloseTo(o.durationMult, 12);
+      expect(m.championChance, ctx).toBeCloseTo(o.championChance, 12);
+      expect(addPact(run, "blood_oath", sc.wave), ctx).toBe(o.add);
+    });
+  });
+
+  it(`eventDraft: os 3 eventos sorteados iguais aos de lá em ${DRAFT_U.length} sorteios`, () => {
+    DRAFT_U.forEach((u, i) => {
+      let j = 0;
+      expect(eventDraft(() => u[j++ % u.length]), `#${i}`).toEqual(L.drafts[i + 1 - 1]);
+    });
   });
 });

@@ -17,6 +17,8 @@ export interface WaveEntry {
   wave: number;
   /** sala ou maldição da onda (rooms.ts); null = sem sala */
   room: string | null;
+  /** M11-08: evento valendo na onda (ausente nas partidas antigas) */
+  event?: string | null;
   /** chefe da onda de chefe (o último do saco); null nas outras */
   boss: string | null;
   /** segundos de combate desta onda */
@@ -74,6 +76,10 @@ export interface RunLogEntry {
   detours: { wave: number; kind: string }[];
   bossHistory: string[];
   waves: WaveEntry[];
+  /** M11-08: eventos escolhidos (onda, id, resultado da aposta) */
+  events?: { wave: number; id: string; gamble?: "win" | "lose" }[];
+  /** M13-03: pactos aceitos (onda, id) */
+  pacts?: { wave: number; id: string }[];
   /** M20-13: desafios oferecidos e como acabaram (os abertos com o progresso de agora) */
   challenges?: { offered: number; done: number; list: ChallengeLogEntry[] };
   /** desempenho da partida (só do trecho jogado nesta sessão do navegador; as ondas guardam o delas) */
@@ -97,7 +103,7 @@ export function waveEntry(
   const s = run.statistics;
   const prev = run.waveLog.length ? run.waveLog[run.waveLog.length - 1].elapsed : 0;
   return {
-    wave: run.wave, room: run.room, boss: w?.isBossWave ? run.lastBoss : null,
+    wave: run.wave, room: run.room, event: run.event ?? null, boss: w?.isBossWave ? run.lastBoss : null,
     time: round(Math.max(0, s.elapsed - prev), 1), elapsed: round(s.elapsed, 1), hp: round(Math.max(0, Math.min(1, hp)), 3),
     level: run.level, gold: run.gold, kills: s.kills, damage: Math.round(s.damage), damageTaken: Math.round(s.damageTaken),
     healed: Math.round(s.healed), hastened: w?.hastened ?? false, clearedEarly: w?.clearedEarly ?? false, cleared,
@@ -122,6 +128,8 @@ export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string,
     upgrades: run.upgradesTaken.map((id, i) => ({ id, tier: run.upgradeTiers[i] ?? "common" })),
     mapHistory: [...run.mapHistory], detours: run.detours.map((d) => ({ ...d })), bossHistory: [...run.bossHistory],
     waves: last ? [...run.waveLog, last] : [...run.waveLog],
+    events: (run.eventLog ?? []).map((e) => ({ ...e })),
+    pacts: (run.pactLog ?? []).map((e) => ({ ...e })),
     challenges: {
       offered: run.challengesOffered ?? 0, done: run.challengesDone ?? 0,
       list: (run.challengeLog ?? []).map((e) => {

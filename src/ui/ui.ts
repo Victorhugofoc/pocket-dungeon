@@ -33,6 +33,8 @@ import { buildIdentity, tagCount } from "../core/synergies";
 import { BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_THRESHOLD, IDENTITIES, PATH_NAMES, SYNERGY_BY_ID } from "../data/synergies";
 import { iconHtml, modifierIconHtml, slotIconUrl, spellIconUrl, techniqueIconUrl, uiIconUrl, upgradeIconUrl, evolutionIconUrl } from "./icons";
 import { challengeHudHtml, challengeHudKey, challengePanelHtml, daringOpen } from "./challenges-view";
+import { eventCardsHtml, eventHudHtml, eventHudKey, eventPanelHtml, gateExtraHtml, omenGateHtml, pactConfirmHtml } from "./events-view";
+import { eventAvailable } from "../core/events";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
 
@@ -212,6 +214,8 @@ export class Ui {
       victory: () => this.showVictory(),
       banner: (t, sub) => this.banner(t, sub),
       challenges: () => this.updateChallenges(),
+      eventDraft: () => this.showEventDraft(),
+      pactOffer: () => this.showPactOffer(),
     };
     window.addEventListener("keydown", (e) => this.onKey(e));
     // registro de partidas: fechar a aba (ou recarregar) no meio de uma partida também conta
@@ -264,6 +268,17 @@ export class Ui {
     if (this.overlayKind === "shop") {
       if (k === "Escape") this.leaveShop();
       else if (k === "KeyR") this.game.rerollShop();
+      return;
+    }
+    if (this.overlayKind === "event") {
+      const ids = this.game.eventOffer?.ids ?? [];
+      if (k === "Escape") this.declineMapOffer();
+      else if (/^Digit[1-3]$/.test(k) && ids[Number(k.slice(5)) - 1]) this.pickEvent(ids[Number(k.slice(5)) - 1]);
+      return;
+    }
+    if (this.overlayKind === "pact") {
+      if (k === "Escape") this.declineMapOffer();
+      else if (k === "Enter") this.acceptPact();
       return;
     }
     const locked = ["title", "relic", "levelup", "evolution", "relic-evolution", "map", "death", "victory", "results"].includes(this.overlayKind);
@@ -511,7 +526,7 @@ export class Ui {
     this.hud.innerHTML = `
       <div id="vignette"></div>
       <div id="arrows" data-r="arrows"></div>
-      <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold"><span data-r="gold"></span><span class="bank hidden" data-r="bank" title="BANKED LOOT: orbs left on the floor were banked. Enemies with the coin under them drop double until it runs out."></span></p><div class="points hidden" data-r="points"></div><div class="challenges" data-r="challenges"></div></div>
+      <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold"><span data-r="gold"></span><span class="bank hidden" data-r="bank" title="BANKED LOOT: orbs left on the floor were banked. Enemies with the coin under them drop double until it runs out."></span></p><div class="points hidden" data-r="points"></div><div class="challenges" data-r="challenges"></div><div class="challenges" data-r="eventsHud"></div></div>
       <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
       <div id="banner" data-r="banner"></div>
       <canvas id="minimap" width="176" height="176"></canvas>
@@ -633,10 +648,24 @@ export class Ui {
     box.innerHTML = challengeHudHtml(g.run);
   }
 
+  /** M11-08 e M13-03: pactos e eventos valendo no HUD, redesenhados só quando mudam */
+  private updateEventHud(): void {
+    const g = this.game;
+    if (!g.started) return;
+    const key = eventHudKey(g.run);
+    const box = this.r.eventsHud;
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.innerHTML = eventHudHtml(g.run);
+  }
+
   private updateHud(): void {
     const g = this.game;
     if (!g.started) return;
-    if (this.frameN % 10 === 0) this.updateChallenges();
+    if (this.frameN % 10 === 0) {
+      this.updateChallenges();
+      this.updateEventHud();
+    }
     const p = g.player;
     const s = g.stats;
     const r = this.r;
@@ -708,7 +737,7 @@ export class Ui {
     const key = gi >= 0 ? `${g.run.wave}:${gi}:${daring}` : "";
     if (r.gateCard.dataset.key !== key) {
       r.gateCard.dataset.key = key;
-      r.gateCard.innerHTML = gi >= 0 ? mapCardHtml(cards![gi], gi, daring) : "";
+      r.gateCard.innerHTML = gi >= 0 ? mapCardHtml(cards![gi], gi, daring, omenGateHtml(g.run)) : "";
     }
     r.gateCard.classList.toggle("hidden", !key || !!this.overlay);
     if (this.frameN % 15 === 0 && !r.perf.classList.contains("hidden")) {
@@ -971,6 +1000,7 @@ export class Ui {
         <div class="relics">${run.relics.length ? relicStacks(run.relics).map(({ id, copies }) => `<div class="relic with-icon" data-relic="${id}" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}${copies > 1 ? ` <b class="copies">x${copies}</b>` : ""}</div>`).join("")
           : `<span style="color:var(--muted)">Defeat a boss to pick the first one.</span>`}</div>
         ${buildPanelHtml(run)}
+        ${eventPanelHtml(run)}
         ${challengePanelHtml(run)}
         <div class="row end"><button data-act="close">Close (I)</button></div>
       </div>`;
@@ -1013,6 +1043,63 @@ export class Ui {
     const hgt = this.tip.offsetHeight;
     this.tip.style.left = `${Math.min(window.innerWidth - w, ev.clientX + 16)}px`;
     this.tip.style.top = `${Math.max(4, Math.min(window.innerHeight - hgt - 4, ev.clientY + 12))}px`;
+  }
+
+  // ---------------------------------------------------------------- evento e pacto (event.lua, pact.lua)
+  /** A escolha da carta de evento: 3 eventos; o que custa ouro que falta fica apagado; Esc volta ao mapa. */
+  private showEventDraft(): void {
+    const g = this.game;
+    const o = g.eventOffer;
+    if (!o) return;
+    const panel = this.open("event", "event");
+    panel.style.width = "min(860px, 96vw)";
+    panel.innerHTML = `<h2>Event</h2><p class="sub">Choose 1 of 3 (keys 1–3). "This wave" lasts for the wave this gate leads to.</p>
+      <div class="cards">${eventCardsHtml(g.run, o.ids)}</div>
+      <div class="row end"><button data-act="back">Back to the map (Esc)</button></div>`;
+    panel.onclick = (ev) => {
+      const t = ev.target as HTMLElement;
+      if (t.closest("[data-act=back]")) return this.declineMapOffer();
+      const id = t.closest<HTMLElement>("[data-event]")?.dataset.event;
+      if (id) this.pickEvent(id);
+    };
+  }
+
+  private pickEvent(id: string): void {
+    if (!eventAvailable(this.game.run, id)) {
+      this.toast("Not enough gold", "#ff7a6a");
+      return;
+    }
+    // fecha antes: o evento pode abrir a escolha de relíquia de evento
+    this.close();
+    const why = this.game.chooseEvent(id);
+    if (why) this.toast(why, "#ff7a6a");
+  }
+
+  /** A confirmação do pacto (pact.lua): o pacto, os ativos e o risco somado; Enter aceita, Esc volta ao mapa. */
+  private showPactOffer(): void {
+    const g = this.game;
+    const o = g.pactOffer;
+    if (!o) return;
+    const panel = this.open("pact", "pact");
+    panel.style.width = "min(760px, 96vw)";
+    panel.innerHTML = `<h2>Risk Pact</h2><p class="sub">A pact is a commitment: it stays for the rest of the run.</p>
+      ${pactConfirmHtml(g.run, o.id)}
+      <div class="row end"><button data-act="back">Back to the map (Esc)</button><button class="primary" data-act="accept">Accept pact (Enter)</button></div>`;
+    panel.onclick = (ev) => {
+      const t = ev.target as HTMLElement;
+      if (t.closest("[data-act=back]")) this.declineMapOffer();
+      else if (t.closest("[data-act=accept]")) this.acceptPact();
+    };
+  }
+
+  private acceptPact(): void {
+    this.close();
+    this.game.acceptPact();
+  }
+
+  private declineMapOffer(): void {
+    this.close();
+    this.game.declineMapOffer();
   }
 
   // ---------------------------------------------------------------- relíquia / pausa / morte
@@ -1459,10 +1546,10 @@ function shopOfferTip(g: Game, o: ShopOffer): string {
 }
 
 /** Uma carta do mapa: o tipo, a sala sorteada e o que ela muda na onda. */
-function mapCardHtml(c: MapCard, i: number, daring = false): string {
+function mapCardHtml(c: MapCard, i: number, daring = false, omen = ""): string {
   const n = MAP_NODE[c.node];
   const room: RoomDef | undefined = c.room ? ROOM_BY_ID[c.room] : undefined;
-  let body = `<p class="note">${n.text}</p>`;
+  let body = `${gateExtraHtml(c.node, c.pact)}<p class="note">${n.text}</p>`;
   if (room) {
     const lines = ROOM_MOD_LABEL.flatMap(([k, label]) => {
       const v = room.mods[k];
@@ -1480,6 +1567,8 @@ function mapCardHtml(c: MapCard, i: number, daring = false): string {
   }
   // M20-13: a sala amaldiçoada cumpre o desafio Daring aberto
   if (daring && c.node === "cursed_room") body += `<p class="ch-gate">Counts for the DARING challenge</p>`;
+  // M11-08: o Ominous Omen cai nesta onda, qualquer que seja o portão
+  body += omen;
   return `<div class="card" data-card="${i}" style="--cc:${n.color}"><div class="meta">${n.name}</div>${body}</div>`;
 }
 

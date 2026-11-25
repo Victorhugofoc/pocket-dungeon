@@ -134,10 +134,11 @@ export class MapGates {
   }
 
   /** Índice do portão mais perto dentro de `reach` (a dica da carta no HUD), ou -1. */
-  nearest(x: number, z: number, reach: number): number {
+  nearest(x: number, z: number, reach: number, allow?: (i: number) => boolean): number {
     let best = -1;
     let bd = reach;
     this.gates.forEach((g, i) => {
+      if (allow && !allow(i)) return;
       const d = Math.hypot(x - g.spot.x, z - g.spot.z);
       if (d < bd) {
         bd = d;
