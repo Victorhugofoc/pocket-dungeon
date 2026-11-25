@@ -7,6 +7,7 @@ import { activeMutations, buyPerk, depthsScoreMult, runPerks, togglePerk, unlock
 import type { PerkId } from "../data/depths";
 import { clearRun, discardLegacySave, loadRecords, loadRun, loadRunLog, safeStorage, writeRecords } from "../core/save";
 import { downloadRunLog } from "../game/runlog";
+import { dealtRows, takenRows, type SourceRow } from "../core/runstats";
 import { RunRng, addRecord, continueRun, decodeSeed, newRun, newSpellSlot, recordsRun, summarize, type NewRunOptions, type RunState } from "../core/run";
 import { addModifier, addSpell, levelUpSpell, type SlotResult } from "../core/spells";
 import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unlockCondition } from "../core/achievements";
@@ -1574,6 +1575,7 @@ export class Ui {
           <p style="color:${isBest ? "var(--gold)" : "inherit"}">${isBest ? `New record! (${g.hero.name} · ${diff})` : `Record (${g.hero.name} · ${diff}): wave ${best.wave}, ${n(best.kills)} kills`}</p>
         </div>
       </div>
+      ${sourcesHtml(run)}
       <div class="row end"><button data-act="menu">Main menu</button><button data-act="seed">Replay this seed</button><button class="primary" data-act="again">Play again</button></div>`;
     panel.onclick = (ev) => {
       const act = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
@@ -1582,6 +1584,22 @@ export class Ui {
       else if (act === "menu") this.showTitle();
     };
   }
+}
+
+/** M20-14 (results.lua `drawSources`): as 5 maiores fontes de dano causado e recebido, em barras. */
+const SOURCE_ROWS = 5;
+function sourcesHtml(run: RunState): string {
+  const n = (v: number) => Math.round(v).toLocaleString("en-US");
+  const bars = (title: string, data: { rows: SourceRow[]; total: number }, color: string, unit: string) => `<div>
+      <div class="section">${title}</div>
+      ${data.rows.length ? data.rows.slice(0, SOURCE_ROWS).map((r) => `<div class="src-row" title="${n(r.value)} (${(r.share * 100).toFixed(1)}%) · ${r.count} ${unit}">
+        <span class="src-name">${r.name}</span><span class="src-bar"><i style="width:${Math.max(2, r.share * 100)}%;background:${color}"></i></span>
+        <b>${n(r.value)}</b><span class="src-pct">${Math.round(r.share * 100)}%</span></div>`).join("") : `<p class="note">None.</p>`}
+    </div>`;
+  return `<div class="results-cols sources">
+      ${bars("Damage dealt by source", dealtRows(run.sources), "#ff8a3a", "kills")}
+      ${bars("Damage taken by source", takenRows(run.sources), "var(--bad)", "hits")}
+    </div>`;
 }
 
 /** Nome da spell (spells.lua `name`); técnica sem definição aqui cai no id com espaços ("storm_step" → "Storm Step"). */

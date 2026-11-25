@@ -87,7 +87,7 @@ Reescrito em 2026-11-20 (D18): a versão anterior prometia um RPG de 8 a 12 hora
 | 11 | `M20-13` | Desafios da partida (feita em 2026-11-24) |
 | 12 | `M11-08`, `M13-03` | Os 17 eventos e os 8 pactos (ligam as cartas de evento e pacto do mapa, R20) |
 | 13 | `M13-01`, `M13-02`, `M13-04` | Dificuldades, Depths, codex e conquistas que faltarem |
-| 14 | `M20-14` | Dano por fonte na tela de resultado |
+| 14 | `M20-14` | Dano por fonte na tela de resultado (feita em 2026-11-25) |
 | 15 | `M17-01` | Bot que joga partidas, para medir o balanceamento com o jogo completo |
 
 **Seed diária (`M13-05`) é a última de todas (usuário, 2026-11-25):** sai da fase 1 e fica depois de toda a fase 2; não puxar antes sem ele pedir.

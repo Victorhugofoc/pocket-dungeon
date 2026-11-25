@@ -14,6 +14,7 @@ import { codexEntries, codexSeed, codexSyncRun, type CodexKind } from "../core/c
 import { refreshSynergies, synergySources } from "../core/synergies";
 import { BUILD_EVOLUTION_BY_ID, SYNERGY_BY_ID } from "../data/synergies";
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
+import { addDealt, addKill, addTaken, UNKNOWN_SOURCE } from "../core/runstats";
 import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
 import { ChallengeTracker, challengeName, challengeReward, challengeText, type ChallengeWorld } from "../core/challenges";
@@ -27,7 +28,7 @@ import {
   addPact, applyEvent, eventAvailable, eventDraft, eventMods, eventSources, expireEvents, pactChampionChance, pactLayer,
   pactsForMap, takeBossRelicBonus,
 } from "../core/events";
-import { EVENT_IDS, PACT_BY_ID, PACT_IDS } from "../data/events";
+import { EVENT_BY_ID, EVENT_IDS, PACT_BY_ID, PACT_IDS } from "../data/events";
 import { isBossWave, segmentOf } from "../core/waves";
 import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE, depthsLevel } from "../data/run";
 import { SHOP_OFFERS } from "../data/shop";
@@ -183,6 +184,8 @@ interface Projectile {
   dmg: number; life: number; friendly: boolean;
   pierce: number; ricochet: number; ricochetDamage: number;
   status?: StatusSpec; mesh: THREE.Mesh; hit: Set<Enemy>; color: number; source: string;
+  /** M20-14: fonte para o dano por fonte quando não é `source` (o tiro do Fan the Hammer é "auto" nas regras, mas conta na técnica) */
+  dmgSource?: string;
   /** gelo da Frostine; `icicle` = o tiro é pingente */
   ice?: boolean; icicle?: boolean;
   /** M21-07: crítico garantido (Third Strike) e empurrão extra (Charged Step) */
@@ -396,12 +399,12 @@ export class Game {
         const e = f.key as Enemy;
         if (!e.dead) e.applyBurn(g.time, dps, seconds);
       },
-      areaHit: (x: number, z: number, r: number, damage: number, except: object) => {
+      areaHit: (x: number, z: number, r: number, damage: number, except: object, source: string) => {
         const prev = g.hitSource;
         g.hitSource = "other";
         for (const e of [...g.enemies]) {
           if (e.dead || e === except || Math.hypot(e.x - x, e.z - z) > r + e.radius) continue;
-          g.damageEnemy(e, damage, { noKnock: true });
+          g.damageEnemy(e, damage, { noKnock: true, source });
         }
         g.hitSource = prev;
       },
@@ -459,6 +462,8 @@ export class Game {
       spellEvolutions: Object.keys(EVOLUTIONS), relicEvolutions: RELIC_EVOLUTIONS.map((d) => d.id) }, loadRecords(this.storage).kills);
   /** de onde veio o golpe em curso (o "ataque básico" de quick_trigger) */
   private hitSource: KillSource = "other";
+  /** M20-14: fonte do golpe em curso (ataque básico, técnica...) para o dano por fonte; null = nenhuma marcada */
+  private dmgSource: string | null = null;
   /** > 0 enquanto o golpe é da técnica (`asTechnique`) */
   private techDepth = 0;
   /** M20-13: os desafios da partida (core/challenges.ts); criado em `start` */
@@ -1280,6 +1285,7 @@ export class Game {
           }
           if (pr.pointBlank && (e.x - p.x) ** 2 + (e.z - p.z) ** 2 <= px(STYLE_GUN.pointBlankRange) ** 2) dmg *= 1 + pr.pointBlank;
           this.hitSource = pr.source === "auto" ? "auto" : "other";
+          this.dmgSource = pr.dmgSource ?? pr.source;
           const sp = Math.hypot(pr.vx, pr.vz) || 1;
           const from = { x: pr.x - (pr.vx / sp) * 1.2, z: pr.z - (pr.vz / sp) * 1.2 };
           this.hitEnemy(e, dmg, pr.status, { ice: pr.ice, frostStacks: pr.icicle && first ? FROST.icicleStacks : undefined, crit: pr.crit && first ? true : undefined, from });
@@ -1287,6 +1293,7 @@ export class Game {
           if (pr.forks && first) this.forkBolt(e, pr);
           if (pr.knock && first) this.epics.knock(e, pr.knock);
           this.hitSource = "other";
+          this.dmgSource = null;
           if (pr.source === "auto") {
             this.spells.onAutoHit(e);
             if (first) this.autoKnock(e, pr.vx, pr.vz);
@@ -1368,7 +1375,7 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- dano
-  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean; noKnock?: boolean; element?: string; spell?: boolean; from?: HitFrom }): void {
+  hitEnemy(e: Enemy, mult: number, status?: StatusSpec, hit?: { ice?: boolean; frostStacks?: number; crit?: boolean; noKnock?: boolean; element?: string; spell?: boolean; from?: HitFrom; source?: string }): void {
     if (e.dead) return;
     const s = this.stats;
     const now = this.time;
@@ -1406,8 +1413,9 @@ export class Game {
     if (crit) amount *= s.critDamage;
     // Brittle Chill (Iceball, somado) e o dano em lento das relíquias (pool): inimigo com Slow recebe dano extra (damage.lua §37)
     if (now < e.slowUntil) amount *= (1 + this.spells.brittle) * s.slowedDamage;
-    this.damageEnemy(e, amount, { crit, noKnock: hit?.noKnock, school: spell ? hit?.element : undefined, from: hit?.from });
-    if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount);
+    const source = hit?.source ?? this.dmgSource ?? UNKNOWN_SOURCE;
+    this.damageEnemy(e, amount, { crit, noKnock: hit?.noKnock, school: spell ? hit?.element : undefined, from: hit?.from, source });
+    if (status && !e.dead && (status.chance === undefined || Math.random() < status.chance)) this.applyStatus(e, status, amount, source);
     if (back && e.dead) this.heal(s.maxHp * SHADOW.backstabKillHeal, true); // Umbra: matar pelas costas cura
     if (reaction) this.react(e, reaction);
     if (deepChill && !e.dead) {
@@ -1425,7 +1433,7 @@ export class Game {
     return e.vx * (e.x - p.x) + e.vz * (e.z - p.z) > 0;
   }
 
-  applyStatus(e: Enemy, st: StatusSpec, hitDamage: number): void {
+  applyStatus(e: Enemy, st: StatusSpec, hitDamage: number, source = "auto"): void {
     const now = this.time;
     // D14: a queimadura e o veneno do ataque têm atributo próprio; a lentidão do ataque é fixa, como lá
     const potency = st.kind === "burn" ? this.stats.burn : st.kind === "poison" ? this.stats.poison : 1;
@@ -1445,14 +1453,14 @@ export class Game {
     } else if (st.kind === "poison") {
       // S23: um veneno só por inimigo, dividido com a Venom Nova (status.lua `applyPoison`)
       // auto_attack.lua: máximo = o do tiro + `poisonStacks` do herói (Vesper +1)
-      e.applyPoison(now, hitDamage * st.power * potency, st.duration, (st.maxStacks ?? 1) + this.stats.poisonStacks, undefined, "auto");
+      e.applyPoison(now, hitDamage * st.power * potency, st.duration, (st.maxStacks ?? 1) + this.stats.poisonStacks, undefined, source);
     } else {
       // S23/status.lua: uma queimadura só por inimigo, dividida com o Fireball
       e.applyBurn(now, hitDamage * st.power * potency, st.duration);
     }
   }
 
-  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId; school?: string; from?: HitFrom } = {}): void {
+  damageEnemy(e: Enemy, amount: number, opts: { crit?: boolean; dot?: string; noKnock?: boolean; reaction?: ReactionId; school?: string; from?: HitFrom; source?: string } = {}): void {
     if (e.dead) return;
     if (e.isBoss) amount *= this.stats.bossDamage; // damage.lua: Smite do Seraph (D-317)
     // EXECUTIONER (Varok): chefe abaixo de 30% da vida leva mais
@@ -1498,7 +1506,11 @@ export class Game {
         return;
       }
     }
-    this.run.statistics.damage += Math.min(amount, Math.max(0, e.hp));
+    // M20-14 (run_stats.lua): o dano por fonte sem o excesso, igual ao total
+    const source = opts.source ?? this.dmgSource ?? UNKNOWN_SOURCE;
+    const dealt = Math.min(amount, Math.max(0, e.hp));
+    this.run.statistics.damage += dealt;
+    addDealt(this.run.sources, source, dealt);
     e.hp -= amount;
     if (!e.aggro) e.setAggro(this);
     const top = e.rig.height + 0.3;
@@ -1532,6 +1544,7 @@ export class Game {
     }
     if (e.hp <= 0) {
       if (opts.reaction) this.epics.onReactionKill(e, opts.reaction);
+      addKill(this.run.sources, source);
       this.killEnemy(e, opts.dot ? "dot" : this.hitSource);
     }
   }
@@ -1935,7 +1948,7 @@ export class Game {
       this.audio.play("crit");
       // JUDGEMENT (Seraph): o golpe bloqueado volta para quem bateu, ×2
       if (this.stats.judgement > 0 && attacker && !attacker.dead) {
-        this.damageEnemy(attacker, amount * HERO_UPGRADES.judgementMult * this.stats.judgement);
+        this.damageEnemy(attacker, amount * HERO_UPGRADES.judgementMult * this.stats.judgement, { source: "judgement" });
         this.fx.lib.burst(attacker.x, 1.4, attacker.z, { radius: 1.4, color: TECH_FX.holy, core: TECH_FX.holyCore, rays: 6, sparks: 12, light: 1.4, dur: 0.18, wave: 0 });
       }
       return false;
@@ -1949,6 +1962,7 @@ export class Game {
     amount = Math.round(this.relicHooks.absorb(this.relicWorld, amount));
     if (amount <= 0) return true;
     this.run.statistics.damageTaken += Math.min(amount, p.hp);
+    addTaken(this.run.sources, source, Math.min(amount, p.hp));
     p.hp -= amount;
     // M13-02 Reserve Potion (damage.lua, D-228): uma vez por partida, abaixo de 20% cura 30% (sem o corte da Wounds)
     const potion = reservePotion(this.run, p.hp, this.stats.maxHp);
@@ -2035,7 +2049,7 @@ export class Game {
       if (d > r + e.radius) continue;
       const frac = e.isBoss ? B.bossDamage : e.champion ? B.championDamage : B.damage;
       this.hitSource = "other";
-      this.damageEnemy(e, e.maxHp * frac, { noKnock: true });
+      this.damageEnemy(e, e.maxHp * frac, { noKnock: true, source: "explosive_barrel" });
       if (e.isBoss) continue;
       const nx = d > 0.05 ? dx / d : Math.random() - 0.5, nz = d > 0.05 ? dz / d : Math.random() - 0.5;
       const nl = Math.hypot(nx, nz) || 1;
@@ -2088,7 +2102,7 @@ export class Game {
     this.bossDead = true;
     this.hitstop = 0.25;
     this.fx.addShake(1);
-    for (const m of this.enemies) if ((m.summoned || m.def?.helper) && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn" });
+    for (const m of this.enemies) if ((m.summoned || m.def?.helper) && !m.dead) this.damageEnemy(m, m.hp + 1, { dot: "burn", source: "boss_death" });
     // D-150: a emboscada é um nó de risco: dá a relíquia de risco (1 de 2), não a escolha de chefe
     if (e.ambush) {
       this.pendingPoolRelic = "risk";
@@ -2726,6 +2740,7 @@ export class Game {
       const cost = shrineCost(p.hp, this.stats.maxHp);
       p.hp -= cost;
       run.statistics.damageTaken += cost;
+      addTaken(run.sources, "Shrine", cost);
       this.fx.text(p.x, 2.4, p.z, `-${cost}`, "hurt");
       p.flash = 1;
       const gold = detourGold("shrine", run.wave);
@@ -2873,6 +2888,7 @@ export class Game {
       this.fx.text(p.x, 2.4, p.z, `+${Math.round(p.hp - before)}`, "heal");
     } else if (p.hp < before) {
       run.statistics.damageTaken += before - p.hp;
+      addTaken(run.sources, EVENT_BY_ID[id]?.name ?? "Event", before - p.hp);
       this.fx.text(p.x, 2.4, p.z, `-${Math.round(before - p.hp)}`, "hurt");
       p.flash = 1;
     }
@@ -3028,9 +3044,9 @@ export class Game {
    * Golpe de spell: mesmo caminho do dano do herói (crítico, Frostine), contado como "other" nas conquistas. `noKnock`:
    * sem o empurrão para longe do herói (Cyclone puxa para o centro; o Quake Totem empurra a partir dele).
    */
-  spellHit(e: Enemy, mult: number, noKnock = false, element?: string, from?: HitFrom): void {
+  spellHit(e: Enemy, mult: number, noKnock: boolean, element: string | undefined, from: HitFrom | undefined, source: string): void {
     this.hitSource = "other";
-    this.hitEnemy(e, mult, undefined, { noKnock, element, spell: true, from });
+    this.hitEnemy(e, mult, undefined, { noKnock, element, spell: true, from, source });
   }
 
   /** Elementos que a build aplica agora (ícone de reação pronta). */
@@ -3061,8 +3077,8 @@ export class Game {
       const X = R.execution;
       e.stunUntil = 0;
       e.windupT = -1;
-      this.damageEnemy(e, s.damage * X.damage * (e.isBoss ? R.bossMult : 1), { reaction: id });
-      if (!e.dead && executes(e.hp, e.maxHp, X.threshold, e.isBoss, e.champion)) this.damageEnemy(e, e.hp + 1, { reaction: id });
+      this.damageEnemy(e, s.damage * X.damage * (e.isBoss ? R.bossMult : 1), { reaction: id, source: id });
+      if (!e.dead && executes(e.hp, e.maxHp, X.threshold, e.isBoss, e.champion)) this.damageEnemy(e, e.hp + 1, { reaction: id, source: id });
       this.fx.text(e.x, e.rig.height + 0.9, e.z, "Execute", "crit react");
       this.fx.burst(e.x, 1, e.z, X.color, 30, 9, 0.16, 0.55, 2);
       this.fx.addShake(0.2);
@@ -3086,7 +3102,7 @@ export class Game {
         o.applyBurn(now, s.damage * P.burnDps * s.burn, P.burnDuration);
         o.applyPoison(now, s.damage * P.poisonDps * s.poison, P.poisonDuration, 1, undefined, "plague");
       }
-      this.damageEnemy(o, s.damage * def.damage * (o.isBoss ? R.bossMult : 1), { reaction: id });
+      this.damageEnemy(o, s.damage * def.damage * (o.isBoss ? R.bossMult : 1), { reaction: id, source: id });
     }
     const top = e.rig.height + 0.9;
     this.fx.text(e.x, top, e.z, label, id === "shatter" ? "frost react" : "poison react");
@@ -3226,7 +3242,7 @@ export class Game {
       while (da < -Math.PI) da += Math.PI * 2;
       if (Math.abs(da) > arc && d > e.radius + 0.8) continue;
       this.hitSource = "auto";
-      this.hitEnemy(e, dmg, a.status, this.autoMod?.crit ? { crit: true } : undefined);
+      this.hitEnemy(e, dmg, a.status, this.autoMod?.crit ? { crit: true, source: "auto" } : { source: "auto" });
       this.hitSource = "other";
       if (this.autoMod?.knock) this.epics.knock(e, this.autoMod.knock);
       this.spells.onAutoHit(e);
@@ -3304,10 +3320,13 @@ export class Game {
   /** O que acontece dentro de `fn` é golpe da técnica (SIGNATURE, `techniqueDamagePct`). */
   private asTechnique<T>(fn: () => T): T {
     this.techDepth++;
+    const prev = this.dmgSource;
+    this.dmgSource = this.hero.technique.id;
     try {
       return fn();
     } finally {
       this.techDepth--;
+      this.dmgSource = prev;
     }
   }
 
@@ -3391,6 +3410,7 @@ export class Game {
           this.firePlayer(ang, fanAuto, T.damage, rangeMult);
           const pr = this.projectiles[this.projectiles.length - 1];
           pr.push = 0.85;
+          pr.dmgSource = this.hero.technique.id;
           // M5-03: cada bala deixa um risco dourado; um traço curto de clarão sai do cano na direção dela
           pr.fx = lib.trail({ color: TECH_FX.gun, core: TECH_FX.gunCore, width: 0.32, life: 0.1, head: 0.35, sheds: 2 });
           lib.beam(mx, 1.2, mz, mx + Math.sin(ang) * 2.6, 1.2, mz + Math.cos(ang) * 2.6, { color: TECH_FX.gun, core: TECH_FX.gunCore, width: 0.22, dur: 0.09 });
@@ -3856,7 +3876,7 @@ export class Game {
         b.sting = 0;
         // a abelha grande é a técnica (Swarm); as pequenas da Ninhada, não
         if (b.big) this.asTechnique(() => this.hitEnemy(target, b.dmg, b.poison));
-        else this.hitEnemy(target, b.dmg, b.poison);
+        else this.hitEnemy(target, b.dmg, b.poison, { source: "hatchling" });
         if (b.big) this.fx.lib.burst(target.x, 1, target.z, { radius: 0.7, color: TECH_FX.venom, core: TECH_FX.venomCore, rays: 3, sparks: 6, light: 0, dur: 0.16, wave: 0, power: 0.7 });
       }
       if (b.sting >= 0) {
