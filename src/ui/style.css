@@ -288,6 +288,16 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .pip.f { background: #aab1c8; border-color: #aab1c8; }
 .pip.nw { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 6px rgba(255, 211, 77, 0.7); }
 .relic.with-icon { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 3px; }
+/* M14-10: ícones do original em toda a interface */
+.icon-card { text-align: center; }
+.ricon.sk { position: absolute; inset: 0; margin: auto; pointer-events: none; }
+.skill.big .ricon.sk { width: 44px; height: 44px; }
+.hs-spells button .ricon { flex: none; }
+.spell-row.with-icon { align-items: flex-start; }
+.mod-icon { position: relative; display: block; width: var(--s); height: var(--s); margin: 0 auto 8px; }
+.mod-icon .ricon.big { margin: 0; }
+.mod-badge { position: absolute; right: -6px; bottom: -4px; width: 20px; height: 20px; border-radius: 50%; background: #4fa3ff; color: #0b1830;
+  font: 800 15px/20px system-ui; font-style: normal; text-align: center; border: 2px solid #10131d; box-shadow: 0 0 6px rgba(79, 163, 255, 0.7); }
 .tip-head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
 .tip-head .meta { margin: 0; }
 .rtags { color: #cfd3e2; }

@@ -6,24 +6,16 @@ import {
   BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_BY_PATH, BUILD_EVOLUTION_THRESHOLD, BUILD_EVOLUTIONS, IDENTITIES, PATH_NAMES, SYNERGIES, SYNERGY_BY_ID,
 } from "../data/synergies";
 import type { RelicRarity } from "../data/relics";
-
-const ICONS = import.meta.glob("../assets/relics/*.png", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
-const ICON_BY_ID: Record<string, string> = Object.fromEntries(
-  Object.entries(ICONS).map(([path, url]) => [path.slice(path.lastIndexOf("/") + 1, -4), url]));
+import { iconHtml, relicIconUrl } from "./icons";
 
 /** Cor da moldura por raridade (a carta e a fileira de relíquias da tela I). */
 export const RARITY_COLOR: Record<RelicRarity, string> = {
   uncommon: "#6fd36a", rare: "#4fa3ff", epic: "#b36bff", boss: "#ff8a3d", evolved: "#ffd34d",
 };
 
-export function relicIconUrl(id: string): string | undefined {
-  return ICON_BY_ID[id];
-}
-
 /** Ícone da relíquia em pixel art ampliado (vazio se não houver ícone). */
 export function relicIconHtml(id: string, size: number, cls = "ricon"): string {
-  const url = ICON_BY_ID[id];
-  return url ? `<img class="${cls}" src="${url}" width="${size}" height="${size}" alt="">` : "";
+  return iconHtml(relicIconUrl(id), size, cls);
 }
 
 /** Bolinhas: `now` cheias, `add` novas (douradas), o resto vazias até `max`. */
