@@ -28,6 +28,7 @@ HOLLOW = hexc(0x0c0814)
 EYE, EYE_L = hexc(0xff1040), hexc(0xc8185a)
 HAIR_K, HAIR, HAIR_L = hexc(0x120e1a), hexc(0x2a2238), hexc(0x463c5c)
 BLADE_L, BLADE, BLADE_D = hexc(0xfff0c8), hexc(0xe2cc96), hexc(0x9a8058)
+EDGE = hexc(0xfffdf6)
 
 
 def body_col(co, n):
@@ -238,56 +239,76 @@ def to_fore(objs, side, pose):
 
 def blade(s):
     """lâmina de osso em crescente, na orientação do mundo, origem na mão: sobe para fora (para o lado de -s, onde a mão fica com
-    os braços cruzados), curva por fora e a ponta volta para dentro; seção em lente grossa (não vira risco de perfil)"""
+    os braços cruzados), a barriga curva por fora e a ponta volta para dentro em gancho. Seção de lâmina, não de osso: dorso
+    grosso na curva de fora que afina até um gume de navalha na curva de dentro (o lado da cabeça), com bisel polido quase
+    branco ao longo do gume e um sulco escuro correndo pelo meio; pescoço estreito saindo do punho e ponta de agulha."""
     L = 1.22
     up = Vector((-s * 1.0, -0.05, 1.0)).normalized()
     side = Vector((-s, 0, 0))
-    side = (side - up * side.dot(up)).normalized()           # para fora, no plano da lâmina
+    side = (side - up * side.dot(up)).normalized()           # para fora, no plano da lâmina (lado do dorso)
     nrm = up.cross(side).normalized()                        # espessura
-    rows = []
-    N, M = 26, 14
+    N, M = 34, 18
+    xs = [math.cos(2 * math.pi * j / M) for j in range(M)]   # +1 = dorso, -1 = gume
+    bm = bmesh.new()
+    grid, info = [], []
     for i in range(N + 1):
-        t = 1.0 * i / N
-        bow = 0.16 * math.sin(math.pi * max(0.0, t)) - 0.13 * max(0.0, t) ** 4   # barriga para fora, ponta volta
-        c = up * (L * t) + side * (bow * L * 0.55)
-        w = max(0.004, 0.028 + 0.066 * math.sin(math.pi * min(1.0, t * 1.15) ** 0.8) * (1 - t ** 4))
-        th = max(0.006, 0.3 * w)
-        # largura cresce para dentro (gume côncavo do lado da cabeça), o dorso fica na curva de fora
+        t = i / N
+        bow = 0.16 * math.sin(math.pi * t) - 0.13 * t ** 4    # barriga para fora, ponta volta
+        spine = up * (L * t) + side * (bow * L * 0.55)
+        # largura: pescoço estreito no punho, barriga larga, ponta de agulha
+        w = 0.024 + 0.11 * ss(0.02, 0.4, t) * (1 - ss(0.55, 1.0, t) ** 1.6)
+        w = max(0.003, w * (1 - ss(0.93, 1.0, t)) + 0.003)
+        th = max(0.004, 0.32 * min(w, 0.06) + 0.004)          # dorso grosso mesmo onde a lâmina alarga
         ring = []
         for j in range(M):
-            a = 2 * math.pi * j / M
-            u = math.cos(a)
-            off = side * (u * w * (0.55 if u > 0 else 1.0) - w * 0.2) + nrm * (math.sin(a) * th * (1 - 0.6 * max(0.0, -u)))
-            ring.append(tuple(c + off))
-        rows.append(ring)
-    bm = bmesh.new()
-    grid = [[bm.verts.new(p) for p in row] for row in rows]
+            x = xs[j]
+            g = (1 + x) / 2                                   # 1 no dorso, 0 no gume
+            half = th * 0.5 * g ** 0.7                        # afina até zero no gume (bisel)
+            if x < -0.3:
+                half *= 0.5                                  # bisel: quebra a espessura antes do gume
+            sgn = 1 if j < M / 2 else -1
+            if j in (0, M // 2):
+                sgn = 0
+            p_ = spine - side * (w * (1 - g)) + nrm * (sgn * half)
+            ring.append(bm.verts.new(tuple(p_)))
+            info.append((t, x))
+        grid.append(ring)
     for i in range(N):
         for j in range(M):
             k = (j + 1) % M
             bm.faces.new((grid[i][j], grid[i][k], grid[i + 1][k], grid[i + 1][j]))
-    for row, p in ((grid[0], up * (L * -0.02)), (grid[-1], up * L + side * (-0.13 * L * 0.55))):
-        cv = bm.verts.new(tuple(p))
+    for row, p_ in ((grid[0], up * (L * -0.01)), (grid[-1], None)):
+        if p_ is None:
+            continue
+        cv = bm.verts.new(tuple(p_))
+        info.append((0.0, 1.0))
         for j in range(M):
             bm.faces.new((row[j], row[(j + 1) % M], cv))
+    # a ponta fecha num ponto só (agulha)
+    tip = bm.verts.new(tuple(up * L + side * (-0.13 * L * 0.55) - side * 0.004))
+    info.append((1.0, 0.0))
+    for j in range(M):
+        bm.faces.new((grid[-1][j], grid[-1][(j + 1) % M], tip))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     o = new_mesh("blade", bm)
-    for p in o.data.polygons:
-        p.use_smooth = True
-
-    def tint(co, n):
-        v = Vector(co)
-        t = v.dot(up) / L
-        across = (v - up * v.dot(up)).dot(side)
-        c = mix(BLADE_D, BLADE, 0.35 + 0.65 * ss(-0.6, 0.6, n.z - 0.4 * n.y))
-        c = mix(c, BLADE_L, 0.6 * ss(0.4, 1.0, n.z - 0.2 * n.y))
-        # gume de dentro mais claro, veio escuro junto ao cabo
-        c = mix(c, BLADE_L, 0.5 * ss(0.0, -0.04, across) * ss(0.05, 0.2, t))
-        c = mix(c, BLADE_D, 0.6 * (1 - ss(0.0, 0.25, t)))                     # só a base escurece
-        return mix(c, BLADE_L, 0.35 * ss(0.6, 1.0, t))
-    paint(o, tint)
+    for p_ in o.data.polygons:
+        p_.use_smooth = True
+    me = o.data
+    attr = me.color_attributes.get("Col") or me.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
+    me.color_attributes.active_color = attr
+    for v in me.vertices:
+        t, x = info[v.index]
+        n = v.normal
+        c = mix(BLADE_D, BLADE, 0.7 + 0.3 * ss(-0.6, 0.6, n.z - 0.4 * n.y))   # osso claro mesmo na face de lado
+        c = mix(c, BLADE_L, 0.4 * ss(0.4, 1.0, n.z - 0.2 * n.y))
+        c = mix(c, BLADE_D, 0.55 * ss(0.65, 1.0, x))                      # dorso mais escuro
+        c = mix(c, BLADE_D, 0.75 * (1 - ss(0.0, 0.12, abs(x - 0.3))) * ss(0.06, 0.12, t) * (1 - ss(0.62, 0.75, t)))   # sulco
+        c = mix(c, EDGE, ss(-0.3, -0.5, x))                                 # bisel polido no gume, largo
+        c = mix(c, BLADE_D, 0.7 * (1 - ss(-0.36, -0.24, x)) * ss(-0.5, -0.36, x))   # linha escura do bisel
+        c = mix(c, BLADE_D, 0.55 * (1 - ss(0.0, 0.12, t)))                 # pescoço junto ao punho
+        attr.data[v.index].color = (*c, 1.0)
     o["no_ao"] = True
-    knob = sball("bladeroot", tuple(up * 0.03), (0.045, 0.045, 0.05), seg=(10, 7))
+    knob = sball("bladeroot", tuple(up * 0.025), (0.04, 0.04, 0.045), seg=(10, 7))
     paint(knob, lambda co, n: mix(BLADE_D, BLADE, 0.3 + 0.5 * ss(-0.5, 0.8, n.z)))
     return [o, knob]
 
