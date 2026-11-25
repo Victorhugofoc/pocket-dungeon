@@ -468,6 +468,18 @@ export const RELIC_DRAFT = {
   banLimit: 2,
   replaceDraw: 8,
 } as const;
+/**
+ * Relíquias que acumulam (D7 revista, 2026-11-24; não existe no original): só as incomuns, até `maxCopies`. Cada cópia
+ * soma os atributos de novo; as tags contam uma vez só. Fora as que mudam uma mecânica (não só somam número).
+ * No sorteio, a cópia pesa `copyWeight` por cópia já tida (½, ¼...), para não tomar o lugar das novas.
+ */
+export const RELIC_STACK = {
+  rarities: ["uncommon"] as readonly RelicRarity[],
+  maxCopies: 3,
+  copyWeight: 0.5,
+  /** Binding Chalk (efeito na spell), Cinder Lens (queimadura pula +1), Conduit Ring (corrente cresce a cada pulo) */
+  exclude: ["binding_chalk", "cinder_lens", "conduit_ring"] as readonly string[],
+} as const;
 /** relics.lua `POOL_NAMES` (en.lua): título da escolha de cada pool */
 export const POOL_TITLE: Readonly<Record<RelicPool, string>> = {
   event: "Event Relic", risk: "Risk Relic", curse: "Curse Relic", pact: "Pact Relic",

@@ -6,7 +6,8 @@ import {
   BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_BY_PATH, BUILD_EVOLUTION_THRESHOLD, BUILD_EVOLUTIONS, IDENTITIES, PATH_NAMES, SYNERGIES, SYNERGY_BY_ID,
 } from "../data/synergies";
 import { RELICS, type RelicRarity } from "../data/relics";
-import { relicEvolutionsUsing, relicGroupRivals } from "../core/relics";
+import { relicCopies, relicEvolutionsUsing, relicGroupRivals, relicStackable } from "../core/relics";
+import { RELIC_STACK } from "../data/relics";
 import { iconHtml, relicIconUrl } from "./icons";
 
 /** Cor da moldura por raridade (a carta e a fileira de relíquias da tela I). */
@@ -116,6 +117,15 @@ const GROUP_NAME: Record<string, string> = {
   spell_apex: "Spell apex", defense_apex: "Defense apex", mobility_apex: "Mobility apex", weapon_apex: "Weapon apex",
 };
 export const relicGroupName = (g: string) => GROUP_NAME[g] ?? g;
+
+/** A linha de acúmulo na carta (D7 revista): quantas o herói tem e quantas terá, ou só que ela acumula. */
+export function relicStackHtml(id: string, owned: readonly string[]): string {
+  if (!relicStackable(id)) return "";
+  const n = relicCopies(owned, id);
+  return n > 0
+    ? `<p class="stack">STACK x${n} → x${n + 1} (stats add up, tags count once)</p>`
+    : `<p class="stack muted">Stacks up to x${RELIC_STACK.maxCopies}</p>`;
+}
 
 /**
  * As receitas da relíquia (relic_view.lua): de que ela é feita, quem ela bloqueia (nível 3) e, se é peça de alguma

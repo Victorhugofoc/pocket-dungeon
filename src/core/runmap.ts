@@ -78,6 +78,12 @@ export function generateMap(rng: MapRng, nextWave: number, opts: MapOptions): Ma
 export type MapStep = "wave" | "relic" | "shop" | "event" | "pact";
 
 /** run_map.lua `choose`: a sala vale para a onda seguinte; a maldição, para as 2 seguintes. */
+/** Ouro do santuário que não tem relíquia para oferecer (todas as abertas já são do herói). */
+export function shrineFallbackGold(wave: number): number {
+  const g = RUN_MAP.shrineFallbackGold;
+  return g.base + g.perWave * Math.max(1, wave);
+}
+
 export function chooseCard(run: RunState, card: MapCard): MapStep {
   if (card.node !== "event") run.mapHistory.push(card.node);
   if (card.room) {

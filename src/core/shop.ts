@@ -12,7 +12,7 @@ import { addModifier, addSpell, levelUpSpell } from "./spells";
 import { newSpellSlot } from "./run";
 import { MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELLS, modifierDef, type SpellEffect, type SpellId } from "../data/spells";
 import { RELICS } from "../data/relics";
-import { grantRelic } from "./relics";
+import { canGainRelic, grantRelic } from "./relics";
 import {
   SHOP_CATEGORIES, SHOP_GENERAL, SHOP_ITEMS, SHOP_MODIFIER, SHOP_OFFERS, SHOP_REASONS, SHOP_RELIC, SHOP_REROLL, SHOP_SPELL,
   shopLevel, type GeneralKind, type ShopCategory,
@@ -234,7 +234,7 @@ function evaluateBase(run: RunState, visit: ShopVisit, o: ShopOffer): OfferEval 
   }
   if (o.kind === "relic") {
     const cost = relicCost(shop, o.relic!, L);
-    if (run.relics.includes(o.relic!)) return { cost, valid: false, reason: R.alreadyBought };
+    if (!canGainRelic(run.relics, o.relic!)) return { cost, valid: false, reason: R.alreadyBought };
     return { cost, valid: true };
   }
   // spell_modifier

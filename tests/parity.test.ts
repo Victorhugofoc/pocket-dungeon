@@ -1203,10 +1203,10 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
       run.bannedRelics = [...sc.banned];
       run.tags = { ...sc.tags };
       let j = 0;
-      const got = relicDraft(run, () => true, () => sc.u[j++ % sc.u.length], sc.n);
+      const got = relicDraft(run, () => true, () => sc.u[j++ % sc.u.length], sc.n, false); // o de lá: sem acúmulo (D7 revista)
       const lua = L.draws[i];
       expect(got, `#${i}`).toEqual(Array.isArray(lua) ? lua : []);
-      for (const id of relicDraftPool(run, () => true)) seen.add(relicDraftWeight(run, id));
+      for (const id of relicDraftPool(run, () => true, false)) seen.add(relicDraftWeight(run, id));
     });
     // os cenários passam pelos pesos: receita (3), fora da build (0,25), peça sem a spell (1/3 e 0)
     for (const w of [3, 0.25, 1 / 3, 0]) expect(seen.has(w), String(w)).toBe(true);

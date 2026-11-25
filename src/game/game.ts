@@ -15,7 +15,7 @@ import { BUILD_EVOLUTION_BY_ID, SYNERGY_BY_ID } from "../data/synergies";
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
 import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
-import { arcSpots, chooseCard, expireWaveScope, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
+import { arcSpots, chooseCard, shrineFallbackGold, expireWaveScope, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
   canHasten, hasten, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
   type WaveMods, type WaveSpawn, type WaveState,
@@ -40,7 +40,7 @@ import { bossAllowed, crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { POOL_RELIC_CHOICES, POOL_TITLE, RELICS, RELIC_EVOLUTIONS, RELIC_IDS, type RelicPool } from "../data/relics";
-import { banRelicChoice, banRelic, bossRelicOffer, declineRelicEvolutions, evolveRelic, pendingRelicEvolutionOffer, poolRelicDraft, grantRelic, relicDraft, relicDraftPool, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
+import { banRelicChoice, banRelic, bossRelicOffer, declineRelicEvolutions, evolveRelic, pendingRelicEvolutionOffer, poolRelicDraft, grantRelic, relicCopies, relicDraft, relicDraftPool, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
 import { HERO_UPGRADES, TUNING, UPGRADE_FX } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -1522,7 +1522,8 @@ export class Game {
   addRelic(id: string): void {
     if (!RELICS[id] || !grantRelic(this.run, id)) return;
     this.ach.relicFound(id);
-    this.events.toast(`Relic: ${RELICS[id].name}`, "#ffc83d");
+    const n = relicCopies(this.run.relics, id);
+    this.events.toast(`Relic: ${RELICS[id].name}${n > 1 ? ` x${n}` : ""}`, "#ffc83d");
     this.recompute();
     this.audio.play("rare");
     this.events.statusChanged();
@@ -2506,6 +2507,18 @@ export class Game {
     this.events.zoneChanged();
     if (step === "relic") {
       const offer = this.drawRelics(BOSS.relicChoices);
+      if (!offer.length) {
+        // nenhuma relíquia aberta sobrou: ouro no lugar, e o mapa segue (sem isso a escolha vazia travava a partida)
+        const gold = shrineFallbackGold(run.wave);
+        run.gold += gold;
+        run.statistics.goldEarned += gold;
+        const p = this.player;
+        this.fx.text(p.x, 2.8, p.z, "No relics left", "gold");
+        this.fx.text(p.x, 2.2, p.z, `+${gold}g`, "gold");
+        this.audio.play("coin");
+        this.resolveMap();
+        return;
+      }
       this.shrineOpen = true;
       this.events.relicChoice(offer, (id) => {
         this.addRelic(id);
