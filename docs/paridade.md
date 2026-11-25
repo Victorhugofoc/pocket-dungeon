@@ -141,7 +141,7 @@ Números em `src/data/run.ts`, fórmulas em `src/core/waves.ts` e o ciclo da ond
 
 | # | Regra no Dungeon Reign | Fonte | Aqui | Estado |
 |---|---|---|---|---|
-| P1 | Desafios da partida: um novo nas ondas 1, 6, 11 e 16 (até 2 abertos), com prazo, pagos em ouro ou troca grátis | `run/challenges.lua` | — | falta (`M20-13`) |
+| P1 | Desafios da partida: um novo nas ondas 1, 6, 11 e 16 (até 2 abertos), com prazo, pagos em ouro ou troca grátis | `run/challenges.lua` | `core/challenges.ts` (`ChallengeTracker`), números em `data/challenges.ts`; fluxo `challenges`; troca grátis na loja e no nível, relíquia garantida na loja (testado: os 13 desafios e 40 partidas roteirizadas contra o Lua, com avisos, prazos, progresso, pagamentos e textos). O ouro aqui chega pelos orbes, então Thrift também confere ao recolher | igual |
 | P2 | 17 eventos na carta de evento do mapa | `data/events.lua`; `core/events.lua` | carta desligada | falta (`M11-08`) |
 | P3 | 8 pactos na carta de pacto do mapa | `data/pacts.lua` | carta desligada | falta (`M13-03`) |
 | P4 | Depths 1 a 5: mutações, marcas e vantagens | `data/depths.lua`; `core/depths.lua` | — | falta (`M13-02`) |

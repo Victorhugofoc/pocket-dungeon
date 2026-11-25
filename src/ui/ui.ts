@@ -14,7 +14,7 @@ import {
   AURA_SPIKE_TEXT, EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
 } from "../data/spells";
 import { wantedRelics } from "../core/evolution";
-import { effectsFor, rerollCost as levelRerollCost, rerollsLeft, type UpgradeTier } from "../core/levelup";
+import { effectsFor, rerollsLeft, type UpgradeTier } from "../core/levelup";
 import { evaluateOffer, rerollCost, shopSlotOf, type ShopOffer } from "../core/shop";
 import { SHOP_ITEMS } from "../data/shop";
 import { PCT_STATS, UPGRADE_BY_ID, type UpgradeDef, type UpgradeEffect } from "../data/upgrades";
@@ -32,6 +32,7 @@ import { relicBansLeft, relicCopies, relicStacks } from "../core/relics";
 import { buildIdentity, tagCount } from "../core/synergies";
 import { BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_THRESHOLD, IDENTITIES, PATH_NAMES, SYNERGY_BY_ID } from "../data/synergies";
 import { iconHtml, modifierIconHtml, slotIconUrl, spellIconUrl, techniqueIconUrl, uiIconUrl, upgradeIconUrl, evolutionIconUrl } from "./icons";
+import { challengeHudHtml, challengeHudKey, challengePanelHtml, daringOpen } from "./challenges-view";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
 
@@ -210,6 +211,7 @@ export class Ui {
       },
       victory: () => this.showVictory(),
       banner: (t, sub) => this.banner(t, sub),
+      challenges: () => this.updateChallenges(),
     };
     window.addEventListener("keydown", (e) => this.onKey(e));
     // registro de partidas: fechar a aba (ou recarregar) no meio de uma partida também conta
@@ -509,7 +511,7 @@ export class Ui {
     this.hud.innerHTML = `
       <div id="vignette"></div>
       <div id="arrows" data-r="arrows"></div>
-      <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold"><span data-r="gold"></span><span class="bank hidden" data-r="bank" title="BANKED LOOT: orbs left on the floor were banked. Enemies with the coin under them drop double until it runs out."></span></p><div class="points hidden" data-r="points"></div></div>
+      <div class="hud-top-left"><h2 data-r="zone"></h2><p data-r="zoneSub"></p><p class="gold"><span data-r="gold"></span><span class="bank hidden" data-r="bank" title="BANKED LOOT: orbs left on the floor were banked. Enemies with the coin under them drop double until it runs out."></span></p><div class="points hidden" data-r="points"></div><div class="challenges" data-r="challenges"></div></div>
       <div id="wavebar" data-r="waveBar"><b data-r="waveN"></b><span data-r="waveT"></span><span class="hasten hidden" data-r="hasten"></span></div>
       <div id="banner" data-r="banner"></div>
       <canvas id="minimap" width="176" height="176"></canvas>
@@ -620,9 +622,21 @@ export class Ui {
     this.r.zoneSub.textContent = `${z.subtitle} · waves ${first}–${first + 4}`;
   }
 
+  /** M20-13: a lista de desafios do HUD, redesenhada só quando algum muda */
+  private updateChallenges(): void {
+    const g = this.game;
+    if (!g.started) return;
+    const key = challengeHudKey(g.run);
+    const box = this.r.challenges;
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    box.innerHTML = challengeHudHtml(g.run);
+  }
+
   private updateHud(): void {
     const g = this.game;
     if (!g.started) return;
+    if (this.frameN % 10 === 0) this.updateChallenges();
     const p = g.player;
     const s = g.stats;
     const r = this.r;
@@ -690,10 +704,11 @@ export class Ui {
     r.hint.classList.toggle("hidden", !hint || !!this.overlay);
     // M21-08: a carta do portão mais perto (o mapa de consulta)
     const gi = cards && g.phase === "walk" ? g.nearGate : -1;
-    const key = gi >= 0 ? `${g.run.wave}:${gi}` : "";
+    const daring = daringOpen(g.run);
+    const key = gi >= 0 ? `${g.run.wave}:${gi}:${daring}` : "";
     if (r.gateCard.dataset.key !== key) {
       r.gateCard.dataset.key = key;
-      r.gateCard.innerHTML = gi >= 0 ? mapCardHtml(cards![gi], gi) : "";
+      r.gateCard.innerHTML = gi >= 0 ? mapCardHtml(cards![gi], gi, daring) : "";
     }
     r.gateCard.classList.toggle("hidden", !key || !!this.overlay);
     if (this.frameN % 15 === 0 && !r.perf.classList.contains("hidden")) {
@@ -956,6 +971,7 @@ export class Ui {
         <div class="relics">${run.relics.length ? relicStacks(run.relics).map(({ id, copies }) => `<div class="relic with-icon" data-relic="${id}" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}${copies > 1 ? ` <b class="copies">x${copies}</b>` : ""}</div>`).join("")
           : `<span style="color:var(--muted)">Defeat a boss to pick the first one.</span>`}</div>
         ${buildPanelHtml(run)}
+        ${challengePanelHtml(run)}
         <div class="row end"><button data-act="close">Close (I)</button></div>
       </div>`;
     panel.onclick = (ev) => {
@@ -1048,12 +1064,12 @@ export class Ui {
     const run = g.run;
     const title = v.auto === "preboss" ? "Pre-boss shop: get ready for the next wave"
       : v.auto === "champion" ? "Champion shop: opens before the map" : "Magic Shop";
-    const reroll = rerollCost(v);
+    const reroll = rerollCost(v, run.freeRerolls);
     panel.innerHTML = `<h2>Magic Shop <small>Lv ${v.level}</small></h2>
       <p class="sub">${title} · <b class="gold">${run.gold} gold</b></p>
       <div class="cards shop">${v.offers.map((o, i) => shopOfferHtml(g, o, i)).join("")}</div>
       <div class="row end">
-        <button data-act="reroll" ${run.gold >= reroll ? "" : "disabled"}>Reroll (R) — ${reroll} gold</button>
+        <button data-act="reroll" ${run.gold >= reroll ? "" : "disabled"}>Reroll (R) — ${reroll ? `${reroll} gold` : "free"}</button>
         <button data-act="leave">Leave shop (Esc)</button>
       </div>`;
     panel.onclick = (ev) => {
@@ -1094,7 +1110,7 @@ export class Ui {
     if (!L) return;
     const panel = this.open("levelup", "levelup");
     panel.style.width = "min(820px, 96vw)";
-    const cost = levelRerollCost(g.run);
+    const cost = g.levelRerollCost();
     const left = rerollsLeft(L.rerolls);
     const can = left > 0 && g.run.gold >= cost;
     panel.innerHTML = `<h2>Level ${g.run.level - g.run.pendingLevelUps + 1}${L.total > 1 ? ` <small>(${L.index} of ${L.total})</small>` : ""}</h2>
@@ -1106,7 +1122,7 @@ export class Ui {
         return `<div class="card icon-card" data-up="${i}" style="--cc:${TIER_COLOR[t]}">${iconHtml(upgradeIconUrl(u.id), 56, "ricon big")}<div class="meta">${TIER_LABEL[t]}</div>
           <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${synergyCardHtml(g.run.tags, u.tags, g.run.buildEvolutions)}</div>`;
       }).join("")}</div>
-      <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost} gold${left > 0 ? "" : " (already rerolled)"}</button></div>`;
+      <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost ? `${cost} gold` : "free"}${left > 0 ? "" : " (already rerolled)"}</button></div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=reroll]")) {
@@ -1274,6 +1290,7 @@ export class Ui {
           <div class="kv"><span>Gold earned / spent</span><b>${n(s.goldEarned)} / ${n(s.goldSpent)}</b></div>
           <div class="kv"><span>Combat time</span><b>${fmtTime(Math.floor(s.elapsed))}</b></div>
           <div class="kv"><span>Upgrades / relics</span><b>${run.upgradesTaken.length} / ${run.relics.length}</b></div>
+          <div class="kv"><span>Challenges done</span><b>${run.challengesDone ?? 0} / ${run.challengesOffered ?? 0}</b></div>
         </div>
         <div>
           <div class="section">Relics (${run.relics.length})</div>
@@ -1391,7 +1408,9 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     color = "#b36bff";
   } else if (o.kind === "relic") {
     const d = RELICS[o.relic!];
-    meta = `${RELIC_RARITY[d.rarity]} relic`;
+    // M20-13: a relíquia da Encomenda (desafio Special Order) leva a marca ORDER
+    const order = !o.bought && g.run.forcedShopRelic === d.id;
+    meta = `${RELIC_RARITY[d.rarity]} relic${order ? ` · <b class="order">ORDER</b>` : ""}`;
     name = d.name;
     icon = relicIconHtml(d.id, 56, "ricon big");
     body = relicLines(d);
@@ -1440,7 +1459,7 @@ function shopOfferTip(g: Game, o: ShopOffer): string {
 }
 
 /** Uma carta do mapa: o tipo, a sala sorteada e o que ela muda na onda. */
-function mapCardHtml(c: MapCard, i: number): string {
+function mapCardHtml(c: MapCard, i: number, daring = false): string {
   const n = MAP_NODE[c.node];
   const room: RoomDef | undefined = c.room ? ROOM_BY_ID[c.room] : undefined;
   let body = `<p class="note">${n.text}</p>`;
@@ -1459,6 +1478,8 @@ function mapCardHtml(c: MapCard, i: number): string {
     const notes = (room.notes ?? []).map((t) => `<p class="note">${t}</p>`);
     body = `<h3 style="margin-top:6px">${room.name}</h3>${lines.join("")}${notes.join("")}<p class="note">${n.text}</p>`;
   }
+  // M20-13: a sala amaldiçoada cumpre o desafio Daring aberto
+  if (daring && c.node === "cursed_room") body += `<p class="ch-gate">Counts for the DARING challenge</p>`;
   return `<div class="card" data-card="${i}" style="--cc:${n.color}"><div class="meta">${n.name}</div>${body}</div>`;
 }
 

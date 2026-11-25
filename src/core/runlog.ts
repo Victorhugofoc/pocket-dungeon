@@ -3,6 +3,7 @@
 // (vite.config.ts); fora dele fica só no navegador e sai pelo botão "Export run log" da tela de título.
 import type { RunState } from "./run";
 import type { FrameStats, RunPerf } from "./perflog";
+import type { ChallengeLogEntry } from "./challenges";
 
 export const RUNLOG_VERSION = 1;
 /** quantas partidas o navegador guarda (as mais novas) */
@@ -73,6 +74,8 @@ export interface RunLogEntry {
   detours: { wave: number; kind: string }[];
   bossHistory: string[];
   waves: WaveEntry[];
+  /** M20-13: desafios oferecidos e como acabaram (os abertos com o progresso de agora) */
+  challenges?: { offered: number; done: number; list: ChallengeLogEntry[] };
   /** desempenho da partida (só do trecho jogado nesta sessão do navegador; as ondas guardam o delas) */
   perf?: RunPerf;
 }
@@ -119,6 +122,13 @@ export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string,
     upgrades: run.upgradesTaken.map((id, i) => ({ id, tier: run.upgradeTiers[i] ?? "common" })),
     mapHistory: [...run.mapHistory], detours: run.detours.map((d) => ({ ...d })), bossHistory: [...run.bossHistory],
     waves: last ? [...run.waveLog, last] : [...run.waveLog],
+    challenges: {
+      offered: run.challengesOffered ?? 0, done: run.challengesDone ?? 0,
+      list: (run.challengeLog ?? []).map((e) => {
+        const open = e.result === "open" ? run.challenges?.find((c) => c.id === e.id && c.wave === e.wave) : undefined;
+        return open?.goal !== undefined ? { ...e, progress: open.progress, goal: open.goal } : { ...e };
+      }),
+    },
     ...(perf ? { perf } : {}),
   };
 }
