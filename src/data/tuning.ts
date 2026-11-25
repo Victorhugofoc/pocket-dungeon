@@ -82,37 +82,29 @@ export const TUNING = {
   world: {
     size: 240,
     margin: 14,
-    bossArenaRadius: 17,
-    /** raio das clareiras das ondas 1 a 4 de cada zona */
-    segmentRadius: 16,
+    /** M21-15: raio da arena do chefe, na mesma proporção da arena das ondas (antes 17 para 17,9) */
+    bossArenaRadius: 21,
+    /** M21-15: raio da arena das ondas 1 a 4 de cada zona (antes, clareiras de 17,9; variantes medidas pelo bot) */
+    arenaRadius: 22,
     /**
-     * M21-12: as 3 trilhas entre uma clareira e a seguinte: a do meio e duas que se abrem `bulge` para os lados
-     * (encolhe até `minBulge` se chegar perto de outra clareira), saindo da borda a `departDeg` graus e voltando a se
-     * juntar `junction` antes da clareira seguinte. Curtas desde a M21-13.
+     * M21-15: a arena das ondas e a do chefe em diagonal: `gap` = vão entre as bordas, `xJitter` = quanto o par sai do
+     * meio do mapa, `bend` = curva da trilha entre as duas.
      */
-    forks: { bulge: 7, minBulge: 4, departDeg: 38, junction: 2, samples: 10, clearance: 2 },
-    /**
-     * M21-13: a zona é uma corrente de arenas em linha reta (substitui o zigue-zague da M21-12): `gap` = vão entre a
-     * borda de uma clareira e a da seguinte (as trilhas da bifurcação cabem nele, ~2 s andando), `xJitter` = quanto o
-     * centro sai do meio, `bend` = curva do caminho do meio entre duas paradas.
-     */
-    chain: { gap: [9, 11] as const, xJitter: 4, bend: 1.5 },
-    /** M21-08: portões do mapa da partida, na trava de cada trilha (M21-12) */
+    arena: { gap: [10, 12] as const, xJitter: 4, bend: 1.5 },
+    /** M21-15: setas na borda para inimigos fora da tela (o bot mediu 25% fora da tela no zoom 1): só as `max` mais perto */
+    edgeArrows: { max: 8 },
+    /** M21-08: os altares das cartas (M21-15; antes portões) */
     gates: {
-      /** distância do centro do portão que conta como passar por ele (a trilha tem ~6 de largura) */
-      triggerRadius: 3.4,
-      /** vão entre as colunas (metros): da largura da trilha */
+      /** vão entre as colunas (metros) */
       width: 4.6,
-      /** M21-12: sem portão escolhido, chegar a esta distância da borda da clareira escolhe o portão mais perto */
-      fallbackReach: 2,
       /**
-       * M21-14: os portões ficam dentro da clareira vencida (ou em volta da fogueira), em arco virado para a seguinte:
-       * a `ring` do raio (pelo menos `minRing` m do centro), `spread` graus entre um e o vizinho ou mais, para ficarem a
-       * `minGap` m um do outro (o brilho de cada um tem ~7 m); E perto (`useRadius`, o mesmo raio que mostra a carta)
-       * escolhe e leva até a seguinte. Os desvios ficam do lado de trás, a `detourRing` do raio.
+       * M21-14/M21-15: os altares ficam na arena (`ring` do raio, pelo menos `minRing` m do centro), em arco virado
+       * para a arena do chefe, `spread` graus entre um e o vizinho ou mais, para ficarem a `minGap` m um do outro (o
+       * brilho de cada um tem ~7 m); E perto (`useRadius`, o mesmo raio que mostra a carta) escolhe e a onda começa.
+       * Os desvios ficam do lado de trás, a `detourRing` do raio.
        */
-      ring: 0.62, minRing: 9, spread: 50, minGap: 12.5, useRadius: 5.5, detourRing: 0.6, detourSpread: 70,
-      /** onde o herói chega na clareira seguinte: fração do raio, do centro para o lado de onde veio */
+      ring: 0.55, minRing: 9, spread: 40, minGap: 12.5, useRadius: 5.5, detourRing: 0.55, detourSpread: 70,
+      /** onde o herói chega na arena do chefe: fração do raio, do centro para o lado de onde veio */
       arrive: 0.35,
     },
   },

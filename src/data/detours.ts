@@ -1,4 +1,4 @@
-// M21-09: desvios opcionais ao lado do caminho entre as clareiras (D18). Cada um é uma pergunta de risco curta:
+// M21-09: desvios opcionais (D18); desde a M21-15, um 4º altar opcional na arena. Cada um é uma pergunta de risco curta:
 // baú guardado por um campeão, santuário que troca vida por ouro, atalho que pula a próxima loja e dá um nível.
 // Números de primeiro chute (ritmo do RPG, sem par no Dungeon Reign).
 
@@ -23,15 +23,8 @@ export const DETOURS: Record<DetourKind, DetourDef> = {
 };
 
 export const DETOUR = {
-  /** quantos desvios por trecho: [quantidade, peso] */
-  count: [[0, 0.3], [1, 0.45], [2, 0.25]] as const,
-  /** distância do meio do trecho para o lado (metros) */
-  offset: [5, 9] as const,
-  /** folga da beira de qualquer clareira (metros) */
-  clearingGap: 3,
-  /** raio de chão livre em volta do desvio e largura do corredor até ele */
-  clearRadius: 2.2,
-  corridor: 0.7,
+  /** quantos desvios por onda: [quantidade, peso]. M21-15: no máximo 1 (o 4º altar opcional; o peso do 2 foi para o 1) */
+  count: [[0, 0.3], [1, 0.7]] as const,
   /** distância do desvio que conta como perto (E) */
   useRadius: 2.6,
   chest: {

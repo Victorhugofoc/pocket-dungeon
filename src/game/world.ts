@@ -2,7 +2,7 @@
 // chão com shader procedural, grama com vento, flora instanciada em blocos (para o culling), fogueira, arena e portal.
 import * as THREE from "three";
 import { Rng } from "../core/rng";
-import { allTrails, distToTrails, type Obstacle, type ZoneLayout } from "../core/worldgen";
+import { distToPath, type Obstacle, type ZoneLayout } from "../core/worldgen";
 import type { DecorKind, ZoneDef } from "../data/zones";
 import { buildDecor, buildFlower, type MatKind } from "./flora";
 import { buildShafts } from "./air";
@@ -54,8 +54,8 @@ function buildMask(layout: ZoneLayout): THREE.CanvasTexture {
   ctx.lineJoin = "round";
   ctx.lineWidth = 6.2 * k;
   ctx.beginPath();
-  // M21-12: o caminho do meio e as trilhas dos lados das bifurcações
-  for (const line of allTrails(layout.path, layout.forks)) {
+  // M21-15: a trilha da arena das ondas até a do chefe
+  for (const line of [layout.path]) {
     ctx.beginPath();
     line.forEach((p, i) => (i ? ctx.lineTo(tx(p.x), tx(p.z)) : ctx.moveTo(tx(p.x), tx(p.z))));
     ctx.stroke();
@@ -69,10 +69,8 @@ function buildMask(layout: ZoneLayout): THREE.CanvasTexture {
   };
   disc(layout.boss.x, layout.boss.z, layout.bossRadius - 0.5, 1);
   disc(layout.spawn.x, layout.spawn.z, 6.5, 1);
-  // clareiras das ondas 1 a 4: chão gasto, mais claro no meio
-  for (const sg of layout.segments.slice(0, -1)) disc(sg.x, sg.z, sg.r * 0.7, 0.45);
-  // M21-10: o fosso é terra (sem grama por cima)
-  for (const sg of layout.segments) if (sg.terrain) disc(sg.terrain.pit.x, sg.terrain.pit.z, sg.terrain.pit.r + 0.9, 1);
+  // M21-15: a arena das ondas: chão gasto, mais claro no meio
+  disc(layout.segments[0].x, layout.segments[0].z, layout.segments[0].r * 0.7, 0.45);
   // sombra de contato: discos verdes somados (não mexem no vermelho), com desfoque menor
   ctx.filter = "blur(2.5px)";
   ctx.globalCompositeOperation = "lighter";
@@ -345,7 +343,7 @@ export function buildWorld(scene: THREE.Scene, zone: ZoneDef, layout: ZoneLayout
       const fx0 = p.x + Math.cos(a) * d;
       const fz0 = p.z + Math.sin(a) * d;
       // nada de flor na terra batida
-      if (distToTrails(fx0, fz0, layout) < 4.2 || Math.hypot(fx0 - layout.boss.x, fz0 - layout.boss.z) < layout.bossRadius + 1
+      if (distToPath(fx0, fz0, layout.path) < 4.2 || Math.hypot(fx0 - layout.boss.x, fz0 - layout.boss.z) < layout.bossRadius + 1
         || Math.hypot(fx0 - layout.spawn.x, fz0 - layout.spawn.z) < 8 || layout.segments.some((c) => Math.hypot(fx0 - c.x, fz0 - c.z) < c.r * 0.6)) continue;
       inst.position.set(fx0, 0, fz0);
       inst.rotation.set(0, rng.range(0, 6.28), 0);

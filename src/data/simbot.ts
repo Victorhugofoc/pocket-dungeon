@@ -140,6 +140,11 @@ export const BOT_RUN = {
   maxTime: 3600,
   /** sem trocar de onda nem de fase por tanto tempo de jogo, a partida está presa */
   stuckTime: 300,
+  /**
+   * M21-15: a tela vista em volta do herói (metros, metade da largura e da profundidade no zoom 1; ~31 × 24 m) e os
+   * zooms medidos, para contar os inimigos fora da tela na luta
+   */
+  offscreen: { halfWidth: 15.5, halfDepth: 12, zooms: [1, 1.15] },
 } as const;
 
 /**

@@ -40,10 +40,10 @@ describe("camada de ritmo (M21-02)", () => {
     expect(p.speed).toBe(o.speed);
   });
 
-  it("as clareiras das ondas usam o raio com ritmo; a arena do chefe não", () => {
+  it("a arena das ondas usa o raio com ritmo; a do chefe não", () => {
     const z = generateZone(ZONES.bosque, 7);
     const segs = z.segments.slice(0, -1);
-    for (const s of segs) expect(s.r).toBeCloseTo(TUNING.world.segmentRadius * PACE.clearingMult, 12);
+    for (const s of segs) expect(s.r).toBeCloseTo(TUNING.world.arenaRadius * PACE.clearingMult, 12);
     expect(z.segments[z.segments.length - 1].r).toBe(TUNING.world.bossArenaRadius);
   });
 

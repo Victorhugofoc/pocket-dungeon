@@ -168,12 +168,3 @@ export function arcSpots(from: { x: number; z: number }, to: { x: number; z: num
   }
   return out;
 }
-
-/**
- * M21-12: um portão na trava de cada trilha da bifurcação. Com 3 cartas, uma por trilha; com 2, as dos lados; com 1,
- * a do meio. O portão fica de frente para quem anda pela trilha.
- */
-export function forkGateSpots(fork: { trails: readonly { lock: { x: number; z: number; angle: number } }[] }, n: number): GateSpot[] {
-  const pick = n >= 3 ? [0, 1, 2] : n === 2 ? [0, 2] : n === 1 ? [1] : [];
-  return pick.map((k) => ({ x: fork.trails[k].lock.x, z: fork.trails[k].lock.z, angle: fork.trails[k].lock.angle }));
-}

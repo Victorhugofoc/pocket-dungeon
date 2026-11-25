@@ -245,6 +245,7 @@ Registrado em 2026-11-20, depois de uma revisão crítica do loop pedida pelo us
 - Saem ou mudam: trilhas, bifurcações, desvios (talvez um 4º altar opcional) e os 5 trechos do `worldgen`; a caminhada do bot some. Para não ficar monótono, a arena muda um pouco a cada onda conforme a carta (poças, pedras, luz).
 - **Pendências para confirmar com o usuário ao começar:** o texto novo do `docs/design.md`; o destino dos desvios; o que muda na arena a cada carta; a variante de tamanho (depois da medição).
 - Pronto quando: as 4 ondas de cada zona correm na mesma arena com a escolha nos altares, o bot mede as variantes de tamanho e o usuário joga e aprova.
+- **Feito em 2026-11-25 (falta o usuário jogar):** partes a a d. Pendências respondidas: texto do `design.md` (itens 2 a 4 do loop), desvios viram o 4º altar opcional (no máximo 1 por onda), cada onda com o seu fosso e barris e a luz pela carta, tamanho 22 m (escolha do usuário depois da medição: 78% no difícil, 25% dos inimigos fora da tela no zoom 1; a de 26 m e a oval não foram medidas). Seta na borda para todo inimigo fora da tela (as 8 mais perto; campeão e chefe em dourado).
 
 **M21-11 · Maestria por herói** · M (depois do M13)
 - Jogar com um herói libera alternativas sem ganho de poder (ex.: técnica alternativa, ataque básico alternativo), no espírito dos desbloqueios do original.
