@@ -5,7 +5,7 @@
 // - Ganchos: as relíquias que mudam o jogo (não só somam atributo) são mecânicas ligadas por um atributo próprio,
 //   como em relic_mechanics.lua; o jogo chama `RelicHooks` nos pontos de evento (quadro, abate, golpe sofrido,
 //   conjuração, nível, dano causado, cura) e elas respondem pelo `RelicWorld`.
-import { inNormalPool, RELIC_DRAFT, RELIC_IDS, RELIC_MECH, RELICS, type RelicDef, type RelicPool, type RelicRarity } from "../data/relics";
+import { inNormalPool, RELIC_DRAFT, RELIC_EVOLUTIONS, RELIC_IDS, RELIC_MECH, RELICS, type RelicDef, type RelicPool, type RelicRarity } from "../data/relics";
 import { MAX_SPELLS } from "../data/spells";
 import { wantedRelics } from "./evolution";
 import { elementsOf, hasElement } from "./levelup";
@@ -579,4 +579,68 @@ export class RelicHooks {
     }
     return out;
   }
+}
+
+// ---------------------------------------------------------------- evolução de relíquia (relic_system.lua §§45-47, M12-08)
+
+/** relic_system.lua `ownedGroups`: os grupos exclusivos já tomados por uma relíquia de nível 3 do herói (grupo → id). */
+export function ownedRelicGroups(relics: readonly string[]): Record<string, string> {
+  const g: Record<string, string> = {};
+  for (const id of relics) {
+    const d = relicDef(id);
+    if (d?.exclusiveGroup) g[d.exclusiveGroup] = id;
+  }
+  return g;
+}
+
+export type RelicEvolveBlock = "owned" | "missing" | "exclusive";
+
+/** relic_system.lua `canEvolve`: null quando pode, ou o motivo ("owned", "missing", "exclusive"). */
+export function relicEvolveBlock(relics: readonly string[], evoId: string): RelicEvolveBlock | null {
+  const d = relicDef(evoId);
+  if (!d?.requires) throw new Error(`not a relic evolution: ${evoId}`);
+  if (relics.includes(evoId)) return "owned";
+  if (d.requires.some((c) => !relics.includes(c))) return "missing";
+  if (d.exclusiveGroup && ownedRelicGroups(relics)[d.exclusiveGroup]) return "exclusive";
+  return null;
+}
+
+/** relic_system.lua `availableEvolutions`: as evoluções que a coleção de agora fecha, na ordem de relics.lua. */
+export function availableRelicEvolutions(relics: readonly string[]): string[] {
+  return RELIC_EVOLUTIONS.filter((d) => relicEvolveBlock(relics, d.id) === null).map((d) => d.id);
+}
+
+/**
+ * run_drafts.lua `offerRelicEvolution`: até 3 evoluções prontas que não foram recusadas com esta mesma coleção
+ * (`relicVersion`); mais de 3 sorteia como `RNG:sample` de lá (embaralha uma cópia e pega as 3 primeiras).
+ */
+export function pendingRelicEvolutionOffer(run: RunState, shuffle: (a: string[]) => string[]): string[] | null {
+  const list = availableRelicEvolutions(run.relics).filter((id) => run.relicEvoDeclined[id] !== run.relicVersion);
+  if (!list.length) return null;
+  return list.length > 3 ? shuffle([...list]).slice(0, 3) : list;
+}
+
+/** relic_system.lua `evolve`: as peças são consumidas (A + B → C), as tags delas saem e entram as da evoluída (§45). */
+export function evolveRelic(run: RunState, evoId: string): void {
+  const why = relicEvolveBlock(run.relics, evoId);
+  if (why) throw new Error(`cannot evolve ${evoId}: ${why}`);
+  for (const c of RELICS[evoId].requires!) removeRelic(run, c);
+  grantRelic(run, evoId);
+  run.relicEvolutionsDone += 1;
+}
+
+/** run_drafts.lua `skipRelicEvolution`: recusa as opções até a coleção de relíquias mudar. */
+export function declineRelicEvolutions(run: RunState, ids: readonly string[]): void {
+  for (const id of ids) run.relicEvoDeclined[id] = run.relicVersion;
+}
+
+/** As evoluções que usam esta relíquia como peça (para mostrar a receita na carta e na tela I). */
+export function relicEvolutionsUsing(id: string): RelicDef[] {
+  return RELIC_EVOLUTIONS.filter((d) => d.requires!.includes(id));
+}
+
+/** As outras relíquias do mesmo grupo exclusivo, que esta de nível 3 bloqueia (§47). */
+export function relicGroupRivals(evoId: string): RelicDef[] {
+  const g = relicDef(evoId)?.exclusiveGroup;
+  return g ? RELIC_EVOLUTIONS.filter((d) => d.exclusiveGroup === g && d.id !== evoId) : [];
 }

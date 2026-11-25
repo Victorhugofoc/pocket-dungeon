@@ -132,6 +132,10 @@ export interface RunState {
   /** "espaço:evolução" → `relicVersion` de quando foi recusada (evolution.lua `evolutionDeclined`) */
   evolutionDeclined: Record<string, number>;
   evolutionsDone: number;
+  /** evolução de relíquia → `relicVersion` de quando foi recusada (run_drafts.lua `relicEvoDeclined`, M12-08) */
+  relicEvoDeclined: Record<string, number>;
+  /** relic_system.lua `relicEvolutionsDone` */
+  relicEvolutionsDone: number;
   upgradesTaken: string[];
   /** raridade de cada melhoria pega, na mesma ordem de `upgradesTaken` */
   upgradeTiers: UpgradeTier[];
@@ -218,6 +222,8 @@ export function newRun(opts: NewRunOptions): RunState {
     relicVersion: 0,
     evolutionDeclined: {},
     evolutionsDone: 0,
+    relicEvoDeclined: {},
+    relicEvolutionsDone: 0,
     upgradesTaken: [],
     upgradeTiers: [],
     tags: {},
@@ -305,6 +311,9 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.relicVersion ??= 0;
   run.evolutionDeclined ??= {};
   run.evolutionsDone ??= 0;
+  // checkpoints de antes do M12-08
+  run.relicEvoDeclined ??= {};
+  run.relicEvolutionsDone ??= 0;
   // checkpoints de antes do M6-07
   run.devUsed ??= false;
   // checkpoints de antes do registro de partidas

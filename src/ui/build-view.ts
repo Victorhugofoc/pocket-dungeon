@@ -5,7 +5,8 @@ import { buildIdentity, nearestSynergies, synergyPreview, synergyProgress, tagCo
 import {
   BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_BY_PATH, BUILD_EVOLUTION_THRESHOLD, BUILD_EVOLUTIONS, IDENTITIES, PATH_NAMES, SYNERGIES, SYNERGY_BY_ID,
 } from "../data/synergies";
-import type { RelicRarity } from "../data/relics";
+import { RELICS, type RelicRarity } from "../data/relics";
+import { relicEvolutionsUsing, relicGroupRivals } from "../core/relics";
 import { iconHtml, relicIconUrl } from "./icons";
 
 /** Cor da moldura por raridade (a carta e a fileira de relíquias da tela I). */
@@ -107,4 +108,52 @@ export function buildPanelHtml(run: { tags: Tags; activeSynergies: readonly stri
 export function tagListHtml(tags: readonly string[]): string {
   const shown = tags.filter((t) => PATH_NAMES[t]);
   return shown.length ? `<span class="rtags">${shown.map(pathName).join(" · ")}</span>` : "";
+}
+
+// ---------------------------------------------------------------- evolução de relíquia (M12-08)
+
+const GROUP_NAME: Record<string, string> = {
+  spell_apex: "Spell apex", defense_apex: "Defense apex", mobility_apex: "Mobility apex", weapon_apex: "Weapon apex",
+};
+export const relicGroupName = (g: string) => GROUP_NAME[g] ?? g;
+
+/**
+ * As receitas da relíquia (relic_view.lua): de que ela é feita, quem ela bloqueia (nível 3) e, se é peça de alguma
+ * evolução, com o que ela evolui (a outra peça marcada quando o herói já tem).
+ */
+export function relicRecipeHtml(id: string, owned: readonly string[]): string {
+  const d = RELICS[id];
+  if (!d) return "";
+  let out = "";
+  if (d.requires) {
+    out += `<div class="recipe">Evolved from ${d.requires.map((c) => RELICS[c].name).join(" + ")}</div>`;
+    const rivals = relicGroupRivals(id);
+    if (d.exclusiveGroup && rivals.length) {
+      out += `<div class="recipe bad">${relicGroupName(d.exclusiveGroup)}: blocks ${rivals.map((r) => r.name).join(", ")}</div>`;
+    }
+  }
+  for (const evo of relicEvolutionsUsing(id)) {
+    const other = evo.requires!.filter((c) => c !== id);
+    const has = other.every((c) => owned.includes(c));
+    out += `<div class="recipe${has ? " ready" : ""}">+ ${other.map((c) => RELICS[c].name).join(" + ")} → <b>${evo.name}</b>${has ? " ✓" : ""}</div>`;
+  }
+  return out ? `<div class="recipes">${out}</div>` : "";
+}
+
+/** O que a evolução muda na build: as peças saem (tags delas) e entram as tags da evoluída (build_system.lua `preview`). */
+export function relicEvolutionChangeHtml(tags: Tags, evoId: string, buildEvos: readonly string[]): string {
+  const d = RELICS[evoId];
+  const removed = d.requires!.flatMap((c) => RELICS[c].tags);
+  const pv = synergyPreview(tags, d.tags, removed, buildEvos);
+  let out = pv.evolved.map((id) => `<div class="syn-act evo"><b>Build evolution: ${BUILD_EVOLUTION_BY_ID[id].name}</b><span>${BUILD_EVOLUTION_BY_ID[id].text}</span></div>`).join("");
+  out += pv.gained.map((id) => `<div class="syn-act"><b>Activates ${SYNERGY_BY_ID[id].name}</b><span>${SYNERGY_BY_ID[id].text}</span></div>`).join("");
+  out += pv.lost.map((id) => `<div class="syn-act lost"><b>Turns off ${SYNERGY_BY_ID[id].name}</b><span>${SYNERGY_BY_ID[id].text}</span></div>`).join("");
+  // pontos de caminho que mudam (as tags das peças contra as da evoluída)
+  const delta: Record<string, number> = {};
+  for (const t of removed) delta[t] = (delta[t] ?? 0) - 1;
+  for (const t of d.tags) delta[t] = (delta[t] ?? 0) + 1;
+  const moves = Object.entries(delta).filter(([, n]) => n !== 0)
+    .map(([t, n]) => `<span class="${n > 0 ? "up" : "down"}">${pathName(t)} ${n > 0 ? "+" : ""}${n}</span>`);
+  if (moves.length) out += `<div class="tag-delta">Tags: ${moves.join(" ")}</div>`;
+  return out ? `<div class="syn-foot">${out}</div>` : "";
 }
