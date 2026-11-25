@@ -17,6 +17,9 @@ const SEED0 = Number(seedArg) || 1;
 const JOBS = Math.max(1, Number(process.env.SIM_JOBS) || Math.min(6, Math.floor(cpus().length / 2)));
 /** tempo real máximo de uma página antes de desistir dela, ms (o jogo já para sozinho em `BOT_RUN.maxTime`) */
 const PAGE_TIMEOUT = Number(process.env.SIM_PAGE_TIMEOUT) || 10 * 60 * 1000;
+/** M21-15: SIM_ARENA=<raio> mede uma variante do tamanho da arena; vira uma seção própria em `docs/balance.md` */
+const ARENA = Number(process.env.SIM_ARENA) || undefined;
+const LABEL = ARENA ? `${DIFF} · arena ${ARENA}` : DIFF;
 
 const server = await createServer({ server: { port: 5190, strictPort: false }, logLevel: "error", clearScreen: false });
 await server.listen();
@@ -34,9 +37,11 @@ function fail(msg) {
   process.exit(1);
 }
 
-const batch = `sim-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}-${DIFF}`;
+const batch = `sim-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}-${DIFF}${ARENA ? `-arena${ARENA}` : ""}`;
 const jobs = heroes.flatMap((hero) => Array.from({ length: N }, (_, i) => ({ hero, seed: SEED0 + i })));
 const failures = [];
+/** M21-15: fração de inimigos fora da tela por partida, por zoom */
+const offscreen = [];
 const t0 = Date.now();
 let done = 0;
 
@@ -50,12 +55,14 @@ async function play(job) {
     await page.goto(`${base}/sim.html`);
     await page.waitForFunction(() => !!window.__sim, null, { timeout: 60000 });
     const r = await Promise.race([
-      page.evaluate((o) => window.__sim.run(o), { hero: job.hero, difficulty: DIFF, seed: job.seed, batch }),
+      page.evaluate((o) => window.__sim.run(o), { hero: job.hero, difficulty: DIFF, seed: job.seed, batch, arena: ARENA }),
       new Promise((_, rej) => setTimeout(() => rej(new Error("page timeout")), PAGE_TIMEOUT)),
     ]);
     // a linha do registro sai por fetch; dar um instante para ela chegar ao servidor
     await page.waitForTimeout(300);
-    return `${r.outcome} w${r.wave} ${r.time}s${r.killedBy ? ` (${r.killedBy})` : ""} [${r.wall}s]`;
+    offscreen.push(r.offscreen);
+    const off = Object.entries(r.offscreen).map(([z, f]) => `${z}x ${Math.round(f * 100)}%`).join(", ");
+    return `${r.outcome} w${r.wave} ${r.time}s${r.killedBy ? ` (${r.killedBy})` : ""} [${r.wall}s] off-screen ${off}`;
   } catch (e) {
     const reason = `${e.message.split("\n")[0]}${errors.length ? `; page error: ${errors[0]}` : ""}`;
     failures.push({ hero: job.hero, seed: job.seed, reason });
@@ -65,7 +72,7 @@ async function play(job) {
   }
 }
 
-console.log(`sim: ${jobs.length} runs (${heroes.length} heroes x ${N}), ${DIFF}, seeds ${SEED0}-${SEED0 + N - 1}, ${JOBS} pages in parallel, batch ${batch}`);
+console.log(`sim: ${jobs.length} runs (${heroes.length} heroes x ${N}), ${LABEL}, seeds ${SEED0}-${SEED0 + N - 1}, ${JOBS} pages in parallel, batch ${batch}`);
 const queue = [...jobs];
 await Promise.all(Array.from({ length: Math.min(JOBS, jobs.length) }, async () => {
   for (let job = queue.shift(); job; job = queue.shift()) {
@@ -82,10 +89,18 @@ const entries = existsSync("logs/runs.jsonl")
   : [];
 let build = "?";
 try { build = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim(); } catch { /* sem git */ }
-const section = balanceSection(entries, {
-  difficulty: DIFF, batch, date: new Date().toISOString().slice(0, 10), build, failures, heroes,
+let section = balanceSection(entries, {
+  difficulty: LABEL, batch, date: new Date().toISOString().slice(0, 10), build, failures, heroes,
   command: `npm run sim -- ${process.argv.slice(2).join(" ")}`.trim(),
 });
+if (offscreen.length) {
+  const zooms = Object.keys(offscreen[0]);
+  const mean = (z) => Math.round((offscreen.reduce((a, o) => a + (o[z] ?? 0), 0) / offscreen.length) * 100);
+  section = section.trimEnd() + `
+
+Inimigos fora da tela na luta (média por partida): ${zooms.map((z) => `zoom ${z}: ${mean(z)}%`).join(" · ")}
+`;
+}
 const doc = existsSync("docs/balance.md") ? readFileSync("docs/balance.md", "utf8") : "";
-writeFileSync("docs/balance.md", mergeBalanceDoc(doc, DIFF, section));
+writeFileSync("docs/balance.md", mergeBalanceDoc(doc, LABEL, section));
 console.log(`\n${section}\nwritten to docs/balance.md (${Math.round((Date.now() - t0) / 1000)} s)`);

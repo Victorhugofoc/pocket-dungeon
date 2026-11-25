@@ -24,6 +24,8 @@ export interface SimOptions {
   maxTime?: number;
   /** M17-01 parte 4: o lote do `npm run sim` (o relatório lê só as linhas dele) */
   batch?: string;
+  /** M21-15: raio da arena das ondas para medir uma variante (a do chefe vai na mesma proporção) */
+  arena?: number;
 }
 
 export interface SimResult {
@@ -41,6 +43,11 @@ export interface SimResult {
   wall: number;
   /** quantas vezes o bot usou a técnica, a esquiva e cada spell */
   uses: BotUses;
+  /**
+   * M21-15: na luta, a fração dos inimigos vivos fora da tela, por zoom da câmera (`BOT_RUN.offscreen`): a tela
+   * vista é um retângulo em volta do herói, que cresce com o zoom
+   */
+  offscreen: Record<string, number>;
 }
 
 interface BotUses { technique: number; dodge: number; spells: number[] }
@@ -248,6 +255,14 @@ async function run(o: SimOptions): Promise<SimResult> {
   used = true;
   const t0 = performance.now();
   seedRandom(o.seed * 2654435761);
+  if (o.arena) {
+    const W = TUNING.world as { arenaRadius: number; bossArenaRadius: number };
+    W.bossArenaRadius = Math.round((o.arena * W.bossArenaRadius) / W.arenaRadius);
+    W.arenaRadius = o.arena;
+  }
+  const off = BOT_RUN.offscreen;
+  const offCount = off.zooms.map(() => 0);
+  let seen = 0;
   relicPending = null;
   died = won = false;
   const setup = { heroId: o.hero, difficultyId: o.difficulty as DifficultyId, startingSpell: botStartSpell(o.hero) };
@@ -264,6 +279,17 @@ async function run(o: SimOptions): Promise<SimResult> {
       const before = { tech: game.player.techCd, dash: game.player.dashCd, spells: [...game.spells.cooldown] };
       game.simStep(BOT_RUN.dt);
       countUses(uses, before);
+      if (game.phase === "fight") {
+        const p = game.player;
+        for (const e of game.enemies) {
+          if (e.dead) continue;
+          seen++;
+          const dx = Math.abs(e.x - p.x), dz = Math.abs(e.z - p.z);
+          off.zooms.forEach((z, i) => {
+            if (dx > off.halfWidth * z || dz > off.halfDepth * z) offCount[i]++;
+          });
+        }
+      }
       const t = game.run.statistics.elapsed;
       const key = `${game.run.wave}/${game.phase}`;
       if (key !== lastKey) {
@@ -282,6 +308,7 @@ async function run(o: SimOptions): Promise<SimResult> {
     hero: o.hero, difficulty: o.difficulty, seed: o.seed, outcome, wave: game.run.wave, level: game.run.level,
     victory: game.run.victory, killedBy: game.run.killedBy ?? null, time: Math.round(game.run.statistics.elapsed),
     wall: Math.round((performance.now() - t0) / 100) / 10, uses,
+    offscreen: Object.fromEntries(off.zooms.map((z, i) => [String(z), seen ? Math.round((offCount[i] / seen) * 1000) / 1000 : 0])),
   };
   game.botMeta = { batch: o.batch, seed: o.seed, outcome, stuckAt: outcome === "stuck" ? lastKey : undefined, wall: res.wall, uses };
   game.logRunEnd(outcome);

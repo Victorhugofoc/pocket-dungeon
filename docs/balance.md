@@ -99,3 +99,56 @@ Geral: Venom Hydra (venom) 3, projectile 1, Storm Tyrant (storm) 1
 - **umbra** · spells: arcane_bolt→arcane_strike 2, fireball 1, iceball 1 · relíquias: evasion_circuit 4, aether_focus 3, glacial_shell 3, aether_thread 2, ambushers_fang 2 · melhorias: blood_rite 3, long_reach 3, rapid_strike 3, spellsworn 3, champions_bounty 2
 - **seraph** · spells: arcane_bolt→arcane_strike 2, fireball 1, iceball 1 · relíquias: evasion_circuit 5, scavenger_badge 3, aether_focus 2, aether_thread 2, ambushers_fang 2 · melhorias: deadly_edge 3, rapid_strike 3, second_wind 3, boomerang 2, champions_bounty 2
 - **vesper** · spells: fireball 1, fireball→firewave 1, venom_nova 1, venom_nova→plague_bloom 1 · relíquias: ember_spurs 3, ambushers_fang 2, champions_trophy 2, evasion_cloak 2, glacial_shell 2 · melhorias: spellsworn 5, brutality 3, iron_skin 3, overchannel 3, runic_ward 3
+
+## hard · arena 22
+
+2026-11-25 · build `059a0fb` · `npm run sim -- 2 hard all` · 18 partidas, 14 vitórias (78%)
+
+| Herói | Partidas | Vitória | Onda média da morte | Mortes por onda | Tempo médio (s) | Técnica / esquiva por partida | Presas ou no limite |
+|---|---|---|---|---|---|---|---|
+| frostine | 2 | 100% | - | - | 568 | 75.5 / 45.0 | - |
+| kaelen | 2 | 50% | 5.0 | 5 | 362 | 47.5 / 36.0 | - |
+| aurelius | 2 | 100% | - | - | 644 | 86.5 / 79.0 | - |
+| ignis | 2 | 100% | - | - | 619 | 69.0 / 87.0 | - |
+| zephyr | 2 | 50% | 15.0 | 15 | 584 | 90.0 / 71.5 | - |
+| varok | 2 | 50% | 5.0 | 5 | 385 | 22.5 / 61.5 | - |
+| umbra | 2 | 50% | 20.0 | 20 | 785 | 67.0 / 145.5 | - |
+| seraph | 2 | 100% | - | - | 716 | 61.5 / 116.5 | - |
+| vesper | 2 | 100% | - | - | 543 | 55.5 / 49.0 | - |
+
+### Golpe final
+
+Geral: Venom Hydra (venom) 2, projectile 1, Storm Tyrant (storm) 1
+
+- kaelen: Venom Hydra (venom) 1
+- zephyr: Venom Hydra (venom) 1
+- varok: Storm Tyrant (storm) 1
+- umbra: projectile 1
+
+### Dano por fonte (média por partida)
+
+| Herói | Causado (maiores) | Recebido (maiores) |
+|---|---|---|
+| frostine | blizzard 80,838, iceball 26,511, fireball 16,381, glacial_wall 13,129 | projectile 65, Explosive Barrel 35, Storm Tyrant (venom) 22, Berserker 11 |
+| kaelen | lightning_strike 29,184, fireball 19,188, storm_step 12,072, chain_lightning 11,401 | Venom Hydra (venom) 49, Explosive Barrel 17, Plaguebearer (plague) 2 |
+| aurelius | arcane_strike 58,836, prism_beam 25,122, arcane_bolt 20,946, time_rift 20,556 | Storm Tyrant (storm) 95, Berserker 69, Explosive Barrel 48, Venom Hydra (venom) 46 |
+| ignis | firewave 40,192, burn 26,022, iceball 20,801, fireball 19,191 | Venom Hydra (venom) 104, projectile 29, Explosive Barrel 19, Berserker 10 |
+| zephyr | auto 58,978, firewave 11,427, fan_the_hammer 9,497, chain_lightning 8,293 | Venom Hydra (venom) 80, Storm Tyrant (venom) 26, Explosive Barrel 19, Storm Tyrant (storm) 18 |
+| varok | execution_leap 49,805, firewave 38,242, iceball 25,852, burn 20,560 | Storm Tyrant 72, projectile 45, Venom Hydra (venom) 39, Explosive Barrel 36 |
+| umbra | arcane_strike 34,980, fireball 33,822, shadow_step 26,279, arcane_bolt 25,230 | projectile 121, Explosive Barrel 106, Plaguebearer (plague) 19, Storm Tyrant (venom) 18 |
+| seraph | auto 46,225, arcane_strike 41,258, fireball 20,356, arcane_bolt 18,329 | Venom Hydra (venom) 152, Storm Tyrant (venom) 56, projectile 30, Explosive Barrel 29 |
+| vesper | auto 54,659, brood 31,831, venom_nova 24,396, hatchling 14,201 | Venom Hydra (venom) 14, Explosive Barrel 12, Storm Tyrant (venom) 10, Storm Tyrant (storm) 8 |
+
+### Escolhas do bot
+
+- **frostine** · spells: fireball 2, iceball→blizzard 2 · relíquias: glacial_shell 5, evasion_circuit 2, kill_streak 2, stormbreaker_sigil 2, aegis_heart 1 · melhorias: overchannel 4, spellweave 4, arcane_haste 3, elemental_attunement 3, spellsworn 3
+- **kaelen** · spells: chain_lightning 1, chain_lightning→lightning_strike 1, fireball 1 · relíquias: blood_engine 2, storm_coil 2, storm_step 2, battlemage_plate 1, champions_trophy 1 · melhorias: arcane_haste 3, elemental_attunement 2, evasive_footwork 2, spell_surge 2, spellsworn 2
+- **aurelius** · spells: arcane_bolt→arcane_strike 2, fireball 1, prism_beam 1 · relíquias: rune_charm 3, vital_spark 3, aether_focus 2, aether_thread 2, cut_crystal 2 · melhorias: second_wind 4, arcane_affinity 3, spellsworn 3, spellweave 3, arcane_conversion 2
+- **ignis** · spells: fireball→firewave 2, chain_lightning 1, iceball 1 · relíquias: aegis_heart 2, battlemage_plate 2, blood_engine 2, ember_spurs 2, frost_heart 2 · melhorias: long_reach 4, overchannel 4, infernal_affinity 3, second_wind 3, spell_surge 3
+- **zephyr** · spells: chain_lightning 1, fireball 1, fireball→firewave 1, venom_nova 1 · relíquias: evasion_circuit 3, hunters_eye 3, blood_engine 2, kill_streak 2, ambushers_fang 1 · melhorias: champions_bounty 3, iron_skin 3, rapid_strike 3, blade_discipline 2, blood_rite 2
+- **varok** · spells: fireball 1, fireball→firewave 1, iceball 1, prism_beam 1 · relíquias: champions_trophy 2, evasion_circuit 2, last_rites 2, warlords_plate 2, ambushers_fang 1 · melhorias: vitality 4, long_reach 3, blade_discipline 2, deadly_edge 2, glass_cannon 2
+- **umbra** · spells: arcane_bolt→arcane_strike 2, fireball 2 · relíquias: aether_focus 3, evasion_circuit 3, aether_thread 2, arcane_conductor 2, glacial_shell 2 · melhorias: blade_discipline 3, heavy_shot 3, second_wind 3, spellsworn 3, blood_rite 2
+- **seraph** · spells: arcane_bolt→arcane_strike 2, fireball 1, fireball→firewave 1 · relíquias: evasion_circuit 3, aegis_heart 2, aether_focus 2, aether_thread 2, ambushers_fang 2 · melhorias: deadly_edge 4, fleetfoot 3, heavy_shot 3, second_wind 3, spellweave 3
+- **vesper** · spells: venom_nova→plague_bloom 2, fireball 1, iceball 1 · relíquias: aegis_heart 3, glacial_shell 3, evasion_cloak 2, frost_heart 2, hunters_eye 2 · melhorias: spellsworn 4, blade_discipline 3, fleetfoot 3, spellweave 3, vitality 3
+
+Inimigos fora da tela na luta (média por partida): zoom 1: 25% · zoom 1.15: 15%
