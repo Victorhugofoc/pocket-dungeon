@@ -270,6 +270,14 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .card .stat.neg { color: #ff8a7a; }
 .card .note { color: var(--muted); }
 .card .evo { color: var(--gold); font-size: 12px; font-weight: 600; }
+.card .syn { color: #8fd18a; font-size: 12px; margin: 4px 0 0; }
+.card .syn.hit { color: var(--gold); font-weight: 600; }
+.synergies { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; font-size: 12px; }
+.syn-row { display: flex; flex-direction: column; padding: 3px 6px; border-left: 2px solid #3a3f52; color: var(--muted); cursor: default; }
+.syn-row b { font-size: 11px; letter-spacing: 0.5px; color: #9aa0b4; }
+.syn-row small { font-size: 11px; }
+.syn-row.on { border-color: var(--gold); color: var(--text); }
+.syn-row.on b { color: var(--gold); }
 /* banir relíquia (M12-10) */
 .cards.relics .card { display: flex; flex-direction: column; }
 .card .ban { margin-top: auto; align-self: flex-start; padding: 3px 10px; font-size: 11px; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; cursor: pointer; }

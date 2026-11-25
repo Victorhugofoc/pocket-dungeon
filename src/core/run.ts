@@ -136,6 +136,9 @@ export interface RunState {
   upgradeTiers: UpgradeTier[];
   /** pontos de tag das melhorias (level_up.lua `run.tags`; o sorteio olha os elementos) */
   tags: Record<string, number>;
+  /** M12-06: sinergias ativas e as que já valeram (build_system.lua `activeSynergies`, `synergiesEver`) */
+  activeSynergies: string[];
+  synergiesEver: string[];
   /** telas de nível seguidas sem épica de comportamento (M21-07; a chance sobe com ela) */
   epicPity: number;
   /** sala ou maldição da carta do mapa, valendo para a onda atual (rooms.ts); null = sem sala */
@@ -215,6 +218,8 @@ export function newRun(opts: NewRunOptions): RunState {
     upgradesTaken: [],
     upgradeTiers: [],
     tags: {},
+    activeSynergies: [],
+    synergiesEver: [],
     epicPity: 0,
     room: null,
     curseWavesLeft: 0,
@@ -273,6 +278,9 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   // checkpoints de antes do M20-03
   run.upgradeTiers ??= run.upgradesTaken.map(() => "common");
   run.tags ??= {};
+  // checkpoints de antes do M12-06
+  run.activeSynergies ??= [];
+  run.synergiesEver ??= [];
   run.epicPity ??= 0;
   // checkpoints de antes do M20-05
   run.room ??= null;

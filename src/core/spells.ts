@@ -42,6 +42,9 @@ export interface SpellContext {
   volatileValues?: readonly number[];
   /** Conduit Ring: dano a mais por salto do raio */
   chainEscalate?: number;
+  /** M12-06 (Sanctuary, Lifewell): cura por pulso e duração a mais do Healing Field */
+  healFieldHeal?: number;
+  healFieldDuration?: number;
   /** relíquias do herói (a forma evoluída converte as de fora da receita, `relicConvert`) */
   relics?: readonly string[];
 }
@@ -52,7 +55,8 @@ export function spellContext(s: FinalStats, relics: readonly string[] = []): Spe
     cooldownValues: s.cooldownValues, areaValues: s.areaValues, range: s.range, spellPower: s.spellPower,
     spellDamage: s.spellDamage, school: s.school, burn: s.burn, slowPoints: s.slowPoints,
     slowDuration: s.slowDuration, poison: s.poison, lightningTargets: s.lightningTargets, echoValues: s.echoValues,
-    volatileValues: s.volatileValues, chainEscalate: s.chainEscalate, relics,
+    volatileValues: s.volatileValues, chainEscalate: s.chainEscalate,
+    healFieldHeal: s.healFieldHeal, healFieldDuration: s.healFieldDuration, relics,
   };
 }
 
@@ -281,9 +285,9 @@ export function spellStats(
   if (def.kind === "projectile") st.projectiles = (def.projectiles ?? 1) + F.projectiles;
   if (def.id === "arcane_bolt") st.echo = stackChance([...(ctx.echoValues ?? []), ...L.echoChance]);
   if (def.heal !== undefined) {
-    // como lá, o nível não escala a cura; só os marcos (D-029)
-    st.heal = ((def.heal + F.healFlat) * (evo?.healMult ?? 1)) / DR_BASE_HP;
-    st.duration = (evo?.duration ?? def.duration ?? 0) + F.durationFlat;
+    // como lá, o nível não escala a cura; só os marcos (D-029). Sanctuary e Lifewell somam antes da evolução (D-060)
+    st.heal = ((def.heal + F.healFlat + (ctx.healFieldHeal ?? 0)) * (evo?.healMult ?? 1)) / DR_BASE_HP;
+    st.duration = (evo?.duration ?? def.duration ?? 0) + F.durationFlat + (ctx.healFieldDuration ?? 0);
     st.tick = evo?.tick ?? def.tick;
     st.surge = stackChance(L.surgeChance);
     st.extraFields = F.extraFields;

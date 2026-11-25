@@ -25,6 +25,7 @@ import { BOSS_ORDER, BOSSES, CROWN_BORROW, ENEMIES, HELPERS, SHIELD_CYCLE } from
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
 import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
+import { BUILD_EVOLUTION_THRESHOLD, BUILD_PATHS, PATH_NAMES, SYNERGIES } from "../src/data/synergies";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
 import { newRun } from "../src/core/run";
 import { relicDraft, relicDraftPool, relicDraftWeight } from "../src/core/relics";
@@ -70,6 +71,7 @@ const MODULES = [
   "src.data.waves", "src.data.tuning", "src.data.run_map", "src.data.difficulties", "src.data.bosses",
   "src.progression.level_up", "src.data.enemies", "src.data.affixes", "src.data.upgrades", "src.data.rooms",
   "src.data.achievements", "src.data.unlocks", "src.data.shop", "src.data.relics",
+  "src.data.synergies",
 ];
 /** Até que onda as fórmulas são comparadas (passa da 20 para cobrir o modo sem fim). */
 const WAVE_CHECK = 40;
@@ -1449,5 +1451,26 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
       .toEqual({ hp: o.hp, speedPx: o.speed, damage: o.damage, behavior: o.behavior, xp: o.xp, gold: o.gold, category: o.category,
         cooldown: o.cooldown, helper: o.helper, radiusPx: o.radius, rangePx: o.range, projPx: o.projectileSpeed,
         alpha: o.alpha, look: o.sprite.replace("boss_", "") });
+  });
+});
+
+describe.skipIf(!dr)("paridade das sinergias com o Dungeon Reign (M12-06, X3)", () => {
+  const SY: Lua = dr?.["src.data.synergies"];
+
+  it("as sinergias de synergies.lua, na mesma ordem, com limiares, efeitos e texto", () => {
+    expect(SYNERGIES.map((s) => s.id)).toEqual(SY.synergies.map((s: Lua) => s.id));
+    SYNERGIES.forEach((d, i) => {
+      const L = SY.synergies[i];
+      expect(d.name, d.id).toBe(L.name);
+      expect(d.requires, d.id).toEqual(L.requires);
+      expect(d.effects, d.id).toEqual(L.effects);
+      expect(d.text, d.id).toBe(L.text);
+    });
+  });
+
+  it("caminhos, nomes e o limiar da evolução de build", () => {
+    expect([...BUILD_PATHS]).toEqual(SY.PATHS);
+    expect(PATH_NAMES).toEqual(SY.PATH_NAMES);
+    expect(BUILD_EVOLUTION_THRESHOLD).toBe(SY.BUILD_EVOLUTION_THRESHOLD);
   });
 });
