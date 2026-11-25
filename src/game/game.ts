@@ -28,7 +28,9 @@ import {
 } from "../core/events";
 import { EVENT_IDS, PACT_BY_ID, PACT_IDS } from "../data/events";
 import { isBossWave, segmentOf } from "../core/waves";
-import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
+import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE, depthsLevel } from "../data/run";
+import { SHOP_OFFERS } from "../data/shop";
+import { depthsSummary, mutation, recordDepthsWin } from "../core/depths";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { buildElements, executes, isBehind, primedReactions, reactionFor, type ReactionId } from "../core/reactions";
@@ -1650,6 +1652,11 @@ export class Game {
     return true;
   }
 
+  /** M13-02 Depths 3 (Wounds, damage.lua `healPlayer`): a cura recebida, regeneração junto */
+  private get woundsMult(): number {
+    return mutation(depthsLevel(this.run.difficultyId), "wounds")?.healMult ?? 1;
+  }
+
   /** `full`: o orbe de cura não sofre o corte do combate. */
   heal(amount: number, show: boolean, full = false): void {
     const p = this.player;
@@ -1657,6 +1664,7 @@ export class Game {
     // Berserker's Oath e afins: a cura é recusada durante a onda (relic_mechanics.lua `blocksHeal`)
     if (!full && this.relicHooks.blocksHeal(this.relicWorld)) return;
     if (!full) amount *= this.stats.healing; // damage.lua `healPlayer`: armadura e `healPct`
+    amount *= this.woundsMult;
     if (this.inCombat && !full) amount *= PACE.combatHealMult;
     this.relicHooks.overheal(this.relicWorld, p.hp + amount - this.stats.maxHp);
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
@@ -2130,7 +2138,9 @@ export class Game {
     this.crown = boss && n === BOSS.final.wave ? this.crownPattern(this.waveBoss!) : null;
     const room = this.mods.room;
     const sub = this.waveBoss ? `${n === BOSS.final.wave ? CROWN_TITLE : BOSSES[this.waveBoss].name} approaches` : room ? `${room.name}` : this.zone.name;
-    this.events.banner(`Wave ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, sub);
+    // M13-02: a onda 1 das Depths lembra as mutações da partida
+    const dl = depthsLevel(this.run.difficultyId);
+    this.events.banner(`Wave ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, n === 1 && dl ? `${sub} · ${depthsSummary(dl)}` : sub);
     this.audio.play(boss ? "boss" : "level");
   }
 
@@ -2320,7 +2330,14 @@ export class Game {
       if (m.boss) {
         const ambush = this.wave?.ambush ?? null;
         const final = !ambush && this.run.wave === BOSS.final.wave;
-        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush, crownAttack: final ? this.crown : null });
+        // M13-02 Depths 4 e 5 (boss.lua, spawner.lua `queueBoss`): fúria antes e 1 afixo em todo chefe
+        const lvl = this.mods.depths;
+        const fury = mutation(lvl, "early_fury");
+        const marked = mutation(lvl, "marked_bosses");
+        const affixes = marked ? rollAffixes(this.rng.get("champions"), this.run.wave, marked.affixes!, marked.affixes!,
+          Object.keys(marked.exclude ?? {}) as AffixId[]) : undefined;
+        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush, crownAttack: final ? this.crown : null,
+          affixes, fury: fury ? { enrageBonus: fury.enrageBonus!, enragedSpeed: fury.enragedSpeed! } : null });
         this.ach.bossSpawned(e, this.run.statistics.elapsed);
         this.challenges.bossSpawned(e, this.run.statistics.elapsed);
         e.hunter = true;
@@ -2377,6 +2394,12 @@ export class Game {
     }
     if (w.isBossWave && w.bossesDefeated && run.wave === TOTAL_WAVES) {
       run.victory = true;
+      // M13-02 (core/depths.lua `award`, D-227): as Marcas da vitória nas Depths, uma vez por partida
+      const lvl = depthsLevel(run.difficultyId);
+      if (lvl > 0 && !run.devUsed && !run.depthsReward) {
+        const r = recordDepthsWin(this.ach.state.depths, run.heroId, lvl);
+        run.depthsReward = { level: lvl, marks: r.marks, first: r.first, total: this.ach.state.depths[run.heroId].marks };
+      }
       this.ach.victory(run);
     }
     if (this.playerAlive) {
@@ -2753,8 +2776,11 @@ export class Game {
   /** `openAutoShop` (reason) ou a carta "Shop" do mapa (null): uma visita nova, sorteada no fluxo `shop`. */
   private openShop(auto: ShopReason | null): void {
     // a automática abre no fim da onda (vale para a seguinte); a do portão, na caminhada da própria onda
-    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, () => this.shopRelic());
-    this.shopVisit = { ...v, auto, priceMult: this.stats.shopPrice };
+    // M13-02 Depths 2 (Pricey Shop, shop_system.lua `offerCount`, `priceMult`): 1 oferta a menos e +25%
+    const pricey = mutation(depthsLevel(this.run.difficultyId), "pricey_shop");
+    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, () => this.shopRelic(),
+      SHOP_OFFERS - (pricey?.fewerOffers ?? 0));
+    this.shopVisit = { ...v, auto, priceMult: this.stats.shopPrice * (pricey?.priceMult ?? 1) };
     this.audio.play("pickup");
     this.events.shop();
   }
@@ -3499,7 +3525,7 @@ export class Game {
     }
     if (s.regen > 0 && p.hp < s.maxHp && !this.relicHooks.blocksHeal(this.relicWorld)) {
       const before = p.hp;
-      const add = s.regen * dt * (this.inCombat ? PACE.combatHealMult : 1);
+      const add = s.regen * dt * (this.inCombat ? PACE.combatHealMult : 1) * this.woundsMult;
       this.relicHooks.overheal(this.relicWorld, p.hp + add - s.maxHp);
       p.hp = Math.min(s.maxHp, p.hp + add);
       this.run.statistics.healed += p.hp - before;

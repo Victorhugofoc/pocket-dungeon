@@ -4,6 +4,7 @@
 import type { RunState } from "./run";
 import type { FrameStats, RunPerf } from "./perflog";
 import type { ChallengeLogEntry } from "./challenges";
+import { depthsLevel } from "../data/run";
 
 export const RUNLOG_VERSION = 1;
 /** quantas partidas o navegador guarda (as mais novas) */
@@ -76,6 +77,9 @@ export interface RunLogEntry {
   detours: { wave: number; kind: string }[];
   bossHistory: string[];
   waves: WaveEntry[];
+  /** M13-02: nível das Depths (0 fora) e as Marcas pagas pela vitória */
+  depths?: number;
+  depthsMarks?: number;
   /** M11-08: eventos escolhidos (onda, id, resultado da aposta) */
   events?: { wave: number; id: string; gamble?: "win" | "lose" }[];
   /** M13-03: pactos aceitos (onda, id) */
@@ -128,6 +132,7 @@ export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string,
     upgrades: run.upgradesTaken.map((id, i) => ({ id, tier: run.upgradeTiers[i] ?? "common" })),
     mapHistory: [...run.mapHistory], detours: run.detours.map((d) => ({ ...d })), bossHistory: [...run.bossHistory],
     waves: last ? [...run.waveLog, last] : [...run.waveLog],
+    depths: depthsLevel(run.difficultyId), depthsMarks: run.depthsReward?.marks ?? 0,
     events: (run.eventLog ?? []).map((e) => ({ ...e })),
     pacts: (run.pactLog ?? []).map((e) => ({ ...e })),
     challenges: {

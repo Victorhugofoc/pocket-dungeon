@@ -16,10 +16,12 @@ const RANK = { easy: 1, normal: 2, hard: 3 } as const;
 
 /**
  * `Bag.allowed`: um chefe com `minDifficulty` só entra no saco dessa dificuldade para cima (o Hollow King e o Mirage
- * Djinn só na Hard). O Depths conta como a Hard (D-322), quando chegar (M13).
+ * Djinn só na Hard). As Depths contam como a Hard (D-322).
  */
-export function bossAllowed(minDifficulty: keyof typeof RANK | undefined, difficulty: keyof typeof RANK): boolean {
-  return !minDifficulty || RANK[difficulty] >= RANK[minDifficulty];
+export function bossAllowed(minDifficulty: keyof typeof RANK | undefined, difficulty: string): boolean {
+  // D-322: as Depths contam como a Hard
+  const d = (difficulty.startsWith("depths") ? "hard" : difficulty) as keyof typeof RANK;
+  return !minDifficulty || RANK[d] >= RANK[minDifficulty];
 }
 
 function rebuild(run: BossBagState, rng: Rng, pool: readonly string[]): void {

@@ -15,7 +15,7 @@ import { spellStats } from "../src/core/spells";
 import { techniqueStats } from "../src/core/techniques";
 import { DR_PX_PER_M } from "../src/data/techniques";
 import {
-  BOSS, DEPTHS_FROM, DEPTHS_STEP, DIFFICULTIES, DIFFICULTY_ORDER, ENDLESS, ENEMY_WEIGHT, LEVEL_UP_CHOICES,
+  BOSS, DEPTHS_FROM, DEPTHS_ORDER, DEPTHS_STEP, DIFFICULTIES, DIFFICULTY_ORDER, ENDLESS, ENEMY_WEIGHT, LEVEL_UP_CHOICES,
   LEVELUP_REROLL, RUN_MAP, RUN_START, RUN_TUNING, TOTAL_WAVES, UPGRADE_TIER_WEIGHTS, UPGRADE_TIERS, WAVE_STAGES, WAVES,
   XP_GROWTH,
   ARENA_CROWD, BURN, BOSS_MULTS, CHAMPION, CHILD_SCALE, MINION_SCALE, RANDOM_CHAMPION, SPAWN, SUMMON_CAP, SURVIVOR_FACTOR,
@@ -39,6 +39,9 @@ import {
   pactLayer, pactsForMap, type EventRun,
 } from "../src/core/events";
 import { EVENT_CHOICES, EVENT_IDS, EVENTS, PACT_IDS, PACT_MAX_ACTIVE, PACTS } from "../src/data/events";
+import { DEPTHS_MAX, DEPTHS_SCORE_PER_LEVEL, DEPTHS_SKINS, FIRST_WIN_BONUS, MUTATIONS, PERKS, marksFor } from "../src/data/depths";
+import { mutation } from "../src/core/depths";
+import { phaseFor } from "../src/core/bossphase";
 import { ambushFor, biasedComposition, bossStats, killReward, endlessChampions, enemyStats, hastenBonus, randomChampionChance, startWave, stepWave, survivorReward, targetCount, waveMods } from "../src/core/wave";
 import { Rng } from "../src/core/rng";
 import { generalCost, modifierCost, newShopState, rollShop, spellCost } from "../src/core/shop";
@@ -79,7 +82,7 @@ const MODULES = [
   "src.data.waves", "src.data.tuning", "src.data.run_map", "src.data.difficulties", "src.data.bosses",
   "src.progression.level_up", "src.data.enemies", "src.data.affixes", "src.data.upgrades", "src.data.rooms",
   "src.data.achievements", "src.data.unlocks", "src.data.shop", "src.data.relics",
-  "src.data.synergies", "src.data.events", "src.data.pacts",
+  "src.data.synergies", "src.data.events", "src.data.pacts", "src.data.depths",
 ];
 /** Até que onda as fórmulas são comparadas (passa da 20 para cobrir o modo sem fim). */
 const WAVE_CHECK = 40;
@@ -104,7 +107,10 @@ const WAVE_LIFE = `=(function()
   local Boss, Enemy = require("src.bosses.boss"), require("src.enemies.enemy")
   local DF, A = require("src.data.difficulties"), require("src.data.affixes")
   local out = {}
-  for _, did in ipairs(DF.order) do
+  local dids = {}
+  for _, x in ipairs(DF.order) do dids[#dids + 1] = x end
+  for _, x in ipairs(DF.depthsOrder) do dids[#dids + 1] = x end
+  for _, did in ipairs(dids) do
     local d = DF[did]
     out[did] = {}
     for w = 1, ${WAVE_CHECK} do
@@ -1167,6 +1173,9 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
   it("dificuldades", () => {
     expect(DIFFICULTY_ORDER).toEqual(DF.order);
     for (const id of DIFFICULTY_ORDER) expect(DIFFICULTIES[id], id).toEqual(DF[id]);
+    // M13-02: as Depths 1 a 5, montadas da Hard como lá
+    expect(DEPTHS_ORDER).toEqual(DF.depthsOrder);
+    for (const id of DEPTHS_ORDER) expect(DIFFICULTIES[id], id).toEqual(DF[id]);
     expect(DEPTHS_STEP).toBe(DF.DEPTHS_STEP);
     expect(DEPTHS_FROM).toBe(DF.DEPTHS_FROM);
   });
@@ -1273,8 +1282,8 @@ describe.skipIf(!dr)("paridade da partida com o Dungeon Reign", () => {
     }
   });
 
-  it(`ciclo da onda igual ao de lá em cada dificuldade, da onda 1 à ${WAVE_CHECK}`, () => {
-    for (const did of DIFFICULTY_ORDER) {
+  it(`ciclo da onda igual ao de lá em cada dificuldade (e nas Depths), da onda 1 à ${WAVE_CHECK}`, () => {
+    for (const did of [...DIFFICULTY_ORDER, ...DEPTHS_ORDER]) {
       for (let w = 1; w <= WAVE_CHECK; w++) {
         const o = LIFE[did][w - 1];
         const at = `${did} onda ${w}`;
@@ -1860,5 +1869,30 @@ describe.skipIf(!dr)("paridade: eventos e pactos (M11-08, M13-03)", () => {
       let j = 0;
       expect(eventDraft(() => u[j++ % u.length]), `#${i}`).toEqual(L.drafts[i + 1 - 1]);
     });
+  });
+});
+
+describe.skipIf(!dr)("paridade: Depths (M13-02 parte 1)", () => {
+  it("mutações, vantagens, Marcas, pontuação e skins iguais às de data/depths.lua", () => {
+    const D: Lua = dr!["src.data.depths"];
+    expect(DEPTHS_MAX).toBe(D.MAX);
+    expect(DEPTHS_SCORE_PER_LEVEL).toBe(D.SCORE_PER_LEVEL);
+    expect(FIRST_WIN_BONUS).toBe(D.FIRST_WIN_BONUS);
+    expect(MUTATIONS).toEqual(D.MUTATIONS);
+    expect(PERKS).toEqual(D.PERKS);
+    expect(DEPTHS_SKINS).toEqual(D.SKINS);
+    // marksFor é função lá: 4 + 2 × nível na primeira vitória, 1 depois (D-294)
+    for (let l = 1; l <= 5; l++) {
+      expect(marksFor(l, true)).toBe(D.FIRST_WIN_BONUS + 2 * l);
+      expect(marksFor(l, false)).toBe(1);
+    }
+  });
+
+  it("Early Fury: a fúria do chefe vem com 50% da vida a partir da Depths 4 (boss.lua `phaseFor`)", () => {
+    const f = mutation(4, "early_fury")!;
+    expect(mutation(3, "early_fury")).toBeNull();
+    expect(phaseFor(0.45, f.enrageBonus)).toBe(3);
+    expect(phaseFor(0.51, f.enrageBonus)).toBe(2);
+    expect(phaseFor(0.45)).toBe(2);
   });
 });

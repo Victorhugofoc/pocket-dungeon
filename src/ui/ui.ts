@@ -2,7 +2,8 @@
 import { allTrails } from "../core/worldgen";
 import { MAP_NODE } from "../data/map-nodes";
 import { canHasten, hastenBonus } from "../core/wave";
-import { DIFFICULTIES, DIFFICULTY_ORDER, DIFFICULTY_TEXT, TOTAL_WAVES, type DifficultyId } from "../data/run";
+import { DEPTHS_ORDER, DIFFICULTIES, DIFFICULTY_ORDER, DIFFICULTY_TEXT, TOTAL_WAVES, depthsLevel, type DifficultyId } from "../data/run";
+import { activeMutations, depthsScoreMult, unlockedDepths } from "../core/depths";
 import { clearRun, discardLegacySave, loadRecords, loadRun, loadRunLog, safeStorage, writeRecords } from "../core/save";
 import { downloadRunLog } from "../game/runlog";
 import { RunRng, addRecord, continueRun, decodeSeed, newRun, newSpellSlot, recordsRun, summarize, type NewRunOptions, type RunState } from "../core/run";
@@ -35,6 +36,7 @@ import { iconHtml, modifierIconHtml, slotIconUrl, spellIconUrl, techniqueIconUrl
 import { challengeHudHtml, challengeHudKey, challengePanelHtml, daringOpen } from "./challenges-view";
 import { eventCardsHtml, eventHudHtml, eventHudKey, eventPanelHtml, gateExtraHtml, omenGateHtml, pactConfirmHtml } from "./events-view";
 import { eventAvailable } from "../core/events";
+import { depthsHudHtml, depthsPanelHtml, depthsResultHtml } from "./depths-view";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
 
@@ -114,7 +116,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", html = ""):
 type RunSetup = Pick<NewRunOptions, "heroId" | "difficultyId" | "startingSpell">;
 
 /** Cor da carta de cada dificuldade. */
-const DIFF_COLOR: Record<DifficultyId, string> = { easy: "#7ee08a", normal: "#9be4ff", hard: "#ff7a6a" };
+const DIFF_COLOR: Record<DifficultyId, string> = { easy: "#7ee08a", normal: "#9be4ff", hard: "#ff7a6a",
+  depths1: "#c07cff", depths2: "#c07cff", depths3: "#c07cff", depths4: "#c07cff", depths5: "#c07cff" };
 
 function heroKit(h: HeroDef, cooldown: number): string {
   const cd = cooldown.toFixed(cooldown % 1 ? 1 : 0);
@@ -353,7 +356,7 @@ export class Ui {
       const h = HEROES[this.selectedHero];
       if (!h.startingSpells.includes(this.selectedSpell as SpellId)) this.selectedSpell = h.startingSpells[0];
       const locked = !open(h.id);
-      const best = DIFFICULTY_ORDER.flatMap((d) => {
+      const best = [...DIFFICULTY_ORDER, ...DEPTHS_ORDER].flatMap((d) => {
         const b = rec.best[`${h.id}/${d}`];
         return b ? [`<li><b>${DIFFICULTIES[d].name}</b> wave ${b.wave}${b.victory ? " · victory" : ""}</li>`] : [];
       });
@@ -377,12 +380,23 @@ export class Ui {
         <div class="section">Attack</div><p class="hs-line">${attackLine(h)}</p>
         ${heroKit(h, h.technique.cooldown)}
         ${best.length || medal ? `<div class="section">Records</div>
-        <ul class="hs-rec">${best.join("")}${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}</ul>` : ""}`;
+        <ul class="hs-rec">${best.join("")}${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}${
+          ach.depths[h.id] && (ach.depths[h.id].best || ach.depths[h.id].marks) ? `<li class="medal">Depths ${ach.depths[h.id].best || "—"} won · ${ach.depths[h.id].marks} Marks</li>` : ""}</ul>` : ""}`;
+      // M13-02 (run_setup.lua, D-222): as Depths abrem por herói depois de vencer na Hard, um nível por vez
+      const dOpen = locked ? 0 : unlockedDepths(ach.depths, h.id, (ach.medals[h.id] ?? 0) >= 3);
+      if (depthsLevel(this.selectedDifficulty) > dOpen) this.selectedDifficulty = dOpen > 0 ? `depths${dOpen}` as DifficultyId : "hard";
+      const dCur = depthsLevel(this.selectedDifficulty);
       const diffs = DIFFICULTY_ORDER.map((id) => {
         const d = DIFFICULTIES[id];
         const tip = `${DIFFICULTY_TEXT[id]} Enemy HP x${d.enemyHp.toFixed(2)} · enemy damage x${d.enemyDamage.toFixed(2)} · reward x${d.reward.toFixed(2)}`;
         return `<button class="${id === this.selectedDifficulty ? "sel" : ""}" data-diff="${id}" style="--cc:${DIFF_COLOR[id]}" title="${tip}">${d.name}</button>`;
-      }).join("");
+      }).join("") + (dOpen === 0
+        ? `<button class="hs-depths-lock" disabled title="Win on Hard with this hero to open the Depths">🔒 Depths</button>`
+        : `<button class="${dCur ? "sel" : ""}" data-diff="depths${dCur || dOpen}" style="--cc:${DIFF_COLOR.depths1}" title="Hard plus one mutation per level. The first win of a level pays Marks.">Depths</button>`);
+      const depthsRow = dCur ? `<div class="hs-depths"><span>Level</span>${Array.from({ length: dOpen }, (_, i) => i + 1).map((n) =>
+        `<button class="${n === dCur ? "sel" : ""}" data-diff="depths${n}" title="${activeMutations(n).map((m) => m.name).join(", ")}">${n}</button>`).join("")}
+        <small>score x${depthsScoreMult(dCur).toFixed(1)}</small></div>
+        <ul class="hs-mut">${activeMutations(dCur).map((m) => `<li><b>${m.name}</b> ${m.text}</li>`).join("")}</ul>` : "";
       const spells = h.startingSpells.map((id, i) => `<button class="${id === this.selectedSpell ? "sel" : ""}" data-spell="${id}"
         title="${SPELL_TEXT[id]}">${iconHtml(spellIconUrl(id), 28)}<b class="sn">${spellName(id)}</b><kbd>${i + 1}</kbd></button>`).join("");
       panel.innerHTML = `
@@ -406,7 +420,7 @@ export class Ui {
           <div class="hs-info" style="--hc:${hex(h.color)}">${info}</div>
         </div>
         <footer class="hs-setup ${locked ? "off" : ""}" style="--hc:${hex(h.color)}">
-          <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div></div>
+          <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div>${depthsRow}</div>
           <div class="hs-group"><div class="section">Starting spell <small>· others come from the shop and upgrades</small></div>
             <div class="hs-spells">${spells}</div></div>
           <div class="hs-group"><div class="section">Seed</div>
@@ -652,11 +666,11 @@ export class Ui {
   private updateEventHud(): void {
     const g = this.game;
     if (!g.started) return;
-    const key = eventHudKey(g.run);
+    const key = `${g.run.difficultyId}|${eventHudKey(g.run)}`;
     const box = this.r.eventsHud;
     if (box.dataset.key === key) return;
     box.dataset.key = key;
-    box.innerHTML = eventHudHtml(g.run);
+    box.innerHTML = depthsHudHtml(g.run) + eventHudHtml(g.run);
   }
 
   private updateHud(): void {
@@ -1000,6 +1014,7 @@ export class Ui {
         <div class="relics">${run.relics.length ? relicStacks(run.relics).map(({ id, copies }) => `<div class="relic with-icon" data-relic="${id}" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}${copies > 1 ? ` <b class="copies">x${copies}</b>` : ""}</div>`).join("")
           : `<span style="color:var(--muted)">Defeat a boss to pick the first one.</span>`}</div>
         ${buildPanelHtml(run)}
+        ${depthsPanelHtml(run)}
         ${eventPanelHtml(run)}
         ${challengePanelHtml(run)}
         <div class="row end"><button data-act="close">Close (I)</button></div>
@@ -1378,6 +1393,7 @@ export class Ui {
           <div class="kv"><span>Combat time</span><b>${fmtTime(Math.floor(s.elapsed))}</b></div>
           <div class="kv"><span>Upgrades / relics</span><b>${run.upgradesTaken.length} / ${run.relics.length}</b></div>
           <div class="kv"><span>Challenges done</span><b>${run.challengesDone ?? 0} / ${run.challengesOffered ?? 0}</b></div>
+          ${depthsResultHtml(run, g.ach.state.depths[run.heroId]?.marks ?? 0)}
         </div>
         <div>
           <div class="section">Relics (${run.relics.length})</div>

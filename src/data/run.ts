@@ -92,7 +92,8 @@ export const RUN_MAP = {
   shrineFallbackGold: { base: 15, perWave: 6 },
 } as const;
 
-export type DifficultyId = "easy" | "normal" | "hard";
+export type DepthsId = "depths1" | "depths2" | "depths3" | "depths4" | "depths5";
+export type DifficultyId = "easy" | "normal" | "hard" | DepthsId;
 
 export interface Difficulty {
   id: DifficultyId;
@@ -106,11 +107,17 @@ export interface Difficulty {
   riskGold?: number;
   ambushHp?: Record<string, number>;
   crownHp?: number;
+  /** M13-02: nível das Depths (1 a 5) e a dificuldade de base (a Hard) */
+  depths?: number;
+  base?: "hard";
+  /** D-314: o passo das Depths na vida comum só vale a partir de `depthsFrom` */
+  depthsMult?: number;
+  depthsFrom?: number;
 }
 
-/** difficulties.lua (§4.1). Depths 1 a 5 ficam para o M13. */
+/** difficulties.lua (§4.1). As Depths ficam fora de `order`: a escolha mostra à parte, por herói. */
 export const DIFFICULTY_ORDER: DifficultyId[] = ["easy", "normal", "hard"];
-export const DIFFICULTIES: Record<DifficultyId, Difficulty> = {
+const BASE_DIFFICULTIES: Record<"easy" | "normal" | "hard", Difficulty> = {
   easy: {
     id: "easy", name: "Easy",
     enemyHp: 0.85, enemyDamage: 0.80, enemySpeed: 0.92, projectileSpeed: 0.90,
@@ -138,9 +145,32 @@ export const DIFFICULTY_TEXT: Readonly<Record<DifficultyId, string>> = {
   easy: "Weaker, slower enemies. Rewards x0.90.",
   normal: "The reference experience. Wave 20 is a real test of your build.",
   hard: "Much stronger enemies. Rewards x1.35.",
+  depths1: "", depths2: "", depths3: "", depths4: "", depths5: "",
 };
+/** D-312: +8% de vida e dano comuns por nível, acumulado (D1 ×1,08 ... D5 ×1,40) */
 export const DEPTHS_STEP = 0.08;
+/** D-314: a primeira onda com o passo das Depths */
 export const DEPTHS_FROM = 6;
+
+/** difficulties.lua: as Depths 1 a 5 são a Hard com o passo na vida e no dano comuns (a partir da onda 6). */
+function depthsDifficulty(n: number): Difficulty {
+  const h = BASE_DIFFICULTIES.hard;
+  const k = 1 + DEPTHS_STEP * n;
+  return {
+    ...h, id: `depths${n}` as DepthsId, name: `Depths ${n}`, depths: n, base: "hard",
+    enemyHp: h.enemyHp * k, enemyDamage: h.enemyDamage * k, depthsMult: k, depthsFrom: DEPTHS_FROM,
+    earlyDamage: h.earlyDamage?.map((v, i) => v * (i + 1 >= DEPTHS_FROM ? k : 1)),
+  };
+}
+export const DEPTHS_ORDER: DepthsId[] = ["depths1", "depths2", "depths3", "depths4", "depths5"];
+export const DIFFICULTIES: Record<DifficultyId, Difficulty> = {
+  ...BASE_DIFFICULTIES,
+  depths1: depthsDifficulty(1), depths2: depthsDifficulty(2), depths3: depthsDifficulty(3), depths4: depthsDifficulty(4), depths5: depthsDifficulty(5),
+};
+/** O nível das Depths da dificuldade (0 fora delas). */
+export function depthsLevel(id: DifficultyId): number {
+  return DIFFICULTIES[id]?.depths ?? 0;
+}
 
 /** bosses.lua (§§59-71) e tuning.lua: vida, dano, recompensa e relíquia dos chefes. */
 export const BOSS = {
