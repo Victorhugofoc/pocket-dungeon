@@ -557,3 +557,77 @@ describe("evoluções de relíquia (M12-08, relic_system.lua §§45-47)", () => 
     expect(relicEvolutionsUsing("hunters_eye").map((d) => d.id)).toEqual(["phantom_hunt", "frostward"]);
   });
 });
+
+describe("relíquias que acumulam (D7 revista)", () => {
+  it("só as incomuns, fora as exceções; até 3 cópias", async () => {
+    const { relicStackable, canGainRelic } = await import("../src/core/relics");
+    const { RELIC_STACK } = await import("../src/data/relics");
+    for (const id of RELIC_IDS) {
+      const d = RELICS[id];
+      expect(relicStackable(id)).toBe(d.rarity === "uncommon" && !RELIC_STACK.exclude.includes(id));
+    }
+    for (const id of RELIC_STACK.exclude) expect(RELICS[id].rarity).toBe("uncommon");
+    const r = run();
+    for (let i = 0; i < 3; i++) expect(grantRelic(r, "hunters_eye")).toBe(true);
+    expect(grantRelic(r, "hunters_eye")).toBe(false);
+    expect(canGainRelic(r.relics, "hunters_eye")).toBe(false);
+    expect(grantRelic(r, "cinder_lens")).toBe(true);
+    expect(grantRelic(r, "cinder_lens")).toBe(false);
+    expect(grantRelic(r, "blood_pact")).toBe(true);
+    expect(grantRelic(r, "blood_pact")).toBe(false);
+  });
+
+  it("cada cópia soma os atributos; as tags e a coleção (relicVersion) só mudam na primeira e na última", () => {
+    const r = run();
+    grantRelic(r, "greedy_soul");
+    const tags = { ...r.tags };
+    const ver = r.relicVersion;
+    grantRelic(r, "greedy_soul");
+    expect(r.tags).toEqual(tags);
+    expect(r.relicVersion).toBe(ver);
+    expect(relicTotals(r.relics).goldPct).toBeCloseTo(0.70);
+    expect(relicTotals(r.relics).damagePct).toBeCloseTo(-0.20);
+    removeRelic(r, "greedy_soul");
+    expect(r.tags).toEqual(tags);
+    expect(r.relicVersion).toBe(ver);
+    removeRelic(r, "greedy_soul");
+    expect(r.relicVersion).toBe(ver + 1);
+    for (const t of RELICS.greedy_soul.tags) expect(r.tags[t] ?? 0).toBe(0);
+  });
+
+  it("o sorteio oferece cópia das incomuns com peso ½ por cópia, sem o peso da receita", () => {
+    const r = run();
+    grantRelic(r, "hunters_eye");
+    grantRelic(r, "blood_pact");
+    const pool = relicDraftPool(r, () => true);
+    expect(pool).toContain("hunters_eye");
+    expect(pool).not.toContain("blood_pact");
+    expect(relicDraftPool(r, () => true, false)).not.toContain("hunters_eye");
+    expect(relicDraftWeight(r, "hunters_eye", { hunters_eye: "iceball" })).toBeCloseTo(relicDraftWeight(run(), "hunters_eye", {}) * 0.5);
+    grantRelic(r, "hunters_eye");
+    grantRelic(r, "hunters_eye");
+    expect(relicDraftPool(r, () => true)).not.toContain("hunters_eye");
+  });
+
+  it("a evolução consome uma cópia de cada peça e a outra fica", () => {
+    const evo = RELIC_EVOLUTIONS.find((d) => d.tier === 2 && d.requires!.some((c) => RELICS[c].rarity === "uncommon" && RELICS[c].category !== "spell"))!;
+    const piece = evo.requires!.find((c) => RELICS[c].rarity === "uncommon")!;
+    const r = run();
+    for (const c of evo.requires!) grantRelic(r, c);
+    grantRelic(r, piece);
+    evolveRelic(r, evo.id);
+    expect(r.relics.filter((x) => x === piece)).toHaveLength(1);
+    expect(r.relics).toContain(evo.id);
+    for (const t of RELICS[piece].tags) expect(r.tags[t] ?? 0).toBeGreaterThan(0);
+  });
+
+  it("santuário sem relíquia: ouro 15 + 6 × onda", async () => {
+    const { shrineFallbackGold } = await import("../src/core/runmap");
+    expect(shrineFallbackGold(1)).toBe(21);
+    expect(shrineFallbackGold(10)).toBe(75);
+    // a escolha vazia que o santuário vê quando o herói tem todas as abertas
+    const r = run();
+    for (const id of RELIC_IDS) while (grantRelic(r, id));
+    expect(relicDraft(r, () => true, () => 0.5, 3)).toEqual([]);
+  });
+});

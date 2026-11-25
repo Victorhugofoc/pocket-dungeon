@@ -5,7 +5,7 @@
 // - Ganchos: as relíquias que mudam o jogo (não só somam atributo) são mecânicas ligadas por um atributo próprio,
 //   como em relic_mechanics.lua; o jogo chama `RelicHooks` nos pontos de evento (quadro, abate, golpe sofrido,
 //   conjuração, nível, dano causado, cura) e elas respondem pelo `RelicWorld`.
-import { inNormalPool, RELIC_DRAFT, RELIC_EVOLUTIONS, RELIC_IDS, RELIC_MECH, RELICS, type RelicDef, type RelicPool, type RelicRarity } from "../data/relics";
+import { inNormalPool, RELIC_DRAFT, RELIC_EVOLUTIONS, RELIC_IDS, RELIC_MECH, RELIC_STACK, RELICS, type RelicDef, type RelicPool, type RelicRarity } from "../data/relics";
 import { MAX_SPELLS } from "../data/spells";
 import { wantedRelics } from "./evolution";
 import { elementsOf, hasElement } from "./levelup";
@@ -23,22 +23,56 @@ function addTags(run: RunState, def: RelicDef, sign: 1 | -1): void {
   for (const t of def.tags) run.tags[t] = Math.max(0, (run.tags[t] ?? 0) + sign);
 }
 
-/** relic_system.lua `grant`: relíquia única por id; soma as tags e muda `relicVersion`. Devolve se entrou. */
+/** Se a relíquia acumula (D7 revista): incomum e fora da lista de exceções. */
+export function relicStackable(id: string): boolean {
+  const d = relicDef(id);
+  return !!d && RELIC_STACK.rarities.includes(d.rarity) && !RELIC_STACK.exclude.includes(id);
+}
+
+/** Quantas cópias o herói tem desta relíquia. */
+export function relicCopies(relics: readonly string[], id: string): number {
+  let n = 0;
+  for (const r of relics) if (r === id) n++;
+  return n;
+}
+
+/** Se o herói pode ganhar (mais uma cópia de) esta relíquia. */
+export function canGainRelic(relics: readonly string[], id: string): boolean {
+  const n = relicCopies(relics, id);
+  return n === 0 || (relicStackable(id) && n < RELIC_STACK.maxCopies);
+}
+
+/** As relíquias do herói agrupadas: id e cópias, na ordem da primeira (para a interface). */
+export function relicStacks(relics: readonly string[]): { id: string; copies: number }[] {
+  const out = new Map<string, number>();
+  for (const id of relics) out.set(id, (out.get(id) ?? 0) + 1);
+  return [...out].map(([id, copies]) => ({ id, copies }));
+}
+
+/**
+ * relic_system.lua `grant`: soma as tags e muda `relicVersion`. Devolve se entrou. Lá é única por id; aqui a incomum
+ * acumula (D7 revista): a cópia a mais só soma atributos, sem tag e sem mudar `relicVersion` (a coleção é a mesma,
+ * então uma evolução recusada não volta por causa dela).
+ */
 export function grantRelic(run: RunState, id: string): boolean {
   const def = relicDef(id);
   if (!def) throw new Error(`unknown relic ${id}`);
-  if (run.relics.includes(id)) return false;
+  if (!canGainRelic(run.relics, id)) return false;
+  const first = !run.relics.includes(id);
   run.relics.push(id);
-  addTags(run, def, 1);
-  run.relicVersion += 1;
+  if (first) {
+    addTags(run, def, 1);
+    run.relicVersion += 1;
+  }
   return true;
 }
 
-/** relic_system.lua `devRemove` (e o consumo dos componentes na evolução de relíquia, `M12-08`). */
+/** relic_system.lua `devRemove` (e o consumo dos componentes na evolução de relíquia, `M12-08`): tira uma cópia. */
 export function removeRelic(run: RunState, id: string): boolean {
   const i = run.relics.indexOf(id);
   if (i < 0) return false;
   run.relics.splice(i, 1);
+  if (run.relics.includes(id)) return true; // ainda tem cópia: tags e coleção iguais
   const def = relicDef(id);
   if (def) addTags(run, def, -1);
   run.relicVersion += 1;
@@ -376,8 +410,8 @@ function luaWeighted(u: Uniform, w: readonly number[]): number {
 }
 
 /** `isDraftable` com o herói: das categorias do sorteio, aberta, que ele não tem nem baniu. */
-export function relicDraftPool(run: RunState, open: (id: string) => boolean): string[] {
-  return RELIC_IDS.filter((id) => !run.relics.includes(id) && !run.bannedRelics.includes(id) && open(id)
+export function relicDraftPool(run: RunState, open: (id: string) => boolean, stack = true): string[] {
+  return RELIC_IDS.filter((id) => (stack ? canGainRelic(run.relics, id) : !run.relics.includes(id)) && !run.bannedRelics.includes(id) && open(id)
     && relicDraftable(id, run.spells));
 }
 
@@ -399,16 +433,20 @@ function relicFit(run: RunState, d: RelicDef): number {
 export function relicDraftWeight(run: RunState, id: string, wanted: Readonly<Record<string, string>> = wantedRelics(run)): number {
   const d = RELICS[id];
   const miss = relicMissingSpell(run, d) ? (run.spells.length >= MAX_SPELLS ? 0 : RELIC_DRAFT.missingSpellWeight) : 1;
-  return (wanted[id] ? RELIC_DRAFT.recipeWeight : 1) * relicFit(run, d) * miss;
+  // a cópia de uma que já tem (D7 revista) pesa menos, e não ganha o peso da receita (a receita já está feita)
+  const owned = relicCopies(run.relics, id);
+  const recipe = wanted[id] && owned === 0 ? RELIC_DRAFT.recipeWeight : 1;
+  return recipe * relicFit(run, d) * miss * RELIC_STACK.copyWeight ** owned;
 }
 
 /**
- * relic_system.lua `draft` (§40, D-053, D-197, D-309, D-570): `n` relíquias sem repetir. A cada uma, a raridade por
+ * relic_system.lua `draft` (§40, D-053, D-197, D-309, D-570): `n` relíquias sem repetir na oferta. `stack` falso é o
+ * sorteio de lá, sem cópia das que o herói tem (a paridade testa assim). A cada uma, a raridade por
  * 65/30/5 entre as que ainda têm candidata, e dentro dela a relíquia pelo peso (por igual quando todas pesam 1).
  */
-export function relicDraft(run: RunState, open: (id: string) => boolean, u: Uniform, n: number = 3): string[] {
+export function relicDraft(run: RunState, open: (id: string) => boolean, u: Uniform, n: number = 3, stack = true): string[] {
   const byRarity = new Map<RelicRarity, string[]>();
-  for (const id of relicDraftPool(run, open)) {
+  for (const id of relicDraftPool(run, open, stack)) {
     const r = RELICS[id].rarity;
     if (!byRarity.has(r)) byRarity.set(r, []);
     byRarity.get(r)!.push(id);

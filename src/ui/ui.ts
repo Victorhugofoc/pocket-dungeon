@@ -28,11 +28,11 @@ import type { MapCard } from "../core/runmap";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game, RelicBan } from "../game/game";
-import { relicBansLeft } from "../core/relics";
+import { relicBansLeft, relicCopies, relicStacks } from "../core/relics";
 import { buildIdentity, tagCount } from "../core/synergies";
 import { BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_THRESHOLD, IDENTITIES, PATH_NAMES, SYNERGY_BY_ID } from "../data/synergies";
 import { iconHtml, modifierIconHtml, slotIconUrl, spellIconUrl, techniqueIconUrl, uiIconUrl, upgradeIconUrl, evolutionIconUrl } from "./icons";
-import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, synergyCardHtml, tagListHtml } from "./build-view";
+import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
@@ -953,7 +953,7 @@ export class Ui {
           return `<div class="relic with-icon" style="border-color:${TIER_COLOR[t]}" title="${TIER_LABEL[t]}">${iconHtml(upgradeIconUrl(id), 24)}${UPGRADE_BY_ID[id] ? upgradeName(UPGRADE_BY_ID[id], this.game.hero.style) : id}</div>`;
         }).join("") : `<span style="color:var(--muted)">Level up and choose at the end of the wave.</span>`}</div>
         <div class="section">Relics (${run.relics.length})</div>
-        <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic with-icon" data-relic="${id}" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}</div>`).join("")
+        <div class="relics">${run.relics.length ? relicStacks(run.relics).map(({ id, copies }) => `<div class="relic with-icon" data-relic="${id}" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}${copies > 1 ? ` <b class="copies">x${copies}</b>` : ""}</div>`).join("")
           : `<span style="color:var(--muted)">Defeat a boss to pick the first one.</span>`}</div>
         ${buildPanelHtml(run)}
         <div class="row end"><button data-act="close">Close (I)</button></div>
@@ -970,7 +970,7 @@ export class Ui {
       const rel = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]");
       if (rel) {
         const d = RELICS[rel.dataset.relic!];
-        return this.showTip(`<div class="tip-head">${relicIconHtml(d.id, 40)}<div><h4 style="color:${RARITY_COLOR[d.rarity]}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic ${tagListHtml(d.tags)}</div></div></div>${relicLines(d)}${relicRecipeHtml(d.id, run.relics)}`, ev);
+        return this.showTip(`<div class="tip-head">${relicIconHtml(d.id, 40)}<div><h4 style="color:${RARITY_COLOR[d.rarity]}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic ${tagListHtml(d.tags)}</div></div></div>${relicLines(d)}${relicCopies(run.relics, d.id) > 1 ? `<p class="stack">x${relicCopies(run.relics, d.id)}: these stats count ${relicCopies(run.relics, d.id)} times</p>` : ""}${relicRecipeHtml(d.id, run.relics)}`, ev);
       }
       const evoEl = (ev.target as HTMLElement).closest<HTMLElement>("[data-evo]");
       if (evoEl && BUILD_EVOLUTION_BY_ID[evoEl.dataset.evo!]) {
@@ -1011,10 +1011,11 @@ export class Ui {
     panel.innerHTML = `<h2>${title}</h2><p class="sub">Choose a relic. The bonus is permanent.${hint}</p>
       <div class="cards relics">${ids.map((id, i) => {
         const d = RELICS[id];
-        const evo = wanted[id] ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
+        const has = this.game.run.relics.includes(id);
+        const evo = wanted[id] && !has ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
         const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
         return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${relicLines(d)}${evo}${relicRecipeHtml(id, this.game.run.relics)}${synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}</div>`;
+          <h3>${d.name}</h3>${relicLines(d)}${relicStackHtml(id, this.game.run.relics)}${evo}${has ? "" : relicRecipeHtml(id, this.game.run.relics) + synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
@@ -1276,7 +1277,7 @@ export class Ui {
         </div>
         <div>
           <div class="section">Relics (${run.relics.length})</div>
-          <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic with-icon" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}</div>`).join("") : `<p class="note">No relics this run.</p>`}</div>
+          <div class="relics">${run.relics.length ? relicStacks(run.relics).map(({ id, copies }) => `<div class="relic with-icon" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}${copies > 1 ? ` <b class="copies">x${copies}</b>` : ""}</div>`).join("") : `<p class="note">No relics this run.</p>`}</div>
           <div class="section">Seed</div><p><b style="letter-spacing:2px">${run.seedCode}</b></p>
           <div class="section">Score</div>
           <p style="color:${isBest ? "var(--gold)" : "inherit"}">${isBest ? `New record! (${g.hero.name} · ${diff})` : `Record (${g.hero.name} · ${diff}): wave ${best.wave}, ${n(best.kills)} kills`}</p>
@@ -1394,10 +1395,12 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     name = d.name;
     icon = relicIconHtml(d.id, 56, "ricon big");
     body = relicLines(d);
+    const has = !o.bought && g.run.relics.includes(d.id);
+    if (!o.bought) body += relicStackHtml(d.id, g.run.relics);
     const evo = wantedRelics(g.run)[o.relic!];
-    if (evo) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
-    if (!o.bought) body += relicRecipeHtml(d.id, g.run.relics);
-    if (!o.bought) body += synergyCardHtml(g.run.tags, d.tags, g.run.buildEvolutions);
+    if (evo && !has) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
+    if (!o.bought && !has) body += relicRecipeHtml(d.id, g.run.relics);
+    if (!o.bought && !has) body += synergyCardHtml(g.run.tags, d.tags, g.run.buildEvolutions);
     const left = relicBansLeft(g.run);
     if (!o.bought) body += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
     color = RARITY_COLOR[d.rarity];

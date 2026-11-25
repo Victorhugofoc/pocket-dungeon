@@ -13,6 +13,7 @@ Roguelite de ação para PC, em partidas de 30 a 40 minutos. Cada partida é uma
 - Tecnologia: three.js no navegador. Toda a arte é gerada por código, em 3D estilizado; os sprites do Dungeon Reign são só referência de design. Exceção (D19): os ícones 2D da interface vêm do original.
 - **Personagens no Blender** (decisão D16, 2026-11-18): os modelos de personagem passam a ser feitos no Blender por script Python (`tools/blender/`), com o `.blend` em `art/` para ajuste à mão, e exportados por osso para o jogo (`src/game/chars/models/*.json`). Esqueleto, animação, contorno e materiais continuam no código. Motivo: o rosto do goblin por primitivas de código não ficou ameaçador depois de várias rodadas; o do Blender ficou muito melhor. Cenário, efeitos e sons seguem por código.
 - Conteúdo: heróis, inimigos, chefes, relíquias, spells, eventos e pactos do Dungeon Reign.
+- **Relíquias sem limite, e as incomuns acumulam** (D7 revista, 2026-11-24; o original não repete relíquia). Uma relíquia incomum pode vir de novo, até 3 cópias: cada cópia soma os atributos, as tags de build contam uma vez só, e no sorteio a cópia pesa ½ por cópia já tida (sem o peso da receita). Raras, épicas, de chefe, exclusivas e evoluídas não repetem. Ficam fora as incomuns que mudam uma mecânica: Binding Chalk, Cinder Lens, Conduit Ring. A evolução de relíquia consome uma cópia de cada peça. O santuário de relíquia sem nada para oferecer dá ouro (15 + 6 × onda).
 
 ## Loop de uma partida
 1. Escolhe o herói, a dificuldade e 1 das 4 spells iniciais dele. O jogo gera a seed.

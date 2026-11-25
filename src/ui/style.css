@@ -270,6 +270,9 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .card .stat.neg { color: #ff8a7a; }
 .card .note { color: var(--muted); }
 .card .evo { color: var(--gold); font-size: 12px; font-weight: 600; }
+.card .stack, .tip .stack { color: #7fd6ff; font-size: 12px; font-weight: 600; }
+.card .stack.muted { color: var(--muted); font-weight: 400; }
+.relic .copies { color: #7fd6ff; }
 /* M12-06 parte 2: ícones (D19), bolinhas de caminho e painel da build */
 .ricon { image-rendering: pixelated; flex: none; }
 .ricon.big { display: block; margin: 0 auto 8px; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--cc, #fff) 35%, transparent)); }

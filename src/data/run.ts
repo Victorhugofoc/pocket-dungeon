@@ -87,6 +87,9 @@ export const RUN_MAP = {
   shopEvery: 3,
   /** cartas que podem dar lugar à loja garantida */
   replaceable: ["combat_room", "cursed_room", "event"],
+  /** santuário sem relíquia para oferecer (todas as abertas já são do herói): ouro no lugar, base + por onda.
+   * Não existe no original (lá o sorteio vazio só pula); mesma conta do pagamento dos desafios (15 + 6 × onda). */
+  shrineFallbackGold: { base: 15, perWave: 6 },
 } as const;
 
 export type DifficultyId = "easy" | "normal" | "hard";
