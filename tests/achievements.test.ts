@@ -160,6 +160,22 @@ describe("conquistas (achievements.lua)", () => {
   });
 });
 
+describe("conquistas de evolução (M12-08)", () => {
+  it("Forge e Complete Grimoire pelas evoluções de spell vistas; Alchemy pela relíquia evoluída achada", () => {
+    const t = new AchievementTracker(emptyAchievements(), { ...CONTENT, spellEvolutions: ["firestorm", "glacier"], relicEvolutions: ["inferno_heart"] });
+    t.relicFound("ember_heart");
+    expect(t.take()).not.toContain("alchemy");
+    t.spellEvolved("firestorm");
+    expect(t.take()).toContain("forge");
+    t.spellEvolved("glacier");
+    expect(t.take()).toContain("grimoire");
+    t.relicFound("inferno_heart");
+    expect(t.take()).toContain("alchemy");
+    // save antigo sem `seen.spell`
+    expect(normalizeAchievements({ unlocked: {}, seen: { boss: [], enemy: [], relic: [] } })!.seen.spell).toEqual([]);
+  });
+});
+
 describe("save das conquistas", () => {
   const mem = (): Storage & { data: Record<string, string> } => {
     const data: Record<string, string> = {};

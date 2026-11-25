@@ -30,3 +30,4 @@ Leia `HANDOFF.md` antes de qualquer coisa: ele tem o estado atual e o próximo p
 - Cada marco: implementar → testes verdes → conferir no navegador → atualizar `HANDOFF.md` → commit.
 - Decisões que mudam o `docs/design.md` são confirmadas com o usuário antes.
 - **Discordar é bem-vindo** (pedido do usuário, 2026-11-20): uma decisão dele não impede proposta. Antes de implementar algo, anotar o que vai ser feito. Se eu discordar de uma ideia dele (ou de uma decisão anterior), explicar o motivo, dar uma alternativa e **esperar a confirmação dele antes de aplicar**.
+- **Melhorias antes de implementar** (pedido do usuário, 2026-11-24): em toda tarefa, antes de implementar, listar as melhorias possíveis que eu enxergar (com a minha recomendação) e esperar ele escolher o caminho.

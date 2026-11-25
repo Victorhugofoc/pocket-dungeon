@@ -32,7 +32,7 @@ import { relicBansLeft } from "../core/relics";
 import { buildIdentity, tagCount } from "../core/synergies";
 import { BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_THRESHOLD, IDENTITIES, PATH_NAMES, SYNERGY_BY_ID } from "../data/synergies";
 import { iconHtml, modifierIconHtml, slotIconUrl, spellIconUrl, techniqueIconUrl, uiIconUrl, upgradeIconUrl, evolutionIconUrl } from "./icons";
-import { buildPanelHtml, RARITY_COLOR, relicIconHtml, synergyCardHtml, tagListHtml } from "./build-view";
+import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
@@ -201,6 +201,7 @@ export class Ui {
       relicChoice: (ids, pick, title, ban) => this.showRelicChoice(ids, pick, title, ban),
       levelUp: () => this.showLevelUp(),
       evolution: () => this.showEvolution(),
+      relicEvolution: () => this.showRelicEvolution(),
       shop: () => this.showShop(),
       died: () => setTimeout(() => this.showDeath(), 900),
       zoneChanged: () => this.onZoneChanged(),
@@ -263,7 +264,7 @@ export class Ui {
       else if (k === "KeyR") this.game.rerollShop();
       return;
     }
-    const locked = ["title", "relic", "levelup", "evolution", "map", "death", "victory", "results"].includes(this.overlayKind);
+    const locked = ["title", "relic", "levelup", "evolution", "relic-evolution", "map", "death", "victory", "results"].includes(this.overlayKind);
     if (locked) return;
     if (k === "Escape") {
       if (this.overlay) this.close();
@@ -969,7 +970,7 @@ export class Ui {
       const rel = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]");
       if (rel) {
         const d = RELICS[rel.dataset.relic!];
-        return this.showTip(`<div class="tip-head">${relicIconHtml(d.id, 40)}<div><h4 style="color:${RARITY_COLOR[d.rarity]}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic ${tagListHtml(d.tags)}</div></div></div>${relicLines(d)}`, ev);
+        return this.showTip(`<div class="tip-head">${relicIconHtml(d.id, 40)}<div><h4 style="color:${RARITY_COLOR[d.rarity]}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic ${tagListHtml(d.tags)}</div></div></div>${relicLines(d)}${relicRecipeHtml(d.id, run.relics)}`, ev);
       }
       const evoEl = (ev.target as HTMLElement).closest<HTMLElement>("[data-evo]");
       if (evoEl && BUILD_EVOLUTION_BY_ID[evoEl.dataset.evo!]) {
@@ -1013,7 +1014,7 @@ export class Ui {
         const evo = wanted[id] ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
         const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
         return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${relicLines(d)}${evo}${synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}</div>`;
+          <h3>${d.name}</h3>${relicLines(d)}${evo}${relicRecipeHtml(id, this.game.run.relics)}${synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
@@ -1145,6 +1146,37 @@ export class Ui {
       if (i === undefined) return;
       this.close();
       g.chooseEvolution(Number(i));
+    };
+  }
+
+  /** relic_evolution.lua (§45): até 3 evoluções prontas; as peças são consumidas, e o jogador pode pular. */
+  private showRelicEvolution(): void {
+    const g = this.game;
+    const offer = g.relicEvoOffer;
+    if (!offer) return;
+    const panel = this.open("relic-evolution", "relic-evolution");
+    panel.style.width = "min(820px, 96vw)";
+    panel.innerHTML = `<h2>Relic evolution</h2><p class="sub">Two relics become one. The components are consumed.</p>
+      <div class="cards relics">${offer.map((id, i) => {
+        const d = RELICS[id];
+        const parts = d.requires!.map((c) => RELICS[c].name).join(" + ");
+        const tier = d.exclusiveGroup ? `Tier 3 · ${relicGroupName(d.exclusiveGroup)}` : `Tier ${d.tier}`;
+        const rivals = relicRecipeHtml(id, g.run.relics).replace(/<div class="recipe">Evolved from[^<]*<\/div>/, "");
+        return `<div class="card relic-card" data-revo="${i}" style="--cc:${RARITY_COLOR.evolved}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${tier} evolution</div>
+          <h3>${d.name}</h3>${relicLines(d)}<p class="note">Consumes: ${parts}</p>${rivals}${relicEvolutionChangeHtml(g.run.tags, id, g.run.buildEvolutions)}</div>`;
+      }).join("")}</div>
+      <div class="row end"><button data-act="skip">Skip evolution</button></div>`;
+    panel.onclick = (ev) => {
+      const t = ev.target as HTMLElement;
+      if (t.closest("[data-act=skip]")) {
+        this.close();
+        g.skipRelicEvolution();
+        return;
+      }
+      const i = t.closest<HTMLElement>("[data-revo]")?.dataset.revo;
+      if (i === undefined) return;
+      this.close();
+      g.chooseRelicEvolution(Number(i));
     };
   }
 
@@ -1364,6 +1396,7 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     body = relicLines(d);
     const evo = wantedRelics(g.run)[o.relic!];
     if (evo) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
+    if (!o.bought) body += relicRecipeHtml(d.id, g.run.relics);
     if (!o.bought) body += synergyCardHtml(g.run.tags, d.tags, g.run.buildEvolutions);
     const left = relicBansLeft(g.run);
     if (!o.bought) body += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;

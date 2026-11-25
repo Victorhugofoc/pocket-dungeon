@@ -4,7 +4,8 @@
 import { ACHIEVEMENT_BY_ID, ACHIEVEMENT_RULES as R, ACHIEVEMENTS, LOCKED_BY, UNLOCK_REWARDS, type AchievementDef, type UnlockKind } from "../data/achievements";
 import { FULL_TABLE_SYNERGIES } from "../data/synergies";
 
-export type CodexKind = "boss" | "enemy" | "relic";
+/** "spell": as evoluções de spell já feitas (codex.lua `seen("spell", evo)`, para Forge e Complete Grimoire) */
+export type CodexKind = "boss" | "enemy" | "relic" | "spell";
 
 export interface AchievementState {
   version: 1;
@@ -23,7 +24,7 @@ export interface AchievementState {
 export const DIFF_RANK: Readonly<Record<string, number>> = { easy: 1, normal: 2, hard: 3 };
 
 export function emptyAchievements(): AchievementState {
-  return { version: 1, unlocked: {}, counters: {}, fresh: {}, medals: {}, seen: { boss: [], enemy: [], relic: [] }, played: [] };
+  return { version: 1, unlocked: {}, counters: {}, fresh: {}, medals: {}, seen: { boss: [], enemy: [], relic: [], spell: [] }, played: [] };
 }
 
 /** Lê o que veio do save, completando o que faltar; null quando não é um estado de conquistas. */
@@ -36,7 +37,7 @@ export function normalizeAchievements(x: unknown): AchievementState | null {
   const seen = obj(d.seen, e.seen);
   return {
     version: 1, unlocked: obj(d.unlocked, {}), counters: obj(d.counters, {}), fresh: obj(d.fresh, {}),
-    medals: obj(d.medals, {}), seen: { boss: arr(seen.boss), enemy: arr(seen.enemy), relic: arr(seen.relic) }, played: arr(d.played),
+    medals: obj(d.medals, {}), seen: { boss: arr(seen.boss), enemy: arr(seen.enemy), relic: arr(seen.relic), spell: arr(seen.spell) }, played: arr(d.played),
   };
 }
 
@@ -129,6 +130,10 @@ export interface AchievementContent {
   bosses: readonly string[];
   enemies: readonly string[];
   relics: readonly string[];
+  /** as evoluções de spell (Complete Grimoire) */
+  spellEvolutions?: readonly string[];
+  /** as relíquias evoluídas (Alchemy) */
+  relicEvolutions?: readonly string[];
 }
 
 /** achievements.lua `check`: libera o que o progresso salvo já cumpre; devolve as liberadas agora. */
@@ -149,6 +154,10 @@ export function checkSaved(s: AchievementState, c: AchievementContent, opts: { r
     bestiary: () => codexAll("enemy", c.enemies),
     kingslayer: () => codexAll("boss", c.bosses),
     reliquary: () => codexAll("relic", c.relics),
+    // achievements.lua `spellEvolutions` e `relicEvolutions`: contam o que o códex já viu
+    forge: () => s.seen.spell.length >= 1,
+    grimoire: () => !!c.spellEvolutions?.length && c.spellEvolutions.every((id) => s.seen.spell.includes(id)),
+    alchemy: () => !!c.relicEvolutions?.some((id) => s.seen.relic.includes(id)),
   };
   for (const h of c.heroes) checks[`win_${h}`] = () => medal(h) >= 1;
   const out: string[] = [];
@@ -252,6 +261,11 @@ export class AchievementTracker {
   /** achievements.lua `build_evolution`: Identity com a primeira evolução de build. */
   buildEvolution(): void {
     this.unlock("identity");
+  }
+
+  /** a spell evoluiu (codex.lua marca a evolução como vista): Forge e Complete Grimoire */
+  spellEvolved(evoId: string): void {
+    if (markSeen(this.state, "spell", evoId)) this.check();
   }
 
   relicFound(id: string): void {

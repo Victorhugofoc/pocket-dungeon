@@ -36,6 +36,12 @@ export interface RelicDef {
   bossBuild?: string;
   /** exclusiva (`category: "exclusive"`): só sai pelo nó dela, nunca no sorteio normal nem na loja */
   pool?: RelicPool;
+  /** evolução de relíquia (§45, §46): nível 2 ou 3 */
+  tier?: 2 | 3;
+  /** a receita da evolução: as relíquias consumidas (A + B → C) */
+  requires?: string[];
+  /** nível 3 (§47): só uma relíquia de cada grupo por partida */
+  exclusiveGroup?: string;
   color: number;
 }
 
@@ -58,6 +64,16 @@ function boss(id: string, name: string, effects: RelicEffect[], build: string | 
 /** relics.lua `excl`: exclusiva de um pool (evento, risco, maldição, pacto). */
 function excl(pool: RelicPool, t: Omit<RelicInput, "category" | "pool">): RelicDef {
   return relic({ ...t, category: "exclusive", pool });
+}
+
+/** relics.lua `tier2` (§45): evolução de duas relíquias; cor da primeira peça (preenchida depois da lista). */
+function tier2(id: string, name: string, requires: string[], effects: RelicEffect[], tags: string[]): RelicDef {
+  return relic({ id, name, category: "tier2", rarity: "evolved", tier: 2, requires, effects, tags, color: 0 });
+}
+
+/** relics.lua `tier3` (§46, §47): duas de nível 2; tags = a união das tags das peças (D-051, preenchidas depois). */
+function tier3(id: string, name: string, requires: string[], exclusiveGroup: string, effects: RelicEffect[]): RelicDef {
+  return relic({ id, name, category: "tier3", rarity: "evolved", tier: 3, requires, exclusiveGroup, effects, color: 0 });
 }
 
 /** Relíquias do sorteio normal e da loja (relic_system.lua `isDraftable`: sem as de chefe, as evoluções e as exclusivas). */
@@ -143,6 +159,75 @@ const list: RelicDef[] = [
     effects: [e("regen", 0.80), e("damagePct", -0.10), e("overhealShield", 0.20)], tags: ["healing", "sustain", "tradeoff"], color: 0xc8283a }),
   relic({ id: "elemental_convergence", name: "Elemental Convergence", category: "keystone", rarity: "epic",
     effects: [e("firePct", 0.22), e("icePct", 0.22), e("lightningPct", 0.22), e("arcanePct", -0.15)], tags: ["fire", "ice", "lightning", "tradeoff"], color: 0xffb35f }),
+  // §45 e §46: evoluções de relíquia (só pela oferta do intervalo, M12-08)
+  tier2("inferno_heart", "Inferno Heart", ["ember_heart", "infernal_crown"],
+    [e("burnPct", 0.85), e("firePct", 0.08)], ["fire", "burn", "magic"]),
+  tier2("tempest_engine", "Tempest Engine", ["arcane_core", "storm_prism"],
+    [e("cdrPct", 0.16), e("lightningTargets", 1)], ["lightning", "spell_haste", "magic"]),
+  tier2("phantom_hunt", "Phantom Hunt", ["hunters_eye", "mirror_veil"],
+    [e("rangePct", 0.20), e("dodge", 0.12)], ["range", "dodge", "survival"]),
+  tier2("bloodmarket", "Bloodmarket", ["blood_pact", "greedy_soul"],
+    [e("damagePct", 0.16), e("goldPct", 0.20), e("maxHpPct", -0.08)], ["economy", "damage", "risk"]),
+  tier2("frostward", "Frostward", ["frost_crown", "hunters_eye"],
+    [e("slowDurationPct", 0.18), e("rangePct", 0.16), e("armor", 5)], ["ice", "slow", "range", "survival"]),
+  tier2("glass_reactor", "Glass Reactor", ["glass_cannon", "arcane_core"],
+    [e("damagePct", 0.24), e("cdrPct", 0.12), e("maxHpPct", -0.10)], ["magic", "damage", "risk"]),
+  tier2("stormblood", "Stormblood", ["storm_prism", "blood_pact"],
+    [e("damagePct", 0.15), e("lightningTargets", 1), e("deathHealChance", 0.03)], ["lightning", "damage", "auto"]),
+  tier2("winter_core", "Winter Core", ["frost_crown", "arcane_core"],
+    [e("slowDurationPct", 0.16), e("cdrPct", 0.12)], ["ice", "slow", "spell_haste"]),
+  tier2("cinderstorm", "Cinderstorm", ["ember_heart", "ember_spurs"],
+    [e("burnPct", 0.55), e("firePct", 0.10), e("moveSpeedPct", 0.06)], ["fire", "burn", "speed"]),
+  tier2("glacial_bulwark", "Glacial Bulwark", ["frost_crown", "glacial_shell"],
+    [e("slowDurationPct", 0.22), e("armor", 12), e("maxHpPct", 0.08)], ["ice", "slow", "survival", "armor"]),
+  tier2("stormrunner", "Stormrunner", ["storm_prism", "storm_step"],
+    [e("lightningTargets", 1), e("moveSpeedPct", 0.10), e("dodge", 0.07)], ["lightning", "speed", "dodge"]),
+  tier2("aether_well", "Aether Well", ["arcane_core", "aether_thread"],
+    [e("cdrPct", 0.12), e("spellDamagePct", 0.08), e("regen", 0.25)], ["arcane", "spell_haste", "healing"]),
+  tier2("duelist_reactor", "Duelist Reactor", ["blood_pact", "duelist_seal"],
+    [e("damagePct", 0.12), e("critChance", 0.08), e("critDamagePct", 0.12), e("maxHpPct", -0.05)], ["auto", "damage", "crit", "risk"]),
+  tier2("fortress_veil", "Fortress Veil", ["aegis_heart", "evasion_cloak"],
+    [e("armor", 10), e("dodge", 0.08), e("maxHpPct", 0.08)], ["survival", "armor", "dodge"]),
+  tier2("bounty_grave", "Bounty Grave", ["grave_locket", "greedy_soul"],
+    [e("goldPct", 0.16), e("deathHealChance", 0.06), e("survivorRewardPct", 0.12)], ["economy", "sustain", "survival"]),
+  tier2("glass_tempest", "Glass Tempest", ["glass_cannon", "storm_prism"],
+    [e("lightningTargets", 1), e("spellDamagePct", 0.10), e("maxHpPct", -0.08)], ["lightning", "magic", "damage", "risk"]),
+  tier2("renewing_ward", "Renewing Ward", ["renewing_heart", "aegis_heart"],
+    [e("regen", 0.35), e("maxHpPct", 0.10), e("armor", 4)], ["healing", "survival", "armor"]),
+  tier2("evasion_matrix", "Evasion Matrix", ["evasion_circuit", "phantom_ward"],
+    [e("dodge", 0.10), e("moveSpeedPct", 0.08), e("rangePct", 0.08)], ["dodge", "speed", "survival"]),
+  tier2("ashen_eye", "Ashen Eye", ["ember_heart", "cinder_lens"],
+    [e("burnPct", 0.45), e("rangePct", 0.12), e("firePct", 0.06)], ["fire", "burn", "range"]),
+  tier2("permafrost_heart", "Permafrost Heart", ["frost_crown", "frost_heart"],
+    [e("slowDurationPct", 0.18), e("maxHpPct", 0.10), e("armor", 3)], ["ice", "slow", "survival"]),
+  tier2("thundercoil", "Thundercoil", ["storm_prism", "storm_coil"],
+    [e("lightningTargets", 1), e("lightningPct", 0.10), e("cdrPct", 0.06)], ["lightning", "spell_haste"]),
+  tier2("astral_focus", "Astral Focus", ["arcane_core", "aether_focus"],
+    [e("spellDamagePct", 0.10), e("rangePct", 0.14), e("cdrPct", 0.06)], ["arcane", "magic", "range", "spell_haste"]),
+  tier2("second_wind_relic", "Second Wind", ["vital_spark", "renewing_heart"],
+    [e("regen", 0.30), e("maxHpPct", 0.08)], ["healing", "survival"]),
+  tier2("windblade", "Windblade", ["duelist_gloves", "evasion_circuit"],
+    [e("attackSpeedPct", 0.10), e("critChance", 0.05), e("moveSpeedPct", 0.08), e("dodge", 0.05)], ["auto", "speed", "crit", "dodge"]),
+  tier2("aegis_mirror", "Aegis Mirror", ["warding_mirror", "aegis_heart"],
+    [e("armor", 15), e("dodge", 0.05), e("maxHpPct", 0.05)], ["survival", "dodge", "armor"]),
+  tier2("golden_archive", "Golden Archive", ["scavenger_badge", "greedy_soul"],
+    [e("goldPct", 0.18), e("xpPct", 0.12), e("damagePct", -0.05)], ["economy", "risk"]),
+  tier3("infernal_engine", "Infernal Engine", ["inferno_heart", "aether_well"], "spell_apex",
+    [e("firePct", 0.12), e("spellDamagePct", 0.10), e("cdrPct", 0.08), e("burnPct", 0.35)]),
+  tier3("frostbound_fortress", "Frostbound Fortress", ["glacial_bulwark", "renewing_ward"], "defense_apex",
+    [e("maxHpPct", 0.10), e("armor", 12), e("regen", 0.25), e("slowDurationPct", 0.12)]),
+  tier3("tempest_veil", "Tempest Veil", ["tempest_engine", "evasion_matrix"], "mobility_apex",
+    [e("lightningTargets", 1), e("dodge", 0.08), e("moveSpeedPct", 0.08), e("cdrPct", 0.06)]),
+  tier3("bloodsoaked_arsenal", "Bloodsoaked Arsenal", ["duelist_reactor", "bounty_grave"], "weapon_apex",
+    [e("critChance", 0.06), e("critDamagePct", 0.10), e("goldPct", 0.10), e("deathHealChance", 0.04)]),
+  tier3("ashen_apocalypse", "Ashen Apocalypse", ["inferno_heart", "ashen_eye"], "spell_apex",
+    [e("burnPct", 0.30), e("firePct", 0.10), e("rangePct", 0.08), e("volatileChance", 0.08)]),
+  tier3("storm_singularity", "Storm Singularity", ["tempest_engine", "thundercoil"], "mobility_apex",
+    [e("lightningTargets", 1), e("lightningPct", 0.10), e("cdrPct", 0.06)]),
+  tier3("aether_lattice", "Aether Lattice", ["aether_well", "astral_focus"], "spell_apex",
+    [e("spellDamagePct", 0.10), e("rangePct", 0.08), e("regen", 0.20), e("cdrPct", 0.05)]),
+  tier3("phantom_arsenal", "Phantom Arsenal", ["windblade", "fortress_veil"], "weapon_apex",
+    [e("critChance", 0.05), e("autoDamagePct", 0.08), e("dodge", 0.07), e("moveSpeedPct", 0.06)]),
   // extensões de lá (core)
   relic({ id: "smoldering_brand", name: "Smoldering Brand", category: "core", rarity: "uncommon",
     effects: [e("firePct", 0.08), e("burnPct", 0.06)], tags: ["fire", "burn"], color: 0xe8642a }),
@@ -305,7 +390,9 @@ const LUA_ORDER: readonly string[] = [
   "storm_coil", "aether_focus", "vital_spark", "duelist_gloves", "warding_mirror", "scavenger_badge", "astral_prism", "titan_sigil",
   "duelist_crown", "gale_feather", "storm_vane", "binding_chalk", "scribes_quill", "cut_crystal", "sunstone", "geode_heart",
   "tremor_boots", "pyro_lens", "frost_lens", "storm_lens", "aether_lens", "sanctuary_lens", "glass_throne", "arcane_dominion",
-  "war_machine_core", "blood_engine", "elemental_convergence", "warlords_fang", "hunters_mark", "kingbreaker", "infernal_crown",
+  "war_machine_core", "blood_engine", "elemental_convergence",
+  "inferno_heart", "tempest_engine", "phantom_hunt", "bloodmarket", "frostward", "glass_reactor", "stormblood", "winter_core", "cinderstorm", "glacial_bulwark", "stormrunner", "aether_well", "duelist_reactor", "fortress_veil", "bounty_grave", "glass_tempest", "renewing_ward", "evasion_matrix", "ashen_eye", "permafrost_heart", "thundercoil", "astral_focus", "second_wind_relic", "windblade", "aegis_mirror", "golden_archive", "infernal_engine", "frostbound_fortress", "tempest_veil", "bloodsoaked_arsenal", "ashen_apocalypse", "storm_singularity", "aether_lattice", "phantom_arsenal",
+  "warlords_fang", "hunters_mark", "kingbreaker", "infernal_crown",
   "frost_throne", "tempest_crown", "royal_arcane_core", "blood_crown", "berserkers_brand", "bloodrush_medallion", "deadeye_sigil",
   "predator_lens", "tempest_core", "storm_lens_boss", "earthheart", "breaker_core", "venom_eye", "brood_heart", "soulward_crown",
   "gravebound_core", "smoldering_brand", "pyre_sigil", "rime_charm", "glacier_sigil", "conduit_ring", "thunder_sigil", "rune_charm",
@@ -318,6 +405,16 @@ const LUA_ORDER: readonly string[] = [
 list.sort((a, b) => LUA_ORDER.indexOf(a.id) - LUA_ORDER.indexOf(b.id));
 
 export const RELICS: Record<string, RelicDef> = Object.fromEntries(list.map((r) => [r.id, r]));
+// relics.lua `R.evolutions`: a cor vem da primeira peça e o nível 3 junta as tags das peças (a lista já vem na ordem)
+for (const r of list) {
+  if (!r.requires) continue;
+  const parts = r.requires.map((id) => RELICS[id]);
+  if (parts.some((x) => !x)) throw new Error(`relic evolution ${r.id}: unknown component`);
+  r.color = parts[0].color;
+  if (r.tier === 3) r.tags = [...new Set(parts.flatMap((x) => x.tags))];
+}
+/** relics.lua `R.evolutions`: as relíquias evoluídas (níveis 2 e 3), na ordem de lá */
+export const RELIC_EVOLUTIONS: readonly RelicDef[] = list.filter((r) => r.requires);
 export const RELIC_IDS: string[] = list.map((r) => r.id);
 
 /**

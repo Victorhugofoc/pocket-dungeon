@@ -1,13 +1,13 @@
 // Motor de relíquias (core/relics.ts): posse com tags, fontes de atributo, efeitos de spell e despacho dos ganchos.
 import { describe, expect, it } from "vitest";
-import { banRelic, banRelicChoice, relicBansLeft, relicDraft, relicDraftPool, relicDraftWeight, relicMissingSpell, bossRelicOffer, hoardBonus, HOARD, KILL_STREAK, LAST_RITES, NO_COMBAT_HEAL, OATH, oathBonus, poolRelicDraft, BURN_SPREAD, CAST_HEAL, FROSTBITE, GLASS_THRONE, grantRelic, prismSchool, PRISM_CYCLE, relicDraftable, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, type RelicFoe, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
+import { availableRelicEvolutions, declineRelicEvolutions, evolveRelic, ownedRelicGroups, pendingRelicEvolutionOffer, relicEvolutionsUsing, relicEvolveBlock, relicGroupRivals, banRelic, banRelicChoice, relicBansLeft, relicDraft, relicDraftPool, relicDraftWeight, relicMissingSpell, bossRelicOffer, hoardBonus, HOARD, KILL_STREAK, LAST_RITES, NO_COMBAT_HEAL, OATH, oathBonus, poolRelicDraft, BURN_SPREAD, CAST_HEAL, FROSTBITE, GLASS_THRONE, grantRelic, prismSchool, PRISM_CYCLE, relicDraftable, LEVEL_HEAL, MOMENTUM, OVERHEAL_SHIELD, type RelicFoe, relicSources, relicSpellEffects, relicTotals, removeRelic, RelicHooks, type RelicMechanic, type RelicWorld } from "../src/core/relics";
 import { newRun } from "../src/core/run";
 import { computeStats } from "../src/core/stats";
 import { evaluateOffer, type ShopVisit } from "../src/core/shop";
 import { enemyStats, waveMods } from "../src/core/wave";
 import { spellContext, spellStats } from "../src/core/spells";
 import { HEROES } from "../src/data/heroes";
-import { RELIC_IDS, RELIC_MECH, RELICS, type RelicDef } from "../src/data/relics";
+import { RELIC_EVOLUTIONS, RELIC_IDS, RELIC_MECH, RELICS, type RelicDef } from "../src/data/relics";
 
 const run = () => newRun({ heroId: "frostine", difficultyId: "normal", startingSpell: HEROES.frostine.startingSpells[0], randomSeed: 7 });
 
@@ -354,7 +354,7 @@ describe("relíquias: lote 4, as exclusivas (M12-05)", () => {
     expect(ex.length).toBe(20);
     for (const [pool, n] of Object.entries(POOLS)) expect(ex.filter((id) => RELICS[id].pool === pool).length, pool).toBe(n);
     for (const id of ex) expect(relicDraftable(id, []), id).toBe(false);
-    expect(RELIC_IDS.length).toBe(114);
+    expect(RELIC_IDS.length).toBe(148);
   });
 
   it("sorteio do pool: só do pool, sem as que tem nem as fechadas; acabou, completa com raras e épicas", () => {
@@ -492,5 +492,68 @@ describe("escolha de relíquia como no original (M12-10)", () => {
     expect(banRelicChoice(run, next, 1, draw)).toBeNull();
     expect(banRelic(run, "momentum")).toBe(false);
     expect(relicBansLeft(run, 1)).toBe(1);
+  });
+});
+
+describe("evoluções de relíquia (M12-08, relic_system.lua §§45-47)", () => {
+  const mk = () => newRun({ heroId: "frostine", difficultyId: "normal", startingSpell: "iceball", randomSeed: 3 });
+  const id = (x: string[]) => x;
+
+  it("26 de nível 2 e 8 de nível 3, fora do sorteio normal; nível 3 junta as tags das peças", () => {
+    expect(RELIC_EVOLUTIONS.filter((d) => d.tier === 2).length).toBe(26);
+    expect(RELIC_EVOLUTIONS.filter((d) => d.tier === 3).length).toBe(8);
+    for (const d of RELIC_EVOLUTIONS) {
+      expect(relicDraftable(d.id, []), d.id).toBe(false);
+      expect(d.requires!.length).toBe(2);
+      if (d.tier === 3) {
+        expect(d.exclusiveGroup).toBeTruthy();
+        for (const c of d.requires!) expect(RELICS[c].tier).toBe(2);
+        expect(new Set(d.tags)).toEqual(new Set(d.requires!.flatMap((c) => RELICS[c].tags)));
+      }
+    }
+  });
+
+  it("só com as duas peças; as peças são consumidas e as tags trocam", () => {
+    const run = mk();
+    grantRelic(run, "ember_heart");
+    expect(availableRelicEvolutions(run.relics)).toEqual([]);
+    expect(relicEvolveBlock(run.relics, "inferno_heart")).toBe("missing");
+    grantRelic(run, "infernal_crown");
+    expect(availableRelicEvolutions(run.relics)).toEqual(["inferno_heart"]);
+    const v = run.relicVersion;
+    evolveRelic(run, "inferno_heart");
+    expect(run.relics).toEqual(["inferno_heart"]);
+    expect(run.tags).toMatchObject({ fire: 1, burn: 1, magic: 1 });
+    expect(run.relicVersion).toBeGreaterThan(v);
+    expect(run.relicEvolutionsDone).toBe(1);
+    expect(relicEvolveBlock(run.relics, "inferno_heart")).toBe("owned");
+    expect(() => evolveRelic(run, "inferno_heart")).toThrow();
+  });
+
+  it("nível 3: um por grupo exclusivo", () => {
+    const run = mk();
+    for (const r of id(["inferno_heart", "aether_well", "ashen_eye", "astral_focus"])) grantRelic(run, r);
+    expect(availableRelicEvolutions(run.relics)).toEqual(["infernal_engine", "ashen_apocalypse", "aether_lattice"]);
+    evolveRelic(run, "infernal_engine");
+    // ashen_apocalypse precisaria de inferno_heart (consumido); aether_lattice perdeu aether_well
+    grantRelic(run, "inferno_heart");
+    expect(relicEvolveBlock(run.relics, "ashen_apocalypse")).toBe("exclusive");
+    expect(ownedRelicGroups(run.relics)).toEqual({ spell_apex: "infernal_engine" });
+    expect(relicGroupRivals("infernal_engine").map((d) => d.id)).toEqual(["ashen_apocalypse", "aether_lattice"]);
+  });
+
+  it("oferta: até 3, recusada até a coleção mudar", () => {
+    const run = mk();
+    for (const r of id(["ember_heart", "infernal_crown", "arcane_core", "storm_prism", "hunters_eye", "mirror_veil", "frost_crown"])) grantRelic(run, r);
+    const all = availableRelicEvolutions(run.relics);
+    expect(all.length).toBeGreaterThan(3);
+    const offer = pendingRelicEvolutionOffer(run, (a) => a.reverse())!;
+    expect(offer).toEqual([...all].reverse().slice(0, 3));
+    declineRelicEvolutions(run, offer);
+    const rest = pendingRelicEvolutionOffer(run, (a) => a)!;
+    for (const x of offer) expect(rest).not.toContain(x);
+    grantRelic(run, "greedy_soul");
+    expect(pendingRelicEvolutionOffer(run, (a) => a)!.length).toBe(3);
+    expect(relicEvolutionsUsing("hunters_eye").map((d) => d.id)).toEqual(["phantom_hunt", "frostward"]);
   });
 });

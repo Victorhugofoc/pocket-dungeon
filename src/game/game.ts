@@ -27,7 +27,7 @@ import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { buildElements, executes, isBehind, primedReactions, reactionFor, type ReactionId } from "../core/reactions";
 import { REACTIONS } from "../data/reactions";
-import { SPELL_CAST, SPELL_SCHOOL, type SpellId } from "../data/spells";
+import { EVOLUTIONS, SPELL_CAST, SPELL_SCHOOL, type SpellId } from "../data/spells";
 import { FROST, SHADOW, SHIELD_THROW, TECH_EVO, TECHNIQUES, VENOM } from "../data/techniques";
 import { BOSSES, BOSS_ORDER, CROWN_BORROW, CROWN_TITLE, ENEMIES, HAZARD_TICK, type BossPattern, type EnemyDef } from "../data/enemies";
 import { applyHex, hexMult, type HexState } from "../core/hex";
@@ -39,8 +39,8 @@ import { WardAuras } from "./ward";
 import { bossAllowed, crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
-import { POOL_RELIC_CHOICES, POOL_TITLE, RELICS, RELIC_IDS, type RelicPool } from "../data/relics";
-import { banRelicChoice, banRelic, bossRelicOffer, poolRelicDraft, grantRelic, relicDraft, relicDraftPool, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
+import { POOL_RELIC_CHOICES, POOL_TITLE, RELICS, RELIC_EVOLUTIONS, RELIC_IDS, type RelicPool } from "../data/relics";
+import { banRelicChoice, banRelic, bossRelicOffer, declineRelicEvolutions, evolveRelic, pendingRelicEvolutionOffer, poolRelicDraft, grantRelic, relicDraft, relicDraftPool, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
 import { HERO_UPGRADES, TUNING, UPGRADE_FX } from "../data/tuning";
 import { PACE } from "../data/pace";
 import { ZONES, ZONE_ORDER, type ZoneDef } from "../data/zones";
@@ -116,6 +116,8 @@ export interface GameEvents {
   levelUp(): void;
   /** abriu a oferta de evolução de spell; as opções estão em `Game.evolutionOffer` */
   evolution(): void;
+  /** abriu a oferta de evolução de relíquia; as opções estão em `Game.relicEvoOffer` */
+  relicEvolution(): void;
   /** abriu a Magic Shop, ou ela mudou (compra, troca); a visita está em `Game.shopVisit` */
   shop(): void;
   died(): void;
@@ -390,6 +392,8 @@ export class Game {
   levelUp: LevelUpDraft | null = null;
   /** até 3 evoluções oferecidas no intervalo (evolution.lua `pendingOffer`, S18) */
   evolutionOffer: EvolutionOption[] | null = null;
+  /** até 3 evoluções de relíquia oferecidas no intervalo (run_drafts.lua `relicEvoChoices`, M12-08) */
+  relicEvoOffer: string[] | null = null;
   private levelUpIndex = 0;
   /** M21-08: a carta da onda já foi escolhida (ou não há mapa antes dela); até lá a clareira não começa */
   private mapResolved = false;
@@ -426,7 +430,8 @@ export class Game {
   private storage = safeStorage();
   /** conquistas e desbloqueios entre partidas (core/achievements.ts) */
   ach = new AchievementTracker(loadAchievements(this.storage),
-    { heroes: HERO_ORDER, bosses: Object.keys(BOSSES), enemies: Object.keys(ENEMIES), relics: RELIC_IDS }, loadRecords(this.storage).kills);
+    { heroes: HERO_ORDER, bosses: Object.keys(BOSSES), enemies: Object.keys(ENEMIES), relics: RELIC_IDS,
+      spellEvolutions: Object.keys(EVOLUTIONS), relicEvolutions: RELIC_EVOLUTIONS.map((d) => d.id) }, loadRecords(this.storage).kills);
   /** de onde veio o golpe em curso (o "ataque básico" de quick_trigger) */
   private hitSource: KillSource = "other";
   /** > 0 enquanto o golpe é da técnica (`asTechnique`) */
@@ -1660,11 +1665,37 @@ export class Game {
     if (!o) return;
     applyEvolution(this.run, o.slotIndex, o.evoId);
     this.evolutionOffer = null;
+    this.ach.spellEvolved(o.evoId);
+    this.flushAchievements();
     this.recompute();
     const p = this.player;
     this.fx.burst(p.x, 1.5, p.z, 0xc77dff, 32, 7, 0.16, 0.9, 5);
     this.audio.play("level");
     this.events.statusChanged();
+  }
+
+  /** run_drafts.lua `chooseRelicEvolution`: as peças somem e entra a evoluída (A + B → C). */
+  chooseRelicEvolution(index: number): void {
+    const id = this.relicEvoOffer?.[index];
+    if (!id) return;
+    const parts = RELICS[id].requires!.map((c) => RELICS[c].name).join(" + ");
+    evolveRelic(this.run, id);
+    this.relicEvoOffer = null;
+    this.ach.relicFound(id);
+    this.flushAchievements();
+    this.recompute();
+    const p = this.player;
+    this.fx.burst(p.x, 1.5, p.z, 0xffc83d, 32, 7, 0.16, 0.9, 5);
+    this.audio.play("level");
+    this.events.toast(`Relic evolved: ${parts} → ${RELICS[id].name}`, "#ffc83d");
+    this.events.statusChanged();
+  }
+
+  /** run_drafts.lua `skipRelicEvolution`: recusa até a coleção de relíquias mudar. */
+  skipRelicEvolution(): void {
+    if (!this.relicEvoOffer) return;
+    declineRelicEvolutions(this.run, this.relicEvoOffer);
+    this.relicEvoOffer = null;
   }
 
   /** run_drafts.lua `skipEvolution`: recusa até a coleção de relíquias mudar. */
@@ -1955,6 +1986,15 @@ export class Game {
         this.evolutionOffer = pendingEvolutionOffer(this.run, this.rng.get("evolution"));
         if (this.evolutionOffer) {
           this.events.evolution();
+          return;
+        }
+      }
+      // M12-08: depois da evolução de spell, a de relíquia (run_drafts.lua `refreshIntermission`)
+      if (this.relicEvoOffer) return;
+      if (this.playerAlive) {
+        this.relicEvoOffer = pendingRelicEvolutionOffer(this.run, (a) => this.rng.get("evolution").shuffle(a));
+        if (this.relicEvoOffer) {
+          this.events.relicEvolution();
           return;
         }
       }
@@ -2563,6 +2603,7 @@ export class Game {
   private clearWave(): void {
     this.levelUp = null;
     this.evolutionOffer = null;
+    this.relicEvoOffer = null;
     this.levelUpIndex = 0;
     for (const m of this.markers) m.mesh.removeFromParent();
     this.markers.length = 0;

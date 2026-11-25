@@ -23,7 +23,7 @@ import {
 } from "../src/data/run";
 import { BOSS_ORDER, BOSSES, CROWN_BORROW, ENEMIES, HELPERS, SHIELD_CYCLE } from "../src/data/enemies";
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
-import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
+import { RELIC_ADAPTED, RELIC_EVOLUTIONS, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
 import { BUILD_EVOLUTION_THRESHOLD, BUILD_EVOLUTIONS, BUILD_PATHS, IDENTITIES, IDENTITY_BY_PATH, PATH_NAMES, SYNERGIES } from "../src/data/synergies";
 import { buildIdentity, synergiesFor } from "../src/core/synergies";
@@ -1223,7 +1223,12 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
       expect(d.spell, id).toBe(L.spell ?? undefined);
       expect(d.needs, id).toBe(L.needs ?? undefined);
       expect(d.spellEffect, id).toEqual(L.spellEffect ?? undefined);
+      // M12-08: receita, nível e grupo exclusivo das evoluções (§§45-47)
+      expect(d.requires, id).toEqual(L.requires ?? undefined);
+      expect(d.tier, id).toBe(L.tier ?? undefined);
+      expect(d.exclusiveGroup, id).toBe(L.exclusiveGroup ?? undefined);
     }
+    expect(RELIC_EVOLUTIONS.map((d) => d.id)).toEqual((RL.evolutions as { id: string }[]).map((d) => d.id));
   });
 
   it("efeitos iguais aos de relics.lua, menos as adaptadas (RELIC_ADAPTED)", () => {
