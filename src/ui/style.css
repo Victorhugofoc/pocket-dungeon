@@ -366,6 +366,9 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 #wavebar .hasten { color: #ffc83d; font-size: 12px; border: 1px solid rgba(255, 200, 61, 0.6); border-radius: 5px; padding: 1px 6px; }
 .hud-top-left .gold { color: #ffd27a; }
 .hud-top-left .bank { margin-left: 8px; padding: 0 5px; border-radius: 6px; background: rgba(255,200,61,0.18); color: #ffc83d; font-weight: 800; }
+#zonefade { position: absolute; inset: 0; z-index: 50; background: #05060a; display: flex; align-items: center; justify-content: center; text-align: center; text-shadow: 0 2px 8px #000; }
+#zonefade h1 { font-size: 52px; letter-spacing: 4px; color: #ffe6a8; margin: 0; }
+#zonefade p { font-size: 17px; color: #c9ccd8; margin: 8px 0 0; letter-spacing: 1px; }
 #banner { position: absolute; left: 50%; top: 28%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; text-shadow: 0 2px 8px #000; }
 #banner h1 { font-size: 46px; letter-spacing: 3px; color: #ffe6a8; margin: 0; }
 #banner p { font-size: 16px; color: #e8eaf2; margin: 6px 0 0; }
