@@ -9,7 +9,8 @@ import { addXp, applyUpgrade, draftLevelUp, draftTiers, rerollCost, rerollsLeft,
 import { generateZone, ObstacleGrid, SPAWN_R, type Segment, type ZoneLayout } from "../core/worldgen";
 import { runLogEntry, waveEntry, type RunOutcome } from "../core/runlog";
 import { BUILD, storeRunLog } from "./runlog";
-import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, safeStorage } from "../core/save";
+import { loadAchievements, loadRecords, loadRun, loadRunLog, writeAchievements, writeRun, safeStorage } from "../core/save";
+import { codexEntries, codexSeed, codexSyncRun, type CodexKind } from "../core/codex";
 import { refreshSynergies, synergySources } from "../core/synergies";
 import { BUILD_EVOLUTION_BY_ID, SYNERGY_BY_ID } from "../data/synergies";
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
@@ -561,6 +562,8 @@ export class Game {
     this.runLogged = false;
     this.ach.runStart(run.heroId);
     this.ach.devUsed = run.devUsed;
+    this.codexReady();
+    this.codexSync();
     this.challenges = new ChallengeTracker(run);
     this.saveAchievements();
     this.prepareWave(Math.max(1, run.wave), true);
@@ -693,6 +696,28 @@ export class Game {
 
   saveAchievements(): void {
     writeAchievements(this.storage, this.ach.state);
+  }
+
+  /** M13-04: semeia o códex uma vez (save de antes dele e registro de partidas). */
+  codexReady(): void {
+    if (codexSeed(this.ach.state, loadRunLog(this.storage))) this.saveAchievements();
+  }
+
+  /** M13-04 (codex.lua `syncRun` + toasts.lua `codex_unlocked`): marca o que a partida mostra e avisa o que entrou. */
+  codexSync(): void {
+    if (!this.started) return;
+    const got = [...this.ach.codexNews, ...codexSyncRun(this.ach.state, this.run)];
+    this.ach.codexNews = [];
+    if (!got.length) return;
+    const name = (k: CodexKind, id: string) => {
+      const tab = k === "pact" || k === "event" ? "pactevent" : k;
+      const key = tab === "pactevent" ? `${k}:${id}` : id;
+      return codexEntries(tab).find((e) => e.id === key)?.name ?? id;
+    };
+    const names = got.map((g) => name(g.kind, g.id));
+    this.events.toast(got.length === 1 ? `Codex: ${names[0]}` : `Codex: +${got.length} entries · ${names.slice(0, 3).join(", ")}${got.length > 3 ? "…" : ""}`, "#b9a7ff");
+    this.audio.play("pickup");
+    this.saveAchievements();
   }
 
   /** O inimigo como as mecânicas de relíquia o veem (`RelicFoe`). */
@@ -1523,6 +1548,7 @@ export class Game {
     this.challenges.killed({ key: e, boss: e.isBoss, champion: e.champion, technique: this.techDepth > 0 && source !== "dot",
       noReward: e.summoned, elapsed: this.run.statistics.elapsed });
     this.flushChallenges();
+    if (this.ach.codexNews.length) this.codexSync();
     const color = e.boss?.color ?? e.def!.color;
     this.fx.burst(e.x, e.rig.height * 0.5, e.z, color, e.isBoss ? 80 : 14, e.isBoss ? 12 : 6, e.isBoss ? 0.3 : 0.18, e.isBoss ? 1.2 : 0.6);
     this.audio.play(e.isBoss ? "boss" : "kill");
@@ -1658,6 +1684,7 @@ export class Game {
     }
     const n = relicCopies(this.run.relics, id);
     this.events.toast(`Relic: ${RELICS[id].name}${n > 1 ? ` x${n}` : ""}`, "#ffc83d");
+    this.codexSync();
     this.recompute();
     this.audio.play("rare");
     this.events.statusChanged();
@@ -1808,6 +1835,7 @@ export class Game {
     else if (this.stats.maxHp > before) p.hp += this.stats.maxHp - before;
     p.hp = Math.min(p.hp, this.stats.maxHp);
     this.fx.burst(p.x, 1.5, p.z, 0xffe066, 24, 6, 0.14, 0.7, 4);
+    this.codexSync();
     if (this.run.pendingLevelUps > 0) this.openLevelUp();
     else this.levelUpIndex = 0;
   }
@@ -1820,6 +1848,7 @@ export class Game {
     this.evolutionOffer = null;
     this.ach.spellEvolved(o.evoId);
     this.flushAchievements();
+    this.codexSync();
     this.challenges.spellEvolved(o.evoId);
     this.flushChallenges();
     this.recompute();
@@ -1838,6 +1867,7 @@ export class Game {
     this.relicEvoOffer = null;
     this.ach.relicFound(id);
     this.flushAchievements();
+    this.codexSync();
     this.recompute();
     const p = this.player;
     this.fx.burst(p.x, 1.5, p.z, 0xffc83d, 32, 7, 0.16, 0.9, 5);
@@ -2468,7 +2498,12 @@ export class Game {
         const r = recordDepthsWin(this.ach.state.depths, run.heroId, lvl);
         run.depthsReward = { level: lvl, marks: r.marks, first: r.first, total: this.ach.state.depths[run.heroId].marks };
       }
+      const medal = this.ach.state.medals[run.heroId] ?? 0;
       this.ach.victory(run);
+      if ((this.ach.state.medals[run.heroId] ?? 0) > medal) {
+        const diff = ["", "Easy", "Normal", "Hard"][this.ach.state.medals[run.heroId]];
+        this.events.toast(`Codex medal: ${HEROES[run.heroId].name} won on ${diff}`, "#ffd34d");
+      }
     }
     if (this.playerAlive) {
       const entry = waveEntry(run, w, this.player.hp / this.stats.maxHp, true);
@@ -2479,6 +2514,7 @@ export class Game {
       console.info(`[perf] wave ${run.wave} · ${perfLine(entry.perf)}`);
     }
     this.ach.waveComplete({ wave: run.wave, bossWave: w.isBossWave, gameOver: !this.playerAlive, gold: run.gold });
+    this.codexSync();
     this.saveAchievements();
     // §6: a sala vale só para esta onda; a maldição segue para a próxima, que fica sem mapa
     // D-150: a maldição que segue dá uma relíquia amaldiçoada (1 de 2)
@@ -2812,6 +2848,7 @@ export class Game {
     this.fx.text(p.x, 2.8, p.z, PACT_BY_ID[o.id].name, "hurt");
     this.audio.play("boss");
     this.warpPending = true;
+    this.codexSync();
     this.openPoolDraft("pact");
     this.resolveMap();
     return true;
@@ -2850,6 +2887,7 @@ export class Game {
     this.challenges.gold();
     this.flushChallenges();
     this.warpPending = true;
+    this.codexSync();
     if (out.poolRelic) this.openPoolDraft(out.poolRelic);
     this.resolveMap();
     return null;
