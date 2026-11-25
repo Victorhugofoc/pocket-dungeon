@@ -5,6 +5,7 @@ import type { RunState } from "./run";
 import type { FrameStats, RunPerf } from "./perflog";
 import type { ChallengeLogEntry } from "./challenges";
 import { depthsLevel } from "../data/run";
+import { dealtRows, takenRows } from "./runstats";
 
 export const RUNLOG_VERSION = 1;
 /** quantas partidas o navegador guarda (as mais novas) */
@@ -68,6 +69,9 @@ export interface RunLogEntry {
   killedBy: string | null;
   gold: number;
   statistics: RunState["statistics"];
+  /** M20-14 (run_stats.lua `snapshot`): dano causado e recebido por fonte, da maior para a menor */
+  dealtBySource?: { source: string; damage: number; kills: number }[];
+  takenBySource?: { source: string; damage: number; hits: number }[];
   spells: { id: string; level: number; evolution: string | null; modifiers: string[] }[];
   technique: { id: string; level: number; modifiers: string[] };
   relics: string[];
@@ -129,6 +133,8 @@ export function runLogEntry(run: RunState, outcome: RunOutcome, endedAt: string,
       ...s, damage: Math.round(s.damage), damageTaken: Math.round(s.damageTaken), healed: Math.round(s.healed),
       elapsed: round(s.elapsed, 1),
     },
+    dealtBySource: dealtRows(run.sources).rows.map((r) => ({ source: r.id, damage: Math.round(r.value), kills: r.count })),
+    takenBySource: takenRows(run.sources).rows.map((r) => ({ source: r.id, damage: Math.round(r.value), hits: r.count })),
     spells: run.spells.map((x) => ({ id: x.id, level: x.level, evolution: x.evolution, modifiers: [...x.modifiers] })),
     technique: { id: run.technique.id, level: run.technique.level, modifiers: [...run.technique.modifiers] },
     relics: [...run.relics],

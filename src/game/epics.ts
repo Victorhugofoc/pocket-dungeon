@@ -109,7 +109,7 @@ export class EpicRuntime {
       g.withElement("arcane", () => {
         for (const e of g.enemies) {
           if (e.dead || Math.hypot(e.x - r.x, e.z - r.z) > R.radius + e.radius) continue;
-          g.hitEnemy(e, g.hero.auto.damage * R.atk);
+          g.hitEnemy(e, g.hero.auto.damage * R.atk, undefined, { source: "rune_step" });
         }
       });
       g.fx.lib.burst(r.x, 0.6, r.z, { radius: R.radius * 0.7, color: RUNE, core: 0xffffff, rays: 6, sparks: 14, light: 1.6, dur: 0.3 });
@@ -224,7 +224,7 @@ export class EpicRuntime {
       hit.add(best);
       g.fx.lib.lightning(x, 1.2, z, best.x, 1.1, best.z, { color: BOLT, core: 0xffffff, width: 0.18, branches: 2, rate: 0.05, dur: 0.22 });
       const t = best;
-      g.withElement("lightning", () => g.hitEnemy(t, g.hero.auto.damage * K.atk));
+      g.withElement("lightning", () => g.hitEnemy(t, g.hero.auto.damage * K.atk, undefined, { source: "kinetic" }));
       x = best.x;
       z = best.z;
     }

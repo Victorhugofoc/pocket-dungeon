@@ -12,6 +12,7 @@ import type { UpgradeTier } from "./levelup";
 import { newShopState, type ShopState } from "./shop";
 import type { MapOffer } from "./runmap";
 import { runId, type WaveEntry } from "./runlog";
+import { newDamageSources, type DamageSources } from "./runstats";
 import { ensureChallengeState, newChallengeState, type ChallengeRunState } from "./challenges";
 import { ensureEventState, newEventState, type EventRunState } from "./events";
 
@@ -176,6 +177,8 @@ export interface RunState extends ChallengeRunState, EventRunState, DepthsRunSta
   /** quantas vezes a partida foi continuada */
   resumes: number;
   statistics: RunStatistics;
+  /** M20-14 (run_stats.lua): dano causado e recebido por fonte */
+  sources: DamageSources;
   /** quem deu o golpe final (results.lua `killedBy`); null enquanto vivo */
   killedBy: string | null;
   /** o DEV Grimoire (F1) foi aberto: a partida não grava checkpoint nem entra nos registros (run_save.lua, results.lua) */
@@ -254,6 +257,7 @@ export function newRun(opts: NewRunOptions): RunState {
     victory: false,
     resumes: 0,
     statistics: { kills: 0, damage: 0, damageTaken: 0, elapsed: 0, goldEarned: 0, goldSpent: 0, xpEarned: 0, healed: 0 },
+    sources: newDamageSources(),
     killedBy: null,
     devUsed: false,
     runId: opts.startedAt ? runId(encodeSeed(seed), opts.startedAt) : "",
@@ -338,6 +342,8 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.relicEvolutionsDone ??= 0;
   // checkpoints de antes do M6-07
   run.devUsed ??= false;
+  // checkpoints de antes da M20-14
+  run.sources ??= newDamageSources();
   // checkpoints de antes do registro de partidas
   run.runId ??= "";
   run.startedAt ??= "";

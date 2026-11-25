@@ -25,3 +25,5 @@ Parágrafos antigos do "Agora" do `HANDOFF.md`, guardados como estavam em 2026-1
 
 - **Pedidos do usuário em 2026-11-22 (anotados, ainda sem lugar na ordem):** `M14-08` tela de seleção de herói muito melhor (palco 3D, retratos do modelo, tudo numa tela), `M14-09` pente-fino de UI/UX em todas as telas, `M13-07` efeito Founder do Dungeon Reign (asas e mantos por herói, liga e desliga; para depois). Ordem (usuário, 2026-11-22): a `M14-08` é a próxima (a `M12-10` está feita); `M14-09` e `M13-07` sem lugar ainda. Depths e Marcas (lembrado pelo usuário no mesmo dia) estão na `M13-02`, agora G em 2 partes, na ordem 13.
 
+
+- **`M13-04` fechada em 2026-11-25** (códex: `core/codex.ts`, `ui/codex-view.ts`, palco 3D na ficha via `HeroStage` com `StageKind`; botão no título e na pausa). Falta o usuário ver. Teste rápido: botão Codex no título; matar um inimigo novo (`e = __game.spawnEnemy("hexer", 6, __game.player.x + 4, __game.player.z, {aggro: true}); __game.damageEnemy(e, 9999)`) dá o aviso "Codex: Hexer".

@@ -540,17 +540,15 @@ export class Enemy {
       this.dotTick -= dt;
       if (this.dotTick <= 0) {
         this.dotTick = 0.5;
-        let total = 0;
-        let kind: StatusKind = "burn";
         this.dots = this.dots.filter((d) => d.until > now);
-        for (const d of this.dots) {
+        // status.lua: queimadura e veneno tiquem cada um com a sua fonte (M20-14: "burn"; o veneno, quem aplicou)
+        for (const d of [...this.dots]) {
           const n = d.stacks ?? 1;
           // veneno: dano por acúmulo; queimadura: +50% do maior dano por acúmulo extra, até o máximo do herói
-          total += d.kind === "burn" ? d.dps * (1 + BURN.stackBonus * (Math.min(n, game.stats.burnStacks) - 1)) * BURN.tick : d.dps * n * 0.5;
-          kind = d.kind;
+          const total = d.kind === "burn" ? d.dps * (1 + BURN.stackBonus * (Math.min(n, game.stats.burnStacks) - 1)) * BURN.tick : d.dps * n * 0.5;
+          if (total > 0) game.damageEnemy(this, total, { dot: d.kind, source: d.kind === "burn" ? "burn" : d.spell });
+          if (this.dead) return;
         }
-        if (total > 0) game.damageEnemy(this, total, { dot: kind });
-        if (this.dead) return;
       }
     }
     if (this.pendingReaction) {
