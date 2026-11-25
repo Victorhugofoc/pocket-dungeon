@@ -88,7 +88,8 @@ Reescrito em 2026-11-20 (D18): a versão anterior prometia um RPG de 8 a 12 hora
 | 12 | `M11-08`, `M13-03` | Os 17 eventos e os 8 pactos (ligam as cartas de evento e pacto do mapa, R20) |
 | 13 | `M13-01`, `M13-02`, `M13-04` | Dificuldades, Depths, codex e conquistas que faltarem |
 | 14 | `M20-14` | Dano por fonte na tela de resultado (feita em 2026-11-25) |
-| 15 | `M17-01` | Bot que joga partidas, para medir o balanceamento com o jogo completo |
+| 15 | `M17-01` | Bot que joga partidas, para medir o balanceamento com o jogo completo (feita em 2026-11-25) |
+| 15a | `M21-15` | Uma arena por zona com a escolha nos altares (formato Infernal Hordes) e o tamanho da arena, medido pelo bot (usuário, 2026-11-25) |
 
 **Seed diária (`M13-05`) é a última de todas (usuário, 2026-11-25):** sai da fase 1 e fica depois de toda a fase 2; não puxar antes sem ele pedir.
 
@@ -96,7 +97,7 @@ Reescrito em 2026-11-20 (D18): a versão anterior prometia um RPG de 8 a 12 hora
 
 A `M20-10` abriu as linhas que faltavam no `docs/paridade.md` (seções E, B, X e P) e as tarefas novas desta tabela. As linhas "adaptado" ainda não aceitas estão no fim da paridade, em "Para o usuário decidir".
 
-**Fase 2 — VFX, SFX e arte**, depois da fase 1: `M1-06` (ember_matriarch e hollow_king no Blender), modelos dos inimigos e chefes novos no Blender (sessão **modelo** do `M10`, modelo do `M9`), `M4` (animação, com `M4-08`), o resto do `M5` (`M5-01`, `M5-04`, `M5-06`, `M5-07`), `M15` (áudio), `M11` (relevo, água, biomas, clima), `M14` (interface), `M13-06` (cosméticos), `M16` e `M17-02` em diante. Ordem dentro da fase a combinar com o usuário quando chegar lá.
+**Fase 2 — VFX, SFX e arte**, depois da fase 1: `M1-06` (ember_matriarch e hollow_king no Blender), modelos dos inimigos e chefes novos no Blender (sessão **modelo** do `M10`, modelo do `M9`), `M4` (animação, com `M4-08`), o resto do `M5` (`M5-01`, `M5-04`, `M5-06`, `M5-07`, `M5-09`), `M2-11` (os 9 heróis no Blender), `M15` (áudio), `M11` (relevo, água, biomas, clima), `M14` (interface), `M13-06` (cosméticos), `M16` e `M17-02` em diante. Ordem dentro da fase a combinar com o usuário quando chegar lá.
 
 Validações que o usuário ainda deve (`docs/progress.md`, "falta validar") continuam valendo; não travam a fase 1.
 
@@ -237,6 +238,14 @@ Registrado em 2026-11-20, depois de uma revisão crítica do loop pedida pelo us
 - Os portões ficam dentro da clareira vencida (ou em volta da fogueira), em arco virado para a seguinte; E perto de um escolhe a carta e leva o herói até dentro da clareira da onda, com clarão nos dois lados. Sem cartas (onda 1, onda de chefe), E em qualquer lugar leva. Os desvios ficam do lado de trás da clareira vencida. As trilhas entre clareiras ficam só como cenário.
 - Pronto quando: entre uma onda e a seguinte não há caminhada além dos poucos passos até o portão, e o usuário aprova jogando.
 
+**M21-15 · Uma arena por zona, escolha no lugar (formato Infernal Hordes)** · G (pedido do usuário em 2026-11-25; formato combinado no mesmo dia; vem logo depois da `M17-01`)
+- Ideia do usuário, com o Infernal Hordes do Diablo 4 de referência: as ondas 1 a 4 de cada zona na mesma arena; ao vencer, a próxima carta é escolhida ali mesmo e a luta segue no lugar. Aproxima do original, onde todas as ondas são na mesma arena e a carta é escolhida ali.
+- Combinado (2026-11-25): 3 altares surgem na arena depois da onda, cada um com uma carta; andar até um e E escolhe (reaproveita os portões). As cartas são as do original (sem par bônus + penalidade). Loja e santuário aparecem na arena, sem viagem. O chefe continua numa arena própria (portal), depois a zona seguinte.
+- O tamanho da arena entra aqui (pedido do usuário no mesmo dia: "the map for the wave is too small"). Hoje a clareira tem raio de cerca de 18 m e a arena do chefe 17 m: cerca de 1.000 m², contra uns 5.000 m² do original na escala de 12 px por m. A câmera padrão mostra uns 31 × 24 m, então a clareira já passa da tela. Variantes a medir com o bot: raio 22 m; raio 26 m com zoom padrão 1,15; só a câmera mais afastada; arena oval, mais larga que funda. Melhorias propostas: mesmo número de inimigos por onda, arena do chefe na mesma proporção, seta na borda para inimigo fora da tela (se houver luta fora dela).
+- Saem ou mudam: trilhas, bifurcações, desvios (talvez um 4º altar opcional) e os 5 trechos do `worldgen`; a caminhada do bot some. Para não ficar monótono, a arena muda um pouco a cada onda conforme a carta (poças, pedras, luz).
+- **Pendências para confirmar com o usuário ao começar:** o texto novo do `docs/design.md`; o destino dos desvios; o que muda na arena a cada carta; a variante de tamanho (depois da medição).
+- Pronto quando: as 4 ondas de cada zona correm na mesma arena com a escolha nos altares, o bot mede as variantes de tamanho e o usuário joga e aprova.
+
 **M21-11 · Maestria por herói** · M (depois do M13)
 - Jogar com um herói libera alternativas sem ganho de poder (ex.: técnica alternativa, ataque básico alternativo), no espírito dos desbloqueios do original.
 - Pronto quando: cada herói tem ao menos uma alternativa desbloqueável e ela não é mais forte que a original.
@@ -321,6 +330,11 @@ Uma tarefa `M` por herói, na ordem abaixo (do mais simples de corpo para o mais
 | M2-07 | aurelius | Chapéu pontudo torto, barba longa, manto roxo com barra dourada, orbe flutuante |
 | M2-08 | frostine | Vestido em camadas, coroa de gelo, cajado de floco, anel de gelo no chão |
 | M2-09 | vesper | Manto listrado de abelha com capuz e antenas, cajado com caveira; refazer as abelhas da Ninhada |
+
+**M2-11 · Os 9 heróis no Blender** · G (um herói por sessão) [pedido do usuário, 2026-11-25]
+- Os heróis nunca passaram pelo Blender: ainda são primitivas de `kit.ts` em `cast-heroes.ts`; só inimigos e chefes têm `tools/blender/<id>.py`. Refazer cada um pelo método da seção 4 (D16): brief, sprite como fonte, medidas, script em `tools/blender/<id>.py`, `models/<id>.json`, receita só com esqueleto e postura, crítico cego antes de mostrar.
+- Cuidado: o herói é visto o tempo todo e tem animação de técnica e de spells; manter os pivôs e os ossos que `animate.ts` usa, para não quebrar as animações.
+- Pronto quando: os 9 vêm do Blender e o usuário aprova cada um.
 
 **M2-10 · Tela de seleção com os heróis novos** · P
 - Passos: a tela de título mostra o herói 3D girando (reaproveitar a prévia) em vez de só texto.
@@ -499,6 +513,13 @@ Uma tarefa `M` para cada par. Design na seção 7.2. Atenção ao orçamento de 
 **M5-08 · Efeitos das 11 spells** · G (3 ou 4 por sessão) [validar]
 - Pedido do usuário em 2026-11-16. Hoje as spells usam bola colorida, faíscas e anel (`src/game/spells.ts`). Passos: lançamento, voo e impacto de cada spell com as primitivas do `M5-02` e o som do `M15-02` (Fireball: bola de fogo com chama e rastro de fumaça, explosão com brasas no chão; Iceball: cristal girando, impacto com espinhos de gelo, como os `fire_burst` e `ice_spikes` do original). Captura e crítico cego antes de mostrar.
 - Pronto quando: cada spell é reconhecível só pelo efeito, sem o ícone do HUD.
+
+**M5-09 · Ataque básico com identidade e mais contido** · G (3 heróis por sessão) [pedido do usuário, 2026-11-25: muito "spam visual" para um simples ataque básico; e cada herói com o seu, "como a Seraph, que joga o escudo"]
+- Hoje a mecânica já é de cada herói (`style` em `data/autostyle.ts`), mas o visual não: todo projétil é a mesma forma alongada (`PROJ_GEO` em `game.ts`), só muda a cor; o escudo da Seraph sai como uma bolinha amarela. E o efeito em volta (partículas, brilho, rastro, flash no acerto) está carregado demais para algo que sai o tempo todo.
+- Identidade por herói, tirada do sprite e das animações do Dungeon Reign: Seraph, o escudo dourado girando (e voltando no bumerangue); Zephyr, bala com rastro fino; Frostine, pingente de gelo; Kaelen, faísca elétrica; Aurelius, orbe arcano; Vesper, glóbulo de veneno; Ignis, leque de fogo; Varok, o golpe do martelo no chão; Umbra, o corte das adagas. O modelo do escudo e o de cada projétil seguem a D16 quando forem malha (Blender por script); brilho e rastro são por código.
+- Mais contido: menos partículas e luz, sem bloom forte, impacto curto. A técnica e as spells mantêm o peso que têm, para a escala ataque básico < técnica < spell ficar clara. Conferir com captura de tela, antes e depois, em luta cheia.
+- Os projéteis dos inimigos ficam na `M5-06`.
+- Pronto quando: o usuário vê os 9 e aprova.
 
 **M5-06 · Projéteis com identidade** · P
 - Passos: flecha, bala, orbe arcano, bomba em arco com sombra; rastro por tipo. Hoje são esferas coloridas.
@@ -866,7 +887,7 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 - Como rodar: o combate daqui está em `src/game` (three.js), então o bot joga o jogo de verdade, numa página sem desenhar (laço de `Game.frame` sem render), no Node ou no Chromium sem tela, em tempo acelerado. Comando: `npm run sim -- <partidas> <dificuldade> [herói] [seed]`.
 - Saída (como o `BALANCE_REPORT.md` de lá): por herói e dificuldade, % de vitória, onda média de morte, quem deu o golpe final, dano causado e recebido por fonte, melhorias e relíquias escolhidas.
 - Pronto quando: um comando roda N partidas dos 9 heróis e grava a tabela em `docs/balance.md`.
-- **Divisão (combinada com o usuário em 2026-11-25), em 4 partes:** (1) decisões do bot em `core/simbot.ts`, números em `data/simbot.ts` (feita em 2026-11-25); (2) modo simulação do jogo: `sim.html`, passo fixo de 1/60 s, sem desenhar, sem efeitos nem HUD, as telas respondidas pelo bot (feita em 2026-11-25); (3) pilotagem em combate (16 direções e parado, pesadas pelo perigo; 75% do alcance; foco no chefe; técnica, esquiva e spells); (4) `npm run sim` e `docs/balance.md`.
+- **Divisão (combinada com o usuário em 2026-11-25), em 4 partes:** (1) decisões do bot em `core/simbot.ts`, números em `data/simbot.ts` (feita em 2026-11-25); (2) modo simulação do jogo: `sim.html`, passo fixo de 1/60 s, sem desenhar, sem efeitos nem HUD, as telas respondidas pelo bot (feita em 2026-11-25); (3) pilotagem em combate (16 direções e parado, pesadas pelo perigo; 75% do alcance; foco no chefe; técnica, esquiva e spells) (feita em 2026-11-25, melhorias A a F da parte: `Game.botView`, `core/simsteer.ts` com testes, esquiva, orbes, obstáculos, contagem de usos); (4) `npm run sim` e `docs/balance.md` (feita em 2026-11-25: `tools/sim.mjs`, relatório em `core/balance.ts`). **Fechada em 2026-11-25.**
 - **Melhorias escolhidas pelo usuário (2026-11-25):** A, Playwright + Chromium sem tela como executor (dependência de desenvolvimento); B, o relatório lê as linhas do `logs/runs.jsonl` marcadas `bot` (mesma régua das partidas dele); C, `Math.random` com seed por partida no modo simulação; D, várias páginas em paralelo; E, limite de tempo e detecção de partida presa, com o motivo no relatório. A comparação com o `BALANCE_REPORT.md` do original (F) ficou para a `M17-03`.
 
 **M17-02 · Curva da primeira passada** · M [validar]

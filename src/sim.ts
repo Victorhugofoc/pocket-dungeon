@@ -12,7 +12,9 @@ import {
   botStartSpell, pickEvent, pickMap, pickRelic, pickUpgrade, shopOrder, shouldReroll, type BotView,
 } from "./core/simbot";
 import { rerollCost } from "./core/shop";
-import { BOT_PILOT, BOT_RUN } from "./data/simbot";
+import { BOT_RUN } from "./data/simbot";
+import { TUNING } from "./data/tuning";
+import { DIRS, dodgeDir, pickTarget, steer, techniqueAim, type TechKindBot } from "./core/simsteer";
 
 export interface SimOptions {
   hero: string;
@@ -20,6 +22,8 @@ export interface SimOptions {
   seed: number;
   /** tempo máximo de jogo, em s */
   maxTime?: number;
+  /** M17-01 parte 4: o lote do `npm run sim` (o relatório lê só as linhas dele) */
+  batch?: string;
 }
 
 export interface SimResult {
@@ -35,7 +39,11 @@ export interface SimResult {
   time: number;
   /** tempo real gasto, em s */
   wall: number;
+  /** quantas vezes o bot usou a técnica, a esquiva e cada spell */
+  uses: BotUses;
 }
+
+interface BotUses { technique: number; dodge: number; spells: number[] }
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const texts = document.getElementById("texts") as HTMLElement;
@@ -148,36 +156,53 @@ function shop(hero: string): void {
   game.closeShop();
 }
 
-/** Pilotagem provisória: mira no inimigo mais perto, segura o ataque, fica a 75% do alcance; fora da luta vai ao destino. */
+let prevDir = -1;
+const DODGE_DIST = TUNING.hero.dashSpeed * TUNING.hero.dashTime;
+
+/**
+ * Pilotagem (M17-01 parte 3, `steer` e `useTechnique` de `balance_sim.lua`): na luta, a direção de menos perigo
+ * entre 16 e o parado, a técnica em grupo, no chefe ou para fugir, a esquiva quando o lugar vai explodir, e as
+ * spells assim que recarregam, todas no alvo (o chefe, senão o mais perto). Fora da luta vai ao destino.
+ */
 function pilot(): void {
   const p = game.player;
   const inp = game.input;
-  let target: { x: number; z: number } | null = null;
-  let best = Infinity;
-  for (const e of game.enemies) {
-    if (e.dead) continue;
-    const d = Math.hypot(e.x - p.x, e.z - p.z);
-    if (d < best) {
-      best = d;
-      target = e;
-    }
-  }
-  if (game.boss && !game.boss.dead) target = game.boss;
   if (game.phase === "intro" || game.phase === "fight") {
+    const w = game.botView();
+    const target = pickTarget(w);
     if (!target) {
-      inp.simAxis = { x: game.segment.x - p.x, z: game.segment.z - p.z };
+      prevDir = -1;
+      game.aimOverride = null;
       inp.lmb = false;
+      inp.simAxis = { x: game.segment.x - p.x, z: game.segment.z - p.z };
       return;
     }
-    game.aimOverride = { x: target.x, z: target.z };
+    prevDir = steer(w, prevDir);
+    const dir = DIRS[prevDir];
+    inp.simAxis = { x: dir.x, z: dir.z };
     inp.lmb = true;
-    const reach = HEROES[game.run.heroId].auto.range * game.stats.range;
-    const d = Math.hypot(target.x - p.x, target.z - p.z), want = reach * BOT_PILOT.keep;
-    const k = d > want * (1 + BOT_PILOT.slack) ? 1 : d < want * (1 - BOT_PILOT.slack) ? -1 : 0;
-    inp.simAxis = { x: (target.x - p.x) * k, z: (target.z - p.z) * k };
+    game.aimOverride = { x: target.x, z: target.z };
+    // esquiva antes da técnica: quem está para ser atingido foge primeiro
+    if (p.dashCd <= 0 && p.dashT <= 0) {
+      const d = dodgeDir(w, DODGE_DIST);
+      if (d !== null) {
+        inp.simAxis = { x: DIRS[d].x, z: DIRS[d].z };
+        inp.simTap("Space");
+        return;
+      }
+    }
+    if (p.techCd <= 0 && game.tech) {
+      const aim = techniqueAim(w, HEROES[game.run.heroId].technique.kind as TechKindBot, game.tech);
+      if (aim) {
+        game.aimOverride = aim;
+        inp.simTap("KeyQ");
+        return;
+      }
+    }
     for (let i = 0; i < game.spells.cooldown.length; i++) if (game.spells.cooldown[i] <= 0) inp.simTap(i === 0 ? "Digit1" : "Digit2");
     return;
   }
+  prevDir = -1;
   inp.lmb = false;
   game.aimOverride = null;
   // portal da zona: chegar e apertar E
@@ -187,9 +212,23 @@ function pilot(): void {
     if (Math.hypot(portal.position.x - p.x, portal.position.z - p.z) < 2) inp.simTap("KeyE");
     return;
   }
-  // caminhada: a viagem do portão leva à clareira; sem ela, andar até lá
-  if (game.phase === "walk") inp.simAxis = { x: game.segment.x - p.x, z: game.segment.z - p.z };
+  // caminhada: com a carta resolvida, E leva até a clareira (a viagem do portão, como o jogador faz); andar em
+  // linha reta até lá encalha nas pedras. Os desvios do caminho ficam de fora.
+  if (game.phase === "walk") {
+    inp.simAxis = { x: game.segment.x - p.x, z: game.segment.z - p.z };
+    if (inner.mapResolved && game.nearDetour < 0) inp.simTap("KeyE");
+  }
   else inp.simAxis = { x: 0, z: 0 };
+}
+
+/** Conta os usos pelo salto da recarga (de pronta a carregando) em volta de um passo. */
+function countUses(uses: BotUses, before: { tech: number; dash: number; spells: number[] }): void {
+  const p = game.player;
+  if (before.tech <= 0 && p.techCd > 0) uses.technique++;
+  if (before.dash <= 0 && p.dashCd > 0) uses.dodge++;
+  game.spells.cooldown.forEach((cd, i) => {
+    if ((before.spells[i] ?? 1) <= 0 && cd > 0) uses.spells[i] = (uses.spells[i] ?? 0) + 1;
+  });
 }
 
 const yieldToBrowser = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -211,11 +250,14 @@ async function run(o: SimOptions): Promise<SimResult> {
   const maxTime = o.maxTime ?? BOT_RUN.maxTime;
   let outcome: RunOutcome | null = null;
   let lastKey = "", lastChange = 0;
+  const uses: BotUses = { technique: 0, dodge: 0, spells: [] };
   while (!outcome) {
     for (let s = 0; s < BOT_RUN.stepsPerSlice && !outcome; s++) {
       while (answer(o.hero)) { /* uma tela pode abrir outra */ }
       pilot();
+      const before = { tech: game.player.techCd, dash: game.player.dashCd, spells: [...game.spells.cooldown] };
       game.simStep(BOT_RUN.dt);
+      countUses(uses, before);
       const t = game.run.statistics.elapsed;
       const key = `${game.run.wave}/${game.phase}`;
       if (key !== lastKey) {
@@ -233,9 +275,9 @@ async function run(o: SimOptions): Promise<SimResult> {
   const res: SimResult = {
     hero: o.hero, difficulty: o.difficulty, seed: o.seed, outcome, wave: game.run.wave, level: game.run.level,
     victory: game.run.victory, killedBy: game.run.killedBy ?? null, time: Math.round(game.run.statistics.elapsed),
-    wall: Math.round((performance.now() - t0) / 100) / 10,
+    wall: Math.round((performance.now() - t0) / 100) / 10, uses,
   };
-  game.botMeta = { seed: o.seed, outcome, stuckAt: outcome === "stuck" ? lastKey : undefined, wall: res.wall };
+  game.botMeta = { batch: o.batch, seed: o.seed, outcome, stuckAt: outcome === "stuck" ? lastKey : undefined, wall: res.wall, uses };
   game.logRunEnd(outcome);
   game.botMeta = null;
   out.textContent = JSON.stringify(res);

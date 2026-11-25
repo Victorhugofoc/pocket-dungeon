@@ -26,6 +26,8 @@ export interface Telegraph {
   width: number;
   /** aviso em anel (miolo seguro): a geometria é dele e sai junto */
   ownGeometry?: boolean;
+  /** cone: meia abertura, rad (para o bot do M17-01 ler o setor) */
+  half?: number;
 }
 
 interface Transient {
@@ -388,7 +390,7 @@ export class Fx {
     edge.position.z = 0.01;
     const fill = mk(geo, this.matFill, 0.08);
     fill.scale.setScalar(0.01);
-    const tg: Telegraph = { kind: "cone", t: 0, dur, outline, fill, onDone, r: length, x, z, angle, length, width: 0 };
+    const tg: Telegraph = { kind: "cone", t: 0, dur, outline, fill, onDone, r: length, x, z, angle, length, width: 0, half };
     this.telegraphs.push(tg);
     return tg;
   }
