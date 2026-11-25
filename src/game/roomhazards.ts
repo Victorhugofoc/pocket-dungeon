@@ -102,6 +102,12 @@ export class RoomHazards {
     this.heals.length = 0;
   }
 
+  /** M17-01: poças que ferem e que curam, para o bot desviar e procurar. */
+  zones(): { storms: { x: number; z: number; r: number }[]; heals: { x: number; z: number; r: number }[] } {
+    const f = (z: Zone) => ({ x: z.x, z: z.z, r: z.r });
+    return { storms: this.storms.map(f), heals: this.heals.map(f) };
+  }
+
   /** O que há no chão agora (checagem pelo console). */
   snapshot(): { storms: object[]; pools: object[]; pending: number; armed: boolean } {
     const f = (z: Zone) => ({ x: +z.x.toFixed(2), z: +z.z.toFixed(2), r: +z.r.toFixed(2), time: +z.time.toFixed(2), amount: +z.amount.toFixed(2) });

@@ -49,6 +49,8 @@ import { wardenFor } from "../core/ward";
 import { WardAuras } from "./ward";
 import { bossAllowed, crownAttack, drawBoss } from "../core/bossbag";
 import { HEROES, HERO_ORDER, type AutoAttack, type HeroDef, type StatusSpec } from "../data/heroes";
+import { BOT_PILOT } from "../data/simbot";
+import type { BotTelegraph, BotWorld } from "../core/simsteer";
 import { buyOffer, rerollShop, rollShop, shopStats, type ShopVisit } from "../core/shop";
 import { POOL_RELIC_CHOICES, POOL_TITLE, RELICS, RELIC_EVOLUTIONS, RELIC_IDS, type RelicPool } from "../data/relics";
 import { banRelicChoice, banRelic, bossRelicOffer, declineRelicEvolutions, evolveRelic, pendingRelicEvolutionOffer, poolRelicDraft, grantRelic, relicCopies, relicDraft, relicDraftPool, relicSources, relicTotals, removeRelic, RelicHooks, type RelicFoe, type RelicWorld } from "../core/relics";
@@ -4331,6 +4333,37 @@ export class Game {
   }
 
   /** M17-01: um passo do modo simulação, sem desenhar; o bot responde às telas entre um passo e outro. */
+  /** M17-01 parte 3: a foto do mundo que o bot lê (`core/simsteer.ts`), em m. Só leitura. */
+  botView(): BotWorld {
+    const p = this.player;
+    const hero = HEROES[this.run.heroId];
+    const fighting = this.phase === "fight" || this.phase === "intro";
+    const zones = this.hazards.zones();
+    const telegraphs: BotTelegraph[] = this.fx.telegraphs.filter((tg) => !tg.cancelled).map((tg) => {
+      const left = tg.dur - tg.t;
+      if (tg.kind === "circle") return { kind: "circle", x: tg.x, z: tg.z, r: tg.r, inner: tg.width, left };
+      if (tg.kind === "rect") return { kind: "rect", x: tg.x, z: tg.z, angle: tg.angle, length: tg.length, width: tg.width, left };
+      return { kind: "cone", x: tg.x, z: tg.z, angle: tg.angle, length: tg.length, half: tg.half ?? Math.PI / 4, left };
+    });
+    return {
+      hero: {
+        x: p.x, z: p.z, speed: this.stats.moveSpeed, hpFrac: p.hp / Math.max(1, this.stats.maxHp),
+        reach: hero.auto.range * this.stats.range, keep: hero.style === "hammer" ? BOT_PILOT.keepHammer : BOT_PILOT.keep,
+      },
+      telegraphs,
+      storms: zones.storms,
+      healPools: zones.heals,
+      healOrbs: this.drops.map((d) => ({ x: d.x, z: d.z, left: d.life - d.t })),
+      loot: this.loot.field.orbs.map((o) => ({ x: o.x, z: o.z })),
+      enemies: this.enemies.filter((e) => !e.dead).map((e) => ({
+        x: e.x, z: e.z, radius: e.radius, reach: e.def?.attackRange ?? BOT_PILOT.defaultReach, boss: e.isBoss, champion: e.champion,
+      })),
+      shots: this.projectiles.filter((pr) => !pr.friendly && pr.life > 0).map((pr) => ({ x: pr.x, z: pr.z, vx: pr.vx, vz: pr.vz, r: pr.r })),
+      arena: fighting && this.segment ? { x: this.segment.x, z: this.segment.z, r: this.segment.r } : null,
+      blocked: (x, z, r) => this.grid.hits(x, z, r) || this.terrain.blocks(x, z, r),
+    };
+  }
+
   simStep(dt: number): void {
     if (!this.started) return;
     if (!this.paused) this.tick(dt);

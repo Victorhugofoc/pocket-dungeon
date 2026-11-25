@@ -142,10 +142,85 @@ export const BOT_RUN = {
   stuckTime: 300,
 } as const;
 
-/** A pilotagem provisória (parte 2; a parte 3 troca pela de `balance_sim.lua`). */
+/**
+ * A pilotagem em combate (M17-01 parte 3, porta do `steer`/`danger` de `tools/balance_sim.lua`). Lá as unidades
+ * são px; aqui m (12 px = 1 m, `DR_PX_PER_M`). Pesos de perigo e de preferência como lá.
+ */
 export const BOT_PILOT = {
-  /** distância ideal ao alvo, em fração do alcance do ataque */
+  /** distância ideal ao alvo, em fração do alcance do ataque; o martelo (Varok) luta mais perto */
   keep: 0.75,
-  /** folga em volta da distância ideal antes de andar */
-  slack: 0.15,
+  keepHammer: 0.6,
+  /** soma da distância ideal: fração do raio do alvo */
+  targetRadius: 0.4,
+  /** horizontes do olhar à frente, em s de passo: curto (e a metade dele) e longo */
+  look: 0.35,
+  far: 0.8,
+  /** peso de cada horizonte na nota */
+  halfWeight: 0.5,
+  farWeight: 0.7,
+  /** aviso que dispara em menos que isso conta como perigo, s */
+  soon: 1.3,
+  /** folga em volta do aviso, m (10 px) */
+  pad: 10 / 12,
+  /** perigo por aviso, poça e projétil */
+  telegraph: 60,
+  storm: 25,
+  shot: 20,
+  /** folga do projétil, m (6 px) */
+  shotPad: 0.5,
+  /** corpo de inimigo: alcance do golpe + folga (30 px); chefe: 50 px da borda; peso no encosto */
+  enemyPad: 2.5,
+  defaultReach: 1.5,
+  bossReach: 50 / 12,
+  enemyWeight: 12,
+  bossWeight: 30,
+  /** borda da clareira da luta: faixa (34 px) e fora dela */
+  edgeBand: 34 / 12,
+  edge: 15,
+  outside: 200,
+  /** obstáculo (pedra, tronco, fosso) no ponto do passo */
+  blocked: 60,
+  /** peso por m de erro na distância ideal (0,04 por px) */
+  distance: 0.04 * 12,
+  /** poça de cura: abaixo dessa vida, cada ponto dentro dela vale isso a menos */
+  healPoolHp: 0.6,
+  healPool: 6,
+  /** orbe de cura: abaixo dessa vida, atrai até essa distância (240 px), peso por m (0,08 por px) */
+  healOrbHp: 0.85,
+  healOrbRange: 240 / 12,
+  healOrb: 0.08 * 12,
+  /** orbe de ouro e XP mais perto (até 200 px), peso por m (0,03 por px) */
+  lootRange: 200 / 12,
+  loot: 0.03 * 12,
+  /** leve preferência pelo centro da clareira (0,01 por px) */
+  center: 0.01 * 12,
+  /** manter a direção anterior se não houver outra claramente melhor */
+  hysteresis: 4,
+} as const;
+
+/** Uso da técnica e da esquiva pelo bot (`useTechnique` de lá; a esquiva é daqui, o original não tem). */
+export const BOT_TECH = {
+  /** perigo aqui que pede fuga (técnica de movimento ou esquiva) */
+  flee: 30,
+  /** perigo máximo no ponto de chegada */
+  safeLanding: 12,
+  /** blink e charge: inimigos no caminho para cortar um grupo, e o bônus de nota por inimigo */
+  lineHits: 3,
+  lineBonus: 6,
+  /** largura do caminho quando a técnica não diz, m (26 px) */
+  lineWidth: 26 / 12,
+  /** rift e fan: inimigos no raio (ou o chefe) */
+  group: 3,
+  /** icewall: inimigos perto (170 px) */
+  wallNear: 170 / 12,
+  /** leap: inimigos no raio da queda (ou o chefe) */
+  leapGroup: 2,
+  /** aegis: inimigos a 110 px (ou o chefe) */
+  aegisNear: 110 / 12,
+  aegisGroup: 2,
+  /** brood: inimigos no alcance + 60 px (ou o chefe) */
+  broodPad: 60 / 12,
+  broodGroup: 2,
+  /** raio do corpo do herói, m */
+  heroRadius: 0.5,
 } as const;
