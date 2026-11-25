@@ -237,6 +237,11 @@ Registrado em 2026-11-20, depois de uma revisão crítica do loop pedida pelo us
 - Os portões ficam dentro da clareira vencida (ou em volta da fogueira), em arco virado para a seguinte; E perto de um escolhe a carta e leva o herói até dentro da clareira da onda, com clarão nos dois lados. Sem cartas (onda 1, onda de chefe), E em qualquer lugar leva. Os desvios ficam do lado de trás da clareira vencida. As trilhas entre clareiras ficam só como cenário.
 - Pronto quando: entre uma onda e a seguinte não há caminhada além dos poucos passos até o portão, e o usuário aprova jogando.
 
+**M21-15 · Tamanho da clareira da onda** · M (pedido do usuário em 2026-11-25: "the map for the wave is too small, quite limited")
+- Hoje: raio 16 × 1,12 ≈ 18 m nas ondas 1 a 4 (`TUNING.world.segmentRadius`, `PACE.clearingMult`) e 17 m na arena do chefe; cerca de 1.000 m², contra 100 × 51 m (cerca de 5.000 m²) da arena do original na escala de 12 px por m. A câmera padrão mostra uns 31 × 24 m, então a clareira já é maior que a tela.
+- Medir com o bot (`M17-01`) antes e depois: % de vitória, tempo por onda, dano recebido e esquivas por onda. Variantes e melhorias a escolher com o usuário antes de começar.
+- Pronto quando: o usuário joga e aprova o tamanho novo, e o efeito no balanceamento fica anotado.
+
 **M21-11 · Maestria por herói** · M (depois do M13)
 - Jogar com um herói libera alternativas sem ganho de poder (ex.: técnica alternativa, ataque básico alternativo), no espírito dos desbloqueios do original.
 - Pronto quando: cada herói tem ao menos uma alternativa desbloqueável e ela não é mais forte que a original.
