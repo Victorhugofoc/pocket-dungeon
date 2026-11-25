@@ -14,6 +14,7 @@ import type { StatBlock, StatKey } from "./stats";
 import type { RunState } from "./run";
 import { px } from "./techniques";
 import { BUILD_FIT } from "../data/upgrades";
+import { perkExtraBans } from "./depths";
 
 export function relicDef(id: string): RelicDef | undefined {
   return Object.prototype.hasOwnProperty.call(RELICS, id) ? RELICS[id] : undefined;
@@ -506,12 +507,12 @@ export function bossRelicOffer(owned: readonly string[], relicBuild: string | un
 }
 
 /** relic_system.lua `bansLeft` (D-148): quantas relíquias ainda se bane nesta partida (a vantagem das Depths soma). */
-export function relicBansLeft(run: RunState, extraBans = 0): number {
+export function relicBansLeft(run: RunState, extraBans = perkExtraBans(run)): number {
   return RELIC_DRAFT.banLimit + extraBans - run.bannedRelics.length;
 }
 
 /** relic_system.lua `ban`: tira a relíquia de todo sorteio futuro. Devolve se baniu. */
-export function banRelic(run: RunState, id: string, extraBans = 0): boolean {
+export function banRelic(run: RunState, id: string, extraBans = perkExtraBans(run)): boolean {
   if (relicBansLeft(run, extraBans) <= 0 || run.bannedRelics.includes(id)) return false;
   run.bannedRelics.push(id);
   return true;
@@ -522,7 +523,7 @@ export function banRelic(run: RunState, id: string, extraBans = 0): boolean {
  * fonte (`draw(8)`) que ainda não está na escolha; sem nenhuma, a oferta sai. Devolve a escolha nova, ou null.
  */
 export function banRelicChoice(run: RunState, choices: readonly string[], index: number, draw: (k: number) => string[],
-  extraBans = 0): string[] | null {
+  extraBans = perkExtraBans(run)): string[] | null {
   const id = choices[index];
   if (!id || !banRelic(run, id, extraBans)) return null;
   const repl = draw(RELIC_DRAFT.replaceDraw).find((c) => !choices.includes(c));

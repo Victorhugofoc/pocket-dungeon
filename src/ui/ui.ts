@@ -3,7 +3,8 @@ import { allTrails } from "../core/worldgen";
 import { MAP_NODE } from "../data/map-nodes";
 import { canHasten, hastenBonus } from "../core/wave";
 import { DEPTHS_ORDER, DIFFICULTIES, DIFFICULTY_ORDER, DIFFICULTY_TEXT, TOTAL_WAVES, depthsLevel, type DifficultyId } from "../data/run";
-import { activeMutations, depthsScoreMult, unlockedDepths } from "../core/depths";
+import { activeMutations, buyPerk, depthsScoreMult, runPerks, togglePerk, unlockedDepths } from "../core/depths";
+import type { PerkId } from "../data/depths";
 import { clearRun, discardLegacySave, loadRecords, loadRun, loadRunLog, safeStorage, writeRecords } from "../core/save";
 import { downloadRunLog } from "../game/runlog";
 import { RunRng, addRecord, continueRun, decodeSeed, newRun, newSpellSlot, recordsRun, summarize, type NewRunOptions, type RunState } from "../core/run";
@@ -28,7 +29,7 @@ import { ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
 import type { MapCard } from "../core/runmap";
 import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
-import type { Game, RelicBan } from "../game/game";
+import type { Game, RelicBan, RelicReroll } from "../game/game";
 import { relicBansLeft, relicCopies, relicStacks } from "../core/relics";
 import { buildIdentity, tagCount } from "../core/synergies";
 import { BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_THRESHOLD, IDENTITIES, PATH_NAMES, SYNERGY_BY_ID } from "../data/synergies";
@@ -36,7 +37,7 @@ import { iconHtml, modifierIconHtml, slotIconUrl, spellIconUrl, techniqueIconUrl
 import { challengeHudHtml, challengeHudKey, challengePanelHtml, daringOpen } from "./challenges-view";
 import { eventCardsHtml, eventHudHtml, eventHudKey, eventPanelHtml, gateExtraHtml, omenGateHtml, pactConfirmHtml } from "./events-view";
 import { eventAvailable } from "../core/events";
-import { depthsHudHtml, depthsPanelHtml, depthsResultHtml } from "./depths-view";
+import { depthsHudHtml, depthsHudKey, depthsPanelHtml, depthsPerksHtml, depthsResultHtml } from "./depths-view";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
 
@@ -204,7 +205,7 @@ export class Ui {
     this.buildHud();
     game.events = {
       toast: (m, c) => this.toast(m, c),
-      relicChoice: (ids, pick, title, ban) => this.showRelicChoice(ids, pick, title, ban),
+      relicChoice: (ids, pick, title, ban, reroll) => this.showRelicChoice(ids, pick, title, ban, reroll),
       levelUp: () => this.showLevelUp(),
       evolution: () => this.showEvolution(),
       relicEvolution: () => this.showRelicEvolution(),
@@ -293,6 +294,9 @@ export class Ui {
       e.preventDefault();
       if (this.overlayKind === "status") this.close();
       else this.showStatus();
+    } else if (k === "KeyG" && !this.overlay) {
+      // M13-02 Card Swap: sorteia os portões de novo (uma vez por zona)
+      if (this.game.swapGates()) this.toast("Card Swap: new gates", "#c07cff");
     } else if (k === "F3") {
       e.preventDefault();
       this.r.perf.classList.toggle("hidden");
@@ -352,6 +356,8 @@ export class Ui {
       return `${a.text}${p ? ` (${Math.min(p.current, p.goal).toLocaleString("en-US")} / ${p.goal.toLocaleString("en-US")})` : ""}`;
     };
     const MEDAL = ["", "Easy", "Normal", "Hard"];
+    /** a vantagem esperando o segundo clique da compra (as Marcas não voltam) */
+    let confirmPerk = "";
     const render = (swap = false) => {
       const h = HEROES[this.selectedHero];
       if (!h.startingSpells.includes(this.selectedSpell as SpellId)) this.selectedSpell = h.startingSpells[0];
@@ -397,6 +403,8 @@ export class Ui {
         `<button class="${n === dCur ? "sel" : ""}" data-diff="depths${n}" title="${activeMutations(n).map((m) => m.name).join(", ")}">${n}</button>`).join("")}
         <small>score x${depthsScoreMult(dCur).toFixed(1)}</small></div>
         <ul class="hs-mut">${activeMutations(dCur).map((m) => `<li><b>${m.name}</b> ${m.text}</li>`).join("")}</ul>` : "";
+      // M13-02 parte 2 (depths_setup.lua): as vantagens ficam ao lado, com as Marcas do herói
+      const perks = dCur ? depthsPerksHtml(ach.depths, h.id, confirmPerk) : "";
       const spells = h.startingSpells.map((id, i) => `<button class="${id === this.selectedSpell ? "sel" : ""}" data-spell="${id}"
         title="${SPELL_TEXT[id]}">${iconHtml(spellIconUrl(id), 28)}<b class="sn">${spellName(id)}</b><kbd>${i + 1}</kbd></button>`).join("");
       panel.innerHTML = `
@@ -417,7 +425,7 @@ export class Ui {
               <button disabled title="Hero skins: coming later">Skins · soon</button>
               <button disabled title="Founder wings and cloaks: coming later">Founder · soon</button></div>`}
           </div>
-          <div class="hs-info" style="--hc:${hex(h.color)}">${info}</div>
+          <div class="hs-info" style="--hc:${hex(h.color)}">${perks}${info}</div>
         </div>
         <footer class="hs-setup ${locked ? "off" : ""}" style="--hc:${hex(h.color)}">
           <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div>${depthsRow}</div>
@@ -443,6 +451,7 @@ export class Ui {
     const select = (id: string) => {
       if (id === this.selectedHero) return;
       this.selectedHero = id;
+      confirmPerk = "";
       this.confirmNew = "";
       seedErr = "";
       if (open(id) && markFreshSeen(ach, "hero", id)) this.game.saveAchievements();
@@ -476,6 +485,25 @@ export class Ui {
       const t = ev.target as HTMLElement;
       const hero = t.closest<HTMLElement>("[data-hero]")?.dataset.hero;
       if (hero) return select(hero);
+      const perk = t.closest<HTMLElement>("[data-perk]")?.dataset.perk as PerkId | undefined;
+      if (perk) {
+        const hid = this.selectedHero;
+        if (ach.depths[hid]?.owned[perk]) {
+          togglePerk(ach.depths, hid, perk);
+          confirmPerk = "";
+        } else if (confirmPerk !== perk) {
+          confirmPerk = perk;
+        } else {
+          const why = buyPerk(ach.depths, hid, perk);
+          confirmPerk = "";
+          if (why) this.toast(why, "#ff8a8a");
+          else this.toast("Perk bought", "#c07cff");
+          this.game.checkAchievements();
+        }
+        this.game.saveAchievements();
+        return render();
+      }
+      if (confirmPerk) confirmPerk = "";
       const diff = t.closest<HTMLElement>("[data-diff]")?.dataset.diff;
       if (diff) {
         this.selectedDifficulty = diff as DifficultyId;
@@ -522,7 +550,9 @@ export class Ui {
   /** Partida nova: apaga o checkpoint anterior; com `seed`, repete aquela seed. */
   private newRunWith(setup: RunSetup, seed?: number): void {
     clearRun(this.storage);
-    const run = newRun({ ...setup, seed, randomSeed: (Math.random() * 0x7fffffff) >>> 0, startedAt: new Date().toISOString() });
+    // M13-02: as vantagens das Depths ligadas agora valem a partida inteira (desligar depois não muda nada)
+    const depthsPerks = runPerks(this.game.ach.state.depths, setup.heroId);
+    const run = newRun({ ...setup, seed, depthsPerks, randomSeed: (Math.random() * 0x7fffffff) >>> 0, startedAt: new Date().toISOString() });
     this.begin(run, new RunRng(run.seed));
   }
 
@@ -666,7 +696,7 @@ export class Ui {
   private updateEventHud(): void {
     const g = this.game;
     if (!g.started) return;
-    const key = `${g.run.difficultyId}|${eventHudKey(g.run)}`;
+    const key = `${g.run.difficultyId}|${depthsHudKey(g.run)}|${eventHudKey(g.run)}`;
     const box = this.r.eventsHud;
     if (box.dataset.key === key) return;
     box.dataset.key = key;
@@ -742,13 +772,14 @@ export class Ui {
     const cards = g.mapCards;
     const hint = g.nearPortal ? "E — go on to the next zone"
       : g.phase === "walk" && g.playerAlive && g.detourHint ? g.detourHint
-      : g.phase === "walk" && g.playerAlive ? (cards ? (g.nearGate >= 0 ? `E — take this gate to wave ${n}` : `Walk to a gate and press E to choose wave ${n}`) : `E — go to wave ${n}`) : "";
+      : g.phase === "walk" && g.playerAlive ? (cards ? (g.nearGate >= 0 ? `E — take this gate to wave ${n}` : `Walk to a gate and press E to choose wave ${n}`)
+        + (g.canSwapGates ? " · G — reroll the gates (Card Swap, once per zone)" : "") : `E — go to wave ${n}`) : "";
     if (r.hint.textContent !== hint) r.hint.textContent = hint;
     r.hint.classList.toggle("hidden", !hint || !!this.overlay);
     // M21-08: a carta do portão mais perto (o mapa de consulta)
     const gi = cards && g.phase === "walk" ? g.nearGate : -1;
     const daring = daringOpen(g.run);
-    const key = gi >= 0 ? `${g.run.wave}:${gi}:${daring}` : "";
+    const key = gi >= 0 ? `${g.run.wave}:${gi}:${daring}:${g.run.cardSwaps.length}` : "";
     if (r.gateCard.dataset.key !== key) {
       r.gateCard.dataset.key = key;
       r.gateCard.innerHTML = gi >= 0 ? mapCardHtml(cards![gi], gi, daring, omenGateHtml(g.run)) : "";
@@ -1118,7 +1149,7 @@ export class Ui {
   }
 
   // ---------------------------------------------------------------- relíquia / pausa / morte
-  private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!", ban?: RelicBan): void {
+  private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!", ban?: RelicBan, reroll?: RelicReroll): void {
     const panel = this.overlayKind === "relic" ? (this.overlay!.firstChild as HTMLElement) : this.open("relic", "relic");
     panel.style.width = "min(820px, 96vw)";
     // D-197: a relíquia que evolui uma spell equipada (com a spell no nível 5)
@@ -1134,9 +1165,15 @@ export class Ui {
         const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
         return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
           <h3>${d.name}</h3>${relicLines(d)}${relicStackHtml(id, this.game.run.relics)}${evo}${has ? "" : relicRecipeHtml(id, this.game.run.relics) + synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}</div>`;
-      }).join("")}</div>`;
+      }).join("")}</div>${reroll ? `<div class="row end"><button data-act="relic-reroll" ${reroll.can() ? "" : "disabled"}>${
+        reroll.can() ? "Reroll relics · Relic Reroll, once per zone" : "Relic Reroll used in this zone"}</button></div>` : ""}`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
+      if (t.closest("[data-act=relic-reroll]")) {
+        const next = reroll?.roll(ids);
+        if (next) this.showRelicChoice(next, pick, title, ban, reroll);
+        return;
+      }
       const bi = t.closest<HTMLElement>("[data-ban]")?.dataset.ban;
       if (bi !== undefined) {
         const next = ban?.(Number(bi), ids);
@@ -1146,7 +1183,7 @@ export class Ui {
           this.close();
           return;
         }
-        this.showRelicChoice(next, pick, title, ban);
+        this.showRelicChoice(next, pick, title, ban, reroll);
         return;
       }
       const id = t.closest<HTMLElement>("[data-relic]")?.dataset.relic;

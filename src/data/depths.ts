@@ -68,17 +68,20 @@ export interface PerkDef {
   extraBans?: number;
 }
 
+/** M13-02 parte 2: a Starting Relic diz "uncommon" (o `en.lua` diz "common", mas o sorteio é de incomuns). */
 export const PERKS: PerkDef[] = [
   { id: "reroll", name: "Extra Reroll", cost: 3, freeRerolls: 1, text: "Start the run with 1 free shop reroll." },
   { id: "purse", name: "Full Purse", cost: 3, gold: 50, text: "Start the run with 50 gold." },
   { id: "greed", name: "Greed", cost: 4, goldPct: 0.05, text: "+5% gold." },
-  { id: "relic_pick", name: "Starting Relic", cost: 5, count: 3, rarity: "uncommon", text: "At the start of the run, pick 1 of 3 common relics." },
+  { id: "relic_pick", name: "Starting Relic", cost: 5, count: 3, rarity: "uncommon", text: "At the start of the run, pick 1 of 3 uncommon relics." },
   { id: "card_swap", name: "Card Swap", cost: 3, text: "Once every 5 waves (W1-5, W6-10...), you can reroll the map cards." },
   { id: "full_shop", name: "Stocked Shop", cost: 4, extraOffers: 1, text: "The first shop of every 5-wave block has +1 item." },
   { id: "reserve_potion", name: "Reserve Potion", cost: 5, below: 0.20, heal: 0.30, text: "Once per run, dropping below 20% HP heals 30%." },
   { id: "relic_reroll", name: "Relic Reroll", cost: 4, text: "Once every 5 waves (W1-5, W6-10...), you can reroll the relics of one choice." },
   { id: "ban", name: "Extra Ban", cost: 4, extraBans: 1, text: "+1 Ban during the run (3 instead of 2), used on the relic choice." },
 ];
+
+export const PERK_BY_ID = Object.fromEntries(PERKS.map((p) => [p.id, p])) as Record<PerkId, PerkDef>;
 
 /** D-226: skins do herói ganhas nas Depths (cosméticos, fase 2) */
 export const DEPTHS_SKINS = { abyssal: 3, ascended: 5 } as const;
