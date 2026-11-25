@@ -412,3 +412,24 @@ input.seed:focus { outline: none; border-color: var(--gold); }
 .tag-delta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .tag-delta .up { color: #9be89a; }
 .tag-delta .down { color: #ff7a6a; }
+
+/* M20-13: desafios da partida (HUD, tela I, loja e carta do portão) */
+.hud-top-left .challenges { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; max-width: 260px; }
+.hud-top-left .ch { display: flex; gap: 6px; align-items: baseline; font-size: 12px; background: rgba(10,14,26,0.55); border-left: 3px solid #7fd4ff; padding: 2px 8px; border-radius: 4px; }
+.hud-top-left .ch b { color: #bfe8ff; letter-spacing: .5px; }
+.hud-top-left .ch span { color: #fff; font-weight: 700; }
+.hud-top-left .ch small { margin-left: auto; color: #9aa3bd; }
+.hud-top-left .ch.done { border-color: #9dff7a; } .hud-top-left .ch.done b { color: #9dff7a; }
+.hud-top-left .ch.failed { border-color: #ff7a6a; opacity: .7; } .hud-top-left .ch.failed b { color: #ff7a6a; text-decoration: line-through; }
+.ch-list { display: flex; flex-direction: column; gap: 6px; }
+.ch-card { border: 1px solid #2c3550; border-left: 3px solid #7fd4ff; border-radius: 6px; padding: 6px 10px; background: rgba(20,26,44,0.6); }
+.ch-card .ch-head { display: flex; justify-content: space-between; align-items: baseline; }
+.ch-card .ch-head b { color: #bfe8ff; letter-spacing: .5px; }
+.ch-card .ch-head small { color: var(--muted); }
+.ch-card p { margin: 3px 0 0; font-size: 12px; }
+.ch-card .ch-prog { color: #fff; }
+.ch-card .ch-reward { color: var(--gold); }
+.ch-card.done { border-left-color: #9dff7a; } .ch-card.done .ch-head b { color: #9dff7a; }
+.ch-card.failed { border-left-color: #ff7a6a; opacity: .7; } .ch-card.failed .ch-head b { color: #ff7a6a; text-decoration: line-through; }
+.order { color: #7fd4ff; letter-spacing: 1px; }
+.ch-gate { margin: 6px 0 0; color: #7fd4ff; font-weight: 700; font-size: 12px; }

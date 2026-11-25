@@ -10,6 +10,7 @@ import type { UpgradeTier } from "./levelup";
 import { newShopState, type ShopState } from "./shop";
 import type { MapOffer } from "./runmap";
 import { runId, type WaveEntry } from "./runlog";
+import { ensureChallengeState, newChallengeState, type ChallengeRunState } from "./challenges";
 
 /** rng.lua `RNG.STREAMS`: um fluxo de sorteio por finalidade, na mesma ordem. */
 export const RUN_STREAMS = [
@@ -98,7 +99,8 @@ export interface RunStatistics {
   healed: number;
 }
 
-export interface RunState {
+/** M20-13: os desafios da partida ficam nos campos de `ChallengeRunState` (core/challenges.ts). */
+export interface RunState extends ChallengeRunState {
   seed: number;
   seedCode: string;
   /** a seed veio do jogador (replay de uma partida) */
@@ -250,6 +252,7 @@ export function newRun(opts: NewRunOptions): RunState {
     runId: opts.startedAt ? runId(encodeSeed(seed), opts.startedAt) : "",
     startedAt: opts.startedAt ?? "",
     waveLog: [],
+    ...newChallengeState(),
   };
 }
 
@@ -285,6 +288,8 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   const rng = new RunRng(run.seed);
   rng.restore(cp.rng);
   run.resumes = (run.resumes ?? 0) + 1;
+  // checkpoints de antes do M20-13
+  ensureChallengeState(run);
   // checkpoints de antes do M20-03
   run.upgradeTiers ??= run.upgradesTaken.map(() => "common");
   run.tags ??= {};

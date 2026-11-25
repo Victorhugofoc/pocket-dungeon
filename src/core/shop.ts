@@ -108,8 +108,9 @@ export function relicCost(shop: ShopState, relicId: string, level: number): numb
   return Math.floor(base * (1 + R.perLevel * (level - 1)) * R.perPurchase ** shop.relicPurchases);
 }
 
-/** `Shop.rerollCost` (D-146): base × nível, dobrando a cada troca na visita. */
-export function rerollCost(visit: ShopVisit): number {
+/** `Shop.rerollCost` (D-146): base × nível, dobrando a cada troca na visita; grátis com a troca de desafio (M20-13). */
+export function rerollCost(visit: ShopVisit, freeRerolls = 0): number {
+  if (freeRerolls > 0) return 0;
   return Math.floor(SHOP_REROLL.base * visit.level * SHOP_REROLL.growth ** visit.rerolls);
 }
 
@@ -185,11 +186,12 @@ export function rollShop(run: RunState, rng: ShopRng, wave: number, relic: () =>
  */
 export function rerollShop(run: RunState, visit: ShopVisit, rng: ShopRng, relic: () => string | undefined):
   { ok: true; cost: number } | { ok: false; reason: string } {
-  const cost = rerollCost(visit);
+  const cost = rerollCost(visit, run.freeRerolls ?? 0);
   if (run.gold < cost) return { ok: false, reason: SHOP_REASONS.noGold };
   const fresh = rollShop(run, rng, visit.wave, relic, visit.size);
   run.shop.visits--;
   visit.offers = fresh.offers;
+  if (cost === 0 && (run.freeRerolls ?? 0) > 0) run.freeRerolls--;
   run.gold -= cost;
   run.statistics.goldSpent += cost;
   visit.rerolls++;

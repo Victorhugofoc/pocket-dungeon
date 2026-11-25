@@ -29,6 +29,8 @@ import { BUILD_EVOLUTION_THRESHOLD, BUILD_EVOLUTIONS, BUILD_PATHS, IDENTITIES, I
 import { buildIdentity, synergiesFor } from "../src/core/synergies";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
 import { newRun } from "../src/core/run";
+import { ChallengeTracker, challengeRows } from "../src/core/challenges";
+import { CHALLENGES } from "../src/data/challenges";
 import { relicDraft, relicDraftPool, relicDraftWeight } from "../src/core/relics";
 import { AMBUSH_DELAY, COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ENEMY_GROUPS, POOL_TICK, ROOM_BIAS, ROOM_BY_ID, ROOMS, STORM } from "../src/data/rooms";
 import { generateMap, type MapRng } from "../src/core/runmap";
@@ -290,7 +292,7 @@ function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
   // expressões longas vão por arquivo (`@caminho`): a linha de comando do Windows tem limite
   const dir = mkdtempSync(join(tmpdir(), "dr-dump-"));
-  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE, HERO_LIFE, RELIC_LIFE, BUILD_LIFE].map((code, i) => {
+  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE, HERO_LIFE, RELIC_LIFE, BUILD_LIFE, CHALLENGE_LIFE].map((code, i) => {
     if (code.length < 2000) return code;
     const f = join(dir, `arg${i}.lua`);
     writeFileSync(f, code);
@@ -467,6 +469,117 @@ const BUILD_LIFE = `=(function()
     for _, s in ipairs(require("src.data.synergies").synergies) do if B.meets(run, s.requires) then syn[#syn + 1] = s.id end end
     out[i] = { identity = B.identity(run), synergies = syn }
   end
+  return out
+end)()`;
+/**
+ * M20-13: partidas roteirizadas para os desafios (run/challenges.lua). Cada passo é um evento da partida; o mesmo
+ * roteiro, com os mesmos números do sorteio, passa pelo Lua e pelo `ChallengeTracker`, e os avisos e o estado batem.
+ */
+type ChStep = (string | number | boolean)[];
+const CHALLENGE_SCEN = (() => {
+  let x = 4242;
+  const rnd = () => { x = (x * 16807) % 2147483647; return x / 2147483647; };
+  const spellIds = ["fireball", "iceball", "chain_lightning", "arcane_bolt", "venom_nova", "prism_beam"];
+  const evos = EVOLUTION_ORDER as readonly string[];
+  const relicPool = RELIC_IDS.slice(0, 40);
+  return Array.from({ length: 40 }, (_, k) => {
+    const hero = HERO_ORDER[k % HERO_ORDER.length];
+    const spells = [{ id: spellIds[k % spellIds.length], level: 1 + Math.floor(rnd() * 4) }];
+    if (k % 3 === 0) spells.push({ id: spellIds[(k + 2) % spellIds.length], level: 1 + Math.floor(rnd() * 5) });
+    const relics = k % 7 === 6 ? [] : Array.from({ length: 3 }, () => relicPool[Math.floor(rnd() * relicPool.length)]);
+    const steps: ChStep[] = [];
+    let t = 0;
+    const last = k % 5 === 4 ? 26 : 20;
+    for (let w = 1; w <= last; w++) {
+      if (rnd() < 0.25) steps.push(["map", rnd() < 0.6 ? "cursed_room" : "combat"]);
+      steps.push(["ws", w]);
+      t += 5;
+      if (w % 5 === 0) {
+        steps.push(["boss", t]);
+        if (rnd() < 0.3) steps.push(["hit"]);
+        t += rnd() < 0.5 ? 30 : 55;
+        steps.push(["kill", false, rnd() < 0.2, true, t]);
+      }
+      if (rnd() < 0.35) steps.push(["hit"]);
+      const kills = Math.floor(rnd() * 12);
+      for (let i = 0; i < kills; i++) steps.push(["kill", rnd() < 0.12, rnd() < 0.45, false, t]);
+      if (rnd() < 0.15) steps.push(["evo", evos[Math.floor(rnd() * evos.length)]]);
+      if (rnd() < 0.15) steps.push(["syn", SYNERGIES[Math.floor(rnd() * SYNERGIES.length)].id]);
+      if (rnd() < 0.2 && relics.length) steps.push(["buy", relics[Math.floor(rnd() * relics.length)], 100 + Math.floor(rnd() * 300)]);
+      if (rnd() < 0.1 && relics.length) steps.push(["relic", relics[Math.floor(rnd() * relics.length)]]);
+      steps.push(["gold", Math.floor(rnd() * 1600)]);
+      if (rnd() < 0.35) steps.push(["lvl", 1 + Math.floor(rnd() * spells.length), 1 + Math.floor(rnd() * 5)]);
+      if (rnd() < 0.2) steps.push(["close"]);
+      steps.push(["wc", w, rnd() < 0.5, Math.round(rnd() * 100) / 100]);
+    }
+    return { hero, spells, relics, steps, u: Array.from({ length: 31 }, rnd) };
+  });
+})();
+const luaVal = (v: string | number | boolean) => (typeof v === "string" ? luaStr(v) : String(v));
+const CHALLENGE_LIFE = `=(function()
+  local saved = package.loaded["src.core.achievements"]
+  package.loaded["src.core.achievements"] = { add = function() end }
+  local RS, R = require("src.relics.relic_system"), require("src.core.rng")
+  local draft0 = RS.draft
+  package.loaded["src.run.challenges"] = nil
+  local Ch = require("src.run.challenges")
+  local out = {}
+  for si, sc in ipairs({${CHALLENGE_SCEN.map((c) => `{ tech = ${luaStr(HEROES[c.hero].technique.id)}, u = {${c.u.join(",")}},
+    relics = {${c.relics.map(luaStr).join(",")}},
+    spells = {${c.spells.map((sp) => `{ id = ${luaStr(sp.id)}, level = ${sp.level} }`).join(",")}},
+    steps = {${c.steps.map((st) => `{${st.map(luaVal).join(",")}}`).join(",")}} }`).join(",")}}) do
+    local j, rj = 0, 0
+    local rng = setmetatable({ random = function() j = j + 1 return sc.u[((j - 1) % #sc.u) + 1] end }, { __index = R })
+    RS.draft = function() if #sc.relics == 0 then return {} end rj = rj + 1 return { sc.relics[((rj - 1) % #sc.relics) + 1] } end
+    local subs, notes = {}, {}
+    local events = {
+      on = function(_, n, fn) subs[n] = subs[n] or {}; table.insert(subs[n], fn); return fn end,
+      off = function() end,
+      emit = function(_, n, p)
+        if n == "challenge_new" or n == "challenge_done" or n == "challenge_failed" then notes[#notes + 1] = { n, p.id } end
+        for _, fn in ipairs(subs[n] or {}) do fn(p) end
+      end,
+    }
+    local spells = { [0] = { id = sc.tech, level = 1 } }
+    for k, sp in ipairs(sc.spells) do spells[k] = { id = sp.id, level = sp.level } end
+    local run = { wave = 0, gold = 0, hp = 100, maxHp = 100, spells = spells, tags = {}, activeSynergies = {}, relics = {},
+      statistics = { goldEarned = 0, elapsed = 0 } }
+    local rc = { run = run, events = events, rngs = { challenges = rng }, world = {} }
+    Ch.new(rc)
+    local boss
+    for _, st in ipairs(sc.steps) do
+      local k = st[1]
+      if k == "ws" then run.wave = st[2]; events:emit("wave_start", { wave = st[2] })
+      elseif k == "hit" then events:emit("player_hit", { amount = 5 })
+      elseif k == "boss" then run.statistics.elapsed = st[2]; boss = { isBoss = true }; events:emit("enemy_spawned", { enemy = boss })
+      elseif k == "kill" then
+        run.statistics.elapsed = st[5]
+        local e = st[4] and boss or { isChampion = st[2] }
+        events:emit("enemy_killed", { enemy = e, source = st[3] and sc.tech or "auto" })
+      elseif k == "wc" then rc.world.wave = { hastened = st[3] }; run.hp = st[4] * 100; events:emit("wave_complete", { wave = st[2] })
+      elseif k == "evo" then events:emit("spell_evolved", { evoId = st[2] })
+      elseif k == "syn" then run.activeSynergies[st[2]] = true; events:emit("synergy_activated", { id = st[2] })
+      elseif k == "buy" then events:emit("shop_purchase", { offer = { kind = "relic", relic = st[2] }, cost = st[3] })
+      elseif k == "relic" then events:emit("relic_acquired", { id = st[2] })
+      elseif k == "map" then events:emit("map_choice", { node = st[2] })
+      elseif k == "gold" then run.gold = st[2]
+      elseif k == "lvl" then run.spells[st[2]].level = st[3]; events:emit("upgrade_chosen", {})
+      elseif k == "close" then events:emit("shop_closed", {})
+      end
+    end
+    local list = {}
+    for i, c in ipairs(run.challenges) do
+      list[i] = { id = c.id, wave = c.wave, progress = c.progress, goal = c.goal, deadline = c.deadline, done = c.done,
+        failed = c.failed, spell = c.spell, evo = c.evo, relic = c.relic, synergy = c.synergy, armed = c.armed,
+        refund = c.refund, paid = c.paid }
+    end
+    out[si] = { notes = notes, list = list, gold = run.gold, earned = run.statistics.goldEarned,
+      freeRerolls = run.freeRerolls or 0, freeLevelUpReroll = run.freeLevelUpReroll or "none",
+      done = run.challengesDone, offered = run.challengesOffered, forced = run.forcedShopRelic or "none",
+      waiting = run.challengeWaiting or 0, view = Ch.view(run) }
+  end
+  RS.draft = draft0
+  package.loaded["src.core.achievements"] = saved
   return out
 end)()`;
 const SHOP_LIFE = `=(function()
@@ -1525,5 +1638,70 @@ describe.skipIf(!dr)("paridade das evoluções de build e da identidade (M12-09,
       expect(buildIdentity(t), JSON.stringify(t)).toBe(lua[i].identity);
       expect(synergiesFor(t), JSON.stringify(t)).toEqual(Array.isArray(lua[i].synergies) ? lua[i].synergies : []);
     });
+  });
+});
+
+describe.skipIf(!dr)("paridade dos desafios da partida com o Dungeon Reign (M20-13, P1)", () => {
+  const arr = (v: Lua): Lua[] => (Array.isArray(v) ? v : []);
+
+  it("os 13 desafios de challenges.lua, na mesma ordem, com nome, tamanho, prazo, prêmio e meta", () => {
+    const src = readFileSync(resolve(ROOT, "src/run/challenges.lua"), "utf8");
+    const lua = [...src.matchAll(/def\(\{ id = "(\w+)", name = "([^"]+)", size = "(\w+)", deadline = "(\w+)"([^\n]*)/g)].map((m) => {
+      const reward = /reward = "(\w+)"/.exec(m[5])?.[1] ?? "gold", goal = /goal = (\d+)/.exec(m[5])?.[1];
+      return { id: m[1], name: english(m[2]), size: m[3], deadline: m[4], reward, ...(goal ? { goal: Number(goal) } : {}) };
+    });
+    expect(lua.length).toBe(13);
+    expect(CHALLENGES.map((d) => ({ ...d }))).toEqual(lua);
+  });
+
+  it(`${CHALLENGE_SCEN.length} partidas roteirizadas: mesmos desafios, prazos, progresso, pagamentos e textos`, () => {
+    const L: Lua[] = dr![CHALLENGE_LIFE];
+    CHALLENGE_SCEN.forEach((sc, i) => {
+      const run = newRun({ heroId: sc.hero, difficultyId: "normal", startingSpell: HEROES[sc.hero].startingSpells[0], randomSeed: 1 });
+      run.spells = sc.spells.map((sp) => ({ id: sp.id, level: sp.level, modifiers: [], evolution: null }));
+      run.gold = 0;
+      let j = 0, rj = 0;
+      const world = {
+        rng: { int: (a: number, b: number) => a + Math.floor(sc.u[j++ % sc.u.length] * (b - a + 1)) },
+        drawRelic: () => (sc.relics.length ? sc.relics[rj++ % sc.relics.length] : undefined),
+      };
+      const tr = new ChallengeTracker(run);
+      const notes: [string, string][] = [];
+      const kind = { new: "challenge_new", done: "challenge_done", failed: "challenge_failed" } as const;
+      let boss: object = {};
+      for (const st of sc.steps) {
+        const k = st[0];
+        if (k === "ws") { run.wave = st[1] as number; tr.waveStart(run.wave, world); }
+        else if (k === "hit") tr.hit(5);
+        else if (k === "boss") { run.statistics.elapsed = st[1] as number; boss = {}; tr.bossSpawned(boss, run.statistics.elapsed); }
+        else if (k === "kill") {
+          run.statistics.elapsed = st[4] as number;
+          tr.killed({ key: st[3] ? boss : {}, boss: !!st[3], champion: !!st[1], technique: !!st[2], noReward: false, elapsed: run.statistics.elapsed });
+        } else if (k === "wc") tr.waveComplete(st[1] as number, { hastened: !!st[2], hpFrac: st[3] as number });
+        else if (k === "evo") tr.spellEvolved(st[1] as string);
+        else if (k === "syn") { run.activeSynergies.push(st[1] as string); tr.synergyActivated(st[1] as string); }
+        else if (k === "buy") tr.relicPurchased(st[1] as string, st[2] as number);
+        else if (k === "relic") tr.relicAcquired(st[1] as string);
+        else if (k === "map") tr.mapChoice(st[1] as string);
+        else if (k === "gold") run.gold = st[1] as number;
+        else if (k === "lvl") { run.spells[(st[1] as number) - 1].level = st[2] as number; tr.checkLevels(); }
+        else if (k === "close") tr.checkLevels();
+        for (const n of tr.take()) notes.push([kind[n.kind], n.challenge.id]);
+      }
+      const lua = L[i];
+      expect(notes, `#${i} avisos`).toEqual(arr(lua.notes));
+      expect(run.challenges.map((c) => ({ ...c })), `#${i} painel`).toEqual(arr(lua.list));
+      expect({ gold: run.gold, earned: run.statistics.goldEarned, freeRerolls: run.freeRerolls, freeLevelUpReroll: run.freeLevelUpReroll ?? "none",
+        done: run.challengesDone, offered: run.challengesOffered, forced: run.forcedShopRelic ?? "none", waiting: run.challengeWaiting }, `#${i}`)
+        .toEqual({ gold: lua.gold, earned: lua.earned, freeRerolls: lua.freeRerolls, freeLevelUpReroll: lua.freeLevelUpReroll,
+          done: lua.done, offered: lua.offered, forced: lua.forced, waiting: lua.waiting });
+      const rows = challengeRows(run).map((r) => ({ name: r.name, text: r.text.toLowerCase(), reward: r.reward, deadline: r.deadline, progress: r.progress, goal: r.goal }));
+      expect(rows, `#${i} textos`).toEqual(arr(lua.view).map((v: Lua) => ({ name: v.name, text: String(v.text).toLowerCase(), reward: v.reward, deadline: v.deadline,
+        progress: v.progress, goal: v.goal })));
+    });
+    // os roteiros passam por todos os desafios completos e pelo prazo vencido
+    const all = L.flatMap((x) => arr(x.notes));
+    for (const d of CHALLENGES) expect(all.some((n: Lua) => n[1] === d.id && n[0] === "challenge_done"), `${d.id} completo`).toBe(true);
+    expect(all.some((n: Lua) => n[0] === "challenge_failed")).toBe(true);
   });
 });

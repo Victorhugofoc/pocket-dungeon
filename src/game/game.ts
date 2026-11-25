@@ -15,6 +15,7 @@ import { BUILD_EVOLUTION_BY_ID, SYNERGY_BY_ID } from "../data/synergies";
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
 import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
+import { ChallengeTracker, challengeName, challengeReward, challengeText, type ChallengeWorld } from "../core/challenges";
 import { arcSpots, chooseCard, shrineFallbackGold, expireWaveScope, generateMap, needsMap, roomOf, type MapCard, type MapNodeId } from "../core/runmap";
 import {
   canHasten, hasten, hastenBonus, startWave, stepWave, killReward, survivorReward, timeLeft, waveMods, waveReward,
@@ -127,6 +128,8 @@ export interface GameEvents {
   victory(): void;
   /** letreiro grande no meio da tela ("Onda 3", "Onda concluída") */
   banner(title: string, sub?: string): void;
+  /** M20-13: um desafio entrou, completou ou expirou (o painel do HUD redesenha) */
+  challenges?(): void;
 }
 
 /** As 3 cartas de melhoria abertas no fim da onda (run_drafts.lua `checkLevelUp`). */
@@ -436,6 +439,10 @@ export class Game {
   private hitSource: KillSource = "other";
   /** > 0 enquanto o golpe é da técnica (`asTechnique`) */
   private techDepth = 0;
+  /** M20-13: os desafios da partida (core/challenges.ts); criado em `start` */
+  challenges!: ChallengeTracker;
+  /** a compra da loja dá a relíquia: o desafio ouve a compra, não o `relic_acquired` (como no Lua) */
+  private shopBuying = false;
   /** o ataque básico que está saindo agora (M21-07) */
   private autoMod: AutoMod | null = null;
   /** elemento do golpe em andamento quando quem bate não passa um (técnica: a escola dela), para as reações (M21-05) */
@@ -533,6 +540,7 @@ export class Game {
     this.runLogged = false;
     this.ach.runStart(run.heroId);
     this.ach.devUsed = run.devUsed;
+    this.challenges = new ChallengeTracker(run);
     this.saveAchievements();
     this.prepareWave(Math.max(1, run.wave), true);
   }
@@ -590,6 +598,10 @@ export class Game {
   private refreshSynergies(): void {
     const { gained, lost, evolved } = refreshSynergies(this.run);
     for (const id of gained) this.events?.toast(`Synergy: ${SYNERGY_BY_ID[id].name} · ${SYNERGY_BY_ID[id].text}`, "#ffd34d");
+    if (gained.length && this.challenges) {
+      for (const id of gained) this.challenges.synergyActivated(id);
+      this.flushChallenges();
+    }
     for (const id of lost) this.events?.toast(`Synergy lost: ${SYNERGY_BY_ID[id].name} · tags below the threshold`, "#ff7a6a");
     for (const id of evolved) {
       const b = BUILD_EVOLUTION_BY_ID[id];
@@ -737,6 +749,44 @@ export class Game {
     }
     this.audio.play("rare");
     this.saveAchievements();
+  }
+
+  /** O que a oferta de desafio usa da partida: o fluxo `challenges` (não mexe nos outros sorteios da seed). */
+  private challengeWorld(): ChallengeWorld {
+    const rr = this.rng.get("challenges");
+    return { rng: rr, drawRelic: () => relicDraft(this.run, this.relicOpen(), () => rr.next(), 1)[0] };
+  }
+
+  /** Avisos dos desafios (challenges.lua `challenge_new/done/failed`): toast, som, conquista. */
+  flushChallenges(): void {
+    const news = this.challenges?.take();
+    if (!news?.length) return;
+    const run = this.run;
+    for (const n of news) {
+      const c = n.challenge;
+      if (n.kind === "new") {
+        this.events.toast(`NEW CHALLENGE: ${challengeName(c)} · ${challengeText(c, run)} By W${c.deadline} (${challengeReward(c, run.wave)})`, "#7fd4ff");
+        this.audio.play("pickup");
+      } else if (n.kind === "done") {
+        this.events.toast(`CHALLENGE DONE: ${challengeName(c)} · ${challengeReward(c, run.wave)}`, "#9dff7a");
+        const p = this.player;
+        if (c.paid) this.fx.text(p.x, 2.8, p.z, `+${c.paid}g`, "gold");
+        this.audio.play("rare");
+        this.ach.challengeDone();
+      } else {
+        this.events.toast(`CHALLENGE EXPIRED: ${challengeName(c)}`, "#ff7a6a");
+        this.audio.play("warn");
+      }
+    }
+    this.flushAchievements();
+    this.events.challenges?.();
+  }
+
+  /** shop_system.lua `roll` (C-04): a relíquia da Encomenda ocupa a vaga de relíquia até ser comprada. */
+  private shopRelic(): string | undefined {
+    const f = this.run.forcedShopRelic;
+    if (f && !this.run.relics.includes(f) && !this.run.bannedRelics.includes(f)) return f;
+    return this.drawRelics(1, "shop")[0];
   }
 
   /** A zona de uma onda: 5 ondas por zona, na ordem do reino; o modo sem fim recomeça o ciclo com mapas novos. */
@@ -930,6 +980,8 @@ export class Game {
       if (o.xp > 0) this.gainXp(o.xp);
     }
     if (got.length) {
+      this.challenges.gold();
+      this.flushChallenges();
       this.audio.play("coin");
       this.epics.onOrbs(got.length);
     }
@@ -1393,6 +1445,9 @@ export class Game {
     this.relicHooks.onKill(this.relicWorld, { ...this.relicFoe(e), maxHp: e.maxHp, champion: e.champion });
     this.ach.enemyKilled({ key: e, id: e.boss?.id ?? e.def!.id, boss: e.isBoss, champion: e.champion, source,
       elapsed: this.run.statistics.elapsed, noReward: e.summoned });
+    this.challenges.killed({ key: e, boss: e.isBoss, champion: e.champion, technique: this.techDepth > 0 && source !== "dot",
+      noReward: e.summoned, elapsed: this.run.statistics.elapsed });
+    this.flushChallenges();
     const color = e.boss?.color ?? e.def!.color;
     this.fx.burst(e.x, e.rig.height * 0.5, e.z, color, e.isBoss ? 80 : 14, e.isBoss ? 12 : 6, e.isBoss ? 0.3 : 0.18, e.isBoss ? 1.2 : 0.6);
     this.audio.play(e.isBoss ? "boss" : "kill");
@@ -1522,6 +1577,10 @@ export class Game {
   addRelic(id: string): void {
     if (!RELICS[id] || !grantRelic(this.run, id)) return;
     this.ach.relicFound(id);
+    if (!this.shopBuying) {
+      this.challenges.relicAcquired(id);
+      this.flushChallenges();
+    }
     const n = relicCopies(this.run.relics, id);
     this.events.toast(`Relic: ${RELICS[id].name}${n > 1 ? ` x${n}` : ""}`, "#ffc83d");
     this.recompute();
@@ -1622,6 +1681,8 @@ export class Game {
       ids, tiers: draftTiers(run, rng, ids), rerolls: 0,
       index: this.levelUpIndex, total: this.levelUpIndex - 1 + run.pendingLevelUps,
     };
+    // C-13: a troca grátis ganha num desafio vale só para esta tela de nível
+    if (run.freeLevelUpReroll === "next") run.freeLevelUpReroll = "active";
     this.events.levelUp();
   }
 
@@ -1629,10 +1690,11 @@ export class Game {
   rerollLevelUp(): boolean {
     const L = this.levelUp;
     if (!L || rerollsLeft(L.rerolls) <= 0) return false;
-    const cost = rerollCost(this.run);
+    const cost = this.levelRerollCost();
     if (this.run.gold < cost) return false;
     this.run.gold -= cost;
     this.run.statistics.goldSpent += cost;
+    if (this.run.freeLevelUpReroll === "active") this.run.freeLevelUpReroll = null;
     const rng = this.rng.get("levelup");
     L.ids = draftLevelUp(this.run, rng);
     L.tiers = draftTiers(this.run, rng, L.ids);
@@ -1640,6 +1702,11 @@ export class Game {
     this.audio.play("pickup");
     this.events.levelUp();
     return true;
+  }
+
+  /** level_up.lua `rerollCost`: grátis com a troca do desafio (C-13) */
+  levelRerollCost(): number {
+    return this.run.freeLevelUpReroll === "active" ? 0 : rerollCost(this.run);
   }
 
   /** run_drafts.lua `chooseUpgrade`; a vida máxima sobe junto (`refreshMaxHp`), Vitality cura tudo. */
@@ -1650,7 +1717,11 @@ export class Game {
     const before = this.stats.maxHp;
     const u = applyUpgrade(this.run, id, L.tiers[index]);
     this.levelUp = null;
+    // C-13: a troca grátis não usada se perde
+    if (this.run.freeLevelUpReroll === "active") this.run.freeLevelUpReroll = null;
     this.recompute();
+    this.challenges.checkLevels();
+    this.flushChallenges();
     const p = this.player;
     if (u.fullHeal) p.hp = this.stats.maxHp;
     else if (this.stats.maxHp > before) p.hp += this.stats.maxHp - before;
@@ -1668,6 +1739,8 @@ export class Game {
     this.evolutionOffer = null;
     this.ach.spellEvolved(o.evoId);
     this.flushAchievements();
+    this.challenges.spellEvolved(o.evoId);
+    this.flushChallenges();
     this.recompute();
     const p = this.player;
     this.fx.burst(p.x, 1.5, p.z, 0xc77dff, 32, 7, 0.16, 0.9, 5);
@@ -1766,6 +1839,8 @@ export class Game {
     if (amount <= 0) return true;
     this.run.statistics.damageTaken += Math.min(amount, p.hp);
     p.hp -= amount;
+    this.challenges.hit(amount);
+    this.flushChallenges();
     this.relicHooks.onPlayerHit(this.relicWorld, amount);
     if (attacker?.affixes.length) this.affixes.onHit(attacker, (mult, time) => this.chillPlayer(mult, time));
     this.ach.playerHit(amount, Math.max(0, p.hp) / this.stats.maxHp);
@@ -2027,6 +2102,8 @@ export class Game {
     this.endDetours();
     this.wave = startWave(n, this.rng.get("champions"), (id) => id in ENEMIES, this.mods);
     this.ach.waveStart(n);
+    this.challenges.waveStart(n, this.challengeWorld());
+    this.flushChallenges();
     this.phase = "intro";
     this.phaseT = 0;
     this.showRing(true);
@@ -2228,6 +2305,7 @@ export class Game {
         const final = !ambush && this.run.wave === BOSS.final.wave;
         const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush, crownAttack: final ? this.crown : null });
         this.ach.bossSpawned(e, this.run.statistics.elapsed);
+        this.challenges.bossSpawned(e, this.run.statistics.elapsed);
         e.hunter = true;
         this.boss = e;
         this.enemies.push(e);
@@ -2276,6 +2354,10 @@ export class Game {
     run.gold += gold;
     run.statistics.goldEarned += gold;
     this.gainXp(xp + r.xp);
+    if (this.playerAlive) {
+      this.challenges.waveComplete(run.wave, { hastened: w.hastened, hpFrac: this.player.hp / this.stats.maxHp });
+      this.flushChallenges();
+    }
     if (w.isBossWave && w.bossesDefeated && run.wave === TOTAL_WAVES) {
       run.victory = true;
       this.ach.victory(run);
@@ -2500,6 +2582,8 @@ export class Game {
     this.gates.hide();
     this.nearGate = -1;
     const step = chooseCard(run, card);
+    this.challenges.mapChoice(card.node);
+    this.flushChallenges();
     // a sala escolhida muda os números desta onda
     this.mods = waveMods(run.wave, run.difficultyId, roomOf(run), this.hero.runMods);
     this.mods.championHp = this.stats.championHp;
@@ -2545,7 +2629,7 @@ export class Game {
   /** `openAutoShop` (reason) ou a carta "Shop" do mapa (null): uma visita nova, sorteada no fluxo `shop`. */
   private openShop(auto: ShopReason | null): void {
     // a automática abre no fim da onda (vale para a seguinte); a do portão, na caminhada da própria onda
-    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, () => this.drawRelics(1, "shop")[0]);
+    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, () => this.shopRelic());
     this.shopVisit = { ...v, auto, priceMult: this.stats.shopPrice };
     this.audio.play("pickup");
     this.events.shop();
@@ -2555,13 +2639,22 @@ export class Game {
   buyShop(index: number): string | null {
     const v = this.shopVisit;
     if (!v) return "no shop";
-    const r = buyOffer(this.run, v, index, { grantRelic: (id) => this.addRelic(id) });
+    this.shopBuying = true;
+    let r: ReturnType<typeof buyOffer>;
+    try {
+      r = buyOffer(this.run, v, index, { grantRelic: (id) => this.addRelic(id) });
+    } finally {
+      this.shopBuying = false;
+    }
     if (!r.ok) {
       this.audio.play("warn");
       this.events.shop();
       return r.reason;
     }
     this.recompute();
+    if (r.offer.kind === "relic" && r.offer.relic) this.challenges.relicPurchased(r.offer.relic, r.cost);
+    else this.challenges.checkLevels();
+    this.flushChallenges();
     if (r.fullHeal) this.player.hp = this.stats.maxHp;
     const p = this.player;
     this.fx.burst(p.x, 1.5, p.z, 0xffd34d, 18, 5, 0.12, 0.6, 3);
@@ -2575,7 +2668,7 @@ export class Game {
   rerollShop(): string | null {
     const v = this.shopVisit;
     if (!v) return "no shop";
-    const r = rerollShop(this.run, v, this.rng.get("shop"), () => this.drawRelics(1, "shop")[0]);
+    const r = rerollShop(this.run, v, this.rng.get("shop"), () => this.shopRelic());
     this.audio.play(r.ok ? "pickup" : "warn");
     this.events.shop();
     return r.ok ? null : r.reason;
@@ -2598,6 +2691,8 @@ export class Game {
     const v = this.shopVisit;
     if (!v) return;
     this.shopVisit = null;
+    this.challenges.checkLevels();
+    this.flushChallenges();
     if (!v.auto) this.resolveMap();
   }
 

@@ -268,6 +268,12 @@ export class AchievementTracker {
     if (markSeen(this.state, "spell", evoId)) this.check();
   }
 
+  /** achievements.lua: Challenger conta os desafios completos (somando as partidas) */
+  challengeDone(): void {
+    addCounter(this.state, "challenges");
+    this.check();
+  }
+
   relicFound(id: string): void {
     if (markSeen(this.state, "relic", id)) this.check();
   }
