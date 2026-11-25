@@ -12,7 +12,8 @@ export const RUNLOG_VERSION = 1;
 export const RUNLOG_MAX = 100;
 
 /** como a partida terminou: morte, vitória encerrada, "Quit to title" ou a aba fechada no meio */
-export type RunOutcome = "death" | "victory" | "quit" | "closed";
+/** `stuck` e `timeout`: só o bot (M17-01), partida sem progresso ou passada do tempo máximo */
+export type RunOutcome = "death" | "victory" | "quit" | "closed" | "stuck" | "timeout";
 
 /** Uma onda vencida (ou a última, interrompida). Os números de partida são acumulados até ali. */
 export interface WaveEntry {
@@ -49,6 +50,8 @@ export interface RunLogEntry {
   v: typeof RUNLOG_VERSION;
   /** identifica a partida: continuar depois de "quit" troca a entrada antiga pela nova */
   runId: string;
+  /** M17-01: partida do bot (seed, herói, motivo do fim); o relatório de balanceamento lê só estas */
+  bot?: Record<string, unknown>;
   startedAt: string;
   endedAt: string;
   /** versão do jogo e commit (vite.config.ts `__BUILD__`) */
