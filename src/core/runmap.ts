@@ -1,8 +1,10 @@
 // Mapa da partida entre as ondas (run_map.lua §7 e o escopo da onda de §6): 3 cartas sorteadas com peso, a loja
 // garantida a cada 3 ondas, a sala ou maldição da carta escolhida e a camada da onda (modifier_engine.lua `waveLayer`).
 // Puro: o jogo sorteia no fluxo `map` e mostra as cartas.
+import { multiplyLayers, type Layer } from "./events";
+import type { LayerMods } from "../data/events";
 import { RUN_MAP } from "../data/run";
-import { COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ROOM_BY_ID, type RoomDef, type RoomMods } from "../data/rooms";
+import { COMBAT_ROOM_POOL, CURSE_WAVES, CURSES, ROOM_BY_ID, type RoomDef } from "../data/rooms";
 import type { RunState } from "./run";
 import { hasMapBefore } from "./waves";
 
@@ -14,6 +16,8 @@ export interface MapCard {
   room?: string;
   /** pacto sorteado na carta de pacto */
   pact?: string;
+  /** M11-08: os 3 eventos da carta, sorteados uma vez (ir e voltar não sorteia de novo, run_map_flow.lua) */
+  events?: string[];
 }
 
 /** O pedaço do Rng que o mapa usa (o teste de paridade passa um sorteio roteirizado igual ao do Lua). */
@@ -120,15 +124,11 @@ export function roomOf(run: RunState): RoomDef | null {
   return (run.room && ROOM_BY_ID[run.room]) || null;
 }
 
-/** modifier_engine.lua `waveLayer` (só a sala; eventos e pactos chegam com os sistemas deles). */
-export type WaveLayer = Required<RoomMods>;
+/** modifier_engine.lua `waveLayer`: a sala vezes o evento da onda (e o atraso do Ominous Omen que cai nela). */
+export type WaveLayer = Layer;
 
-export function waveLayer(room: RoomDef | null): WaveLayer {
-  const m = room?.mods ?? {};
-  return {
-    reward: m.reward ?? 1, enemyHp: m.enemyHp ?? 1, enemyDamage: m.enemyDamage ?? 1, enemySpeed: m.enemySpeed ?? 1,
-    projectileSpeed: m.projectileSpeed ?? 1, enemyCount: m.enemyCount ?? 1,
-  };
+export function waveLayer(room: RoomDef | null, events: readonly LayerMods[] = []): WaveLayer {
+  return multiplyLayers(room?.mods, ...events);
 }
 
 // ---------------------------------------------------------------- M21-08: o mapa escolhido andando

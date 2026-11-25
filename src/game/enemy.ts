@@ -287,10 +287,13 @@ export class Enemy {
   shieldT = 0;
   shieldState: "up" | "warn" | "down" = "up";
   private guardBand: GuardBand | null = null;
+  /** M13-02 Depths 4 (Early Fury): a fúria vem antes e acelera (boss.lua `enrageBonus`, `enragedSpeed`) */
+  fury: { enrageBonus: number; enragedSpeed: number } | null = null;
 
   constructor(game: Game, def: EnemyDef | BossDef, wave: number, x: number, z: number,
     opts: { champion?: boolean; summoned?: boolean; child?: boolean; final?: boolean; ambush?: { hp: number; damage: number } | null;
-      crownAttack?: BossPattern | null; affixes?: readonly AffixId[] } = {}) {
+      crownAttack?: BossPattern | null; affixes?: readonly AffixId[]; fury?: { enrageBonus: number; enragedSpeed: number } | null } = {}) {
+    this.fury = opts.fury ?? null;
     this.x = this.homeX = x;
     this.z = this.homeZ = z;
     this.level = wave;
@@ -1145,7 +1148,7 @@ export class Enemy {
    */
   private updatePhase(game: Game): boolean {
     let roared = false;
-    for (const st of phaseSteps(this.phase, this.hp / this.maxHp)) {
+    for (const st of phaseSteps(this.phase, this.hp / this.maxHp, this.fury?.enrageBonus ?? 0)) {
       this.phase = st.phase;
       this.phaseSpeed *= st.speed * (this.boss!.phaseSpeed?.[st.phase - 1] ?? 1);
       this.phaseRangedK *= st.rangedCooldown;
@@ -1154,6 +1157,7 @@ export class Enemy {
       this.phaseSkillshotK *= st.skillshotCooldown;
       if (st.enraged) {
         this.enraged = true;
+        if (this.fury) this.phaseSpeed *= this.fury.enragedSpeed;
         game.fx.shockwave(this.x, this.z, 8, 0xff2a1a, 0.6);
         game.fx.text(this.x, this.rig.height + 1, this.z, "ENRAGED!", "crit");
         game.audio.play("boss");

@@ -4,13 +4,15 @@
 // continuar refaz a partida dali e recomeça aquela onda.
 import { buildIdentity } from "./synergies";
 import { Rng, hashStr } from "./rng";
-import { DIFFICULTIES, RUN_START, type DifficultyId } from "../data/run";
+import { DIFFICULTIES, RUN_START, depthsLevel, type DifficultyId } from "../data/run";
+import { depthsScoreMult } from "./depths";
 import { HEROES } from "../data/heroes";
 import type { UpgradeTier } from "./levelup";
 import { newShopState, type ShopState } from "./shop";
 import type { MapOffer } from "./runmap";
 import { runId, type WaveEntry } from "./runlog";
 import { ensureChallengeState, newChallengeState, type ChallengeRunState } from "./challenges";
+import { ensureEventState, newEventState, type EventRunState } from "./events";
 
 /** rng.lua `RNG.STREAMS`: um fluxo de sorteio por finalidade, na mesma ordem. */
 export const RUN_STREAMS = [
@@ -100,7 +102,7 @@ export interface RunStatistics {
 }
 
 /** M20-13: os desafios da partida ficam nos campos de `ChallengeRunState` (core/challenges.ts). */
-export interface RunState extends ChallengeRunState {
+export interface RunState extends ChallengeRunState, EventRunState {
   seed: number;
   seedCode: string;
   /** a seed veio do jogador (replay de uma partida) */
@@ -181,6 +183,8 @@ export interface RunState extends ChallengeRunState {
   runId: string;
   startedAt: string;
   waveLog: WaveEntry[];
+  /** M13-02: as Marcas pagas pela vitória nas Depths (`run.depthsReward`); null antes */
+  depthsReward: { level: number; marks: number; first: boolean; total: number } | null;
 }
 
 export interface NewRunOptions {
@@ -252,7 +256,9 @@ export function newRun(opts: NewRunOptions): RunState {
     runId: opts.startedAt ? runId(encodeSeed(seed), opts.startedAt) : "",
     startedAt: opts.startedAt ?? "",
     waveLog: [],
+    depthsReward: null,
     ...newChallengeState(),
+    ...newEventState(),
   };
 }
 
@@ -290,6 +296,9 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   run.resumes = (run.resumes ?? 0) + 1;
   // checkpoints de antes do M20-13
   ensureChallengeState(run);
+  // checkpoints de antes do M11-08
+  ensureEventState(run);
+  run.depthsReward ??= null;
   // checkpoints de antes do M20-03
   run.upgradeTiers ??= run.upgradesTaken.map(() => "common");
   run.tags ??= {};
@@ -367,6 +376,8 @@ export interface RunSummary {
   killedBy: string | null;
   /** M12-09: título da build na tela de resultado (records.lua `identity`, D-307 AC-2) */
   identity?: string;
+  /** M13-02: nível das Depths (a pontuação vale ×(1 + 0,2 × nível), D-225) */
+  depths?: number;
 }
 
 export interface RecordEntry extends RunSummary {
@@ -402,7 +413,7 @@ export function summarize(run: RunState): RunSummary {
     heroId: run.heroId, difficultyId: run.difficultyId, wave: run.wave, kills: run.statistics.kills,
     damage: run.statistics.damage, level: run.level, relics: run.relics.length,
     elapsed: Math.floor(run.statistics.elapsed), victory: run.victory, endless: run.endless, seedCode: run.seedCode,
-    killedBy: run.killedBy, identity: buildIdentity(run.tags),
+    killedBy: run.killedBy, identity: buildIdentity(run.tags), depths: depthsLevel(run.difficultyId),
   };
 }
 
@@ -418,7 +429,7 @@ export function addRecord(rec: Records, s: RunSummary, date: string): boolean {
   rec.kills += s.kills;
   rec.highestWave = Math.max(rec.highestWave, s.wave);
   if (s.endless) rec.bestEndless = Math.max(rec.bestEndless, s.wave);
-  const entry: RecordEntry = { ...s, score: runScore(s.wave, s.kills, s.damage), date };
+  const entry: RecordEntry = { ...s, score: runScore(s.wave, s.kills, s.damage) * depthsScoreMult(s.depths ?? 0), date };
   const key = `${s.heroId}/${s.difficultyId}`;
   const prev = rec.best[key];
   const isBest = !prev || entry.score > prev.score;

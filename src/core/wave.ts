@@ -1,12 +1,15 @@
 // Ciclo de uma onda, puro (wave_system.lua, modifier_engine.lua, enemy.lua, boss.lua, rewards.lua do Dungeon Reign).
 // O jogo (game.ts) chama `stepWave` a cada quadro e põe no mapa o que ela pede; aqui não há three.js nem posição.
-// A sala do mapa da partida entra pela camada da onda (runmap.ts). Sem pactos e eventos
-// por enquanto (M13 e o resto do M20-05; os `runMods` do herói entraram na M19-08): o que não existe vale 1.
+// A sala do mapa e o evento entram pela camada da onda (runmap.ts), os pactos pela camada deles (core/events.ts);
+// os `runMods` do herói entraram na M19-08.
 import { rollAffixes } from "./affixes";
 import type { AffixId } from "../data/affixes";
 import type { Rng } from "./rng";
 import { pacedCount, pacedDuration, pacedPack, pacedSpawnWindow } from "./pace";
 import { waveLayer } from "./runmap";
+import { identityLayer, type Layer } from "./events";
+import { mutation } from "./depths";
+import type { LayerMods } from "../data/events";
 import { AMBUSH_DELAY, ENEMY_GROUPS, type RoomDef } from "../data/rooms";
 import { CAMP_ROLES, CAMPS, CHAMPION_CAMP, type CampDef, type CampRank, type CampRole } from "../data/camps";
 import type { HeroRunMods } from "../data/heroes";
@@ -18,7 +21,7 @@ import {
   TOTAL_WAVES, WAVES, type Difficulty, type DifficultyId,
 } from "../data/run";
 
-/** modifier_engine.lua `compute`, com a sala e os `runMods` do herói (sem pacto ainda). */
+/** modifier_engine.lua `compute`, com a sala, o evento, os pactos e os `runMods` do herói. */
 export interface WaveMods {
   /** sala ou maldição da onda (viés, campeão da Toca, emboscada, pesados do Iron Pack) */
   room: RoomDef | null;
@@ -47,8 +50,21 @@ export interface WaveMods {
   heroEarlyBoss: { upTo: number; mult: number } | null;
   /** P-02: parte da onda comum que vem como campeão */
   heroChampionShare: number | null;
+  /** M13-02: nível das Depths (as mutações leem) */
+  depths: number;
+  /** M11-08: evento da onda (Swift Bargain): duração e ritmo de nascimento */
+  duration: number;
+  spawnRate: number;
+  /** D-206: pontos dos pactos na chance de campeão sorteado */
+  championChance: number;
   /** D-432 (modifier_engine.lua `championHp`): vida dos campeões pelas relíquias do herói (Champion's Trophy, Last Rites) */
   championHp?: number;
+}
+
+/** modifier_engine.lua `depthsHp` (D-314): nas Depths, as ondas antes de `depthsFrom` ficam com a vida da Hard. */
+function depthsHp(d: Difficulty, wave: number): number {
+  if (d.depthsMult && wave < (d.depthsFrom ?? 1)) return d.enemyHp / d.depthsMult;
+  return d.enemyHp;
 }
 
 function lateHp(d: Difficulty, wave: number): number {
@@ -56,23 +72,38 @@ function lateHp(d: Difficulty, wave: number): number {
   return 1;
 }
 
-/** A camada da onda (a sala) vezes a dificuldade; o chefe leva a mesma pressão da sala com a coluna de chefe. */
-export function waveMods(wave: number, difficultyId: DifficultyId, room: RoomDef | null = null, hero: HeroRunMods = {}): WaveMods {
+/** Eventos e pactos da onda (core/events.ts): a camada do evento, a dos pactos e os pontos de campeão. */
+export interface WaveExtras {
+  events?: readonly LayerMods[];
+  pact?: Layer;
+  championChance?: number;
+}
+
+/**
+ * modifier_engine.lua `compute`: camada da onda (sala e evento) × pactos × dificuldade; o chefe leva a mesma pressão
+ * da sala e dos pactos com a coluna de chefe.
+ */
+export function waveMods(wave: number, difficultyId: DifficultyId, room: RoomDef | null = null, hero: HeroRunMods = {}, extras: WaveExtras = {}): WaveMods {
   const d = DIFFICULTIES[difficultyId];
-  const w = waveLayer(room);
+  const w = waveLayer(room, extras.events);
+  const p = extras.pact ?? identityLayer();
   const h = hero;
   return {
     room,
-    enemyCount: w.enemyCount * (h.enemyCount ?? 1),
+    enemyCount: w.enemyCount * p.enemyCount * (h.enemyCount ?? 1),
     ambushHp: d.ambushHp ?? {},
-    enemyHp: w.enemyHp * d.enemyHp * lateHp(d, wave),
-    enemyDamage: w.enemyDamage * (d.earlyDamage?.[wave - 1] ?? d.enemyDamage),
-    enemySpeed: w.enemySpeed * d.enemySpeed,
-    projectileSpeed: w.projectileSpeed * d.projectileSpeed,
-    bossHp: w.enemyHp * d.bossHp * (h.bossHp ?? 1),
-    bossDamage: w.enemyDamage * d.bossDamage * (h.bossDamage ?? 1),
-    bossSpeed: w.enemySpeed * d.bossSpeed,
-    reward: w.reward * d.reward,
+    enemyHp: w.enemyHp * p.enemyHp * depthsHp(d, wave) * lateHp(d, wave),
+    enemyDamage: w.enemyDamage * p.enemyDamage * (d.earlyDamage?.[wave - 1] ?? d.enemyDamage),
+    enemySpeed: w.enemySpeed * p.enemySpeed * d.enemySpeed,
+    projectileSpeed: w.projectileSpeed * p.projectileSpeed * d.projectileSpeed,
+    bossHp: w.enemyHp * p.enemyHp * d.bossHp * (h.bossHp ?? 1),
+    bossDamage: w.enemyDamage * p.enemyDamage * d.bossDamage * (h.bossDamage ?? 1),
+    bossSpeed: w.enemySpeed * p.enemySpeed * d.bossSpeed,
+    reward: w.reward * p.reward * d.reward,
+    duration: w.duration * p.duration,
+    spawnRate: w.spawnRate * p.spawnRate,
+    championChance: extras.championChance ?? 0,
+    depths: d.depths ?? 0,
     earlyBossCut: d.earlyBossCut === true,
     crownHp: h.noCrownHp ? 1 : d.crownHp ?? 1,
     riskGold: d.riskGold ?? 1,
@@ -92,9 +123,9 @@ export function targetCount(wave: number, enemyCount = 1): number {
 }
 
 /** affixes.lua `randomChance`: chance de a onda normal promover um inimigo a campeão. */
-export function randomChampionChance(wave: number): number {
+export function randomChampionChance(wave: number, add = 0): number {
   const R = RANDOM_CHAMPION;
-  return Math.min(1, Math.min(R.cap, R.base + R.perWave * (Math.max(1, wave) - 1)));
+  return Math.min(1, Math.min(R.cap, R.base + R.perWave * (Math.max(1, wave) - 1)) + add);
 }
 
 /** wave_system.lua `endlessChampions`: no modo sem fim, +1 campeão por onda (até 5), espalhados no cronograma. */
@@ -154,6 +185,8 @@ export interface WaveState {
   timeMult: number;
   /** orbes de cura deixados nesta onda (até `RUN_TUNING.healOrb.maxPerWave`) */
   healOrbs: number;
+  /** M13-02: nível das Depths (Loose Affixes) */
+  depths: number;
 }
 
 /** wave_system.lua `ambushFor`: o corte do chefe da emboscada; a dificuldade pode ter o seu corte de vida (D-303). */
@@ -179,7 +212,8 @@ export function biasedComposition(list: readonly { id: string; weight: number }[
 export function startWave(wave: number, champions: Rng, known: (id: string) => boolean, mods?: WaveMods): WaveState {
   const room = mods?.room ?? null;
   // camada de ritmo (M21-02): contagem e duração adaptadas; targetCount e baseDuration continuam iguais aos de lá
-  const duration = pacedDuration(wave);
+  // wave_system.lua `start`: `durationMult` e `spawn` (Swift Bargain) por cima da duração e do intervalo
+  const duration = pacedDuration(wave) * (mods?.duration ?? 1);
   const target = pacedCount(targetCount(wave, mods?.enemyCount ?? 1), wave);
   const boss = isBossWave(wave);
   const composition = biasedComposition(compositionFor(wave), room).filter((c) => known(c.id)).map((c) => [c.id, c.weight] as [string, number]);
@@ -187,20 +221,20 @@ export function startWave(wave: number, champions: Rng, known: (id: string) => b
   const championAt = (room?.champions ?? 0) > 0 ? Math.max(1, Math.ceil(target / 2)) : null;
   const ambush = room && mods ? ambushFor(mods) : null;
   let randomChampionAt: number | null = null;
-  if (!boss && !ambush && championAt === null && champions.chance(randomChampionChance(wave))) {
+  if (!boss && !ambush && championAt === null && champions.chance(randomChampionChance(wave, mods?.championChance ?? 0))) {
     randomChampionAt = champions.int(Math.max(1, Math.floor(target * 0.25)), Math.max(1, Math.ceil(target * 0.75)));
   }
   return {
     number: wave, duration, elapsed: 0, target, spawned: 0,
     // M21-13: em grupos de `pack`, todos dentro de `spawnWindow` da duração (camada de ritmo)
-    interval: (duration * pacedSpawnWindow()) / Math.ceil(target / pacedPack()),
+    interval: (duration * pacedSpawnWindow()) / Math.ceil(target / pacedPack()) / (mods?.spawnRate ?? 1),
     nextSpawn: WAVES.firstSpawnDelay,
     pack: pacedPack(),
     composition, isBossWave: boss, randomChampionAt, championAt, minAffixes: room?.minAffixes,
     ambush, ambushAt: AMBUSH_DELAY, ambushSpawned: false,
     extraChampions: [...endlessChampions(wave, target)],
     started: false, complete: false, heldByBoss: false, bossesDefeated: false, clearedEarly: false, timeSaved: 0,
-    hastened: false, hastenBonus: 0, timeMult: 1, healOrbs: 0,
+    hastened: false, hastenBonus: 0, timeMult: 1, healOrbs: 0, depths: mods?.depths ?? 0,
   };
 }
 
@@ -306,6 +340,13 @@ function spawnOne(w: WaveState, out: WaveStep, spawns: Rng, champions: Rng | und
   // P-02 (Varok): parte de toda onda comum vem como campeão (não na onda de chefe: o duelo fica limpo)
   if (!champion && championShare && championShare > 0 && !w.isBossWave) champion = (champions ?? spawns).chance(championShare);
   if (!champion) {
+    // M13-02 Depths 1 (Loose Affixes, D-223): da onda 5, o comum pode vir com 1 afixo
+    const loose = mutation(w.depths ?? 0, "loose_affixes");
+    const rr = champions ?? spawns;
+    if (loose && w.number >= loose.fromWave! && rr.chance(loose.chance!)) {
+      out.spawns.push({ id, champion, affixes: rollAffixes(rr, w.number, 1, 1) });
+      return;
+    }
     out.spawns.push({ id, champion });
     return;
   }

@@ -5,9 +5,10 @@ import type { BossPatternKind } from "../data/enemies";
 export type BossPhase = 1 | 2 | 3;
 
 /** boss.lua `phaseFor`: fase pela fração de vida. */
-export function phaseFor(frac: number): BossPhase {
+export function phaseFor(frac: number, enrageBonus = 0): BossPhase {
   if (frac > BOSS_PHASES[0].above) return 1;
-  if (frac > BOSS_PHASES[1].above) return 2;
+  // M13-02 Depths 4 (Early Fury, D-223): a fúria vem com 50% da vida
+  if (frac > BOSS_PHASES[1].above + enrageBonus) return 2;
   return 3;
 }
 
@@ -30,9 +31,9 @@ export interface PhaseStep {
  * boss.lua `updatePhase`: as fases que o chefe atravessa de `from` até a fase da vida atual, cada uma uma vez e em
  * ordem (um golpe grande pode pular a fase 2, e ela ainda vale).
  */
-export function phaseSteps(from: BossPhase, frac: number): PhaseStep[] {
+export function phaseSteps(from: BossPhase, frac: number, enrageBonus = 0): PhaseStep[] {
   const out: PhaseStep[] = [];
-  for (let p = from + 1; p <= phaseFor(frac); p++) {
+  for (let p = from + 1; p <= phaseFor(frac, enrageBonus); p++) {
     const P = BOSS_PHASES[p - 1] as { above: number; speed?: number; attackCooldown?: number; contactCooldown?: number;
       skillshotCooldown?: number; rangedCooldown?: number; enraged?: boolean };
     out.push({ phase: p as BossPhase, speed: P.speed ?? 1, patternCooldown: P.attackCooldown ?? 1, meleeCooldown: P.contactCooldown ?? 1,

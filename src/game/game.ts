@@ -22,8 +22,15 @@ import {
   type WaveMods, type WaveSpawn, type WaveState,
 } from "../core/wave";
 import { pacedHealOrb } from "../core/pace";
+import {
+  addPact, applyEvent, eventAvailable, eventDraft, eventMods, eventSources, expireEvents, pactChampionChance, pactLayer,
+  pactsForMap, takeBossRelicBonus,
+} from "../core/events";
+import { EVENT_IDS, PACT_BY_ID, PACT_IDS } from "../data/events";
 import { isBossWave, segmentOf } from "../core/waves";
-import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE } from "../data/run";
+import { BOSS, RUN_TUNING, SPAWN, TOTAL_WAVES, WAVES_PER_ZONE, depthsLevel } from "../data/run";
+import { SHOP_OFFERS } from "../data/shop";
+import { depthsSummary, mutation, recordDepthsWin } from "../core/depths";
 import { px, techniqueStats, type TechStats } from "../core/techniques";
 import { frostModify, IcicleCounter } from "../core/frost";
 import { buildElements, executes, isBehind, primedReactions, reactionFor, type ReactionId } from "../core/reactions";
@@ -130,6 +137,10 @@ export interface GameEvents {
   banner(title: string, sub?: string): void;
   /** M20-13: um desafio entrou, completou ou expirou (o painel do HUD redesenha) */
   challenges?(): void;
+  /** M11-08: abriu a escolha da carta de evento; as opções estão em `Game.eventOffer` */
+  eventDraft?(): void;
+  /** M13-03: abriu a confirmação da carta de pacto; o pacto está em `Game.pactOffer` */
+  pactOffer?(): void;
 }
 
 /** As 3 cartas de melhoria abertas no fim da onda (run_drafts.lua `checkLevelUp`). */
@@ -410,6 +421,10 @@ export class Game {
   private detourGuard: Enemy | null = null;
   /** o santuário de relíquias está com a escolha aberta */
   private shrineOpen = false;
+  /** M11-08: a escolha da carta de evento aberta (o portão `index`); voltar devolve o mapa */
+  eventOffer: { index: number; ids: string[] } | null = null;
+  /** M13-03: a confirmação da carta de pacto aberta (run_map_flow.lua `pactOffer`) */
+  pactOffer: { index: number; id: string } | null = null;
   /** Magic Shop aberta (shop_system.lua); null = fechada */
   shopVisit: (ShopVisit & { auto: ShopReason | null }) | null = null;
   /** loja automática depois desta onda (run.pendingShop): antes de onda de chefe, ou depois de matar um campeão */
@@ -621,6 +636,8 @@ export class Game {
     sources.push(...relicSources(this.run.relics));
     sources.push(...upgradeSources(this.run));
     sources.push(shopStats(this.run.shop));
+    // M11-08 e M13-03: o evento da onda, o ouro do Blood Altar e os pactos
+    sources.push(...eventSources(this.run));
     this.refreshSynergies();
     sources.push(...synergySources(this.run.activeSynergies, this.run.buildEvolutions));
     this.stats = computeStats(sources, this.hero.style);
@@ -816,9 +833,10 @@ export class Game {
     this.clearWave();
     this.segment = this.layout.segments[z.index];
     this.wave = null;
-    this.mods = waveMods(wave, run.difficultyId, roomOf(run), this.hero.runMods);
-    this.mods.championHp = this.stats.championHp;
+    this.computeMods();
     this.shrineOpen = false;
+    this.eventOffer = null;
+    this.pactOffer = null;
     this.shopVisit = null;
     this.pendingShop = null;
     this.pendingPoolRelic = null;
@@ -1634,6 +1652,11 @@ export class Game {
     return true;
   }
 
+  /** M13-02 Depths 3 (Wounds, damage.lua `healPlayer`): a cura recebida, regeneração junto */
+  private get woundsMult(): number {
+    return mutation(depthsLevel(this.run.difficultyId), "wounds")?.healMult ?? 1;
+  }
+
   /** `full`: o orbe de cura não sofre o corte do combate. */
   heal(amount: number, show: boolean, full = false): void {
     const p = this.player;
@@ -1641,6 +1664,7 @@ export class Game {
     // Berserker's Oath e afins: a cura é recusada durante a onda (relic_mechanics.lua `blocksHeal`)
     if (!full && this.relicHooks.blocksHeal(this.relicWorld)) return;
     if (!full) amount *= this.stats.healing; // damage.lua `healPlayer`: armadura e `healPct`
+    amount *= this.woundsMult;
     if (this.inCombat && !full) amount *= PACE.combatHealMult;
     this.relicHooks.overheal(this.relicWorld, p.hp + amount - this.stats.maxHp);
     p.hp = Math.min(this.stats.maxHp, p.hp + amount);
@@ -1977,7 +2001,8 @@ export class Game {
     // boss_rewards.lua: até uma premium (35%), a da build do chefe antes (relíquias abertas que o herói não tem)
     const open = this.relicOpen();
     const owned = RELIC_IDS.filter((id) => this.run.relics.includes(id) || !open(id));
-    const { offer } = bossRelicOffer(owned, e.boss?.relicBuild, (k) => this.drawRelics(k), BOSS.relicChoices, () => rr.next(), BOSS.premiumChance);
+    const { offer } = bossRelicOffer(owned, e.boss?.relicBuild, (k) => this.drawRelics(k),
+      BOSS.relicChoices + takeBossRelicBonus(this.run), () => rr.next(), BOSS.premiumChance);
     // a escolha de relíquia só depois que o corpo do chefe se desfaz (a escolha pausa o jogo)
     this.bossReward = () => {
       if (offer.length) this.events.relicChoice(offer, (id) => {
@@ -2113,7 +2138,9 @@ export class Game {
     this.crown = boss && n === BOSS.final.wave ? this.crownPattern(this.waveBoss!) : null;
     const room = this.mods.room;
     const sub = this.waveBoss ? `${n === BOSS.final.wave ? CROWN_TITLE : BOSSES[this.waveBoss].name} approaches` : room ? `${room.name}` : this.zone.name;
-    this.events.banner(`Wave ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, sub);
+    // M13-02: a onda 1 das Depths lembra as mutações da partida
+    const dl = depthsLevel(this.run.difficultyId);
+    this.events.banner(`Wave ${n}${n <= TOTAL_WAVES ? ` / ${TOTAL_WAVES}` : ""}`, n === 1 && dl ? `${sub} · ${depthsSummary(dl)}` : sub);
     this.audio.play(boss ? "boss" : "level");
   }
 
@@ -2303,7 +2330,14 @@ export class Game {
       if (m.boss) {
         const ambush = this.wave?.ambush ?? null;
         const final = !ambush && this.run.wave === BOSS.final.wave;
-        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush, crownAttack: final ? this.crown : null });
+        // M13-02 Depths 4 e 5 (boss.lua, spawner.lua `queueBoss`): fúria antes e 1 afixo em todo chefe
+        const lvl = this.mods.depths;
+        const fury = mutation(lvl, "early_fury");
+        const marked = mutation(lvl, "marked_bosses");
+        const affixes = marked ? rollAffixes(this.rng.get("champions"), this.run.wave, marked.affixes!, marked.affixes!,
+          Object.keys(marked.exclude ?? {}) as AffixId[]) : undefined;
+        const e = new Enemy(this, BOSSES[m.spawn.id], this.run.wave, m.x, m.z, { final, ambush, crownAttack: final ? this.crown : null,
+          affixes, fury: fury ? { enrageBonus: fury.enrageBonus!, enragedSpeed: fury.enragedSpeed! } : null });
         this.ach.bossSpawned(e, this.run.statistics.elapsed);
         this.challenges.bossSpawned(e, this.run.statistics.elapsed);
         e.hunter = true;
@@ -2360,6 +2394,12 @@ export class Game {
     }
     if (w.isBossWave && w.bossesDefeated && run.wave === TOTAL_WAVES) {
       run.victory = true;
+      // M13-02 (core/depths.lua `award`, D-227): as Marcas da vitória nas Depths, uma vez por partida
+      const lvl = depthsLevel(run.difficultyId);
+      if (lvl > 0 && !run.devUsed && !run.depthsReward) {
+        const r = recordDepthsWin(this.ach.state.depths, run.heroId, lvl);
+        run.depthsReward = { level: lvl, marks: r.marks, first: r.first, total: this.ach.state.depths[run.heroId].marks };
+      }
       this.ach.victory(run);
     }
     if (this.playerAlive) {
@@ -2375,6 +2415,9 @@ export class Game {
     // §6: a sala vale só para esta onda; a maldição segue para a próxima, que fica sem mapa
     // D-150: a maldição que segue dá uma relíquia amaldiçoada (1 de 2)
     if (expireWaveScope(run)) this.pendingPoolRelic = "curse";
+    // o evento vale só para esta onda; o ouro do Blood Altar conta uma onda
+    expireEvents(run, run.wave);
+    this.recompute();
     // wave_system.lua `complete`: a loja automática antes de toda onda de chefe
     if (isBossWave(run.wave + 1)) this.pendingShop ??= "preboss";
     this.phase = "cleared";
@@ -2386,9 +2429,6 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- mapa da partida (run_map.lua)
-
-  /** Cartas que dependem de sistema que ainda não existe aqui: pacto (M12) e evento (M12). */
-  static readonly MAP_DISABLED: ReadonlySet<MapNodeId> = new Set<MapNodeId>(["pact", "event"]);
 
   /** As cartas do mapa da onda atual ainda por escolher (M21-08: uma por portão), ou null. */
   /** Os portões no minimapa: posição e cor. */
@@ -2411,7 +2451,7 @@ export class Game {
     this.nearGate = -1;
     if (needsMap(run, run.wave)) {
       const shrine = this.relicPool().length > 0;
-      run.mapOffer = { wave: run.wave, cards: generateMap(this.rng.get("map"), run.wave, { disabled: Game.MAP_DISABLED, shrine }) };
+      run.mapOffer = { wave: run.wave, cards: generateMap(this.rng.get("map"), run.wave, { pacts: pactsForMap(run, run.wave, this.unlockOpen("pact", PACT_IDS)), shrine }) };
     }
     const cards = this.mapCards;
     this.mapResolved = !cards;
@@ -2463,7 +2503,7 @@ export class Game {
     const cards = this.mapCards;
     if (near >= 0 && near !== this.nearGate && cards) this.audio.play(GATE_SIGNAL[cards[near].node].sound);
     this.nearGate = near;
-    if (!this.playerAlive || this.shrineOpen || this.shopVisit || !this.mapCards) return;
+    if (!this.playerAlive || this.shrineOpen || this.shopVisit || this.eventOffer || this.pactOffer || !this.mapCards) return;
     // M21-14: E perto de um portão escolhe a carta e leva até a clareira da onda
     if (near >= 0 && this.input.wasPressed("KeyE")) {
       this.warpPending = true;
@@ -2472,7 +2512,12 @@ export class Game {
     }
     // quem foi andando até a clareira sem escolher fica com o portão mais perto
     const sg = this.segment;
-    if (sg && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r + TUNING.world.gates.fallbackReach) this.chooseMapCard(this.gates.nearest(p.x, p.z, Infinity));
+    // o pacto e o evento pedem confirmação: no atalho, só quando não há outra carta
+    if (sg && Math.hypot(p.x - sg.x, p.z - sg.z) < sg.r + TUNING.world.gates.fallbackReach) {
+      const plain = (i: number) => cards![i].node !== "pact" && cards![i].node !== "event";
+      const i = this.gates.nearest(p.x, p.z, Infinity, plain);
+      this.chooseMapCard(i >= 0 ? i : this.gates.nearest(p.x, p.z, Infinity));
+    }
   }
 
   /** Os desvios no minimapa: posição e cor. */
@@ -2578,17 +2623,25 @@ export class Game {
     const run = this.run;
     const card = this.mapCards?.[index];
     if (!card) return;
-    run.mapOffer = { wave: run.wave, cards: null };
-    this.gates.hide();
-    this.nearGate = -1;
-    const step = chooseCard(run, card);
-    this.challenges.mapChoice(card.node);
-    this.flushChallenges();
-    // a sala escolhida muda os números desta onda
-    this.mods = waveMods(run.wave, run.difficultyId, roomOf(run), this.hero.runMods);
-    this.mods.championHp = this.stats.championHp;
-    this.audio.play("pickup");
-    this.events.zoneChanged();
+    // §11: o pacto é um compromisso: confirmação antes, e voltar ao mapa pode (run_map_flow.lua `chooseMapCard`)
+    if (card.node === "pact" && card.pact) {
+      this.warpPending = false;
+      this.pactOffer = { index, id: card.pact };
+      this.audio.play("warn");
+      this.events.pactOffer?.();
+      return;
+    }
+    // §12: os 3 eventos saem uma vez por carta (ir e voltar não sorteia de novo)
+    if (card.node === "event") {
+      this.warpPending = false;
+      const rr = this.rng.get("events");
+      card.events ??= eventDraft(() => rr.next(), this.unlockOpen("event", EVENT_IDS));
+      this.eventOffer = { index, ids: card.events };
+      this.audio.play("pickup");
+      this.events.eventDraft?.();
+      return;
+    }
+    const step = this.takeMapCard(card);
     if (step === "relic") {
       const offer = this.drawRelics(BOSS.relicChoices);
       if (!offer.length) {
@@ -2618,6 +2671,100 @@ export class Game {
     this.resolveMap();
   }
 
+  /** Gasta a carta: o mapa some, a carta vale (sala, histórico, desafio Daring) e os números da onda mudam. */
+  private takeMapCard(card: MapCard): ReturnType<typeof chooseCard> {
+    const run = this.run;
+    run.mapOffer = { wave: run.wave, cards: null };
+    this.gates.hide();
+    this.nearGate = -1;
+    const step = chooseCard(run, card);
+    this.challenges.mapChoice(card.node);
+    this.flushChallenges();
+    // a sala escolhida muda os números desta onda
+    this.computeMods();
+    this.audio.play("pickup");
+    this.events.zoneChanged();
+    return step;
+  }
+
+  /** modifier_engine.lua `compute` para a onda atual: sala e evento, pactos, dificuldade e o herói. */
+  private computeMods(): void {
+    const run = this.run;
+    this.mods = waveMods(run.wave, run.difficultyId, roomOf(run), this.hero.runMods,
+      { events: eventMods(run, run.wave), pact: pactLayer(run.pacts), championChance: pactChampionChance(run.pacts) });
+    this.mods.championHp = this.stats.championHp;
+  }
+
+  /** As abertas no codex (unlocks.lua `isOpen`) de um tipo: pactos e eventos trancados por conquista não saem. */
+  private unlockOpen(kind: "pact" | "event", ids: readonly string[]): (id: string) => boolean {
+    const open = new Set(filterOpen(this.ach.state, kind, [...ids], TUNING.unlockAll));
+    return (id) => open.has(id);
+  }
+
+  /** Voltar ao mapa da escolha de evento ou da confirmação do pacto (`declinePact`, `cancelEvent`). */
+  declineMapOffer(): void {
+    this.eventOffer = null;
+    this.pactOffer = null;
+  }
+
+  /** `acceptPact`: o pacto entra para o resto da partida e abre a escolha de 1 de 2 relíquias de pacto. */
+  acceptPact(): boolean {
+    const o = this.pactOffer;
+    const card = o ? this.mapCards?.[o.index] : undefined;
+    this.pactOffer = null;
+    if (!o || !card) return false;
+    const run = this.run;
+    this.takeMapCard(card);
+    if (!addPact(run, o.id, run.wave)) return false;
+    this.recompute();
+    this.computeMods();
+    const p = this.player;
+    this.fx.text(p.x, 2.8, p.z, PACT_BY_ID[o.id].name, "hurt");
+    this.audio.play("boss");
+    this.warpPending = true;
+    this.openPoolDraft("pact");
+    this.resolveMap();
+    return true;
+  }
+
+  /** `applyEvent`: o evento escolhido; devolve o motivo da recusa (ouro), ou null. */
+  chooseEvent(id: string): string | null {
+    const o = this.eventOffer;
+    const run = this.run;
+    if (!o || !o.ids.includes(id)) return "No event";
+    if (!eventAvailable(run, id)) return "Not enough gold";
+    const card = this.mapCards?.[o.index];
+    this.eventOffer = null;
+    if (!card) return "No event";
+    this.takeMapCard(card);
+    const p = this.player, max = this.stats.maxHp, before = p.hp;
+    const rr = this.rng.get("events");
+    const out = applyEvent(run, id, run.wave, { hp: p.hp, maxHp: max, chance: (c) => rr.chance(c) });
+    p.hp = out.hp;
+    if (p.hp > before) {
+      run.statistics.healed += p.hp - before;
+      this.fx.text(p.x, 2.4, p.z, `+${Math.round(p.hp - before)}`, "heal");
+    } else if (p.hp < before) {
+      run.statistics.damageTaken += before - p.hp;
+      this.fx.text(p.x, 2.4, p.z, `-${Math.round(before - p.hp)}`, "hurt");
+      p.flash = 1;
+    }
+    // o nível de graça enche exatamente o XP que falta (o multiplicador de XP desfeito)
+    for (let n = 0; n < out.levelUps; n++) this.gainXp(Math.ceil((run.xpToNext - run.xp) / Math.max(0.01, this.stats.xp)) + 1);
+    // Gambler's Den: o resultado da aposta na tela (lá só fica em `run.lastGamble`)
+    if (out.gamble) this.fx.text(p.x, 3.4, p.z, out.gamble === "win" ? "Jackpot!" : "Lost the bet", out.gamble === "win" ? "gold" : "hurt");
+    if (out.gold) this.fx.text(p.x, 2.9, p.z, `${out.gold > 0 ? "+" : ""}${out.gold}g`, "gold");
+    this.audio.play(out.gamble === "lose" ? "warn" : out.gold > 0 ? "coin" : "level");
+    this.recompute();
+    this.computeMods();
+    this.challenges.gold();
+    this.flushChallenges();
+    this.warpPending = true;
+    if (out.poolRelic) this.openPoolDraft(out.poolRelic);
+    this.resolveMap();
+    return null;
+  }
+
   /** A carta da onda está resolvida: a clareira pode começar, e o checkpoint guarda a escolha. */
   private resolveMap(): void {
     this.mapResolved = true;
@@ -2629,8 +2776,11 @@ export class Game {
   /** `openAutoShop` (reason) ou a carta "Shop" do mapa (null): uma visita nova, sorteada no fluxo `shop`. */
   private openShop(auto: ShopReason | null): void {
     // a automática abre no fim da onda (vale para a seguinte); a do portão, na caminhada da própria onda
-    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, () => this.shopRelic());
-    this.shopVisit = { ...v, auto, priceMult: this.stats.shopPrice };
+    // M13-02 Depths 2 (Pricey Shop, shop_system.lua `offerCount`, `priceMult`): 1 oferta a menos e +25%
+    const pricey = mutation(depthsLevel(this.run.difficultyId), "pricey_shop");
+    const v = rollShop(this.run, this.rng.get("shop"), auto ? this.run.wave + 1 : this.run.wave, () => this.shopRelic(),
+      SHOP_OFFERS - (pricey?.fewerOffers ?? 0));
+    this.shopVisit = { ...v, auto, priceMult: this.stats.shopPrice * (pricey?.priceMult ?? 1) };
     this.audio.play("pickup");
     this.events.shop();
   }
@@ -3375,7 +3525,7 @@ export class Game {
     }
     if (s.regen > 0 && p.hp < s.maxHp && !this.relicHooks.blocksHeal(this.relicWorld)) {
       const before = p.hp;
-      const add = s.regen * dt * (this.inCombat ? PACE.combatHealMult : 1);
+      const add = s.regen * dt * (this.inCombat ? PACE.combatHealMult : 1) * this.woundsMult;
       this.relicHooks.overheal(this.relicWorld, p.hp + add - s.maxHp);
       p.hp = Math.min(s.maxHp, p.hp + add);
       this.run.statistics.healed += p.hp - before;

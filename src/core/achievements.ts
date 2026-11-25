@@ -1,6 +1,7 @@
 // Conquistas e desbloqueios, puro (dungeon-idle/src/core/achievements.lua e src/core/unlocks.lua, D-630).
 // O estado fica salvo entre partidas (core/save.ts). O que vem do progresso salvo (medalhas, códex, contadores) é
 // conferido em `check`; o resto vem dos eventos da partida, que o jogo chama no AchievementTracker.
+import { allDepths, allPerks, bestDepths, normalizeDepths, type DepthsSave } from "./depths";
 import { ACHIEVEMENT_BY_ID, ACHIEVEMENT_RULES as R, ACHIEVEMENTS, LOCKED_BY, UNLOCK_REWARDS, type AchievementDef, type UnlockKind } from "../data/achievements";
 import { FULL_TABLE_SYNERGIES } from "../data/synergies";
 
@@ -19,12 +20,14 @@ export interface AchievementState {
   seen: Record<CodexKind, string[]>;
   /** heróis que já tiveram partida (um save antigo não tranca quem já jogou) */
   played: string[];
+  /** M13-02: o progresso das Depths por herói (core/depths.ts; lá fica em depths.sav) */
+  depths: DepthsSave;
 }
 
 export const DIFF_RANK: Readonly<Record<string, number>> = { easy: 1, normal: 2, hard: 3 };
 
 export function emptyAchievements(): AchievementState {
-  return { version: 1, unlocked: {}, counters: {}, fresh: {}, medals: {}, seen: { boss: [], enemy: [], relic: [], spell: [] }, played: [] };
+  return { version: 1, unlocked: {}, counters: {}, fresh: {}, medals: {}, seen: { boss: [], enemy: [], relic: [], spell: [] }, played: [], depths: {} };
 }
 
 /** Lê o que veio do save, completando o que faltar; null quando não é um estado de conquistas. */
@@ -38,6 +41,7 @@ export function normalizeAchievements(x: unknown): AchievementState | null {
   return {
     version: 1, unlocked: obj(d.unlocked, {}), counters: obj(d.counters, {}), fresh: obj(d.fresh, {}),
     medals: obj(d.medals, {}), seen: { boss: arr(seen.boss), enemy: arr(seen.enemy), relic: arr(seen.relic), spell: arr(seen.spell) }, played: arr(d.played),
+    depths: normalizeDepths(d.depths),
   };
 }
 
@@ -158,6 +162,12 @@ export function checkSaved(s: AchievementState, c: AchievementContent, opts: { r
     forge: () => s.seen.spell.length >= 1,
     grimoire: () => !!c.spellEvolutions?.length && c.spellEvolutions.every((id) => s.seen.spell.includes(id)),
     alchemy: () => !!c.relicEvolutions?.some((id) => s.seen.relic.includes(id)),
+    // M13-02: as Depths
+    depths_1: () => bestDepths(s.depths, c.heroes) >= 1,
+    depths_3: () => bestDepths(s.depths, c.heroes) >= 3,
+    depths_5: () => bestDepths(s.depths, c.heroes) >= 5,
+    supreme: () => allDepths(s.depths, c.heroes, 5),
+    well_equipped: () => allPerks(s.depths, c.heroes),
   };
   for (const h of c.heroes) checks[`win_${h}`] = () => medal(h) >= 1;
   const out: string[] = [];
@@ -292,7 +302,8 @@ export class AchievementTracker {
   victory(run: { heroId: string; difficultyId: string; relics: readonly string[] }): void {
     if (this.won || this.devUsed) return;
     this.won = true;
-    const rank = DIFF_RANK[run.difficultyId] ?? 0;
+    // codex.lua `recordWin`: vencer nas Depths é vencer na Hard
+    const rank = DIFF_RANK[run.difficultyId.startsWith("depths") ? "hard" : run.difficultyId] ?? 0;
     this.state.medals[run.heroId] = Math.max(this.state.medals[run.heroId] ?? 0, rank);
     if (run.relics.includes("glass_cannon")) this.unlock("glass_cannon_win");
     this.check();
