@@ -1,8 +1,8 @@
 # Dungeon Reign RPG — instruções para o Claude
 
-Leia `HANDOFF.md` antes de qualquer coisa: ele tem o estado atual e o próximo passo. O plano de trabalho, tarefa por tarefa, está em `docs/roadmap.md`; siga a rotina da seção 0.1 dele e atualize o registro de progresso (seção 9) a cada sessão.
+Leia `HANDOFF.md` antes de qualquer coisa: ele tem o estado atual e o próximo passo. O plano de trabalho, tarefa por tarefa, está em `docs/roadmap.md`; siga a rotina da seção 0.1 dele e atualize o registro de progresso (`docs/progress.md`) a cada sessão.
 
-**Economia de tokens:** não ler `docs/roadmap.md` nem `docs/paridade.md` inteiros; usar `grep` pelo id da tarefa e ler só o trecho. Conferir lógica e interface pelo console do navegador; captura de tela só para mudança visual.
+**Economia de tokens:** não ler inteiros `docs/roadmap.md`, `docs/paridade.md`, `docs/progress.md` nem `docs/handoff-archive.md`; usar `grep` pelo id da tarefa e ler só o trecho. `HANDOFF.md` fica curto (até 10 KB): ao fechar tarefa, o que sai do "Agora" vai para o fim do `docs/handoff-archive.md`. Testes: durante o trabalho, só os arquivos da tarefa (`npx vitest run tests/<arquivo> --reporter=dot`); a suíte inteira uma vez no fim com `NO_COLOR=1 npm run test:q`. Conferir lógica e interface pelo console do navegador; captura de tela só para mudança visual.
 
 ## Projeto
 - RPG de ação para PC (teclado e mouse), no navegador: um herói, mapas abertos procedurais, loot, relíquias e chefes por zona até o chefe final. Referência de formato: Minecraft Dungeons.
@@ -15,7 +15,7 @@ Leia `HANDOFF.md` antes de qualquer coisa: ele tem o estado atual e o próximo p
 - `npm install` · `npm run dev` (abre em http://localhost:5173) · `npm test` · `npm run build`.
 - `SINGLE=1 npx vite build` gera `dist-single/index.html`, o jogo inteiro em um arquivo.
 - `npm run refs` regrava os sprites de referência em `docs/ref` a partir do repo `dungeon-idle` (caminho em `DUNGEON_IDLE` ou `../GitHub/dungeon-idle`).
-- Rodar `npm test` e `npx tsc --noEmit` depois de qualquer mudança em `src/core/` ou `src/data/`.
+- Rodar `npm run test:q` (saída curta) e `npx tsc --noEmit` depois de qualquer mudança em `src/core/` ou `src/data/`.
 
 ## Regras de arquitetura
 - `src/core/` é lógica pura (RNG, atributos, itens, geração de zona, save): sem three.js e sem DOM, testável no Node.
