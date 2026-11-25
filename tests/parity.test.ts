@@ -109,7 +109,7 @@ const WAVE_LIFE = `=(function()
         foes[id] = { hp = n.hp, damage = n.damage, speed = n.speed / n.def.speed, chp = c.hp, cdamage = c.damage, cspeed = c.speed / c.def.speed }
       end
       local bosses = {}
-      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra", "gorged_ooze", "rimefang_wyrm", "storm_tyrant", "iron_colossus" }) do
+      for _, id in ipairs({ "bloodfang", "deathstalker", "gravekeeper", "ember_matriarch", "dune_leviathan", "hollow_king", "mirage_djinn", "venom_hydra", "gorged_ooze", "rimefang_wyrm", "storm_tyrant", "iron_colossus", "void_reaver" }) do
         local st = Boss.stats(id, w, mods, { final = w == 20, crowned = w == 20 })
         bosses[id] = { hp = st.hp, damage = st.damage, speed = st.speed / require("src.data.bosses").BASE.speed }
       end
@@ -1422,6 +1422,22 @@ describe.skipIf(!dr)("paridade das relíquias com o Dungeon Reign (M12-01)", () 
     expect([B.crackTime, B.crackDps, B.crackRadius]).toEqual([M.crackTime, M.crackDps, M.crackRadius]);
     expect(BOSS_MECHANIC.iron_colossus).toEqual({ id: build.mechanic, name: build.mechanicName });
     const m = build.mults, o = BOSS_MULTS.iron_colossus;
+    expect([o.hp, o.damage, o.speed, o.projectileSpeed]).toEqual([m.hp, m.damage, m.speed, m.projectileSpeed]);
+  });
+  it("Void Reaver igual ao de bosses.lua: três Riftcross, distância e Riftwalk (M10-09)", () => {
+    const BS: Lua = dr!["src.data.bosses"];
+    const A = BS.ATTACKS, build = BS.builds.void_reaver, d = BOSSES.void_reaver;
+    const px = (m: number | undefined) => Math.round((m ?? NaN) * 16 * 1e6) / 1e6;
+    expect(d.patterns.map((p) => p.kind)).toEqual(build.attacks);
+    expect(px(d.preferred)).toBe(build.preferred);
+    expect(d.relicBuild).toBe(build.relicBuild ?? undefined);
+    for (const rc of d.patterns) {
+      // boss_ai.lua `riftcross`: reaparece a 120 px do herói; linhas de 840 px centradas nele
+      expect([rc.warning, rc.blink, rc.damage, px(rc.width), px(rc.length), px(rc.away)])
+        .toEqual([A.riftcross.warning, A.riftcross.blink, A.riftcross.dmg, A.riftcross.width, 840, 120]);
+    }
+    expect(BOSS_MECHANIC.void_reaver).toEqual({ id: build.mechanic, name: build.mechanicName });
+    const m = build.mults, o = BOSS_MULTS.void_reaver;
     expect([o.hp, o.damage, o.speed, o.projectileSpeed]).toEqual([m.hp, m.damage, m.speed, m.projectileSpeed]);
   });
   it("cópia do Mirage Djinn (mirage_illusion) igual à de enemies.lua: atiradora, sem recompensa, meio transparente (M10-03)", () => {

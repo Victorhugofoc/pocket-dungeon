@@ -489,7 +489,7 @@ export class Enemy {
       if (this.reticle) this.followReticle(game, dt);
       if (this.burrowT >= 0) this.burrowT += dt;
       if (this.diveT >= 0) this.diveT += dt;
-      if (this.mechanic === "mirage") fadeRig(this.rig, this.dashBlinkT >= 0 ? TUNING.boss.blinkFade : 1);
+      if (this.mechanic === "mirage" || this.mechanic === "riftwalk") fadeRig(this.rig, this.dashBlinkT >= 0 ? TUNING.boss.blinkFade : 1);
       if (this.mechanic === "glacial_wake") fadeRig(this.rig, this.diveT >= 0 ? TUNING.boss.blinkFade : 1);
       if (this.mechanic === "storm_field" && !this.dead) this.crackle(game, dt);
       if (this.emergeT >= 0 && (this.emergeT += dt) > TUNING.boss.burrowAnim) this.emergeT = -1;
@@ -1991,6 +1991,37 @@ export class Enemy {
           const speed = BOSS_PROJECTILE_SPEED * px * (pt.speedMult ?? 0.7) * this.projK;
           for (let k = 1; k <= n; k++) {
             game.spawnEnemyProjectile(tx, tz, off + (k / n) * Math.PI * 2, speed, this.dmg * (pt.novaDamage ?? 0.6), b.projectileColor, 7 * px, this);
+          }
+        });
+        break;
+      }
+      case "riftcross": {
+        // boss_ai.lua `riftcross` (§62 Riftwalk): some e reaparece a 120 px do herói, num ângulo sorteado; ao chegar, corta
+        // fase + 1 linhas de 840 px em cruz sobre onde o herói está, espalhadas por meia volta a partir de um ângulo sorteado
+        const px = TUNING.enemy.pxToUnit;
+        const blink = pt.blink ?? 0.5;
+        const a = Math.random() * Math.PI * 2;
+        let tx = p.x + Math.cos(a) * (pt.away ?? 7.5), tz = p.z + Math.sin(a) * (pt.away ?? 7.5);
+        const dx = tx - this.homeX, dz = tz - this.homeZ, d = Math.hypot(dx, dz), lim = game.layout.bossRadius - this.radius;
+        if (d > lim) { tx = this.homeX + (dx / d) * lim; tz = this.homeZ + (dz / d) * lim; }
+        this.casting = blink + pt.warning;
+        this.dashBlinkT = 0;
+        this.endSwing();
+        fx.burst(this.x, this.rig.height * 0.5, this.z, b.glow, 20, 5, 0.18, 0.5);
+        fx.telegraphCircle(tx, tz, this.radius + 6 * px, blink, () => {
+          this.dashBlinkT = -1;
+          if (!ok()) return;
+          this.x = tx;
+          this.z = tz;
+          this.rig.root.position.set(tx, 0, tz);
+          fx.burst(tx, this.rig.height * 0.5, tz, b.glow, 24, 6, 0.2, 0.6);
+          const hp = game.player;
+          this.face(hp.x, hp.z);
+          const lines = this.phase + 1, base = Math.random() * Math.PI;
+          const L = pt.length ?? 52.5, w = pt.width ?? 1.5;
+          for (let k = 0; k < lines; k++) {
+            const ang = base + (k * Math.PI) / lines;
+            this.beam(game, hp.x - (Math.sin(ang) * L) / 2, hp.z - (Math.cos(ang) * L) / 2, ang, L, w, pt.warning, this.dmg * pt.damage);
           }
         });
         break;

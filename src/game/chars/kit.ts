@@ -134,6 +134,11 @@ export class Builder {
    * tombariam com ele. 0 = sem esses ossos.
    */
   shoulderFollow = 0;
+  /**
+   * M10-09: no golpe "cast" os braços cruzados em repouso (giro do ombro, `pose[3]`) descruzam e abrem até esse giro para
+   * fora, como uma tesoura (as duas lâminas do Void Reaver). 0 = o giro do repouso fica.
+   */
+  castOpen = 0;
   /** luzes pontuais presas a um osso (lanterna, orbe) */
   lights: { bone: Bone; x: number; y: number; z: number; color: number; intensity: number; distance: number }[] = [];
   /** peças de `lit` brilham na própria cor do vértice em vez de `glowColor` (para dois brilhos de cores diferentes) */
