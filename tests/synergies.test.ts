@@ -68,3 +68,16 @@ describe("sinergias (M12-06)", () => {
     expect(synergyProgress({ fire: 9 }, ["fire"])).toEqual([]);
   });
 });
+
+describe("painel da build (M12-06 parte 2)", () => {
+  it("as sinergias mais perto de cada tag, contando todas as tags que pedem", async () => {
+    const { nearestSynergies, synergyMissing } = await import("../src/core/synergies");
+    const { SYNERGY_BY_ID } = await import("../src/data/synergies");
+    const tags = { healing: 2, survival: 2, dodge: 2 };
+    expect(synergyMissing(SYNERGY_BY_ID.wardens_oath, tags)).toBe(1);
+    expect(nearestSynergies(tags, "healing")).toEqual({ missing: 1, ids: ["sanctuary_syn", "wardens_oath"] });
+    expect(nearestSynergies(tags, "survival")).toEqual({ missing: 1, ids: ["wardens_oath"] });
+    expect(nearestSynergies(tags, "dodge")).toEqual({ missing: 2, ids: ["shadowstep"] }); // Evasive já ligada
+    expect(nearestSynergies({ dodge: 4 }, "dodge")).toBeNull();
+  });
+});

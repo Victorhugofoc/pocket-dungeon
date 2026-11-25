@@ -29,8 +29,9 @@ import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game, RelicBan } from "../game/game";
 import { relicBansLeft } from "../core/relics";
-import { synergyPreview, synergyProgress, tagCount } from "../core/synergies";
-import { PATH_NAMES, SYNERGIES, SYNERGY_BY_ID } from "../data/synergies";
+import { tagCount } from "../core/synergies";
+import { PATH_NAMES, SYNERGY_BY_ID } from "../data/synergies";
+import { buildPanelHtml, RARITY_COLOR, relicIconHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
 
 const hex = (n: number) => "#" + n.toString(16).padStart(6, "0");
@@ -945,9 +946,9 @@ export class Ui {
           return `<div class="relic" style="border-color:${TIER_COLOR[t]}" title="${TIER_LABEL[t]}">${UPGRADE_BY_ID[id] ? upgradeName(UPGRADE_BY_ID[id], this.game.hero.style) : id}</div>`;
         }).join("") : `<span style="color:var(--muted)">Level up and choose at the end of the wave.</span>`}</div>
         <div class="section">Relics (${run.relics.length})</div>
-        <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic" data-relic="${id}" style="border-color:${hex(RELICS[id].color)}">${RELICS[id].name}</div>`).join("")
+        <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic with-icon" data-relic="${id}" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}</div>`).join("")
           : `<span style="color:var(--muted)">Defeat a boss to pick the first one.</span>`}</div>
-        ${synergySectionHtml(run)}
+        ${buildPanelHtml(run)}
         <div class="row end"><button data-act="close">Close (I)</button></div>
       </div>`;
     panel.onclick = (ev) => {
@@ -962,7 +963,7 @@ export class Ui {
       const rel = (ev.target as HTMLElement).closest<HTMLElement>("[data-relic]");
       if (rel) {
         const d = RELICS[rel.dataset.relic!];
-        return this.showTip(`<h4 style="color:${hex(d.color)}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>${relicLines(d)}`, ev);
+        return this.showTip(`<div class="tip-head">${relicIconHtml(d.id, 40)}<div><h4 style="color:${RARITY_COLOR[d.rarity]}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic ${tagListHtml(d.tags)}</div></div></div>${relicLines(d)}`, ev);
       }
       const syn = (ev.target as HTMLElement).closest<HTMLElement>("[data-syn]");
       if (syn) {
@@ -997,8 +998,8 @@ export class Ui {
         const d = RELICS[id];
         const evo = wanted[id] ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
         const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
-        return `<div class="card" data-relic="${id}" style="--cc:${hex(d.color)}"><div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${relicLines(d)}${evo}${synergyChipsHtml(this.game.run.tags, d.tags)}${b}</div>`;
+        return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
+          <h3>${d.name}</h3>${relicLines(d)}${evo}${synergyCardHtml(this.game.run.tags, d.tags)}${b}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
@@ -1087,7 +1088,7 @@ export class Ui {
         const t = L.tiers[i];
         const body = u.hideEffects ? "" : effectsFor(u, t).map((e) => upgradeLine(e, g.hero.style)).join("");
         return `<div class="card" data-up="${i}" style="--cc:${TIER_COLOR[t]}"><div class="meta">${TIER_LABEL[t]}</div>
-          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${synergyChipsHtml(g.run.tags, u.tags)}</div>`;
+          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${synergyCardHtml(g.run.tags, u.tags)}</div>`;
       }).join("")}</div>
       <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost} gold${left > 0 ? "" : " (already rerolled)"}</button></div>`;
     panel.onclick = (ev) => {
@@ -1308,34 +1309,10 @@ function requiresText(tags: Readonly<Record<string, number>>, requires: Record<s
   return Object.keys(requires).sort().map((t) => `${PATH_NAMES[t] ?? t} ${Math.min(tagCount(tags, t), requires[t])}/${requires[t]}`).join("  ");
 }
 
-/**
- * level_up.lua `details` e synergy_view.lua `chips` (M12-06): o que a escolha liga ("Activates PYROMANCER") e o próximo
- * limiar das tags que ela soma ("Fire 1 → 2/3 · PYROMANCER").
- */
-function synergyChipsHtml(tags: Readonly<Record<string, number>>, add: readonly string[]): string {
-  if (!add.length) return "";
-  const gained = synergyPreview(tags, add).gained;
-  const lines = gained.length ? [`<p class="syn hit">Activates ${gained.map((id) => SYNERGY_BY_ID[id].name).join(", ")}</p>`] : [];
-  for (const p of synergyProgress(tags, add, 2)) {
-    if (p.hit && p.next.id) continue; // já está no "Activates"
-    lines.push(`<p class="syn${p.hit ? " hit" : ""}">${p.tagName} ${p.now} → ${p.now + 1}/${p.next.n} · ${p.next.name}</p>`);
-  }
-  return lines.join("");
-}
-
-/** build_sheet.lua: as sinergias da partida, as ativas primeiro, com o progresso de cada uma (detalhe no tooltip). */
-function synergySectionHtml(run: RunState): string {
-  const on = new Set(run.activeSynergies);
-  const list = [...SYNERGIES].sort((a, b) => Number(on.has(b.id)) - Number(on.has(a.id)));
-  return `<div class="section">Synergies (${on.size} active · can coexist)</div>
-    <div class="synergies">${list.map((d) => `<div class="syn-row${on.has(d.id) ? " on" : ""}" data-syn="${d.id}"><b>${d.name}</b><small>${
-      on.has(d.id) ? d.text : requiresText(run.tags, d.requires)}</small></div>`).join("")}</div>`;
-}
-
 function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
   const ev = evaluateOffer(g.run, g.shopVisit!, o);
   const slot = g.run.spells.find((s) => s.id === o.spell);
-  let meta = "", name = "", body = "", color = "#ffd34d";
+  let meta = "", name = "", body = "", color = "#ffd34d", icon = "";
   const tech = o.kind === "spell_upgrade" && o.spell === g.run.technique.id ? TECHNIQUES[o.spell] : undefined;
   if (tech) {
     // S19 (D-252): a técnica sobe de nível na loja; no nível 5 vira a evolução
@@ -1369,13 +1346,14 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     const d = RELICS[o.relic!];
     meta = `${RELIC_RARITY[d.rarity]} relic`;
     name = d.name;
+    icon = relicIconHtml(d.id, 56, "ricon big");
     body = relicLines(d);
     const evo = wantedRelics(g.run)[o.relic!];
     if (evo) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
-    if (!o.bought) body += synergyChipsHtml(g.run.tags, d.tags);
+    if (!o.bought) body += synergyCardHtml(g.run.tags, d.tags);
     const left = relicBansLeft(g.run);
     if (!o.bought) body += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
-    color = hex(d.color);
+    color = RARITY_COLOR[d.rarity];
   } else {
     const item = SHOP_ITEMS[o.kind];
     meta = "Item";
@@ -1387,7 +1365,7 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     : !ev.valid ? `<div class="price bad">${ev.reason}${ev.cost !== null ? ` · ${ev.cost} gold` : ""}</div>`
     : `<div class="price${afford ? "" : " bad"}">${ev.cost} gold</div>`;
   const off = o.bought || !ev.valid ? " off" : "";
-  return `<div class="card${off}" data-offer="${i}" style="--cc:${color}"><div class="meta">${meta}</div><h3>${name}</h3>${body}${price}</div>`;
+  return `<div class="card${off}" data-offer="${i}" style="--cc:${color}">${icon}<div class="meta">${meta}</div><h3>${name}</h3>${body}${price}</div>`;
 }
 
 /** Dica da oferta: a ficha da spell equipada (M6-08), ou os números da spell nova no nível 1. */

@@ -119,3 +119,29 @@ export function synergyProgress(tags: Tags, add: readonly string[], max = 2): Ta
   }
   return out;
 }
+
+/** Quantos pontos de tag faltam para a sinergia ligar (somando todas as tags que ela pede). */
+export function synergyMissing(def: SynergyDef, tags: Tags): number {
+  let n = 0;
+  for (const [tag, need] of Object.entries(def.requires)) n += Math.max(0, need - tagCount(tags, tag));
+  return n;
+}
+
+export interface NearSynergies {
+  /** pontos que faltam para as mais perto */
+  missing: number;
+  ids: string[];
+}
+
+/** Painel da build: as sinergias desligadas que usam esta tag e estão mais perto de ligar (null se nenhuma). */
+export function nearestSynergies(tags: Tags, tag: string): NearSynergies | null {
+  let best: NearSynergies | null = null;
+  for (const s of SYNERGIES) {
+    if (!(tag in s.requires)) continue;
+    const m = synergyMissing(s, tags);
+    if (m === 0) continue;
+    if (!best || m < best.missing) best = { missing: m, ids: [s.id] };
+    else if (m === best.missing) best.ids.push(s.id);
+  }
+  return best;
+}
