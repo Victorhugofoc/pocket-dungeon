@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng, hashStr, makeNoise2D } from "../src/core/rng";
 import { killReward, survivorReward, waveMods } from "../src/core/wave";
 import { armorReduction, computeStats, effectiveRegen, stackChance, stackMultiplier } from "../src/core/stats";
-import { generateZone, ObstacleGrid, distToPath, distToTrails, SPAWN_R } from "../src/core/worldgen";
+import { generateZone, ObstacleGrid, distToPath } from "../src/core/worldgen";
 import { HEROES, HERO_ORDER } from "../src/data/heroes";
 import { BOSSES, ENEMIES } from "../src/data/enemies";
 import { RELICS } from "../src/data/relics";
@@ -68,52 +68,30 @@ describe("dados", () => {
   });
 });
 
-describe("M21-13: corrente de arenas e bifurcações curtas", () => {
-  it("clareiras em linha com vão curto, 3 trilhas por bifurcação, travas separadas, trilhas livres", () => {
+describe("M21-15: uma arena por zona", () => {
+  it("as ondas 1 a 4 na mesma arena, o herói começa no meio, a do chefe acima com vão curto e trilha livre", () => {
     for (const zid of ZONE_ORDER) {
       for (let seed = 1; seed <= 40; seed++) {
         const L = generateZone(ZONES[zid], seed);
-        const circles = [{ ...L.spawn, r: SPAWN_R }, ...L.segments];
-        // vizinhas com vão curto (a caminhada entre ondas é curta), sempre subindo a tela
-        const [g0, g1] = TUNING.world.chain.gap;
-        for (let i = 1; i < circles.length; i++) {
-          const a = circles[i - 1], b = circles[i];
-          const gap = Math.hypot(a.x - b.x, a.z - b.z) - a.r - b.r;
-          expect(gap, `${zid} ${seed} ${i}`).toBeGreaterThan(g0 - 0.01);
-          expect(gap, `${zid} ${seed} ${i}`).toBeLessThan(g1 + 2 * TUNING.world.chain.xJitter);
-          expect(b.z, `${zid} ${seed} ${i}`).toBeLessThan(a.z);
-        }
-        // uma bifurcação até cada clareira das ondas; nenhuma até a arena
-        expect(L.forks.map((f) => [f.from, f.to])).toEqual([[-1, 0], [0, 1], [1, 2], [2, 3]]);
+        const [arena] = L.segments;
+        for (const sg of L.segments.slice(1, 4)) expect(sg).toMatchObject({ x: arena.x, z: arena.z, r: arena.r });
+        expect(arena.r).toBeCloseTo(TUNING.world.arenaRadius, 9);
+        expect(L.spawn).toEqual({ x: arena.x, z: arena.z });
+        const boss = L.segments[4];
+        const gap = Math.hypot(boss.x - arena.x, boss.z - arena.z) - arena.r - boss.r;
+        const [g0, g1] = TUNING.world.arena.gap;
+        expect(gap, `${zid} ${seed}`).toBeGreaterThan(g0 - 0.01);
+        expect(gap, `${zid} ${seed}`).toBeLessThan(g1 + 0.01);
+        expect(boss.z, `${zid} ${seed}`).toBeLessThan(arena.z);
+        // a trilha liga as duas bordas, sem pedra no caminho
+        expect(Math.hypot(L.path[0].x - arena.x, L.path[0].z - arena.z)).toBeCloseTo(arena.r, 3);
+        const end = L.path[L.path.length - 1];
+        expect(Math.hypot(end.x - boss.x, end.z - boss.z)).toBeCloseTo(boss.r, 3);
         const grid = new ObstacleGrid(L.obstacles);
-        for (const f of L.forks) {
-          expect(f.trails).toHaveLength(3);
-          const locks = f.trails.map((t) => t.lock);
-          for (let a = 0; a < 3; a++) for (let b = a + 1; b < 3; b++)
-            expect(Math.hypot(locks[a].x - locks[b].x, locks[a].z - locks[b].z)).toBeGreaterThan(TUNING.world.gates.width + 1.5);
-          const others = circles.filter((_, k) => k !== f.from + 1 && k !== f.to + 1);
-          let edge = 0, nearOther = Infinity, blocked = 0;
-          for (const t of f.trails) {
-            for (const p of t.points) {
-              edge = Math.max(edge, Math.abs(p.x));
-              for (const o of others) nearOther = Math.min(nearOther, Math.hypot(p.x - o.x, p.z - o.z) - o.r);
-              if (grid.hits(p.x, p.z, 1)) blocked++;
-            }
-          }
-          expect(edge, `${zid} ${seed}`).toBeLessThan(L.size / 2 - TUNING.world.margin);
-          expect(nearOther, `${zid} ${seed}`).toBeGreaterThan(0);
-          expect(blocked, `${zid} ${seed}`).toBe(0);
-          // as trilhas dos lados saem da clareira de antes e se juntam ao caminho antes da seguinte
-          const from = circles[f.from + 1], to = circles[f.to + 1];
-          for (const k of [0, 2]) {
-            const pts = f.trails[k].points;
-            expect(Math.hypot(pts[0].x - from.x, pts[0].z - from.z)).toBeCloseTo(from.r, 3);
-            const end = pts[pts.length - 1];
-            expect(distToPath(end.x, end.z, L.path)).toBeLessThan(1);
-            expect(Math.hypot(end.x - to.x, end.z - to.z)).toBeGreaterThan(to.r);
-          }
+        for (let d = 0; d < 1; d += 0.05) {
+          const a = L.path[0], c = end;
+          expect(grid.hits(a.x + (c.x - a.x) * d, a.z + (c.z - a.z) * d, 1), `${zid} ${seed} ${d}`).toBe(false);
         }
-        expect(distToTrails(L.forks[1].trails[0].lock.x, L.forks[1].trails[0].lock.z, L)).toBeCloseTo(0, 1);
       }
     }
   });
@@ -195,22 +173,21 @@ describe("geração de zona", () => {
     expect(a).toEqual(b);
     expect(a.segments).not.toEqual(c.segments);
   });
-  it("toda zona tem 5 trechos em sequência, sem se tocar, dentro do mapa e longe do início; o último é a arena", () => {
+  it("toda zona tem 5 trechos dentro do mapa: 4 na arena das ondas e a arena do chefe, sem se tocar", () => {
     for (const id of ZONE_ORDER) {
       for (let seed = 1; seed <= 400; seed += 7) {
         const L = generateZone(ZONES[id], seed * 7919);
         const inner = L.size / 2 - TUNING.world.margin;
         expect(L.segments.length).toBe(5);
         expect(L.segments[4]).toMatchObject({ x: L.boss.x, z: L.boss.z, r: L.bossRadius });
-        L.segments.forEach((s, i) => {
-          expect(Math.abs(s.x) + s.r).toBeLessThan(inner + 8);
-          expect(Math.abs(s.z) + s.r).toBeLessThan(inner + 8);
-          // o início fica fora do 1º trecho: a onda 1 começa quando o herói entra nele
-          expect(Math.hypot(s.x - L.spawn.x, s.z - L.spawn.z)).toBeGreaterThan(s.r + 4);
-          // a entrada fica fora da própria clareira
-          expect(Math.hypot(s.entry.x - s.x, s.entry.z - s.z)).toBeGreaterThan(s.r);
-          for (const t of L.segments.slice(i + 1)) expect(Math.hypot(s.x - t.x, s.z - t.z)).toBeGreaterThan(s.r + t.r + 1);
-        });
+        for (const s of L.segments) {
+          expect(Math.abs(s.x) + s.r).toBeLessThan(inner);
+          expect(Math.abs(s.z) + s.r).toBeLessThan(inner);
+        }
+        const [a, , , , b] = L.segments;
+        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(a.r + b.r + 1);
+        // continuar na onda do chefe: a entrada fica fora da arena dele
+        expect(Math.hypot(b.entry.x - b.x, b.entry.z - b.z)).toBeGreaterThan(b.r);
       }
     }
   });
@@ -223,7 +200,7 @@ describe("geração de zona", () => {
       for (const s of L.segments) expect(Math.hypot(o.x - s.x, o.z - s.z)).toBeGreaterThan(s.r);
     }
   });
-  it("M21-10: cada clareira de onda tem fosso, gargalo e barris; a arena do chefe não; tudo dentro e sem se tocar", () => {
+  it("M21-10/M21-15: cada onda da arena tem fosso e barris, a arena tem um gargalo; a do chefe nada; sem se tocar", () => {
     for (const id of ZONE_ORDER) {
       for (let seed = 1; seed <= 200; seed += 13) {
         const L = generateZone(ZONES[id], seed * 104729);
@@ -259,7 +236,10 @@ describe("geração de zona", () => {
   });
   it("a decoração do terreno não muda a decoração de antes (stream próprio)", () => {
     const L = generateZone(ZONES.bosque, 99);
-    expect(L.obstacles.filter((o) => o.choke).length).toBe(4 * TERRAIN.choke.rocksPerSide * 2);
+    expect(L.obstacles.filter((o) => o.choke).length).toBe(TERRAIN.choke.rocksPerSide * 2);
+    // M21-15: cada onda com o seu fosso
+    const pits = L.segments.slice(0, 4).map((sg) => sg.terrain!.pit);
+    expect(new Set(pits.map((p) => `${p.x},${p.z}`)).size).toBe(4);
   });
   it("a grade empurra para fora dos obstáculos", () => {
     const grid = new ObstacleGrid([{ x: 0, z: 0, r: 1, kind: "rock", scale: 1, rot: 0, solid: true }]);

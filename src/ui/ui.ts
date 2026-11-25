@@ -1,5 +1,4 @@
 // Interface em DOM: título, HUD, status da partida, relíquias, melhorias, pausa.
-import { allTrails } from "../core/worldgen";
 import { MAP_NODE } from "../data/map-nodes";
 import { canHasten, hastenBonus } from "../core/wave";
 import { DEPTHS_ORDER, DIFFICULTIES, DIFFICULTY_ORDER, DIFFICULTY_TEXT, TOTAL_WAVES, depthsLevel, type DifficultyId } from "../data/run";
@@ -307,7 +306,7 @@ export class Ui {
       else this.showStatus();
     } else if (k === "KeyG" && !this.overlay) {
       // M13-02 Card Swap: sorteia os portões de novo (uma vez por zona)
-      if (this.game.swapGates()) this.toast("Card Swap: new gates", "#c07cff");
+      if (this.game.swapGates()) this.toast("Card Swap: new altars", "#c07cff");
     } else if (k === "F3") {
       e.preventDefault();
       this.r.perf.classList.toggle("hidden");
@@ -766,7 +765,7 @@ export class Ui {
     r.waveN.textContent = `Wave ${n}${total}`;
     const w = g.wave;
     let t = "";
-    if (g.phase === "walk") t = g.mapCards ? "choose a gate" : "press E to go";
+    if (g.phase === "walk") t = g.mapCards ? "choose an altar" : g.inWaveArena ? "press E to start" : "press E to go";
     else if (g.phase === "intro") t = "get ready";
     else if (g.phase === "fight" && w) {
       const left = Math.ceil(g.waveTimeLeft);
@@ -787,8 +786,9 @@ export class Ui {
     const cards = g.mapCards;
     const hint = g.nearPortal ? "E — go on to the next zone"
       : g.phase === "walk" && g.playerAlive && g.detourHint ? g.detourHint
-      : g.phase === "walk" && g.playerAlive ? (cards ? (g.nearGate >= 0 ? `E — take this gate to wave ${n}` : `Walk to a gate and press E to choose wave ${n}`)
-        + (g.canSwapGates ? " · G — reroll the gates (Card Swap, once per zone)" : "") : `E — go to wave ${n}`) : "";
+      : g.phase === "walk" && g.playerAlive ? (cards ? (g.nearGate >= 0 ? `E — take this altar for wave ${n}` : `Walk to an altar and press E to choose wave ${n}`)
+        + (g.canSwapGates ? " · G — reroll the altars (Card Swap, once per zone)" : "")
+        : g.inWaveArena ? `E — start wave ${n}` : `E — go to wave ${n}`) : "";
     if (r.hint.textContent !== hint) r.hint.textContent = hint;
     r.hint.classList.toggle("hidden", !hint || !!this.overlay);
     // M21-08: a carta do portão mais perto (o mapa de consulta)
@@ -824,7 +824,7 @@ export class Ui {
     ctx.strokeStyle = hex(g.zone.path);
     ctx.lineWidth = 3;
     ctx.lineJoin = "round";
-    for (const line of allTrails(L.path, L.forks)) {
+    for (const line of [L.path]) {
       ctx.beginPath();
       line.forEach((pt, i) => (i ? ctx.lineTo(tx(pt.x), tx(pt.z)) : ctx.moveTo(tx(pt.x), tx(pt.z))));
       ctx.stroke();

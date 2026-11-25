@@ -1,6 +1,6 @@
-// M21-08: os portões do mapa da partida. Ao fim da onda, 2 ou 3 portões em leque na borda da clareira vencida
-// (ou em volta da fogueira, na zona nova); passar por um escolhe a carta. Arte por código: duas colunas de pedra,
-// a verga e o chão acesos na cor da carta, e a placa com o nome. Parte 2: o sinal de longe de cada sala
+// M21-08: as cartas do mapa da partida. M21-15: ao fim da onda, 2 ou 3 altares em leque na arena (antes portões);
+// E perto de um escolhe a carta. Arte por código: pedestal de pedra, laje e gema acesas na cor da carta, o chão
+// aceso e a placa com o nome. Parte 2: o sinal de longe de cada sala
 // (`GATE_SIGNAL`): coluna de luz, partículas do tipo e raios do céu na emboscada de chefe.
 import * as THREE from "three";
 import type { GateSpot, MapCard } from "../core/runmap";
@@ -10,12 +10,15 @@ import { TUNING } from "../data/tuning";
 import type { VfxHandle } from "./vfx";
 
 const G = TUNING.world.gates;
-const PILLAR_H = 3.4;
+/** altura do topo da laje do altar */
+const ALTAR_H = 1.25;
 
 interface Gate {
   root: THREE.Group;
   spot: GateSpot;
   glow: THREE.MeshBasicMaterial[];
+  /** a gema que flutua em cima do altar */
+  gem: THREE.Mesh;
   card: MapCard;
   color: number;
   beam: VfxHandle;
@@ -67,8 +70,10 @@ function label(card: MapCard): THREE.SpriteMaterial {
 export class MapGates {
   private gates: Gate[] = [];
   private stone = new THREE.MeshStandardMaterial({ color: 0x5d5a55, roughness: 0.95 });
-  private pillarGeo = new THREE.CylinderGeometry(0.32, 0.42, PILLAR_H, 7);
-  private capGeo = new THREE.BoxGeometry(1, 0.34, 0.6);
+  private baseGeo = new THREE.CylinderGeometry(1.05, 1.2, 0.3, 8);
+  private columnGeo = new THREE.CylinderGeometry(0.55, 0.7, ALTAR_H - 0.5, 8);
+  private slabGeo = new THREE.CylinderGeometry(0.9, 0.8, 0.2, 8);
+  private gemGeo = new THREE.OctahedronGeometry(0.42, 0);
   private ringGeo = new THREE.RingGeometry(0.72, 1, 40);
   private discGeo = new THREE.CircleGeometry(1, 40);
 
@@ -90,21 +95,25 @@ export class MapGates {
       const color = new THREE.Color(MAP_NODE[card.node].color);
       const root = new THREE.Group();
       root.position.set(spot.x, 0, spot.z);
-      // o vão do portão fica de frente para fora do leque: as colunas, na tangente do círculo
       root.rotation.y = -spot.angle + Math.PI / 2;
       const glow: THREE.MeshBasicMaterial[] = [];
-      for (const side of [-1, 1]) {
-        const p = new THREE.Mesh(this.pillarGeo, this.stone);
-        p.position.set((side * G.width) / 2, PILLAR_H / 2, 0);
-        p.castShadow = true;
-        root.add(p);
+      // pedestal: base larga, coluna e a laje acesa em cima
+      const base = new THREE.Mesh(this.baseGeo, this.stone);
+      base.position.y = 0.15;
+      const column = new THREE.Mesh(this.columnGeo, this.stone);
+      column.position.y = 0.3 + (ALTAR_H - 0.5) / 2;
+      for (const m of [base, column]) {
+        m.castShadow = true;
+        root.add(m);
       }
-      const lintelMat = new THREE.MeshBasicMaterial({ color, toneMapped: false });
-      glow.push(lintelMat);
-      const lintel = new THREE.Mesh(this.capGeo, lintelMat);
-      lintel.scale.x = G.width + 1;
-      lintel.position.y = PILLAR_H + 0.1;
-      root.add(lintel);
+      const slabMat = new THREE.MeshBasicMaterial({ color, toneMapped: false });
+      glow.push(slabMat);
+      const slab = new THREE.Mesh(this.slabGeo, slabMat);
+      slab.position.y = ALTAR_H - 0.1;
+      root.add(slab);
+      const gem = new THREE.Mesh(this.gemGeo, slabMat);
+      gem.position.y = ALTAR_H + 0.8;
+      root.add(gem);
       const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
       const discMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending });
       glow.push(ringMat, discMat);
@@ -118,19 +127,14 @@ export class MapGates {
       }
       const sign = new THREE.Sprite(label(card));
       sign.scale.set(4.6, 1.44, 1);
-      sign.position.y = PILLAR_H + 1.5;
+      sign.position.y = ALTAR_H + 2.4;
       sign.renderOrder = 15;
       root.add(sign);
       this.scene.add(root);
       const sig = GATE_SIGNAL[card.node];
       const beam = this.fx.lib.pillar(spot.x, spot.z, { color: color.getHex(), radius: G.width * 0.42, height: sig.beam, dur: Infinity, power: 0.6, speed: 3 });
-      this.gates.push({ root, spot, glow, card, color: color.getHex(), beam, next: Math.random() * sig.every });
+      this.gates.push({ root, spot, glow, gem, card, color: color.getHex(), beam, next: Math.random() * sig.every });
     });
-  }
-
-  /** Índice do portão por onde o herói passa agora, ou -1. */
-  hit(x: number, z: number): number {
-    return this.gates.findIndex((g) => Math.hypot(x - g.spot.x, z - g.spot.z) < G.triggerRadius);
   }
 
   /** Índice do portão mais perto dentro de `reach` (a dica da carta no HUD), ou -1. */
@@ -153,6 +157,8 @@ export class MapGates {
     for (const g of this.gates) {
       g.glow[1].opacity = 0.55 + 0.35 * k;
       g.glow[2].opacity = 0.14 + 0.14 * k;
+      g.gem.rotation.y = time * 1.4;
+      g.gem.position.y = ALTAR_H + 0.8 + Math.sin(time * 2 + g.spot.angle) * 0.15;
       const sig = GATE_SIGNAL[g.card.node];
       g.next -= dt;
       while (g.next <= 0) {

@@ -28,8 +28,8 @@ export const PACE = {
   /** escala da vida e do dano dos inimigos comuns e campeões (original: 1) */
   enemyHpMult: 1,
   enemyDamageMult: 1,
-  /** escala do raio das clareiras das ondas 1 a 4 (`TUNING.world.segmentRadius`, 16; a arena do chefe não muda) */
-  clearingMult: 1.12,
+  /** escala do raio da arena das ondas 1 a 4 (`TUNING.world.arenaRadius`; a arena do chefe não muda). M21-15: 1, o raio já é o medido */
+  clearingMult: 1,
   /** escala do raio das áreas das spells (original: 1) */
   spellAreaMult: 1,
   /** cura e regeneração durante a onda (original: 0,35, `RUN_TUNING.combatHealMult`) */

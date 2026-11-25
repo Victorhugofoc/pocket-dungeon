@@ -1,9 +1,9 @@
 // M21-10: terreno na luta. Fossos (a beirada mata o inimigo comum empurrado; chefe e campeão não caem) e barris
 // explosivos (qualquer golpe acende o pavio; a explosão fere todos em volta, o herói também, e empurra para fora).
-// O lugar vem do worldgen (seed); aqui ficam o desenho, a colisão e os relógios. As pedras do gargalo são obstáculos
+// O lugar vem do worldgen (seed; M21-15: um fosso e barris por onda); aqui ficam o desenho, a colisão e os relógios. As pedras do gargalo são obstáculos
 // comuns (`ObstacleGrid`).
 import * as THREE from "three";
-import type { Pit, Vec2, ZoneLayout } from "../core/worldgen";
+import type { Pit, Segment, Vec2 } from "../core/worldgen";
 import { TERRAIN } from "../data/terrain";
 
 interface Barrel extends Vec2 {
@@ -72,21 +72,20 @@ export class Terrain {
 
   constructor(private host: TerrainHost) {}
 
-  build(layout: ZoneLayout): void {
+  /** M21-15: o fosso e os barris da onda (cada onda da arena tem os seus; a do chefe, nenhum). */
+  show(sg: Segment | null): void {
     this.clear();
+    const t = sg?.terrain;
+    if (!t) return;
     this.pitMat = new THREE.MeshBasicMaterial({ map: pitTexture(), transparent: true, depthWrite: false, toneMapped: false });
-    for (const sg of layout.segments) {
-      const t = sg.terrain;
-      if (!t) continue;
-      this.pits.push(t.pit);
-      const m = new THREE.Mesh(PIT_PLANE, this.pitMat);
-      m.position.set(t.pit.x, 0.035, t.pit.z);
-      m.scale.setScalar(t.pit.r * 2 * PIT_DRAW);
-      m.renderOrder = 1;
-      this.host.scene.add(m);
-      this.meshes.push(m);
-      for (const b of t.barrels) this.addBarrel(b.x, b.z);
-    }
+    this.pits.push(t.pit);
+    const m = new THREE.Mesh(PIT_PLANE, this.pitMat);
+    m.position.set(t.pit.x, 0.035, t.pit.z);
+    m.scale.setScalar(t.pit.r * 2 * PIT_DRAW);
+    m.renderOrder = 1;
+    this.host.scene.add(m);
+    this.meshes.push(m);
+    for (const b of t.barrels) this.addBarrel(b.x, b.z);
   }
 
   private addBarrel(x: number, z: number): void {

@@ -2,7 +2,7 @@
 // em blocos grandes (poucos draw calls, ainda com culling) e agrupadas em manchas, para nenhum pedaço da câmera do jogo ficar liso.
 import * as THREE from "three";
 import { Rng } from "../core/rng";
-import { distToTrails, ObstacleGrid, type ZoneLayout } from "../core/worldgen";
+import { distToPath, ObstacleGrid, type ZoneLayout } from "../core/worldgen";
 import type { ScatterKind, ZoneDef } from "../data/zones";
 import { patchMaterial } from "./shared";
 
@@ -122,7 +122,7 @@ export function buildScatter(zone: ZoneDef, layout: ZoneLayout, glow: number): {
   const half = layout.size / 2 - 4;
   const area = layout.size * layout.size;
   const trees = layout.obstacles.filter((o) => TREE_KINDS.has(o.kind));
-  const dirt = (x: number, z: number) => distToTrails(x, z, layout) < 3.4 || Math.hypot(x - layout.boss.x, z - layout.boss.z) < layout.bossRadius
+  const dirt = (x: number, z: number) => distToPath(x, z, layout.path) < 3.4 || Math.hypot(x - layout.boss.x, z - layout.boss.z) < layout.bossRadius
     || Math.hypot(x - layout.spawn.x, z - layout.spawn.z) < 7 || layout.segments.some((c) => Math.hypot(x - c.x, z - c.z) < c.r * 0.5);
   const grid = new ObstacleGrid(layout.obstacles);
   const inSolid = (x: number, z: number) => grid.hits(x, z, 0.05);

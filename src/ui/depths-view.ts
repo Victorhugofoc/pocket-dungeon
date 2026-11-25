@@ -14,7 +14,7 @@ function perkCharges(run: RunState): { name: string; ready: boolean; tip: string
   const seg = segmentOf(Math.max(1, run.wave));
   const out: { name: string; ready: boolean; tip: string }[] = [];
   if (runPerk(run, "reserve_potion")) out.push({ name: "Potion", ready: !run.potionUsed, tip: "Reserve Potion: once per run, below 20% HP heals 30%" });
-  if (runPerk(run, "card_swap")) out.push({ name: "Swap", ready: !run.cardSwaps.includes(seg), tip: "Card Swap: G rerolls the gates, once per zone" });
+  if (runPerk(run, "card_swap")) out.push({ name: "Swap", ready: !run.cardSwaps.includes(seg), tip: "Card Swap: G rerolls the altars, once per zone" });
   if (runPerk(run, "relic_reroll")) out.push({ name: "Relic Reroll", ready: !run.relicRerolls.includes(seg), tip: "Relic Reroll: rerolls one relic choice, once per zone" });
   return out;
 }

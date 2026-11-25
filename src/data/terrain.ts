@@ -12,6 +12,8 @@ export const TERRAIN = {
     fallSpeed: 2.5,
     /** o inimigo cai quando o centro dele passa este tanto da beirada (metros; 0 = o centro sobre a beirada) */
     fallDepth: 0,
+    /** M21-15: o fosso de cada onda fica pelo menos este tanto (radianos) longe do lado do gargalo da arena */
+    awayFromChoke: 1.4,
   },
   choke: {
     /** vão entre as duas fileiras de pedras (metros) */

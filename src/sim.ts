@@ -126,8 +126,14 @@ function answer(hero: string): boolean {
   if (game.phase === "walk" && game.mapCards && !inner.mapResolved) {
     if (declined.wave !== game.run.wave) declined = { wave: game.run.wave, cards: new Set() };
     const open = game.mapCards.map((c, i) => ({ c, i })).filter((x) => !declined.cards.has(x.i));
-    // tudo recusado: anda até a clareira, que fica com o portão mais perto
-    if (!open.length) return false;
+    // tudo recusado (M21-15: sem atalho de entrar na clareira): fica com a primeira carta comum, se houver
+    if (!open.length) {
+      const plain = game.mapCards.findIndex((c) => c.node !== "pact" && c.node !== "event");
+      if (plain < 0) return false;
+      inner.warpPending = true;
+      game.chooseMapCard(plain);
+      return true;
+    }
     inner.warpPending = true;
     game.chooseMapCard(open[pickMap(v, open.map((x) => x.c))].i);
     return true;
@@ -212,8 +218,8 @@ function pilot(): void {
     if (Math.hypot(portal.position.x - p.x, portal.position.z - p.z) < 2) inp.simTap("KeyE");
     return;
   }
-  // caminhada: com a carta resolvida, E leva até a clareira (a viagem do portão, como o jogador faz); andar em
-  // linha reta até lá encalha nas pedras. Os desvios do caminho ficam de fora.
+  // caminhada: com a carta resolvida, E começa a onda na arena (ou leva até a do chefe, como o jogador faz). Os
+  // desvios ficam de fora.
   if (game.phase === "walk") {
     inp.simAxis = { x: game.segment.x - p.x, z: game.segment.z - p.z };
     if (inner.mapResolved && game.nearDetour < 0) inp.simTap("KeyE");
