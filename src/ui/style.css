@@ -49,6 +49,9 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 #arrows i { position: absolute; left: -19px; top: -15px; width: 38px; height: 30px; background: #ff7a55;
   clip-path: polygon(100% 50%, 0 0, 26% 50%, 0 100%); filter: drop-shadow(0 0 6px #ff3a1a); animation: arrow-pulse 0.7s ease-in-out infinite alternate; }
 @keyframes arrow-pulse { from { opacity: 0.65; } to { opacity: 1; } }
+/* M21-15: inimigos fora da tela (menores, sem pulsar); campeão e chefe em dourado */
+#arrows i.foe { left: -10px; top: -8px; width: 21px; height: 16px; background: #e0453f; filter: drop-shadow(0 0 3px #000); animation: none; opacity: 0.85; }
+#arrows i.champion { left: -14px; top: -11px; width: 28px; height: 22px; background: #ffc83d; filter: drop-shadow(0 0 5px #ff9a1a); animation: none; }
 #vignette { position: absolute; inset: 0; box-shadow: inset 0 0 180px 60px rgba(200, 20, 20, 0.9); opacity: 0; }
 .hud-bottom { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(560px, 92vw); display: flex;
   flex-direction: column; gap: 6px; align-items: center; }

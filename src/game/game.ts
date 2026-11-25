@@ -2322,15 +2322,22 @@ export class Game {
   }
 
   /**
-   * M21-13: setas na borda da tela para as sobras da onda fora dela: posição em px (já presa à borda, `pad` px para
-   * dentro) e ângulo da seta. Vazio fora da luta ou sem sobras.
+   * M21-13: setas na borda da tela para os inimigos fora dela: posição em px (já presa à borda, `pad` px para
+   * dentro), ângulo e tipo. As sobras da onda sempre; M21-15: os outros, só os `edgeArrows.max` mais perto (o campeão
+   * e o chefe com cor própria). Vazio fora da luta.
    */
-  stragglerArrows(w: number, h: number, pad: number): { x: number; y: number; angle: number }[] {
+  edgeArrows(w: number, h: number, pad: number): { x: number; y: number; angle: number; kind: "straggler" | "champion" | "foe" }[] {
     if (this.phase !== "fight") return [];
-    const out: { x: number; y: number; angle: number }[] = [];
+    const out: { x: number; y: number; angle: number; kind: "straggler" | "champion" | "foe" }[] = [];
     const v = Game.arrowV;
-    for (const e of this.enemies) {
-      if (e.dead || !e.straggler) continue;
+    const p = this.player;
+    const others = this.enemies.filter((e) => !e.dead && !e.straggler && !e.summoned)
+      .map((e) => ({ e, d: (e.x - p.x) ** 2 + (e.z - p.z) ** 2 })).sort((a, b) => a.d - b.d);
+    const list = [...this.enemies.filter((e) => !e.dead && e.straggler), ...others.map((o) => o.e)];
+    let foes = 0;
+    for (const e of list) {
+      const kind = e.straggler ? "straggler" : e.champion || e.isBoss ? "champion" : "foe";
+      if (kind !== "straggler" && foes >= TUNING.world.edgeArrows.max) break;
       v.set(e.x, 1, e.z).project(this.camera);
       const behind = v.z > 1;
       let sx = v.x, sy = -v.y;
@@ -2339,10 +2346,12 @@ export class Game {
       // da tela ao centro: prende na borda
       const k = 1 / Math.max(Math.abs(sx), Math.abs(sy), 1e-6);
       const ex = sx * k, ey = sy * k;
+      if (kind !== "straggler") foes++;
       out.push({
         x: Math.max(pad, Math.min(w - pad, ((ex + 1) / 2) * w)),
         y: Math.max(pad, Math.min(h - pad, ((ey + 1) / 2) * h)),
         angle: Math.atan2(sy * h, sx * w),
+        kind,
       });
     }
     return out;

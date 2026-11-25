@@ -616,11 +616,13 @@ export class Ui {
   /** M21-13: setas na borda da tela para as sobras da onda fora dela. */
   private updateArrows(): void {
     const box = this.r.arrows;
-    const list = this.game.stragglerArrows(window.innerWidth, window.innerHeight, 36);
+    const list = this.game.edgeArrows(window.innerWidth, window.innerHeight, 36);
     while (box.children.length < list.length) box.appendChild(document.createElement("i"));
     while (box.children.length > list.length) box.lastChild!.remove();
     list.forEach((a, i) => {
-      (box.children[i] as HTMLElement).style.transform = `translate(${a.x}px, ${a.y}px) rotate(${a.angle}rad)`;
+      const el = box.children[i] as HTMLElement;
+      el.style.transform = `translate(${a.x}px, ${a.y}px) rotate(${a.angle}rad)`;
+      if (el.className !== a.kind) el.className = a.kind;
     });
   }
 

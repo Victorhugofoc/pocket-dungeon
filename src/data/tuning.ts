@@ -91,6 +91,8 @@ export const TUNING = {
      * meio do mapa, `bend` = curva da trilha entre as duas.
      */
     arena: { gap: [10, 12] as const, xJitter: 4, bend: 1.5 },
+    /** M21-15: setas na borda para inimigos fora da tela (o bot mediu 25% fora da tela no zoom 1): só as `max` mais perto */
+    edgeArrows: { max: 8 },
     /** M21-08: os altares das cartas (M21-15; antes portões) */
     gates: {
       /** vão entre as colunas (metros) */
