@@ -92,7 +92,9 @@ export type StatKey =
   | "shopPricePct" // preços da loja (custo do Hoarder's Crown)
   // M12-06: sinergias Sanctuary e Lifewell (stats.lua, planos)
   | "healFieldHealFlat" // Healing Field: cura a mais por pulso
-  | "healFieldDurationFlat"; // Healing Field: duração a mais (s)
+  | "healFieldDurationFlat" // Healing Field: duração a mais (s)
+  // M12-09: evolução de build Thunderlord (stats.lua `chainRangeMult`)
+  | "chainRangePct"; // salto do raio (Chain Lightning)
 
 export type StatBlock = Partial<Record<StatKey, number>>;
 
@@ -108,7 +110,7 @@ export const STAT_KEYS: StatKey[] = [
   "windPct", "runePct", "lightPct", "earthPct", "lightningTargets", "echoChance", "volatileChance", "spellCritChance",
   "slowedDamagePct", "chainEscalate", "burnSpread", "frostbite", "untouchedPct", "arcaneDominion", "castHealPct", "prismCycle",
   "killStreak", "lastRites", "hoardPct", "oathPct", "noCombatHeal", "championHpPct", "shopPricePct",
-  "healFieldHealFlat", "healFieldDurationFlat",
+  "healFieldHealFlat", "healFieldDurationFlat", "chainRangePct",
 ];
 
 export const STAT_LABEL: Record<StatKey, string> = {
@@ -181,6 +183,7 @@ export const STAT_LABEL: Record<StatKey, string> = {
   chainEscalate: "Lightning jump damage",
   healFieldHealFlat: "Healing Field heal per pulse",
   healFieldDurationFlat: "s Healing Field duration",
+  chainRangePct: "Lightning jump",
   burnSpread: "Burn spread",
   frostbite: "Frostbite",
   untouchedPct: "damage while untouched",
@@ -328,6 +331,8 @@ export interface FinalStats {
   /** M12-06 (Sanctuary, Lifewell): cura a mais por pulso e duração a mais do Healing Field */
   healFieldHeal: number;
   healFieldDuration: number;
+  /** M12-09 (Thunderlord): multiplicador do salto do raio */
+  chainRangeMult: number;
   /** M12-05 (stats.lua `championHpMult`, `shopPriceMult`): vida dos campeões e preços da loja */
   championHp: number;
   shopPrice: number;
@@ -472,6 +477,7 @@ export function computeStats(sources: StatBlock[], style: AutoStyle = "normal"):
     chainEscalate: g("chainEscalate"),
     healFieldHeal: Math.max(0, g("healFieldHealFlat")),
     healFieldDuration: Math.max(0, g("healFieldDurationFlat")),
+    chainRangeMult: Math.max(0.1, m("chainRangePct")),
     championHp: Math.max(0.1, m("championHpPct")),
     shopPrice: Math.max(0.1, m("shopPricePct")),
   };

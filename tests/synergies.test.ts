@@ -5,7 +5,7 @@ import { computeStats, STAT_KEYS } from "../src/core/stats";
 import { spellStats, spellContext } from "../src/core/spells";
 import { HEROES } from "../src/data/heroes";
 
-const state = (tags: Record<string, number> = {}) => ({ tags, activeSynergies: [] as string[], synergiesEver: [] as string[] });
+const state = (tags: Record<string, number> = {}) => ({ tags, activeSynergies: [] as string[], synergiesEver: [] as string[], buildEvolutions: [] as string[] });
 
 describe("sinergias (M12-06)", () => {
   it("as 17 de synergies.lua, com ids únicos e atributos que o jogo conhece", () => {
@@ -16,15 +16,15 @@ describe("sinergias (M12-06)", () => {
 
   it("liga no limiar e desliga quando as tags caem (§50)", () => {
     const run = state({ fire: 2 });
-    expect(refreshSynergies(run)).toEqual({ gained: [], lost: [] });
+    expect(refreshSynergies(run)).toEqual({ gained: [], lost: [], evolved: [] });
     run.tags.fire = 3;
-    expect(refreshSynergies(run)).toEqual({ gained: ["pyromancer"], lost: [] });
-    expect(refreshSynergies(run)).toEqual({ gained: [], lost: [] });
+    expect(refreshSynergies(run)).toEqual({ gained: ["pyromancer"], lost: [], evolved: [] });
+    expect(refreshSynergies(run)).toEqual({ gained: [], lost: [], evolved: [] });
     run.tags.fire = 5;
     expect(refreshSynergies(run).gained).toEqual(["inferno"]);
     expect(run.activeSynergies).toEqual(["pyromancer", "inferno"]);
     run.tags.fire = 2;
-    expect(refreshSynergies(run)).toEqual({ gained: [], lost: ["pyromancer", "inferno"] });
+    expect(refreshSynergies(run)).toEqual({ gained: [], lost: ["pyromancer", "inferno"], evolved: [] });
     expect(run.synergiesEver).toEqual(["pyromancer", "inferno"]);
   });
 
@@ -55,8 +55,8 @@ describe("sinergias (M12-06)", () => {
   });
 
   it("prévia de uma escolha: o que liga e o que desliga", () => {
-    expect(synergyPreview({ ice: 2 }, ["ice", "magic"])).toEqual({ gained: ["cryomancer"], lost: [] });
-    expect(synergyPreview({ dodge: 2 }, [], ["dodge"])).toEqual({ gained: [], lost: ["evasive"] });
+    expect(synergyPreview({ ice: 2 }, ["ice", "magic"])).toEqual({ gained: ["cryomancer"], lost: [], evolved: [] });
+    expect(synergyPreview({ dodge: 2 }, [], ["dodge"])).toEqual({ gained: [], lost: ["evasive"], evolved: [] });
   });
 
   it("progresso de tag: o próximo limiar, e a evolução de build depois do último", () => {
@@ -79,5 +79,53 @@ describe("painel da build (M12-06 parte 2)", () => {
     expect(nearestSynergies(tags, "survival")).toEqual({ missing: 1, ids: ["wardens_oath"] });
     expect(nearestSynergies(tags, "dodge")).toEqual({ missing: 2, ids: ["shadowstep"] }); // Evasive já ligada
     expect(nearestSynergies({ dodge: 4 }, "dodge")).toBeNull();
+  });
+});
+
+describe("evoluções de build e identidade (M12-09)", () => {
+  it("8 pontos num caminho dão a evolução, que fica mesmo se os pontos caírem (D-059)", () => {
+    const run = state({ fire: 7 });
+    expect(refreshSynergies(run).evolved).toEqual([]);
+    run.tags.fire = 8;
+    expect(refreshSynergies(run).evolved).toEqual(["apocalypse"]);
+    run.tags.fire = 4;
+    const ch = refreshSynergies(run);
+    expect(ch.evolved).toEqual([]);
+    expect(ch.lost).toEqual(["inferno"]);
+    expect(run.buildEvolutions).toEqual(["apocalypse"]);
+    run.tags.fire = 8;
+    expect(refreshSynergies(run).evolved).toEqual([]); // uma vez só
+  });
+
+  it("Dodge não tem evolução de build; os outros 6 caminhos têm", () => {
+    expect(refreshSynergies(state({ dodge: 9 })).evolved).toEqual([]);
+    expect(tagThresholds().dodge.map((t) => t.n)).toEqual([2, 4]);
+    expect(tagThresholds().ice.at(-1)).toMatchObject({ n: 8, id: null, name: "ABSOLUTE ZERO" });
+  });
+
+  it("os atributos da evolução entram no herói, e o Thunderlord estica o salto do raio", () => {
+    const hero = HEROES.frostine.stats;
+    const s = computeStats([hero, ...synergySources([], ["thunderlord", "eternal_well"])]);
+    const base = computeStats([hero]);
+    expect(s.chainRangeMult).toBeCloseTo(1.25);
+    expect(s.maxHp).toBeGreaterThan(base.maxHp);
+    const slot = { id: "chain_lightning", level: 1, modifiers: [] };
+    expect(spellStats(slot, spellContext(s)).chainRange! / spellStats(slot, spellContext(base)).chainRange!).toBeCloseTo(1.25);
+  });
+
+  it("a prévia avisa a evolução que a escolha alcança, e não a que o herói já tem", () => {
+    expect(synergyPreview({ auto: 7 }, ["auto"]).evolved).toEqual(["war_machine"]);
+    expect(synergyPreview({ auto: 7 }, ["auto"], [], ["war_machine"]).evolved).toEqual([]);
+  });
+
+  it("identidade: o caminho com mais pontos (3 ou mais), BATTLE MAGE no equilíbrio, UNDEFINED sem caminho", async () => {
+    const { buildIdentity } = await import("../src/core/synergies");
+    expect(buildIdentity({})).toBe("UNDEFINED");
+    expect(buildIdentity({ fire: 2, ice: 2 })).toBe("UNDEFINED");
+    expect(buildIdentity({ fire: 4, ice: 3 })).toBe("PYROMANCER");
+    expect(buildIdentity({ ice: 3, fire: 3 })).toBe("PYROMANCER"); // empate: o primeiro de PATHS
+    expect(buildIdentity({ auto: 4, magic: 3 })).toBe("BATTLE MAGE");
+    expect(buildIdentity({ auto: 5, magic: 3 })).toBe("GUNSLINGER");
+    expect(buildIdentity({ dodge: 3 })).toBe("SHADOW");
   });
 });

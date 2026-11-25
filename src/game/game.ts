@@ -11,7 +11,7 @@ import { runLogEntry, waveEntry, type RunOutcome } from "../core/runlog";
 import { BUILD, storeRunLog } from "./runlog";
 import { loadAchievements, loadRecords, loadRun, writeAchievements, writeRun, safeStorage } from "../core/save";
 import { refreshSynergies, synergySources } from "../core/synergies";
-import { SYNERGY_BY_ID } from "../data/synergies";
+import { BUILD_EVOLUTION_BY_ID, SYNERGY_BY_ID } from "../data/synergies";
 import { AchievementTracker, filterOpen, type KillSource } from "../core/achievements";
 import { ACHIEVEMENT_BY_ID, UNLOCK_REWARDS } from "../data/achievements";
 import { checkpoint, continueRun, zoneSeed, type RunRng, type RunState } from "../core/run";
@@ -583,12 +583,18 @@ export class Game {
 
   /** build_system.lua `refresh`: as tags mudaram (nível, relíquia, loja); liga e desliga as sinergias e avisa. */
   private refreshSynergies(): void {
-    const { gained, lost } = refreshSynergies(this.run);
+    const { gained, lost, evolved } = refreshSynergies(this.run);
     for (const id of gained) this.events?.toast(`Synergy: ${SYNERGY_BY_ID[id].name} · ${SYNERGY_BY_ID[id].text}`, "#ffd34d");
     for (const id of lost) this.events?.toast(`Synergy lost: ${SYNERGY_BY_ID[id].name} · tags below the threshold`, "#ff7a6a");
-    if (gained.length) {
+    for (const id of evolved) {
+      const b = BUILD_EVOLUTION_BY_ID[id];
+      this.events?.toast(`Build evolution: ${b.name} · ${b.text}`, "#c77dff");
+      this.events?.banner(b.name, `Build evolution · ${b.text}`);
+    }
+    if (gained.length || evolved.length) {
       this.audio?.play("rare");
-      this.ach.synergiesActive(this.run.activeSynergies.length);
+      if (gained.length) this.ach.synergiesActive(this.run.activeSynergies.length);
+      if (evolved.length) this.ach.buildEvolution();
       this.flushAchievements();
     }
   }
@@ -599,7 +605,7 @@ export class Game {
     sources.push(...upgradeSources(this.run));
     sources.push(shopStats(this.run.shop));
     this.refreshSynergies();
-    sources.push(...synergySources(this.run.activeSynergies));
+    sources.push(...synergySources(this.run.activeSynergies, this.run.buildEvolutions));
     this.stats = computeStats(sources, this.hero.style);
     this.epics.refresh(this.run.upgradesTaken);
     this.relicHooks.refresh(relicTotals(this.run.relics));

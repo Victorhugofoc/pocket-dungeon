@@ -45,6 +45,8 @@ export interface SpellContext {
   /** M12-06 (Sanctuary, Lifewell): cura por pulso e duração a mais do Healing Field */
   healFieldHeal?: number;
   healFieldDuration?: number;
+  /** M12-09 (Thunderlord): multiplicador do salto do raio do herói (stats.lua `chainRangeMult`) */
+  chainRangeMult?: number;
   /** relíquias do herói (a forma evoluída converte as de fora da receita, `relicConvert`) */
   relics?: readonly string[];
 }
@@ -56,7 +58,7 @@ export function spellContext(s: FinalStats, relics: readonly string[] = []): Spe
     spellDamage: s.spellDamage, school: s.school, burn: s.burn, slowPoints: s.slowPoints,
     slowDuration: s.slowDuration, poison: s.poison, lightningTargets: s.lightningTargets, echoValues: s.echoValues,
     volatileValues: s.volatileValues, chainEscalate: s.chainEscalate,
-    healFieldHeal: s.healFieldHeal, healFieldDuration: s.healFieldDuration, relics,
+    healFieldHeal: s.healFieldHeal, healFieldDuration: s.healFieldDuration, chainRangeMult: s.chainRangeMult, relics,
   };
 }
 
@@ -278,7 +280,7 @@ export function spellStats(
   }
   if (def.targets !== undefined) {
     st.targets = def.targets + F.targets + (ctx.lightningTargets ?? 0);
-    st.chainRange = px(def.chainRange ?? 0) * stackMultiplier(L.chainRangePct);
+    st.chainRange = px(def.chainRange ?? 0) * stackMultiplier(L.chainRangePct) * (ctx.chainRangeMult ?? 1);
     st.doubleHit = stackChance(L.doubleHitChance);
     st.chainEscalate = ctx.chainEscalate ?? 0;
   }

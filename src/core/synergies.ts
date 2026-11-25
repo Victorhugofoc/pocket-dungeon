@@ -3,7 +3,11 @@
 //   limiar e desliga as que caíram (§50), e devolve o que mudou para os avisos.
 // - `synergySources` dá os atributos das ativas, uma fonte por sinergia, como `synergy:<id>` lá.
 // - `synergyPreview` e `synergyProgress` mostram, numa carta, o que uma escolha liga e o próximo limiar.
-import { BUILD_EVOLUTION_THRESHOLD, PATH_NAMES, SYNERGIES, SYNERGY_BY_ID, type SynergyDef } from "../data/synergies";
+// - M12-09: evolução de build com 8 pontos num caminho (§52; fica até o fim da partida, D-059) e identidade (§51, D-058).
+import {
+  BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_BY_PATH, BUILD_EVOLUTION_THRESHOLD, BUILD_EVOLUTIONS, BUILD_PATHS, IDENTITY_BY_PATH,
+  PATH_NAMES, SYNERGIES, SYNERGY_BY_ID, type SynergyDef, type SynergyEffect,
+} from "../data/synergies";
 import type { StatBlock } from "./stats";
 
 export type Tags = Readonly<Record<string, number>>;
@@ -28,14 +32,23 @@ export interface SynergyState {
   activeSynergies: string[];
   /** `synergiesEver`: as que já valeram nesta partida */
   synergiesEver: string[];
+  /** build_system.lua `buildEvolutions`: as evoluções de build alcançadas (ficam até o fim da partida) */
+  buildEvolutions: string[];
 }
 
 export interface SynergyChange {
   gained: string[];
   lost: string[];
+  /** evoluções de build novas (ids) */
+  evolved: string[];
 }
 
-/** build_system.lua `refresh`: liga e desliga pelas tags de agora. */
+/** As evoluções de build que estas tags alcançam e ainda não estão em `owned`. */
+function newEvolutions(tags: Tags, owned: readonly string[]): string[] {
+  return BUILD_EVOLUTIONS.filter((b) => !owned.includes(b.id) && tagCount(tags, b.path) >= BUILD_EVOLUTION_THRESHOLD).map((b) => b.id);
+}
+
+/** build_system.lua `refresh`: liga e desliga as sinergias pelas tags de agora; a evolução de build não volta atrás. */
 export function refreshSynergies(run: SynergyState): SynergyChange {
   const was = new Set(run.activeSynergies);
   const now = synergiesFor(run.tags);
@@ -43,35 +56,56 @@ export function refreshSynergies(run: SynergyState): SynergyChange {
   const lost = run.activeSynergies.filter((id) => !now.includes(id));
   run.activeSynergies = now;
   for (const id of gained) if (!run.synergiesEver.includes(id)) run.synergiesEver.push(id);
-  return { gained, lost };
+  const evolved = newEvolutions(run.tags, run.buildEvolutions);
+  run.buildEvolutions.push(...evolved);
+  return { gained, lost, evolved };
 }
 
-/** Os atributos das sinergias ativas, uma fonte por sinergia (para `computeStats`). */
-export function synergySources(active: readonly string[]): StatBlock[] {
+function block(effects: readonly SynergyEffect[]): StatBlock {
+  const b: StatBlock = {};
+  for (const x of effects) b[x.stat] = (b[x.stat] ?? 0) + x.value;
+  return b;
+}
+
+/** Os atributos das sinergias ativas e das evoluções de build, uma fonte por item (`synergy:<id>`, `buildevo:<id>`). */
+export function synergySources(active: readonly string[], evolutions: readonly string[] = []): StatBlock[] {
   const out: StatBlock[] = [];
-  for (const id of active) {
-    const d = SYNERGY_BY_ID[id];
-    if (!d) continue;
-    const b: StatBlock = {};
-    for (const x of d.effects) b[x.stat] = (b[x.stat] ?? 0) + x.value;
-    out.push(b);
-  }
+  for (const id of active) if (SYNERGY_BY_ID[id]) out.push(block(SYNERGY_BY_ID[id].effects));
+  for (const id of evolutions) if (BUILD_EVOLUTION_BY_ID[id]) out.push(block(BUILD_EVOLUTION_BY_ID[id].effects));
   return out;
 }
 
-/** build_system.lua `preview`: as sinergias que pegar (e largar) estas tags ligaria e desligaria. */
-export function synergyPreview(tags: Tags, add: readonly string[], remove: readonly string[] = []): SynergyChange {
+/** build_system.lua `preview`: as sinergias que pegar (e largar) estas tags ligaria e desligaria, e as evoluções novas. */
+export function synergyPreview(tags: Tags, add: readonly string[], remove: readonly string[] = [], owned: readonly string[] = []): SynergyChange {
   const t: Record<string, number> = { ...tags };
   for (const tag of remove) t[tag] = Math.max(0, (t[tag] ?? 0) - 1);
   for (const tag of add) t[tag] = (t[tag] ?? 0) + 1;
   const before = new Set(synergiesFor(tags));
   const after = synergiesFor(t);
-  return { gained: after.filter((id) => !before.has(id)), lost: [...before].filter((id) => !after.includes(id)) };
+  return {
+    gained: after.filter((id) => !before.has(id)), lost: [...before].filter((id) => !after.includes(id)),
+    evolved: newEvolutions(t, owned),
+  };
+}
+
+/**
+ * build_system.lua `identity` (§51, D-058): o caminho principal com mais pontos (3 ou mais); BATTLE MAGE quando auto e
+ * magic têm 3 ou mais e no máximo 1 de diferença; UNDEFINED sem caminho.
+ */
+export function buildIdentity(tags: Tags): string {
+  const auto = tagCount(tags, "auto"), magic = tagCount(tags, "magic");
+  let best: string | null = null, bestN = 2;
+  for (const path of BUILD_PATHS) {
+    const n = tagCount(tags, path);
+    if (n > bestN) { best = path; bestN = n; }
+  }
+  if (auto >= 3 && magic >= 3 && Math.abs(auto - magic) <= 1 && (best === "auto" || bestN <= Math.max(auto, magic))) return "BATTLE MAGE";
+  return best ? IDENTITY_BY_PATH[best] : "UNDEFINED";
 }
 
 export interface Threshold {
   n: number;
-  /** id da sinergia, ou null na evolução de build de 8 tags */
+  /** id da sinergia, ou null na evolução de build de 8 pontos */
   id: string | null;
   name: string;
 }
@@ -89,7 +123,11 @@ export function tagThresholds(): Record<string, Threshold[]> {
   }
   for (const list of Object.values(out)) {
     list.sort((a, b) => a.n - b.n);
-    list.push({ n: BUILD_EVOLUTION_THRESHOLD, id: null, name: "BUILD EVOLUTION" });
+  }
+  // a evolução de build de 8 pontos depois do último limiar (Dodge não tem, só conta para a identidade)
+  for (const [tag, list] of Object.entries(out)) {
+    const evo = BUILD_EVOLUTION_BY_PATH[tag];
+    if (evo) list.push({ n: BUILD_EVOLUTION_THRESHOLD, id: null, name: evo.name });
   }
   return (cache = out);
 }

@@ -308,6 +308,13 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .syn-all small { font-size: 10px; }
 .syn-all.on { border-color: var(--gold); color: var(--text); }
 .syn-all.on b { color: var(--gold); }
+.syn-act.evo, .syn-badge.evo { background: rgba(199, 125, 255, 0.13); border-color: rgba(199, 125, 255, 0.55); }
+.syn-act.evo b, .syn-badge.evo b, .path-row .next b.evo-name { color: #d9a6ff; }
+.syn-all.evo { border-left-color: #4a3a5e; }
+.syn-all.evo.on { border-color: #c77dff; }
+.syn-all.evo.on b { color: #d9a6ff; }
+.identity { margin: 14px 0 0; font-size: 12px; color: var(--muted); }
+.identity b { color: var(--gold); letter-spacing: 1px; margin-right: 6px; }
 /* banir relíquia (M12-10) */
 .cards.relics .card { display: flex; flex-direction: column; }
 .card .ban { margin-top: auto; align-self: flex-start; padding: 3px 10px; font-size: 11px; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; cursor: pointer; }

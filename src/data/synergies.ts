@@ -61,3 +61,44 @@ export const SYNERGIES: readonly SynergyDef[] = [
 ];
 
 export const SYNERGY_BY_ID: Record<string, SynergyDef> = Object.fromEntries(SYNERGIES.map((s) => [s.id, s]));
+
+export interface BuildEvolutionDef {
+  id: string;
+  name: string;
+  /** o caminho que precisa de `BUILD_EVOLUTION_THRESHOLD` pontos */
+  path: string;
+  effects: SynergyEffect[];
+  text: string;
+}
+
+/** synergies.lua `D.buildEvolutions` (§52): uma por caminho; ligada, vale até o fim da partida (D-059). */
+export const BUILD_EVOLUTIONS: readonly BuildEvolutionDef[] = [
+  { id: "apocalypse", name: "APOCALYPSE", path: "fire", effects: [e("volatileChance", 0.20)], text: "+20% Volatile" },
+  { id: "absolute_zero", name: "ABSOLUTE ZERO", path: "ice", effects: [e("slowedDamagePct", 0.25), e("slowDurationPct", 0.20)],
+    text: "+25% damage vs. Slow, +20% Slow duration" },
+  { id: "thunderlord", name: "THUNDERLORD", path: "lightning", effects: [e("spellDamagePct", 0.20), e("chainRangePct", 0.25)],
+    text: "+20% Spell Damage, +25% Lightning jump" },
+  { id: "war_machine", name: "WAR MACHINE", path: "auto", effects: [e("autoDamagePct", 0.20), e("critChance", 0.05)],
+    text: "+20% Auto Damage, +5% Crit" },
+  { id: "void_savant", name: "VOID SAVANT", path: "arcane", effects: [e("arcanePct", 0.15), e("rangePct", 0.12)],
+    text: "+15% Arcane Damage, +12% Range" },
+  { id: "eternal_well", name: "ETERNAL WELL", path: "healing", effects: [e("maxHpPct", 0.12), e("regen", 0.35)],
+    text: "+12% Max HP, +0.35 HP/s" },
+];
+
+export const BUILD_EVOLUTION_BY_ID: Record<string, BuildEvolutionDef> = Object.fromEntries(BUILD_EVOLUTIONS.map((b) => [b.id, b]));
+export const BUILD_EVOLUTION_BY_PATH: Record<string, BuildEvolutionDef> = Object.fromEntries(BUILD_EVOLUTIONS.map((b) => [b.path, b]));
+
+/** synergies.lua `D.identities` (§51): só descrição; a regra está em `core/synergies.ts` `buildIdentity` (D-058). */
+export const IDENTITIES: Record<string, string> = {
+  UNDEFINED: "No dominant path yet.",
+  WARDEN: "Healing and survival.", SHADOW: "Dodge and mobility.",
+  "BATTLE MAGE": "Auto Attack and magic in balance.", GUNSLINGER: "Auto Attack.",
+  PYROMANCER: "Fire and Burn.", CRYOMANCER: "Ice and Slow.", STORMCALLER: "Lightning.", SPELLWEAVER: "Arcane and spells.",
+};
+
+/** synergies.lua `IDENTITY_BY_PATH` */
+export const IDENTITY_BY_PATH: Record<string, string> = {
+  auto: "GUNSLINGER", fire: "PYROMANCER", ice: "CRYOMANCER", lightning: "STORMCALLER",
+  arcane: "SPELLWEAVER", healing: "WARDEN", dodge: "SHADOW",
+};

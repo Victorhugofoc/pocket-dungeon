@@ -25,7 +25,8 @@ import { BOSS_ORDER, BOSSES, CROWN_BORROW, ENEMIES, HELPERS, SHIELD_CYCLE } from
 import { AFFIX_FORBIDDEN, AFFIX_ORDER, AFFIX_REWARD_PER, AFFIX_SECOND, AFFIXES } from "../src/data/affixes";
 import { RELIC_ADAPTED, RELIC_IDS, RELIC_MECH, RELICS } from "../src/data/relics";
 import { UPGRADE_CAPS, UPGRADE_STAT, UPGRADES } from "../src/data/upgrades";
-import { BUILD_EVOLUTION_THRESHOLD, BUILD_PATHS, PATH_NAMES, SYNERGIES } from "../src/data/synergies";
+import { BUILD_EVOLUTION_THRESHOLD, BUILD_EVOLUTIONS, BUILD_PATHS, IDENTITIES, IDENTITY_BY_PATH, PATH_NAMES, SYNERGIES } from "../src/data/synergies";
+import { buildIdentity, synergiesFor } from "../src/core/synergies";
 import { canTier, effectsFor, fitWeight, isAvailable, tierWeights, TIER_ORDER } from "../src/core/levelup";
 import { newRun } from "../src/core/run";
 import { relicDraft, relicDraftPool, relicDraftWeight } from "../src/core/relics";
@@ -289,7 +290,7 @@ function loadOriginal(): Record<string, Lua> | null {
   if (!existsSync(resolve(ROOT, "src/data/spells.lua"))) return null;
   // expressões longas vão por arquivo (`@caminho`): a linha de comando do Windows tem limite
   const dir = mkdtempSync(join(tmpdir(), "dr-dump-"));
-  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE, HERO_LIFE, RELIC_LIFE].map((code, i) => {
+  const args = [WAVE_TABLE, WAVE_LIFE, UPGRADE_LIFE, MAP_LIFE, ROOM_LIFE, SPELL_LIFE, SHOP_LIFE, TECH_LIFE, HERO_LIFE, RELIC_LIFE, BUILD_LIFE].map((code, i) => {
     if (code.length < 2000) return code;
     const f = join(dir, `arg${i}.lua`);
     writeFileSync(f, code);
@@ -443,6 +444,31 @@ const SHOP_SCEN = (() => {
   return builds.flatMap((spells, b) => Array.from({ length: 8 }, (_, k) => ({ spells, size: k % 4 === 3 ? 4 : 3,
     tech: techLevels[(b + k) % 3], u: Array.from({ length: 16 }, rnd) })));
 })();
+/** M12-09: casos de tags para a identidade e as sinergias, avaliados lá (build_system.lua) e cá. */
+const BUILD_CASES: Record<string, number>[] = (() => {
+  const out: Record<string, number>[] = [{}];
+  const tags = ["auto", "fire", "ice", "lightning", "arcane", "healing", "dodge", "survival", "magic"];
+  let x = 7;
+  const rnd = () => (x = (x * 1103515245 + 12345) % 2147483648) % 10;
+  for (let i = 0; i < 80; i++) {
+    const t: Record<string, number> = {};
+    for (const k of tags) if (rnd() < 5) t[k] = rnd();
+    out.push(t);
+  }
+  out.push({ auto: 3, magic: 3 }, { auto: 4, magic: 3, fire: 4 }, { auto: 3, magic: 4, fire: 5 }, { fire: 3, ice: 3 });
+  return out;
+})();
+const BUILD_LIFE = `=(function()
+  local B = require("src.build.build_system")
+  local out = {}
+  for i, t in ipairs({${BUILD_CASES.map((c) => `{${Object.entries(c).map(([k, v]) => `${k}=${v}`).join(",")}}`).join(",")}}) do
+    local run = { tags = t }
+    local syn = {}
+    for _, s in ipairs(require("src.data.synergies").synergies) do if B.meets(run, s.requires) then syn[#syn + 1] = s.id end end
+    out[i] = { identity = B.identity(run), synergies = syn }
+  end
+  return out
+end)()`;
 const SHOP_LIFE = `=(function()
   local S = require("src.shop.shop_system")
   require("src.relics.relic_system").draft = function() return {} end
@@ -1472,5 +1498,27 @@ describe.skipIf(!dr)("paridade das sinergias com o Dungeon Reign (M12-06, X3)", 
     expect([...BUILD_PATHS]).toEqual(SY.PATHS);
     expect(PATH_NAMES).toEqual(SY.PATH_NAMES);
     expect(BUILD_EVOLUTION_THRESHOLD).toBe(SY.BUILD_EVOLUTION_THRESHOLD);
+  });
+});
+
+describe.skipIf(!dr)("paridade das evoluções de build e da identidade (M12-09, X4)", () => {
+  const SY: Lua = dr?.["src.data.synergies"];
+
+  it("as 6 evoluções de build de synergies.lua, com caminho, efeitos e texto", () => {
+    expect(BUILD_EVOLUTIONS.map((b) => ({ id: b.id, name: b.name, path: b.path, effects: b.effects, text: b.text })))
+      .toEqual(SY.buildEvolutions.map((b: Lua) => ({ id: b.id, name: b.name, path: b.path, effects: b.effects, text: b.text })));
+  });
+
+  it("identidades e o caminho de cada uma", () => {
+    expect(IDENTITIES).toEqual(SY.identities);
+    expect(IDENTITY_BY_PATH).toEqual(SY.IDENTITY_BY_PATH);
+  });
+
+  it("identidade e sinergias ativas iguais às de build_system.lua em cada caso de tags", () => {
+    const lua: Lua[] = dr![BUILD_LIFE];
+    BUILD_CASES.forEach((t, i) => {
+      expect(buildIdentity(t), JSON.stringify(t)).toBe(lua[i].identity);
+      expect(synergiesFor(t), JSON.stringify(t)).toEqual(Array.isArray(lua[i].synergies) ? lua[i].synergies : []);
+    });
   });
 });

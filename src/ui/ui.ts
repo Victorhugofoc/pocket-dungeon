@@ -29,8 +29,8 @@ import { TUNING } from "../data/tuning";
 import { ZONES, ZONE_ORDER } from "../data/zones";
 import type { Game, RelicBan } from "../game/game";
 import { relicBansLeft } from "../core/relics";
-import { tagCount } from "../core/synergies";
-import { PATH_NAMES, SYNERGY_BY_ID } from "../data/synergies";
+import { buildIdentity, tagCount } from "../core/synergies";
+import { BUILD_EVOLUTION_BY_ID, BUILD_EVOLUTION_THRESHOLD, IDENTITIES, PATH_NAMES, SYNERGY_BY_ID } from "../data/synergies";
 import { buildPanelHtml, RARITY_COLOR, relicIconHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml } from "./heroselect";
 
@@ -965,6 +965,14 @@ export class Ui {
         const d = RELICS[rel.dataset.relic!];
         return this.showTip(`<div class="tip-head">${relicIconHtml(d.id, 40)}<div><h4 style="color:${RARITY_COLOR[d.rarity]}">${d.name}</h4><div class="meta">${RELIC_RARITY[d.rarity]} relic ${tagListHtml(d.tags)}</div></div></div>${relicLines(d)}`, ev);
       }
+      const evoEl = (ev.target as HTMLElement).closest<HTMLElement>("[data-evo]");
+      if (evoEl && BUILD_EVOLUTION_BY_ID[evoEl.dataset.evo!]) {
+        const b = BUILD_EVOLUTION_BY_ID[evoEl.dataset.evo!];
+        const on = run.buildEvolutions.includes(b.id);
+        const meta = on ? "Build evolution · lasts the whole run"
+          : `Build evolution · ${PATH_NAMES[b.path]} ${Math.min(tagCount(run.tags, b.path), BUILD_EVOLUTION_THRESHOLD)}/${BUILD_EVOLUTION_THRESHOLD}`;
+        return this.showTip(`<h4 style="color:#d9a6ff">${b.name}</h4><div class="meta">${meta}</div><p>${b.text}</p>`, ev);
+      }
       const syn = (ev.target as HTMLElement).closest<HTMLElement>("[data-syn]");
       if (syn) {
         const d = SYNERGY_BY_ID[syn.dataset.syn!];
@@ -999,7 +1007,7 @@ export class Ui {
         const evo = wanted[id] ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
         const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
         return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${relicLines(d)}${evo}${synergyCardHtml(this.game.run.tags, d.tags)}${b}</div>`;
+          <h3>${d.name}</h3>${relicLines(d)}${evo}${synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}</div>`;
       }).join("")}</div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
@@ -1088,7 +1096,7 @@ export class Ui {
         const t = L.tiers[i];
         const body = u.hideEffects ? "" : effectsFor(u, t).map((e) => upgradeLine(e, g.hero.style)).join("");
         return `<div class="card" data-up="${i}" style="--cc:${TIER_COLOR[t]}"><div class="meta">${TIER_LABEL[t]}</div>
-          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${synergyCardHtml(g.run.tags, u.tags)}</div>`;
+          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${synergyCardHtml(g.run.tags, u.tags, g.run.buildEvolutions)}</div>`;
       }).join("")}</div>
       <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost} gold${left > 0 ? "" : " (already rerolled)"}</button></div>`;
     panel.onclick = (ev) => {
@@ -1206,6 +1214,7 @@ export class Ui {
     const best = rec.best[`${run.heroId}/${run.difficultyId}`];
     const setup: RunSetup = { heroId: run.heroId, difficultyId: run.difficultyId, startingSpell: run.startingSpell };
     const s = run.statistics;
+    const identity = buildIdentity(run.tags);
     const n = (v: number) => Math.round(v).toLocaleString("en-US");
     const diff = DIFFICULTIES[run.difficultyId].name;
     const sub = kind === "death"
@@ -1217,6 +1226,7 @@ export class Ui {
       <div class="results-cols">
         <div>
           <div class="kv"><span>Hero</span><b>${g.hero.name} · ${diff}</b></div>
+          ${identity !== "UNDEFINED" ? `<div class="kv"><span>Build</span><b style="color:var(--gold)" title="${IDENTITIES[identity]}">${identity}</b></div>` : ""}
           <div class="kv"><span>Wave / level</span><b>${run.wave} / ${run.level}</b></div>
           <div class="kv"><span>Kills</span><b>${n(s.kills)}</b></div>
           <div class="kv"><span>Damage dealt</span><b>${n(s.damage)}</b></div>
@@ -1228,7 +1238,7 @@ export class Ui {
         </div>
         <div>
           <div class="section">Relics (${run.relics.length})</div>
-          <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic" style="border-color:${hex(RELICS[id].color)}">${RELICS[id].name}</div>`).join("") : `<p class="note">No relics this run.</p>`}</div>
+          <div class="relics">${run.relics.length ? run.relics.map((id) => `<div class="relic with-icon" style="border-color:${RARITY_COLOR[RELICS[id].rarity]}">${relicIconHtml(id, 24)}${RELICS[id].name}</div>`).join("") : `<p class="note">No relics this run.</p>`}</div>
           <div class="section">Seed</div><p><b style="letter-spacing:2px">${run.seedCode}</b></p>
           <div class="section">Score</div>
           <p style="color:${isBest ? "var(--gold)" : "inherit"}">${isBest ? `New record! (${g.hero.name} · ${diff})` : `Record (${g.hero.name} · ${diff}): wave ${best.wave}, ${n(best.kills)} kills`}</p>
@@ -1350,7 +1360,7 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     body = relicLines(d);
     const evo = wantedRelics(g.run)[o.relic!];
     if (evo) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
-    if (!o.bought) body += synergyCardHtml(g.run.tags, d.tags);
+    if (!o.bought) body += synergyCardHtml(g.run.tags, d.tags, g.run.buildEvolutions);
     const left = relicBansLeft(g.run);
     if (!o.bought) body += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
     color = RARITY_COLOR[d.rarity];

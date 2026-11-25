@@ -2,6 +2,7 @@
 // A partida tem uma seed; cada finalidade sorteia no seu fluxo (RUN_STREAMS), então um sorteio a mais em um
 // não muda os outros. O checkpoint é a partida inteira mais o estado dos fluxos, gravado antes de cada onda;
 // continuar refaz a partida dali e recomeça aquela onda.
+import { buildIdentity } from "./synergies";
 import { Rng, hashStr } from "./rng";
 import { DIFFICULTIES, RUN_START, type DifficultyId } from "../data/run";
 import { HEROES } from "../data/heroes";
@@ -139,6 +140,8 @@ export interface RunState {
   /** M12-06: sinergias ativas e as que já valeram (build_system.lua `activeSynergies`, `synergiesEver`) */
   activeSynergies: string[];
   synergiesEver: string[];
+  /** M12-09: evoluções de build alcançadas (build_system.lua `buildEvolutions`) */
+  buildEvolutions: string[];
   /** telas de nível seguidas sem épica de comportamento (M21-07; a chance sobe com ela) */
   epicPity: number;
   /** sala ou maldição da carta do mapa, valendo para a onda atual (rooms.ts); null = sem sala */
@@ -220,6 +223,7 @@ export function newRun(opts: NewRunOptions): RunState {
     tags: {},
     activeSynergies: [],
     synergiesEver: [],
+    buildEvolutions: [],
     epicPity: 0,
     room: null,
     curseWavesLeft: 0,
@@ -281,6 +285,7 @@ export function continueRun(cp: Checkpoint): { run: RunState; rng: RunRng; wave:
   // checkpoints de antes do M12-06
   run.activeSynergies ??= [];
   run.synergiesEver ??= [];
+  run.buildEvolutions ??= [];
   run.epicPity ??= 0;
   // checkpoints de antes do M20-05
   run.room ??= null;
@@ -346,6 +351,8 @@ export interface RunSummary {
   endless: boolean;
   seedCode: string;
   killedBy: string | null;
+  /** M12-09: título da build na tela de resultado (records.lua `identity`, D-307 AC-2) */
+  identity?: string;
 }
 
 export interface RecordEntry extends RunSummary {
@@ -381,7 +388,7 @@ export function summarize(run: RunState): RunSummary {
     heroId: run.heroId, difficultyId: run.difficultyId, wave: run.wave, kills: run.statistics.kills,
     damage: run.statistics.damage, level: run.level, relics: run.relics.length,
     elapsed: Math.floor(run.statistics.elapsed), victory: run.victory, endless: run.endless, seedCode: run.seedCode,
-    killedBy: run.killedBy,
+    killedBy: run.killedBy, identity: buildIdentity(run.tags),
   };
 }
 

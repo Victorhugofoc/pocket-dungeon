@@ -249,6 +249,11 @@ export class AchievementTracker {
     if (n >= FULL_TABLE_SYNERGIES) this.unlock("full_table");
   }
 
+  /** achievements.lua `build_evolution`: Identity com a primeira evolução de build. */
+  buildEvolution(): void {
+    this.unlock("identity");
+  }
+
   relicFound(id: string): void {
     if (markSeen(this.state, "relic", id)) this.check();
   }
