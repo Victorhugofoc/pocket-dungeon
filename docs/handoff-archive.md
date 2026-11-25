@@ -27,3 +27,5 @@ Parágrafos antigos do "Agora" do `HANDOFF.md`, guardados como estavam em 2026-1
 
 
 - **`M13-04` fechada em 2026-11-25** (códex: `core/codex.ts`, `ui/codex-view.ts`, palco 3D na ficha via `HeroStage` com `StageKind`; botão no título e na pausa). Falta o usuário ver. Teste rápido: botão Codex no título; matar um inimigo novo (`e = __game.spawnEnemy("hexer", 6, __game.player.x + 4, __game.player.z, {aggro: true}); __game.damageEnemy(e, 9999)`) dá o aviso "Codex: Hexer".
+
+- **`M13-02` fechada em 2026-11-25** (Depths 1 a 5, mutações, Marcas, as 9 vantagens; `data/depths.ts`, `core/depths.ts`, `ui/depths-view.ts`). Falta jogar, como `M11-08` e `M13-03` (eventos e pactos).
