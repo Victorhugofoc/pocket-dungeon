@@ -9,6 +9,8 @@ export const TUNING = {
    */
   /** M16-08: troca de zona coberta (s): escurece, segura o letreiro enquanto a zona monta (shaders em paralelo, até o teto), clareia */
   zoneFade: { out: 0.35, card: 0.8, cap: 1.5, in: 0.45 },
+  /** M14-09: telas de carta (ms): trava de clique e tecla ao abrir, e o pulso da carta escolhida antes de fechar */
+  ui: { cardArmMs: 400, cardPickMs: 260 },
   frame: { gpuHigh: 12.5, gpuLow: 8.5, minScale: 0.6, step: 0.08, every: 0.75, maxRatio: 1.5, settle: 10 },
   /** SÓ PARA TESTE (2026-11-16): tudo desbloqueado (Unlocks.ALL do original), para seguir testando os 9 heróis. Desligar ao balancear. */
   unlockAll: true,

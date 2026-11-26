@@ -15,6 +15,7 @@ import { RELICS, type RelicDef } from "../data/relics";
 import { EVOLUTIONS, SPELL_TEXT, SPELLS, type SpellId } from "../data/spells";
 import { UPGRADE_BY_ID, type UpgradeDef } from "../data/upgrades";
 import { TUNING } from "../data/tuning";
+import { RARITY_COLOR } from "./theme";
 import { evolutionIconUrl, iconHtml, relicIconUrl, spellIconUrl, upgradeIconUrl, uiIconUrl } from "./icons";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -36,7 +37,6 @@ export interface CodexView {
 }
 
 const MEDALS = ["Easy", "Normal", "Hard"];
-const RARITY_COLOR: Record<string, string> = { uncommon: "#7ee08a", rare: "#6fb4ff", epic: "#c07cff", boss: "#ff7a6a", evolved: "#ffc83d" };
 
 /** codex.lua `Screen.locked`: herói, relíquia, pacto ou evento ainda trancado por conquista. */
 function lockedKind(s: AchievementState, tab: CodexTab, id: string): { kind: UnlockKind; id: string } | null {

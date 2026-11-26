@@ -38,8 +38,9 @@ import { challengeHudHtml, challengeHudKey, challengePanelHtml, daringOpen } fro
 import { eventCardsHtml, eventHudHtml, eventHudKey, eventPanelHtml, gateExtraHtml, omenGateHtml, pactConfirmHtml } from "./events-view";
 import { eventAvailable } from "../core/events";
 import { depthsHudHtml, depthsHudKey, depthsPanelHtml, depthsPerksHtml, depthsResultHtml } from "./depths-view";
+import { TIER_COLOR } from "./theme";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
-import { attackLine, barsHtml, masteryHtml } from "./heroselect";
+import { appearanceHtml, attackLine, barsHtml, HERO_TABS, masteryHtml, portraitBadgesHtml, type HeroTab } from "./heroselect";
 import { allowedLoadout, loadoutHero } from "../core/mastery";
 import { ALT_AUTOS } from "../data/mastery";
 import { codexDetailHtml, codexList, codexScreenHtml, type CodexFormat, type CodexView } from "./codex-view";
@@ -65,7 +66,6 @@ const RELIC_STATUS: Record<string, { label: string; color: string; tip: string }
 };
 const RELIC_RARITY: Record<string, string> = { uncommon: "Uncommon", rare: "Rare", epic: "Epic", boss: "Boss", evolved: "Evolved" };
 const TIER_LABEL: Record<UpgradeTier, string> = { common: "Common", rare: "Rare", epic: "Epic" };
-const TIER_COLOR: Record<UpgradeTier, string> = { common: "#c9c4b8", rare: "#4fa3ff", epic: "#b36bff" };
 /** Nome dos atributos de lá que as melhorias oferecidas usam (o original diz "Auto Damage"; aqui vale para todo o dano). */
 const UPGRADE_LABEL: Record<string, string> = {
   damageFlat: "Damage", attackSpeedPct: "Attack Speed", autoDamagePct: "Damage", critChance: "Crit Chance",
@@ -95,8 +95,20 @@ const INVERTED: Record<string, true> = { spellCooldownPct: true, cdrPct: true, s
 
 /** format.lua `upgradeName`: no estilo do herói algumas cartas têm outro nome (Ricochet, Big Iron, Frost Fan...). */
 function upgradeName(u: UpgradeDef, style: AutoStyle): string {
-  return STYLE_NAMES[style]?.[u.id] ?? u.name;
+  return displayName(STYLE_NAMES[style]?.[u.id] ?? u.name);
 }
+
+/** M14-09: nome em caixa alta (como no original) vira "Static Charge" na tela; nome já misto fica como está. */
+function displayName(name: string): string {
+  if (/\p{Ll}/u.test(name)) return name;
+  return name.toLowerCase().replace(/(^|[\s\-(/])(\p{L})/gu, (_m, p: string, c: string) => p + c.toUpperCase());
+}
+
+/** M14-09: telas de escolha por carta (1/2/3, R troca, Esc pula; trava de 0,4 s ao abrir). */
+const CARD_KINDS = ["levelup", "relic", "evolution", "relic-evolution"];
+const cardKey = (i: number) => `<i class="key">${i + 1}</i>`;
+/** o rodapé da carta (sinergia, receita, pilha), separado por um fio; some se vazio */
+const cardFoot = (html: string) => (html.trim() ? `<div class="card-foot">${html}</div>` : "");
 
 function upgradeLine(e: UpgradeEffect, style: AutoStyle = "normal"): string {
   const own = STYLE_TEXT[style]?.[e.stat];
@@ -197,6 +209,9 @@ export class Ui {
   private selectedDifficulty: DifficultyId = "normal";
   private selectedSpell = "";
   private seedText = "";
+  /** M14-09: aba aberta na ficha do herói e a seed à mostra */
+  private heroTab: HeroTab = "overview";
+  private seedOpen = false;
   /** o teclado da tela de seleção (setas, 1 a 4, Enter, Esc), enquanto ela está aberta */
   private titleKeys: ((code: string) => void) | null = null;
   /** M13-04: o teclado do códex enquanto ele está aberto */
@@ -254,7 +269,24 @@ export class Ui {
     this.overlayKind = kind;
     this.game.paused = true;
     this.game.input.reset();
+    // M14-09 (C): a escolha por carta abre no meio da luta; clique e tecla esperam as cartas entrarem
+    if (CARD_KINDS.includes(kind)) {
+      ov.classList.add("arming");
+      window.setTimeout(() => ov.classList.remove("arming"), TUNING.ui.cardArmMs);
+    }
     return panel;
+  }
+
+  /** M14-09 (F): a carta escolhida pulsa e as outras apagam; depois o painel fecha e a escolha vale. */
+  private pickCard(card: HTMLElement | null, then: () => void): void {
+    const ov = this.overlay;
+    if (!ov || ov.classList.contains("arming")) return;
+    ov.classList.add("arming", "picking");
+    card?.classList.add("picked");
+    window.setTimeout(() => {
+      if (this.overlay === ov) this.close();
+      then();
+    }, TUNING.ui.cardPickMs);
   }
 
   private close(): void {
@@ -295,6 +327,18 @@ export class Ui {
     if (this.overlayKind === "pact") {
       if (k === "Escape") this.declineMapOffer();
       else if (k === "Enter") this.acceptPact();
+      return;
+    }
+    // M14-09 (A): 1/2/3 escolhem a carta, R troca as ofertas, Esc pula a evolução
+    if (CARD_KINDS.includes(this.overlayKind) && this.overlay) {
+      const ov = this.overlay;
+      if (ov.classList.contains("arming")) return;
+      const num = /^(?:Digit|Numpad)([1-9])$/.exec(k);
+      if (num) ov.querySelectorAll<HTMLElement>(".cards > .card")[Number(num[1]) - 1]?.click();
+      else if (k === "KeyR") {
+        const b = ov.querySelector<HTMLButtonElement>("[data-act=reroll], [data-act=relic-reroll]");
+        if (b && !b.disabled) b.click();
+      } else if (k === "Escape") ov.querySelector<HTMLButtonElement>("[data-act=skip]")?.click();
       return;
     }
     const locked = ["title", "relic", "levelup", "evolution", "relic-evolution", "map", "death", "victory", "results"].includes(this.overlayKind);
@@ -393,17 +437,25 @@ export class Ui {
         const tip = lk ? `Locked · ${lockText(id)}` : `${d.name} · ${d.title}`;
         return `<button class="hs-portrait ${id === h.id ? "sel" : ""} ${lk ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)};--i:${i}" title="${tip}">
           <span class="face"><img src="${lk ? faces[id].locked : faces[id].face}" alt="">${lk ? `<i class="lock">🔒</i>` : ""}</span><span class="nm">${lk ? "???" : d.name}</span>
+          ${lk ? `<small class="hs-why">${lockText(id)}</small>` : portraitBadgesHtml(ach.medals[id] ?? 0, ach.mastery[id] ?? 0)}
           ${isNew(ach, "hero", id) ? `<em class="new">NEW</em>` : ""}</button>`;
       }).join("");
-      const info = locked ? `<p class="note">This hero is still locked.</p>` : `
-        <div class="hs-role">${h.identity}</div>
-        ${barsHtml(h.id)}
-        <div class="section">Attack</div><p class="hs-line">${hk !== h && lo.auto ? `<b>${ALT_AUTOS[h.id].name}</b> · ` : ""}${attackLine(hk)}</p>
-        ${heroKit(hk, hk.technique.cooldown)}
-        ${masteryHtml(h.id, ach.mastery[h.id] ?? 0, lo, TUNING.unlockAll)}
-        ${best.length || medal ? `<div class="section">Records</div>
-        <ul class="hs-rec">${best.join("")}${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}${
-          ach.depths[h.id] && (ach.depths[h.id].best || ach.depths[h.id].marks) ? `<li class="medal">Depths ${ach.depths[h.id].best || "—"} won · ${ach.depths[h.id].marks} Marks</li>` : ""}</ul>` : ""}`;
+      // M14-09: a ficha em abas (Q e E trocam); a aba fica a mesma ao trocar de herói
+      const depthsRec = ach.depths[h.id] && (ach.depths[h.id].best || ach.depths[h.id].marks)
+        ? `<li class="medal">Depths ${ach.depths[h.id].best || "—"} won · ${ach.depths[h.id].marks} Marks</li>` : "";
+      const tabBody: Record<HeroTab, string> = {
+        overview: `<div class="hs-role">${h.identity}</div>${barsHtml(h.id)}
+          <div class="section">Attack</div><p class="hs-line">${hk !== h && lo.auto ? `<b>${ALT_AUTOS[h.id].name}</b> · ` : ""}${attackLine(hk)}</p>
+          <div class="section">Technique</div><p class="hs-line"><b class="kit-name">${hk.technique.name}</b>${hk.technique.text}</p>`,
+        kit: heroKit(hk, hk.technique.cooldown),
+        mastery: masteryHtml(h.id, ach.mastery[h.id] ?? 0, lo, TUNING.unlockAll),
+        records: best.length || medal || depthsRec
+          ? `<ul class="hs-rec">${best.join("")}${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}${depthsRec}</ul>`
+          : `<p class="note">No runs with ${h.name} yet.</p>`,
+      };
+      const tabs = `<nav class="hs-tabs"><i class="key">Q</i>${HERO_TABS.map((t) =>
+        `<button class="${t.id === this.heroTab ? "sel" : ""}" data-tab="${t.id}">${t.name}</button>`).join("")}<i class="key">E</i></nav>`;
+      const info = locked ? `<p class="note">This hero is still locked.</p>` : `${tabs}<div class="hs-tab">${tabBody[this.heroTab]}</div>`;
       // M13-02 (run_setup.lua, D-222): as Depths abrem por herói depois de vencer na Hard, um nível por vez
       const dOpen = locked ? 0 : unlockedDepths(ach.depths, h.id, (ach.medals[h.id] ?? 0) >= 3);
       if (depthsLevel(this.selectedDifficulty) > dOpen) this.selectedDifficulty = dOpen > 0 ? `depths${dOpen}` as DifficultyId : "hard";
@@ -422,7 +474,12 @@ export class Ui {
       // M13-02 parte 2 (depths_setup.lua): as vantagens ficam ao lado, com as Marcas do herói
       const perks = dCur ? depthsPerksHtml(ach.depths, h.id, confirmPerk) : "";
       const spells = h.startingSpells.map((id, i) => `<button class="${id === this.selectedSpell ? "sel" : ""}" data-spell="${id}"
-        title="${SPELL_TEXT[id]}">${iconHtml(spellIconUrl(id), 28)}<b class="sn">${spellName(id)}</b><kbd>${i + 1}</kbd></button>`).join("");
+        title="${SPELL_TEXT[id]}">${iconHtml(spellIconUrl(id), 36)}<b class="sn">${spellName(id)}</b><i class="key">${i + 1}</i></button>`).join("");
+      // M14-09: uma linha do que a escolha muda, embaixo de cada grupo
+      const dd = DIFFICULTIES[this.selectedDifficulty];
+      const diffDesc = dCur ? "" : `<p class="hs-desc">${DIFFICULTY_TEXT[this.selectedDifficulty]} <span>Enemy HP ×${dd.enemyHp.toFixed(2)} · damage ×${dd.enemyDamage.toFixed(2)} · rewards ×${dd.reward.toFixed(2)}</span></p>`;
+      const spellDesc = `<p class="hs-desc">${SPELL_TEXT[this.selectedSpell as SpellId] ?? ""}</p>`;
+      const seedShown = this.seedOpen || this.seedText !== "" || seedErr !== "";
       panel.innerHTML = `
         <header class="hs-top">
           <div><h1>DUNGEON REIGN</h1><p class="tag">${records}</p></div>
@@ -437,27 +494,26 @@ export class Ui {
           <div class="hs-stage ${locked ? "locked" : ""}" style="--hc:${hex(h.color)}">
             <div class="hs-name"><h2>${locked ? "Locked" : h.name}</h2><p>${locked ? "" : h.title}</p></div>
             <div class="hs-floor" data-r="stage"></div>
-            ${locked ? `<p class="hs-lock">Unlock: ${lockText(h.id)}</p>` : `<div class="hs-look"><div class="section">Appearance</div>
-              <button class="sel" title="The hero's own look">Default</button>
-              <button disabled title="Hero skins: coming later">Skins · soon</button>
-              <button disabled title="Founder wings and cloaks: coming later">Founder · soon</button></div>`}
+            ${locked ? `<p class="hs-lock">Unlock: ${lockText(h.id)}</p>` : appearanceHtml(faces[h.id].face, medal, ach.depths[h.id]?.best ?? 0)}
           </div>
           <div class="hs-info" style="--hc:${hex(h.color)}">${perks}${info}</div>
         </div>
         <footer class="hs-setup ${locked ? "off" : ""}" style="--hc:${hex(h.color)}">
-          <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div>${depthsRow}</div>
+          <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div>${depthsRow}${diffDesc}</div>
           <div class="hs-group"><div class="section">Starting spell <small>· others come from the shop and upgrades</small></div>
-            <div class="hs-spells">${spells}</div></div>
-          <div class="hs-group"><div class="section">Seed</div>
+            <div class="hs-spells">${spells}</div>${spellDesc}</div>
+          <div class="hs-group hs-seed"><div class="section">Seed</div>${seedShown ? `
             <input class="seed" data-r="seed" maxlength="24" placeholder="Random" value="${this.seedText}" spellcheck="false"
               title="Same seed = same map, rooms, relics and bosses. Paste a run's 7-letter code or type any word. Empty = random.">
-            ${seedErr ? `<p class="bad">${seedErr}</p>` : ""}</div>
+            ${seedErr ? `<p class="bad">${seedErr}</p>` : ""}` : `<button data-act="seed" title="Same seed = same map, rooms, relics and bosses">Set a seed</button>`}</div>
           <div class="hs-go"><button class="primary ${confirming ? "danger" : ""}" data-act="go" ${locked ? "disabled" : ""}>${
             confirming ? "Ends your saved run · click to confirm" : "Start the run"}</button></div>
         </footer>
-        <p class="hs-keys">Arrows: hero · drag: turn · 1-4: starting spell · Enter: start · Esc: cancel</p>`;
+        <p class="hs-keys"><i class="key">←→↑↓</i> hero <i class="key">Q</i><i class="key">E</i> tabs <i class="key">1-4</i> starting spell <i class="key">Enter</i> start · drag the hero to turn</p>`;
       this.game.stage.show(panel.querySelector<HTMLElement>("[data-r=stage]")!, h.id, locked);
-      const input = panel.querySelector<HTMLInputElement>("[data-r=seed]")!;
+      const input = panel.querySelector<HTMLInputElement>("[data-r=seed]");
+      if (!input) return;
+      if (this.seedOpen && !this.seedText) input.focus();
       input.oninput = () => (this.seedText = input.value.toUpperCase());
       input.onkeydown = (e) => {
         e.stopPropagation();
@@ -534,13 +590,21 @@ export class Ui {
         this.game.saveAchievements();
         return render();
       }
+      const tab = t.closest<HTMLElement>("[data-tab]")?.dataset.tab as HeroTab | undefined;
+      if (tab) {
+        this.heroTab = tab;
+        return render();
+      }
       const spell = t.closest<HTMLElement>("[data-spell]")?.dataset.spell;
       if (spell) {
         this.selectedSpell = spell;
         return render();
       }
       const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
-      if (act === "runlog") {
+      if (act === "seed") {
+        this.seedOpen = true;
+        render();
+      } else if (act === "runlog") {
         const n = downloadRunLog(this.storage);
         this.toast(`Run log exported (${n} runs)`, "#9be4ff");
       } else if (act === "continue" && save) {
@@ -558,6 +622,11 @@ export class Ui {
       const n = HERO_ORDER.length;
       const step: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 };
       if (step[k] !== undefined) return select(HERO_ORDER[(i + step[k] + n) % n]);
+      if ((k === "KeyQ" || k === "KeyE") && open(this.selectedHero)) {
+        const t = HERO_TABS.findIndex((x) => x.id === this.heroTab);
+        this.heroTab = HERO_TABS[(t + (k === "KeyE" ? 1 : HERO_TABS.length - 1)) % HERO_TABS.length].id;
+        return render();
+      }
       const num = /^(?:Digit|Numpad)([1-4])$/.exec(k);
       if (num) {
         const id = HEROES[this.selectedHero].startingSpells[Number(num[1]) - 1];
@@ -818,7 +887,7 @@ export class Ui {
     const banked = g.run.lootBank.length;
     r.bank.classList.toggle("hidden", banked <= 0);
     if (banked > 0) r.bank.textContent = `2x ×${banked}`;
-    r.boss.style.top = "64px";
+    r.boss.style.top = "4.6rem";
     const cards = g.mapCards;
     const hint = g.nearPortal ? "E — go on to the next zone"
       : g.phase === "walk" && g.playerAlive && g.detourHint ? g.detourHint
@@ -1136,7 +1205,7 @@ export class Ui {
   private showTip(html: string, ev: MouseEvent): void {
     this.tip.innerHTML = html;
     this.tip.classList.remove("hidden");
-    const w = 262;
+    const w = this.tip.offsetWidth + 12;
     const hgt = this.tip.offsetHeight;
     this.tip.style.left = `${Math.min(window.innerWidth - w, ev.clientX + 16)}px`;
     this.tip.style.top = `${Math.max(4, Math.min(window.innerHeight - hgt - 4, ev.clientY + 12))}px`;
@@ -1149,7 +1218,7 @@ export class Ui {
     const o = g.eventOffer;
     if (!o) return;
     const panel = this.open("event", "event");
-    panel.style.width = "min(860px, 96vw)";
+    panel.style.width = "min(61.43rem, 96vw)";
     panel.innerHTML = `<h2>Event</h2><p class="sub">Choose 1 of 3 (keys 1–3). "This wave" lasts for the wave this gate leads to.</p>
       <div class="cards">${eventCardsHtml(g.run, o.ids)}</div>
       <div class="row end"><button data-act="back">Back to the map (Esc)</button></div>`;
@@ -1178,7 +1247,7 @@ export class Ui {
     const o = g.pactOffer;
     if (!o) return;
     const panel = this.open("pact", "pact");
-    panel.style.width = "min(760px, 96vw)";
+    panel.style.width = "min(54.29rem, 96vw)";
     panel.innerHTML = `<h2>Risk Pact</h2><p class="sub">A pact is a commitment: it stays for the rest of the run.</p>
       ${pactConfirmHtml(g.run, o.id)}
       <div class="row end"><button data-act="back">Back to the map (Esc)</button><button class="primary" data-act="accept">Accept pact (Enter)</button></div>`;
@@ -1202,7 +1271,7 @@ export class Ui {
   // ---------------------------------------------------------------- relíquia / pausa / morte
   private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!", ban?: RelicBan, reroll?: RelicReroll): void {
     const panel = this.overlayKind === "relic" ? (this.overlay!.firstChild as HTMLElement) : this.open("relic", "relic");
-    panel.style.width = "min(820px, 96vw)";
+    panel.style.width = "min(58.57rem, 96vw)";
     // D-197: a relíquia que evolui uma spell equipada (com a spell no nível 5)
     const wanted = wantedRelics(this.game.run);
     // D-148: banir tira a relíquia da partida e põe outra da mesma fonte no lugar (2 por partida)
@@ -1214,10 +1283,10 @@ export class Ui {
         const has = this.game.run.relics.includes(id);
         const evo = wanted[id] && !has ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
         const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
-        return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${relicLines(d)}${relicStackHtml(id, this.game.run.relics)}${evo}${has ? "" : relicRecipeHtml(id, this.game.run.relics) + synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}</div>`;
+        return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${cardKey(i)}<div class="meta rib">${RELIC_RARITY[d.rarity]} relic</div>${relicIconHtml(id, 64, "ricon big")}
+          <h3>${d.name}</h3>${relicLines(d)}${cardFoot(`${relicStackHtml(id, this.game.run.relics)}${evo}${has ? "" : relicRecipeHtml(id, this.game.run.relics) + synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}`)}</div>`;
       }).join("")}</div>${reroll ? `<div class="row end"><button data-act="relic-reroll" ${reroll.can() ? "" : "disabled"}>${
-        reroll.can() ? "Reroll relics · Relic Reroll, once per zone" : "Relic Reroll used in this zone"}</button></div>` : ""}`;
+        reroll.can() ? "Reroll relics · Relic Reroll, once per zone" : "Relic Reroll used in this zone"}<i class="key">R</i></button></div>` : ""}`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=relic-reroll]")) {
@@ -1239,8 +1308,7 @@ export class Ui {
       }
       const id = t.closest<HTMLElement>("[data-relic]")?.dataset.relic;
       if (!id) return;
-      this.close();
-      pick(id);
+      this.pickCard(t.closest<HTMLElement>("[data-relic]"), () => pick(id));
     };
   }
 
@@ -1250,7 +1318,7 @@ export class Ui {
     const v = g.shopVisit;
     if (!v) return;
     const panel = this.overlayKind === "shop" ? (this.overlay!.firstChild as HTMLElement) : this.open("shop", "shop");
-    panel.style.width = "min(980px, 96vw)";
+    panel.style.width = "min(70.0rem, 96vw)";
     const run = g.run;
     const title = v.auto === "preboss" ? "Pre-boss shop: get ready for the next wave"
       : v.auto === "champion" ? "Champion shop: opens before the map" : "Magic Shop";
@@ -1299,7 +1367,7 @@ export class Ui {
     const L = g.levelUp;
     if (!L) return;
     const panel = this.open("levelup", "levelup");
-    panel.style.width = "min(820px, 96vw)";
+    panel.style.width = "min(58.57rem, 96vw)";
     const cost = g.levelRerollCost();
     const left = rerollsLeft(L.rerolls);
     const can = left > 0 && g.run.gold >= cost;
@@ -1309,10 +1377,10 @@ export class Ui {
         const u = UPGRADE_BY_ID[id];
         const t = L.tiers[i];
         const body = u.hideEffects ? "" : effectsFor(u, t).map((e) => upgradeLine(e, g.hero.style)).join("");
-        return `<div class="card icon-card" data-up="${i}" style="--cc:${TIER_COLOR[t]}">${iconHtml(upgradeIconUrl(u.id), 56, "ricon big")}<div class="meta">${TIER_LABEL[t]}</div>
-          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${synergyCardHtml(g.run.tags, u.tags, g.run.buildEvolutions)}</div>`;
+        return `<div class="card icon-card" data-up="${i}" style="--cc:${TIER_COLOR[t]}">${cardKey(i)}<div class="meta rib">${TIER_LABEL[t]}</div>${iconHtml(upgradeIconUrl(u.id), 56, "ricon big")}
+          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${cardFoot(synergyCardHtml(g.run.tags, u.tags, g.run.buildEvolutions))}</div>`;
       }).join("")}</div>
-      <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost ? `${cost} gold` : "free"}${left > 0 ? "" : " (already rerolled)"}</button></div>`;
+      <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost ? `${cost} gold` : "free"}${left > 0 ? "" : " (already rerolled)"}<i class="key">R</i></button></div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=reroll]")) {
@@ -1321,8 +1389,7 @@ export class Ui {
       }
       const i = t.closest<HTMLElement>("[data-up]")?.dataset.up;
       if (i === undefined) return;
-      this.close();
-      g.chooseUpgrade(Number(i));
+      this.pickCard(t.closest<HTMLElement>("[data-up]"), () => g.chooseUpgrade(Number(i)));
     };
   }
 
@@ -1332,16 +1399,16 @@ export class Ui {
     const offer = g.evolutionOffer;
     if (!offer) return;
     const panel = this.open("evolution", "evolution");
-    panel.style.width = "min(820px, 96vw)";
+    panel.style.width = "min(58.57rem, 96vw)";
     panel.innerHTML = `<h2>Spell evolution</h2><p class="sub">Evolve a spell.</p>
       <div class="cards">${offer.map((o, i) => {
         const evo = EVOLUTIONS[o.evoId];
         const recipe = evo.requires.map((r) => RELICS[r]?.name ?? prettyId(r)).join(" or ");
-        return `<div class="card icon-card" data-evo="${i}" style="--cc:#c77dff">${iconHtml(evolutionIconUrl(o.evoId), 56, "ricon big")}<div class="meta">${spellName(evo.spell)} (slot ${o.slotIndex + 1})</div>
+        return `<div class="card icon-card" data-evo="${i}" style="--cc:#c77dff">${cardKey(i)}<div class="meta rib">${spellName(evo.spell)} · slot ${o.slotIndex + 1}</div>${iconHtml(evolutionIconUrl(o.evoId), 56, "ricon big")}
           <h3>${evo.name}</h3><p>${evo.text}</p><p class="evo">${evoStatLine(evo)}</p>
-          <p class="note">Recipe: ${recipe}</p><p class="note">(relics are NOT consumed)</p></div>`;
+          ${cardFoot(`<p class="note">Recipe: ${recipe}</p><p class="note">(relics are NOT consumed)</p>`)}</div>`;
       }).join("")}</div>
-      <div class="row end"><button data-act="skip">Skip evolution</button></div>`;
+      <div class="row end"><button data-act="skip">Skip evolution<i class="key">Esc</i></button></div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=skip]")) {
@@ -1351,8 +1418,7 @@ export class Ui {
       }
       const i = t.closest<HTMLElement>("[data-evo]")?.dataset.evo;
       if (i === undefined) return;
-      this.close();
-      g.chooseEvolution(Number(i));
+      this.pickCard(t.closest<HTMLElement>("[data-evo]"), () => g.chooseEvolution(Number(i)));
     };
   }
 
@@ -1362,17 +1428,17 @@ export class Ui {
     const offer = g.relicEvoOffer;
     if (!offer) return;
     const panel = this.open("relic-evolution", "relic-evolution");
-    panel.style.width = "min(820px, 96vw)";
+    panel.style.width = "min(58.57rem, 96vw)";
     panel.innerHTML = `<h2>Relic evolution</h2><p class="sub">Two relics become one. The components are consumed.</p>
       <div class="cards relics">${offer.map((id, i) => {
         const d = RELICS[id];
         const parts = d.requires!.map((c) => RELICS[c].name).join(" + ");
         const tier = d.exclusiveGroup ? `Tier 3 · ${relicGroupName(d.exclusiveGroup)}` : `Tier ${d.tier}`;
         const rivals = relicRecipeHtml(id, g.run.relics).replace(/<div class="recipe">Evolved from[^<]*<\/div>/, "");
-        return `<div class="card relic-card" data-revo="${i}" style="--cc:${RARITY_COLOR.evolved}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${tier} evolution</div>
-          <h3>${d.name}</h3>${relicLines(d)}<p class="note">Consumes: ${parts}</p>${rivals}${relicEvolutionChangeHtml(g.run.tags, id, g.run.buildEvolutions)}</div>`;
+        return `<div class="card relic-card" data-revo="${i}" style="--cc:${RARITY_COLOR.evolved}">${cardKey(i)}<div class="meta rib">${tier} evolution</div>${relicIconHtml(id, 64, "ricon big")}
+          <h3>${d.name}</h3>${relicLines(d)}${cardFoot(`<p class="note">Consumes: ${parts}</p>${rivals}${relicEvolutionChangeHtml(g.run.tags, id, g.run.buildEvolutions)}`)}</div>`;
       }).join("")}</div>
-      <div class="row end"><button data-act="skip">Skip evolution</button></div>`;
+      <div class="row end"><button data-act="skip">Skip evolution<i class="key">Esc</i></button></div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=skip]")) {
@@ -1382,8 +1448,7 @@ export class Ui {
       }
       const i = t.closest<HTMLElement>("[data-revo]")?.dataset.revo;
       if (i === undefined) return;
-      this.close();
-      g.chooseRelicEvolution(Number(i));
+      this.pickCard(t.closest<HTMLElement>("[data-revo]"), () => g.chooseRelicEvolution(Number(i)));
     };
   }
 
