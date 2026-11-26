@@ -209,6 +209,9 @@ export class Ui {
   private hpLast = 1;
   private hpHold = 0;
   private hpT = 0;
+  /** M14-09 (etapa 5): o ouro mostrado no canto da loja, que conta até o valor da partida */
+  private shopGoldShown = 0;
+  private shopGoldRaf = 0;
   private selectedHero: string = HERO_ORDER[0];
   private confirmNew = "";
   private selectedDifficulty: DifficultyId = "normal";
@@ -275,7 +278,7 @@ export class Ui {
     this.game.paused = true;
     this.game.input.reset();
     // M14-09 (C): a escolha por carta abre no meio da luta; clique e tecla esperam as cartas entrarem
-    if (CARD_KINDS.includes(kind)) {
+    if (CARD_KINDS.includes(kind) || kind === "shop") {
       ov.classList.add("arming");
       window.setTimeout(() => ov.classList.remove("arming"), TUNING.ui.cardArmMs);
     }
@@ -319,8 +322,15 @@ export class Ui {
     const k = e.code;
     // a loja: Esc sai, R troca as ofertas (shop.lua); o resto fica preso como nas outras escolhas
     if (this.overlayKind === "shop") {
-      if (k === "Escape") this.leaveShop();
-      else if (k === "KeyR") this.game.rerollShop();
+      if (k === "Escape") return this.leaveShop();
+      if (this.overlay?.classList.contains("arming")) return;
+      // M14-09 (etapa 5): 1..4 compram a oferta, R troca
+      const num = /^(?:Digit|Numpad)([1-9])$/.exec(k);
+      if (num && this.game.shopVisit?.offers[Number(num[1]) - 1]) this.buyShopOffer(Number(num[1]) - 1);
+      else if (k === "KeyR") {
+        const why = this.game.rerollShop();
+        if (why) this.shopRefused(why);
+      }
       return;
     }
     if (this.overlayKind === "event") {
@@ -1364,48 +1374,114 @@ export class Ui {
     };
   }
 
-  /** Magic Shop (shop.lua): 3 ofertas mais a relíquia, preço, motivo da oferta inválida, comprar, trocar, sair. */
+  /**
+   * Magic Shop (shop.lua): 3 ofertas mais a relíquia, preço, motivo da oferta inválida, comprar, trocar, sair.
+   * M14-09 (etapa 5): compra pelo botão de preço ou por 1..4; ao mudar (compra, troca, banimento) só a carta que mudou
+   * é redesenhada, e só a oferta nova entra animada; o ouro no canto conta até o valor novo.
+   */
   private showShop(): void {
     const g = this.game;
     const v = g.shopVisit;
     if (!v) return;
-    const panel = this.overlayKind === "shop" ? (this.overlay!.firstChild as HTMLElement) : this.open("shop", "shop");
-    panel.style.width = "min(70.0rem, 96vw)";
     const run = g.run;
-    const title = v.auto === "preboss" ? "Pre-boss shop: get ready for the next wave"
-      : v.auto === "champion" ? "Champion shop: opens before the map" : "Magic Shop";
     const reroll = rerollCost(v, run.freeRerolls);
-    panel.innerHTML = `<h2>Magic Shop <small>Lv ${v.level}</small></h2>
-      <p class="sub">${title} · <b class="gold">${run.gold} gold</b></p>
-      <div class="cards shop">${v.offers.map((o, i) => shopOfferHtml(g, o, i)).join("")}</div>
-      <div class="row end">
-        <button data-act="reroll" ${run.gold >= reroll ? "" : "disabled"}>Reroll (R) — ${reroll ? `${reroll} gold` : "free"}</button>
-        <button data-act="leave">Leave shop (Esc)</button>
-      </div>`;
-    panel.onclick = (ev) => {
-      const t = ev.target as HTMLElement;
-      if (t.closest("[data-act=leave]")) return this.leaveShop();
-      if (t.closest("[data-act=reroll]")) {
-        g.rerollShop();
-        return;
-      }
-      const bi = t.closest<HTMLElement>("[data-ban]")?.dataset.ban;
-      if (bi !== undefined) {
-        if (g.banShopRelic(Number(bi))) this.toast("Relic banned for the rest of the run", "#ffd34d");
-        return;
-      }
-      const i = t.closest<HTMLElement>("[data-offer]")?.dataset.offer;
-      if (i === undefined) return;
-      const reason = g.buyShop(Number(i));
-      if (reason) this.toast(reason, "#ff7a6a");
+    const fresh = this.overlayKind !== "shop";
+    const panel = fresh ? this.open("shop", "shop") : (this.overlay!.firstChild as HTMLElement);
+    if (fresh) {
+      panel.style.width = "min(70.0rem, 96vw)";
+      const title = v.auto === "preboss" ? "Pre-boss shop: get ready for the next wave"
+        : v.auto === "champion" ? "Champion shop: opens before the map" : "Spend gold on spells, items and relics";
+      panel.innerHTML = `<div class="shop-gold">${iconHtml(uiIconUrl("coin"), 22, "ricon")}<b>${run.gold}</b></div>
+        <h2>Magic Shop <small class="shop-lv" title="Shop level ${v.level}: rises every 5 waves. Higher levels raise the prices.">Lv ${v.level}</small></h2>
+        <p class="sub">${title}</p>
+        <div class="cards shop"></div>
+        <div class="row end"><button data-act="reroll"></button><button data-act="leave">Leave <i class="key">Esc</i></button></div>`;
+      this.shopGoldShown = run.gold;
+      panel.onclick = (ev) => {
+        const t = ev.target as HTMLElement;
+        if (t.closest("[data-act=leave]")) return this.leaveShop();
+        if (t.closest("[data-act=reroll]")) {
+          const why = g.rerollShop();
+          if (why) this.shopRefused(why);
+          return;
+        }
+        const bi = t.closest<HTMLElement>("[data-ban]")?.dataset.ban;
+        if (bi !== undefined) {
+          if (g.banShopRelic(Number(bi))) this.toast("Relic banned for the rest of the run", "#ffd34d");
+          return;
+        }
+        const i = t.closest<HTMLElement>("[data-buy]")?.dataset.buy;
+        if (i !== undefined) this.buyShopOffer(Number(i));
+      };
+      panel.onmousemove = (ev) => {
+        const card = (ev.target as HTMLElement).closest<HTMLElement>("[data-offer]");
+        const o = card ? v.offers[Number(card.dataset.offer)] : undefined;
+        const html = o ? shopOfferTip(g, o) : "";
+        if (html) return this.showTip(html, ev);
+        this.tip.classList.add("hidden");
+      };
+    }
+    // só as cartas que mudaram; oferta nova (troca, banimento) entra animada, a mesma oferta não
+    const box = panel.querySelector<HTMLElement>(".cards.shop")!;
+    v.offers.forEach((o, i) => {
+      const html = shopOfferHtml(g, o, i);
+      const id = `${o.kind}:${o.spell ?? ""}:${o.modifier ?? ""}:${o.relic ?? ""}`;
+      const old = box.children[i] as HTMLElement | undefined;
+      if (old && old.dataset.h === html) return;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      const card = tmp.firstElementChild as HTMLElement;
+      card.dataset.h = html;
+      card.dataset.id = id;
+      if (old) {
+        if (old.dataset.id === id) card.classList.add("no-in");
+        if (o.bought && !old.classList.contains("bought")) card.classList.add("just-bought");
+        old.replaceWith(card);
+      } else box.append(card);
+    });
+    while (box.children.length > v.offers.length) box.lastElementChild!.remove();
+    const rb = panel.querySelector<HTMLButtonElement>("[data-act=reroll]")!;
+    rb.innerHTML = `Reroll <i class="key">R</i> · ${reroll ? `${iconHtml(uiIconUrl("coin"), 14, "ricon coin")}${reroll}` : "free"}`;
+    rb.classList.toggle("no", run.gold < reroll);
+    this.countShopGold(run.gold);
+  }
+
+  /** M14-09 (etapa 5): compra pela tecla ou pelo botão; a recusa por falta de ouro sacode o ouro do canto. */
+  private buyShopOffer(i: number): void {
+    const why = this.game.buyShop(i);
+    if (why) this.shopRefused(why);
+  }
+
+  private shopRefused(why: string): void {
+    this.toast(why, "#ff7a6a");
+    if (!/gold/i.test(why)) return;
+    const gold = this.overlay?.querySelector<HTMLElement>(".shop-gold");
+    if (!gold) return;
+    gold.classList.remove("shake");
+    void gold.offsetWidth;
+    gold.classList.add("shake");
+  }
+
+  /** o ouro do canto conta do valor mostrado até o atual em `TUNING.ui.shopGoldMs` */
+  private countShopGold(to: number): void {
+    const el = this.overlay?.querySelector<HTMLElement>(".shop-gold b");
+    if (!el) return;
+    const from = this.shopGoldShown;
+    this.shopGoldShown = to;
+    cancelAnimationFrame(this.shopGoldRaf);
+    if (from === to) {
+      el.textContent = String(to);
+      return;
+    }
+    el.parentElement!.classList.toggle("down", to < from);
+    const t0 = performance.now();
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / TUNING.ui.shopGoldMs);
+      el.textContent = String(Math.round(from + (to - from) * (1 - (1 - k) ** 3)));
+      if (k < 1) this.shopGoldRaf = requestAnimationFrame(step);
+      else el.parentElement!.classList.remove("down");
     };
-    panel.onmousemove = (ev) => {
-      const card = (ev.target as HTMLElement).closest<HTMLElement>("[data-offer]");
-      const o = card ? v.offers[Number(card.dataset.offer)] : undefined;
-      const html = o ? shopOfferTip(g, o) : "";
-      if (html) return this.showTip(html, ev);
-      this.tip.classList.add("hidden");
-    };
+    step();
   }
 
   private leaveShop(): void {
@@ -1817,39 +1893,41 @@ function requiresText(tags: Readonly<Record<string, number>>, requires: Record<s
 function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
   const ev = evaluateOffer(g.run, g.shopVisit!, o);
   const slot = g.run.spells.find((s) => s.id === o.spell);
-  let meta = "", name = "", body = "", color = "#ffd34d", icon = "";
+  let meta = "", name = "", body = "", foot = "", color = "#ffd34d", icon = "";
   const tech = o.kind === "spell_upgrade" && o.spell === g.run.technique.id ? TECHNIQUES[o.spell] : undefined;
   if (tech) {
-    // S19 (D-252): a técnica sobe de nível na loja; no nível 5 vira a evolução
-    const lv = g.run.technique.level;
+    // S19 (D-252): a técnica sobe de nível na loja; no nível 5 vira a evolução. Comprada, mostra o nível que levou.
+    const lv = g.run.technique.level - (o.bought ? 1 : 0);
     meta = "Technique upgrade";
     name = tech.name;
     icon = iconHtml(techniqueIconUrl(o.spell!), 56, "ricon big");
-    body = `<p>Lv ${lv} → ${Math.min(lv + 1, TECH_MAX_LEVEL)}</p>`;
+    body = `<p class="lv-step">Lv ${lv} → <b>${Math.min(lv + 1, TECH_MAX_LEVEL)}</b></p>`;
     const ms = tech.milestones.find((m) => m.level === lv + 1);
-    if (lv + 1 === TECH_MAX_LEVEL) body += `<p class="evo">EVOLVES ${tech.evolution.name}: ${tech.evolution.text}</p>`;
-    else if (ms) body += `<p class="evo">Lv${ms.level} ${ms.id}: ${ms.text}</p>`;
+    if (lv + 1 === TECH_MAX_LEVEL) body += `<p class="evo">Evolves into ${tech.evolution.name}: ${tech.evolution.text}</p>`;
+    else if (ms) body += `<p class="evo">Lv${ms.level} ${displayName(ms.id)}: ${ms.text}</p>`;
     color = "#7ad94a";
   } else if (o.kind === "spell_upgrade") {
+    const lv = (slot?.level ?? 1) - (o.bought ? 1 : 0);
     meta = "Spell upgrade";
     name = spellName(o.spell!);
     icon = iconHtml(slotIconUrl(o.spell!, slot?.evolution), 56, "ricon big");
-    body = slot ? `<p>Lv ${slot.level} → ${Math.min(slot.level + 1, SPELL_MAX_LEVEL)}</p>` : "";
-    const ms = isSpellKey(o.spell!) && slot ? SPELLS[o.spell!].milestones.find((m) => m.level === slot.level + 1) : undefined;
-    if (ms) body += `<p class="evo">Lv${ms.level} ${ms.id}: ${ms.text}</p>`;
+    body = slot ? `<p class="lv-step">Lv ${lv} → <b>${Math.min(lv + 1, SPELL_MAX_LEVEL)}</b></p>` : "";
+    const ms = isSpellKey(o.spell!) && slot ? SPELLS[o.spell!].milestones.find((m) => m.level === lv + 1) : undefined;
+    if (ms) body += `<p class="evo">Lv${ms.level} ${displayName(ms.id)}: ${ms.text}</p>`;
     color = "#7ad94a";
   } else if (o.kind === "spell_modifier") {
     const m = isSpellKey(o.spell!) ? SPELLS[o.spell!].modifiers.find((x) => x.id === o.modifier) : undefined;
-    meta = `${spellName(o.spell!)} modifier (shop)`;
+    meta = `${spellName(o.spell!)} modifier`;
     icon = modifierIconHtml(o.spell!, 56);
-    name = m?.name ?? prettyId(o.modifier!);
+    name = displayName(m?.name ?? prettyId(o.modifier!));
     body = `<p>${isSpellKey(o.spell!) ? modifierText(o.spell!, o.modifier!, slot?.evolution ?? null) : ""}</p>`;
     color = "#4fa3ff";
   } else if (o.kind === "new_spell") {
     meta = "New spell";
     name = spellName(o.spell!);
     icon = iconHtml(spellIconUrl(o.spell!), 56, "ricon big");
-    body = `<p class="note">Takes a free spell slot, starts at Lv 1.</p>`;
+    body = isSpellKey(o.spell!) ? `<p>${SPELL_TEXT[o.spell!]}</p>` : "";
+    foot = `<p class="note">Takes a free spell slot, starts at Lv 1.</p>`;
     color = "#b36bff";
   } else if (o.kind === "relic") {
     const d = RELICS[o.relic!];
@@ -1860,28 +1938,30 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     icon = relicIconHtml(d.id, 56, "ricon big");
     body = relicLines(d);
     const has = !o.bought && g.run.relics.includes(d.id);
-    if (!o.bought) body += relicStackHtml(d.id, g.run.relics);
+    if (!o.bought) foot += relicStackHtml(d.id, g.run.relics);
     const evo = wantedRelics(g.run)[o.relic!];
-    if (evo && !has) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
-    if (!o.bought && !has) body += relicRecipeHtml(d.id, g.run.relics);
-    if (!o.bought && !has) body += synergyCardHtml(g.run.tags, d.tags, g.run.buildEvolutions);
+    if (evo && !has) foot += `<p class="evo">Evolves ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
+    if (!o.bought && !has) foot += relicRecipeHtml(d.id, g.run.relics);
+    if (!o.bought && !has) foot += synergyCardHtml(g.run.tags, d.tags, g.run.buildEvolutions);
     const left = relicBansLeft(g.run);
-    if (!o.bought) body += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
+    if (!o.bought) foot += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
     color = RARITY_COLOR[d.rarity];
   } else {
     const item = SHOP_ITEMS[o.kind];
     meta = "Item";
-    name = item.name;
+    name = displayName(item.name);
     // shop.lua: Vitality com o coração, Arcane Tome com o ícone do Arcane Power, a arma com a espada
     icon = iconHtml(o.kind === "vitality" ? uiIconUrl("heart") : o.kind === "arcane_tome" ? upgradeIconUrl("arcane_power") : uiIconUrl("sword"), 56, "ricon big");
     body = `<p>${item.text}</p>`;
   }
+  // M14-09 (etapa 5, B): compra só pelo botão de preço; sem ouro ele fica vermelho (o clique sacode o ouro), inválida mostra o motivo
+  const coin = iconHtml(uiIconUrl("coin"), 16, "ricon coin");
   const afford = ev.cost !== null && g.run.gold >= ev.cost;
-  const price = o.bought ? `<div class="price done">Bought${o.paid ? ` · ${o.paid} gold` : ""}</div>`
-    : !ev.valid ? `<div class="price bad">${ev.reason}${ev.cost !== null ? ` · ${ev.cost} gold` : ""}</div>`
-    : `<div class="price${afford ? "" : " bad"}">${ev.cost} gold</div>`;
-  const off = o.bought || !ev.valid ? " off" : "";
-  return `<div class="card${off}" data-offer="${i}" style="--cc:${color}">${icon}<div class="meta">${meta}</div><h3>${name}</h3>${body}${price}</div>`;
+  const price = o.bought ? `<div class="buy done">Bought${o.paid ? ` · ${coin}${o.paid}` : ""}</div>`
+    : !ev.valid ? `<div class="buy why">${ev.reason}</div>`
+    : `<button class="buy${afford ? "" : " no"}" data-buy="${i}">${coin}<b>${ev.cost}</b>${afford ? "" : `<small>need ${ev.cost! - g.run.gold} more</small>`}</button>`;
+  const state = o.bought ? " bought" : !ev.valid ? " off" : "";
+  return `<div class="card${state}" data-offer="${i}" style="--cc:${color}">${cardKey(i)}<div class="meta rib">${meta}</div>${icon}<h3>${name}</h3>${body}${cardFoot(foot)}${price}</div>`;
 }
 
 /** Dica da oferta: a ficha da spell equipada (M6-08), ou os números da spell nova no nível 1. */

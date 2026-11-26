@@ -660,3 +660,36 @@ input.seed:focus { outline: none; border-color: var(--gold); }
 @keyframes card-pick { 0% { transform: translateY(-3px); } 45% { transform: scale(1.05); box-shadow: 0 0 0 2px var(--cc, var(--gold)), 0 0 2.2rem -0.2rem var(--cc, var(--gold)); }
   100% { transform: scale(1.03); box-shadow: 0 0 0 2px var(--cc, var(--gold)), 0 0 1.4rem -0.4rem var(--cc, var(--gold)); } }
 @media (prefers-reduced-motion: reduce) { .overlay .cards > .card, .overlay .cards > .card.picked { animation: none; } }
+/* M14-09 (etapa 5): loja. Ouro no canto, compra pelo botão de preço, carta comprada com selo, só a oferta nova entra animada */
+#shop .panel > h2 { padding-right: 9rem; }
+.shop-lv { cursor: help; border-bottom: 1px dotted currentColor; }
+.shop-gold { position: absolute; top: 1.1rem; right: 1.4rem; display: flex; align-items: center; gap: 0.45rem; padding: 0.3rem 0.85rem 0.3rem 0.55rem;
+  background: var(--s0); border: 1px solid var(--frame); border-radius: 999px; box-shadow: inset 0 0 0.6rem rgba(255, 200, 61, 0.12); }
+.shop-gold b { font-size: var(--fs-xl); font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; min-width: 2.5ch; text-align: right; transition: color 0.2s; }
+.shop-gold.down b { color: #ffe9a8; }
+.shop-gold.shake { animation: gold-shake 0.4s ease-in-out; border-color: var(--bad); }
+.shop-gold.shake b { color: var(--bad); }
+@keyframes gold-shake { 20%, 60% { transform: translateX(-0.3rem); } 40%, 80% { transform: translateX(0.3rem); } }
+.ricon.coin { display: inline-block; vertical-align: -0.2em; margin-right: 0.25em; }
+.cards.shop .card { cursor: default; }
+.cards.shop .card .ricon.big { margin: 0.2rem auto 0.4rem; }
+.card .lv-step { font-size: var(--fs-l); color: var(--text-2); }
+.card .lv-step b { color: var(--cc); }
+.card .buy { margin-top: auto; align-self: stretch; display: flex; align-items: center; justify-content: center; gap: 0.2rem; flex-wrap: wrap;
+  padding: 0.5rem 0.8rem; font-weight: 800; font-size: var(--fs-l); color: #1a1408; background: linear-gradient(#ffd75e, #e0a92a); border: 1px solid #ffe9a8; }
+.card-foot + .buy { margin-top: 0.7rem; }
+.card .buy:hover { background: linear-gradient(#ffe38a, #efb93e); border-color: #fff3c4; }
+.card .buy.no { color: var(--bad); background: var(--s0); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.card .buy.no:hover { background: var(--s0); border-color: var(--bad); }
+.card .buy small { flex-basis: 100%; font-size: var(--fs-xs); font-weight: 600; opacity: 0.85; }
+.card div.buy { background: none; border: 1px dashed var(--line); color: var(--muted); font-size: var(--fs-m); font-weight: 700; border-radius: 0.5714rem; }
+.card div.buy.why { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+.card.bought { opacity: 0.6; }
+.card.bought::after { content: "Bought"; position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%) rotate(-10deg); padding: 0.2rem 1rem;
+  font: 800 var(--fs-xl)/1.2 system-ui; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cc); border: 2px solid var(--cc); border-radius: 0.4rem;
+  background: rgba(10, 11, 18, 0.75); pointer-events: none; }
+.overlay .cards > .card.bought.just-bought { animation: card-pick 0.26s var(--ease) both; }
+.card.bought.just-bought::after { animation: stamp 0.3s var(--ease) both; }
+@keyframes stamp { from { opacity: 0; transform: translate(-50%, -50%) rotate(-10deg) scale(1.6); } to { opacity: 1; transform: translate(-50%, -50%) rotate(-10deg) scale(1); } }
+.overlay .cards > .card.no-in { animation: none; }
+button.no { color: var(--bad); }
