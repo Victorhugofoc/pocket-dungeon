@@ -95,8 +95,20 @@ const INVERTED: Record<string, true> = { spellCooldownPct: true, cdrPct: true, s
 
 /** format.lua `upgradeName`: no estilo do herói algumas cartas têm outro nome (Ricochet, Big Iron, Frost Fan...). */
 function upgradeName(u: UpgradeDef, style: AutoStyle): string {
-  return STYLE_NAMES[style]?.[u.id] ?? u.name;
+  return displayName(STYLE_NAMES[style]?.[u.id] ?? u.name);
 }
+
+/** M14-09: nome em caixa alta (como no original) vira "Static Charge" na tela; nome já misto fica como está. */
+function displayName(name: string): string {
+  if (/\p{Ll}/u.test(name)) return name;
+  return name.toLowerCase().replace(/(^|[\s\-(/])(\p{L})/gu, (_m, p: string, c: string) => p + c.toUpperCase());
+}
+
+/** M14-09: telas de escolha por carta (1/2/3, R troca, Esc pula; trava de 0,4 s ao abrir). */
+const CARD_KINDS = ["levelup", "relic", "evolution", "relic-evolution"];
+const cardKey = (i: number) => `<i class="key">${i + 1}</i>`;
+/** o rodapé da carta (sinergia, receita, pilha), separado por um fio; some se vazio */
+const cardFoot = (html: string) => (html.trim() ? `<div class="card-foot">${html}</div>` : "");
 
 function upgradeLine(e: UpgradeEffect, style: AutoStyle = "normal"): string {
   const own = STYLE_TEXT[style]?.[e.stat];
@@ -257,7 +269,24 @@ export class Ui {
     this.overlayKind = kind;
     this.game.paused = true;
     this.game.input.reset();
+    // M14-09 (C): a escolha por carta abre no meio da luta; clique e tecla esperam as cartas entrarem
+    if (CARD_KINDS.includes(kind)) {
+      ov.classList.add("arming");
+      window.setTimeout(() => ov.classList.remove("arming"), TUNING.ui.cardArmMs);
+    }
     return panel;
+  }
+
+  /** M14-09 (F): a carta escolhida pulsa e as outras apagam; depois o painel fecha e a escolha vale. */
+  private pickCard(card: HTMLElement | null, then: () => void): void {
+    const ov = this.overlay;
+    if (!ov || ov.classList.contains("arming")) return;
+    ov.classList.add("arming", "picking");
+    card?.classList.add("picked");
+    window.setTimeout(() => {
+      if (this.overlay === ov) this.close();
+      then();
+    }, TUNING.ui.cardPickMs);
   }
 
   private close(): void {
@@ -298,6 +327,18 @@ export class Ui {
     if (this.overlayKind === "pact") {
       if (k === "Escape") this.declineMapOffer();
       else if (k === "Enter") this.acceptPact();
+      return;
+    }
+    // M14-09 (A): 1/2/3 escolhem a carta, R troca as ofertas, Esc pula a evolução
+    if (CARD_KINDS.includes(this.overlayKind) && this.overlay) {
+      const ov = this.overlay;
+      if (ov.classList.contains("arming")) return;
+      const num = /^(?:Digit|Numpad)([1-9])$/.exec(k);
+      if (num) ov.querySelectorAll<HTMLElement>(".cards > .card")[Number(num[1]) - 1]?.click();
+      else if (k === "KeyR") {
+        const b = ov.querySelector<HTMLButtonElement>("[data-act=reroll], [data-act=relic-reroll]");
+        if (b && !b.disabled) b.click();
+      } else if (k === "Escape") ov.querySelector<HTMLButtonElement>("[data-act=skip]")?.click();
       return;
     }
     const locked = ["title", "relic", "levelup", "evolution", "relic-evolution", "map", "death", "victory", "results"].includes(this.overlayKind);
@@ -1242,10 +1283,10 @@ export class Ui {
         const has = this.game.run.relics.includes(id);
         const evo = wanted[id] && !has ? `<p class="evo">EVOLVES ${spellName(wanted[id])} (spell at Lv ${SPELL_MAX_LEVEL})</p>` : "";
         const b = ban ? `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban</button>` : "";
-        return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${RELIC_RARITY[d.rarity]} relic</div>
-          <h3>${d.name}</h3>${relicLines(d)}${relicStackHtml(id, this.game.run.relics)}${evo}${has ? "" : relicRecipeHtml(id, this.game.run.relics) + synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}</div>`;
+        return `<div class="card relic-card" data-relic="${id}" style="--cc:${RARITY_COLOR[d.rarity]}">${cardKey(i)}<div class="meta rib">${RELIC_RARITY[d.rarity]} relic</div>${relicIconHtml(id, 64, "ricon big")}
+          <h3>${d.name}</h3>${relicLines(d)}${cardFoot(`${relicStackHtml(id, this.game.run.relics)}${evo}${has ? "" : relicRecipeHtml(id, this.game.run.relics) + synergyCardHtml(this.game.run.tags, d.tags, this.game.run.buildEvolutions)}${b}`)}</div>`;
       }).join("")}</div>${reroll ? `<div class="row end"><button data-act="relic-reroll" ${reroll.can() ? "" : "disabled"}>${
-        reroll.can() ? "Reroll relics · Relic Reroll, once per zone" : "Relic Reroll used in this zone"}</button></div>` : ""}`;
+        reroll.can() ? "Reroll relics · Relic Reroll, once per zone" : "Relic Reroll used in this zone"}<i class="key">R</i></button></div>` : ""}`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=relic-reroll]")) {
@@ -1267,8 +1308,7 @@ export class Ui {
       }
       const id = t.closest<HTMLElement>("[data-relic]")?.dataset.relic;
       if (!id) return;
-      this.close();
-      pick(id);
+      this.pickCard(t.closest<HTMLElement>("[data-relic]"), () => pick(id));
     };
   }
 
@@ -1337,10 +1377,10 @@ export class Ui {
         const u = UPGRADE_BY_ID[id];
         const t = L.tiers[i];
         const body = u.hideEffects ? "" : effectsFor(u, t).map((e) => upgradeLine(e, g.hero.style)).join("");
-        return `<div class="card icon-card" data-up="${i}" style="--cc:${TIER_COLOR[t]}">${iconHtml(upgradeIconUrl(u.id), 56, "ricon big")}<div class="meta">${TIER_LABEL[t]}</div>
-          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${synergyCardHtml(g.run.tags, u.tags, g.run.buildEvolutions)}</div>`;
+        return `<div class="card icon-card" data-up="${i}" style="--cc:${TIER_COLOR[t]}">${cardKey(i)}<div class="meta rib">${TIER_LABEL[t]}</div>${iconHtml(upgradeIconUrl(u.id), 56, "ricon big")}
+          <h3>${upgradeName(u, g.hero.style)}</h3>${body}${u.note ? `<p class="note">${u.note}</p>` : ""}${cardFoot(synergyCardHtml(g.run.tags, u.tags, g.run.buildEvolutions))}</div>`;
       }).join("")}</div>
-      <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost ? `${cost} gold` : "free"}${left > 0 ? "" : " (already rerolled)"}</button></div>`;
+      <div class="row end"><button data-act="reroll" ${can ? "" : "disabled"}>Reroll all 3 — ${cost ? `${cost} gold` : "free"}${left > 0 ? "" : " (already rerolled)"}<i class="key">R</i></button></div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=reroll]")) {
@@ -1349,8 +1389,7 @@ export class Ui {
       }
       const i = t.closest<HTMLElement>("[data-up]")?.dataset.up;
       if (i === undefined) return;
-      this.close();
-      g.chooseUpgrade(Number(i));
+      this.pickCard(t.closest<HTMLElement>("[data-up]"), () => g.chooseUpgrade(Number(i)));
     };
   }
 
@@ -1365,11 +1404,11 @@ export class Ui {
       <div class="cards">${offer.map((o, i) => {
         const evo = EVOLUTIONS[o.evoId];
         const recipe = evo.requires.map((r) => RELICS[r]?.name ?? prettyId(r)).join(" or ");
-        return `<div class="card icon-card" data-evo="${i}" style="--cc:#c77dff">${iconHtml(evolutionIconUrl(o.evoId), 56, "ricon big")}<div class="meta">${spellName(evo.spell)} (slot ${o.slotIndex + 1})</div>
+        return `<div class="card icon-card" data-evo="${i}" style="--cc:#c77dff">${cardKey(i)}<div class="meta rib">${spellName(evo.spell)} · slot ${o.slotIndex + 1}</div>${iconHtml(evolutionIconUrl(o.evoId), 56, "ricon big")}
           <h3>${evo.name}</h3><p>${evo.text}</p><p class="evo">${evoStatLine(evo)}</p>
-          <p class="note">Recipe: ${recipe}</p><p class="note">(relics are NOT consumed)</p></div>`;
+          ${cardFoot(`<p class="note">Recipe: ${recipe}</p><p class="note">(relics are NOT consumed)</p>`)}</div>`;
       }).join("")}</div>
-      <div class="row end"><button data-act="skip">Skip evolution</button></div>`;
+      <div class="row end"><button data-act="skip">Skip evolution<i class="key">Esc</i></button></div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=skip]")) {
@@ -1379,8 +1418,7 @@ export class Ui {
       }
       const i = t.closest<HTMLElement>("[data-evo]")?.dataset.evo;
       if (i === undefined) return;
-      this.close();
-      g.chooseEvolution(Number(i));
+      this.pickCard(t.closest<HTMLElement>("[data-evo]"), () => g.chooseEvolution(Number(i)));
     };
   }
 
@@ -1397,10 +1435,10 @@ export class Ui {
         const parts = d.requires!.map((c) => RELICS[c].name).join(" + ");
         const tier = d.exclusiveGroup ? `Tier 3 · ${relicGroupName(d.exclusiveGroup)}` : `Tier ${d.tier}`;
         const rivals = relicRecipeHtml(id, g.run.relics).replace(/<div class="recipe">Evolved from[^<]*<\/div>/, "");
-        return `<div class="card relic-card" data-revo="${i}" style="--cc:${RARITY_COLOR.evolved}">${relicIconHtml(id, 64, "ricon big")}<div class="meta">${tier} evolution</div>
-          <h3>${d.name}</h3>${relicLines(d)}<p class="note">Consumes: ${parts}</p>${rivals}${relicEvolutionChangeHtml(g.run.tags, id, g.run.buildEvolutions)}</div>`;
+        return `<div class="card relic-card" data-revo="${i}" style="--cc:${RARITY_COLOR.evolved}">${cardKey(i)}<div class="meta rib">${tier} evolution</div>${relicIconHtml(id, 64, "ricon big")}
+          <h3>${d.name}</h3>${relicLines(d)}${cardFoot(`<p class="note">Consumes: ${parts}</p>${rivals}${relicEvolutionChangeHtml(g.run.tags, id, g.run.buildEvolutions)}`)}</div>`;
       }).join("")}</div>
-      <div class="row end"><button data-act="skip">Skip evolution</button></div>`;
+      <div class="row end"><button data-act="skip">Skip evolution<i class="key">Esc</i></button></div>`;
     panel.onclick = (ev) => {
       const t = ev.target as HTMLElement;
       if (t.closest("[data-act=skip]")) {
@@ -1410,8 +1448,7 @@ export class Ui {
       }
       const i = t.closest<HTMLElement>("[data-revo]")?.dataset.revo;
       if (i === undefined) return;
-      this.close();
-      g.chooseRelicEvolution(Number(i));
+      this.pickCard(t.closest<HTMLElement>("[data-revo]"), () => g.chooseRelicEvolution(Number(i)));
     };
   }
 

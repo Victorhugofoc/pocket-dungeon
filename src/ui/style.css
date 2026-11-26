@@ -608,3 +608,29 @@ input.seed:focus { outline: none; border-color: var(--gold); }
 .hs-mrow button { padding: 3px 10px; font-size: 0.85em; border-radius: 999px; }
 .hs-mrow button.sel { border-color: var(--hc); color: var(--hc); }
 .hs-mrow button:disabled { opacity: 0.5; cursor: default; }
+
+/* M14-09 etapa 3: cartas de escolha (nível, relíquia, evolução). Faixa de raridade no topo, tecla no canto,
+   rodapé separado por um fio, mesma altura; entram uma depois da outra; a escolhida pulsa */
+.cards > .card { display: flex; flex-direction: column; }
+.card .meta.rib { margin: -1.1429rem -1.1429rem 0.7rem; padding: 0.34rem 2.4rem; text-align: center; font: 700 var(--fs-xs)/1.2 system-ui; letter-spacing: 0.14em;
+  color: var(--cc); background: color-mix(in srgb, var(--cc) 20%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--cc) 45%, transparent);
+  border-radius: 0.45rem 0.45rem 0 0; }
+.card > .key { top: 0.28rem; left: 0.4rem; z-index: 1; }
+.card h3 { font-size: var(--fs-l); text-align: center; }
+.card .stat { font-size: 1.07rem; }
+.card p { font-size: var(--fs-m); }
+.card-foot { margin-top: auto; padding-top: 0.6rem; border-top: 1px solid #ffffff14; display: flex; flex-direction: column; gap: 0.3rem; }
+.card h3 + .card-foot, .card .stat:last-of-type + .card-foot { margin-top: auto; }
+.card-foot .syn-foot { margin-top: 0; padding-top: 0; }
+.card-foot .ban { margin-top: 0.3rem; }
+.overlay .cards > .card { animation: card-in 0.32s var(--ease) backwards 0.08s; }
+.overlay .cards > .card:nth-child(2) { animation-delay: 0.15s; }
+.overlay .cards > .card:nth-child(3) { animation-delay: 0.22s; }
+.overlay .cards > .card:nth-child(4) { animation-delay: 0.29s; }
+.overlay.arming .cards, .overlay.arming .row button { pointer-events: none; }
+.overlay.picking .cards > .card:not(.picked) { opacity: 0.25; transition: opacity 0.2s; }
+.overlay .cards > .card.picked { animation: card-pick 0.26s var(--ease) both; border-color: var(--cc, var(--gold)); }
+@keyframes card-in { from { opacity: 0; transform: translateY(0.9rem) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes card-pick { 0% { transform: translateY(-3px); } 45% { transform: scale(1.05); box-shadow: 0 0 0 2px var(--cc, var(--gold)), 0 0 2.2rem -0.2rem var(--cc, var(--gold)); }
+  100% { transform: scale(1.03); box-shadow: 0 0 0 2px var(--cc, var(--gold)), 0 0 1.4rem -0.4rem var(--cc, var(--gold)); } }
+@media (prefers-reduced-motion: reduce) { .overlay .cards > .card, .overlay .cards > .card.picked { animation: none; } }
