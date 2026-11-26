@@ -6,7 +6,7 @@ import os
 import bpy
 from mathutils import Euler, Matrix
 
-from kit import B, bake_ao, export_parts, review_setup, shot
+from kit import B, bake_ao, check_finish, export_parts, review_setup, shot
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 C3 = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))  # three -> Blender
@@ -69,6 +69,9 @@ def merge(*dicts):
     return parts
 
 
+HERO_BUDGET, HEAD_SHARE = 8000, 0.35
+
+
 def finish(name, rig, parts, args, ao=0.75, body_center=(0, 0, 0.85), body_dist=4.5, head_dist=1.4, form=None):
     """oclusão nas peças sólidas, exportação por osso, capturas de conferência (com 'review') e o .blend"""
     parts = {k: v for k, v in parts.items() if v}  # sem chave vazia (ex.: nada aceso na cabeça)
@@ -81,6 +84,8 @@ def finish(name, rig, parts, args, ao=0.75, body_center=(0, 0, 0.85), body_dist=
     meta = {"dims": rig.dims(), "form": form} if form else None
     counts = export_parts(os.path.join(ROOT, "src", "game", "chars", "models", f"{name}.json"), parts, pivots, meta)
     print("TRIS", sum(counts.values()), counts)
+    # herói (form dado): 8 mil triângulos e ao menos 35% na cabeça, que é o que mais aparece (combinado com o usuário em 2026-11-26)
+    check_finish(parts, budget=HERO_BUDGET if form else None, head_share=HEAD_SHARE if form else None)
     if "review" in args:
         review_setup((0, 0, 0))
         out = os.path.join(ROOT, ".shots")

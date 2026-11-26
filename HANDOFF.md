@@ -2,8 +2,8 @@
 
 Leia antes de qualquer coisa. Só o estado atual. Histórico: `docs/progress.md` (uma linha por tarefa), `docs/handoff-archive.md` (parágrafos antigos daqui, com o teste rápido de cada tarefa) e o git; nos dois, só `grep`. **Mantenha este arquivo curto (alvo: até 10 KB):** ao fechar uma tarefa, troque o "Agora" e mande o que sair para o fim do `docs/handoff-archive.md`.
 
-## Agora (2026-11-25)
-- **`M2-11` em andamento (os 9 heróis no Blender), prioridade do usuário desde 2026-11-25.** Combinado (A a D): `grep -n "Combinado em 2026-11-25" docs/roadmap.md`. **Frostine feita e aprovada em 2026-11-25** (`docs/briefs/frostine.md`, com o que ficou pendente). Próximo: **Aurelius** (de manto; base `robed.py`). Regra nova: até 3 rodadas do crítico por herói e, **depois de cada rodada, mostrar ao usuário capturas e lista e esperar ele mandar seguir**. Próximos: Aurelius, Vesper, Seraph; Kaelen, Zephyr, Umbra, Ignis; Varok.
+## Agora (2026-11-26)
+- **`M2-11` em andamento (os 9 heróis no Blender), prioridade do usuário desde 2026-11-25.** Combinado (A a D): `grep -n "Combinado em 2026-11-25" docs/roadmap.md`. Feitos e aprovados: **Frostine** (2026-11-25) e **Aurelius** (2026-11-26; `docs/briefs/<id>.md`). Próximo: **Vesper** (de manto; base `robed.py`). Até 3 rodadas do crítico por herói e, **depois de cada rodada, mostrar capturas e lista ao usuário e esperar ele mandar seguir**. **Acabamento (2026-11-26):** até 8 mil triângulos, 35% na cabeça; ler o `check_finish` a cada rodada; poses `face-close` e `detail` (roadmap 4.2). Depois: Seraph; Kaelen, Zephyr, Umbra, Ignis; Varok.
 - **`M14-09` (pente-fino de UI/UX) parada na etapa 5 de 8** (feitas: base, tela de herói, cartas, HUD, loja; falta o usuário ver). Quando voltar: etapa 6, tela I agrupada; plano em `grep -n "Plano (combinado em 2026-11-25)" docs/roadmap.md`. **`M13-05` é a última do roadmap.**
 - **Falta o usuário jogar quase toda a fase 1:** foi conferida pelo console. Lista: `grep -n "falta jogar\|falta o usuário" docs/progress.md`. A `M21-04` (ele joga a fatia) fica para quando ele quiser.
 - **Registro de partidas:** cada partida no `npm run dev` vira uma linha em `logs/runs.jsonl` (`core/runlog.ts`), com `waves` e `perf` (fps, picos com causa). Para saber como foram as runs dele ou validar o `M16-01`, ler esse arquivo. Partida com `devUsed` não vale para balanceamento; linha com `bot` é do simulador (`M17-01`), não do usuário.
@@ -59,7 +59,7 @@ Leia antes de qualquer coisa. Só o estado atual. Histórico: `docs/progress.md`
 ## Não validado
 - Movimento e sensação jogando; desempenho numa GPU real (placa do usuário: Radeon RX 9060 XT; `M16-01`, F3 mostra o tempo de GPU).
 - Balanceamento: nunca jogado de ponta a ponta.
-- Arte: os 4 chefes e os 9 heróis foram refeitos e aprovados (os heróis ainda em primitivas de código, sem Blender: `M2-11`; ataque básico sem visual próprio por herói e carregado demais: `M5-09`); inimigos comuns: goblin e orc refeitos (`M3-01`, aprovados); o resto (morcego e gosma são os mais fracos) espera o `M3-02` em diante. Pendências do crítico nas linhas `M18-07` a `M18-10` e no Kaelen (para o usuário decidir se reabre).
+- Arte: os 4 chefes e os 9 heróis foram refeitos e aprovados (os heróis ainda em primitivas de código, menos Frostine e Aurelius, já no Blender: `M2-11`; ataque básico sem visual próprio por herói e carregado demais: `M5-09`); inimigos comuns: goblin e orc refeitos (`M3-01`, aprovados); o resto (morcego e gosma são os mais fracos) espera o `M3-02` em diante. Pendências do crítico nas linhas `M18-07` a `M18-10` e no Kaelen (para o usuário decidir se reabre).
 
 ## Pendências com o usuário
 - Decisões abertas da seção 8 do roadmap (D1 idioma dos textos, e as outras sem resposta).

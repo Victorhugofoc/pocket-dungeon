@@ -157,10 +157,11 @@ Vale para todas as tarefas de M1, M2, M3, M9 e M10. Foi o que funcionou no Blood
 - Mecha de cabelo em cone solto: de frente parece chifre, de costas parece prego. Dar volume e franja na própria malha esculpida.
 - Peça acesa grande ou luz pontual junto do corpo: o bloom vira um borrão e tinge o rosto. Brilho em peças finas.
 - **Contorno falhando na borda** (o usuário não aceita em nenhum modelo): a casca do contorno é empurrada pela normal, e em aresta dura (face plana, chapa fina, membrana de asa) cada face empurra para um lado e o contorno se abre. Desde 2026-11-18, `fuse` em `build.ts` grava `outlineNormal` (média por posição) e o contorno usa essa normal. Conferir as bordas finas de perto em toda captura.
+- **Acabamento de perto** (Aurelius, 2026-11-26: o usuário achou riscos, facetas e peças sobrepostas que as capturas normais escondiam): ler a saída do `check_finish` a cada rodada do script (SOBREPOSICAO, DOBRA, FACETA, ORCAMENTO; ver `tools/blender/README.md`) e conferir as poses `face-close` e `detail` do crítico. Tubo e bola sem sombreado suave saem facetados: `soften(parts)` no fim do script e `sball` nos olhos. Nariz grande em peça própria `@flat`: na mesma malha do rosto a dobra virava risco do contorno. Sobrancelha, bigode e pálpebra como metaball (tufo), nunca tubo de ponta cortada.
 - Normal nula (triângulo degenerado de `ExtrudeGeometry`): normalizar dá NaN no contorno e na luz de recorte, com o mesmo bloco preto, intermitente. `fuse` em `build.ts` conserta ao juntar as peças; malha criada fora dele precisa do mesmo cuidado.
 
 ### 4.3 Orçamento por personagem
-Até cerca de 12 mil triângulos para chefe, 6 mil para herói, 3 mil para inimigo comum (aparecem dezenas na tela). Medir com `renderer.info` na prévia (`M0-03`).
+Até cerca de 12 mil triângulos para chefe, 8 mil para herói (desde 2026-11-26: só um na tela, e o rosto precisa de detalhe; pelo menos 35% na cabeça), 3 mil para inimigo comum (aparecem dezenas na tela). O `check_finish` do Blender avisa quando passa (ORCAMENTO). Medir com `renderer.info` na prévia (`M0-03`).
 
 ---
 
@@ -893,6 +894,11 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 - Problema: ao matar o chefe da zona (ondas 5, 10, 15) e entrar no portal, o jogo para um instante montando a zona nova e parece que travou.
 - Passos: medir onde vai o tempo (geração, montagem da cena, compilação de shaders); cobrir a troca com uma transição (escurecer a tela com o nome da zona nova, por exemplo) e montar a zona por trás dela; se der, pré-compilar os materiais (`renderer.compileAsync`) e espalhar a montagem em vários quadros.
 - Pronto quando: a troca não congela a imagem; o jogador vê a transição em vez da tela parada.
+
+**M16-09 · Contorno por pós-processamento** · G [pedido do usuário, 2026-11-26]
+- Problema: o contorno é uma casca invertida empurrada 0,02 para fora de cada peça (`outlineMaterial` em `build.ts`). Numa dobra côncava funda (nariz e rosto, barba e bochecha, pregas do manto) ou onde uma peça atravessa outra, a casca vaza para a frente e vira risco preto no meio da superfície. Hoje se contorna peça por peça (alisar a dobra, levar a peça para `@flat`), e o `check_finish` do Blender só avisa (DOBRA).
+- Passos: contorno na tela por detecção de borda (profundidade e normal, com o id do personagem para não contornar o chão nem o cenário), espessura constante em pixels; comparar com a casca nas capturas do crítico (`face-close`, `detail`, `game`) em 2 heróis, 2 inimigos e 1 chefe; manter o dourado do campeão e o tom do invocado; medir o custo no F3 (substitui a segunda passada de cada personagem, ver `M16-02`).
+- Pronto quando: nenhum risco de dobra nas capturas de perto, a silhueta continua com contorno em todos os personagens e o fps não cai.
 
 ### M17 — Balanceamento
 

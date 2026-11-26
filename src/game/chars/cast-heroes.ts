@@ -3,6 +3,58 @@ import * as THREE from "three";
 import { type G, type Spec, at, beard, bell, belt, body, bx, cape, capeMesh, cone, cowboyHat, cyl, dagger, dk, dome, edge, fist, grp, hairCap, hairLong, hang, headBase, headMask, hood, lathe, limb, muscleArm, plateMesh, restArm, revolver, robeMesh, sculpt, sculptTube, sph, ss, staff, stud, sword, torus, tubeMesh, wizardHat, BLACK, BONE, GOLD, LEATHER, SKIN, WOOD } from "./kit";
 import { addModel } from "./baked";
 
+/** casca de pedra do orbe do Aurelius: a esfera é repartida em lascas irregulares (cada triângulo vai para a direção-semente mais
+ * próxima) e cada lasca encolhe para a sua semente, abrindo frestas tortas por onde o núcleo aceso aparece. A lasca virada para
+ * `hole` sai, abrindo um rombo. Sem contorno (vai em `flat`): o contorno de cada placa virava teia preta. Hash fixo: sai sempre igual. */
+function crackedOrb(r: number, stone: number, stoneL: number, hole: THREE.Vector3): G {
+  const p = new THREE.IcosahedronGeometry(r, 2).toNonIndexed().attributes.position;
+  const hash = (k: number): number => Math.abs(Math.sin(k * 12.9898 + 4.1) * 43758.5453) % 1;
+  const seeds: THREE.Vector3[] = [];
+  for (let k = 0; k < 11; k++) { // espiral de Fibonacci com ruído: lascas de tamanhos diferentes
+    const y = 1 - (2 * (k + 0.5)) / 11, rr = Math.sqrt(1 - y * y), a = k * 2.39996 + hash(k) * 0.9;
+    seeds.push(new THREE.Vector3(Math.cos(a) * rr, y + (hash(k + 20) - 0.5) * 0.3, Math.sin(a) * rr).normalize());
+  }
+  let skip = 0;
+  seeds.forEach((q, k) => { if (q.dot(hole) > seeds[skip].dot(hole)) skip = k; });
+  const pos: number[] = [], col: number[] = [];
+  const cS = new THREE.Color(stone), cL = new THREE.Color(stoneL), c = new THREE.Color();
+  const v = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()], m = new THREE.Vector3(), ax = new THREE.Vector3();
+  for (let t = 0; t < p.count; t += 3) {
+    for (let k = 0; k < 3; k++) v[k].fromBufferAttribute(p, t + k);
+    m.copy(v[0]).add(v[1]).add(v[2]).normalize();
+    let s = 0;
+    seeds.forEach((q, k) => { if (q.dot(m) > seeds[s].dot(m)) s = k; });
+    if (s === skip) continue;
+    const h = hash(s + 40);
+    ax.copy(seeds[s]).multiplyScalar(r);
+    c.copy(cS).lerp(cL, 0.3 + 0.5 * Math.max(0, seeds[s].y) + 0.2 * h);
+    for (const q of v) {
+      const w = q.clone().lerp(ax, 0.11).setLength(r * (1.02 + 0.06 * h)); // encolhe para a semente: fresta nas bordas
+      pos.push(w.x, w.y, w.z);
+      col.push(c.r, c.g, c.b);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  // normal da esfera (direção do centro): a casca sai lisa e só as frestas são tortas; a normal por face deixava facetas
+  const nrm = pos.slice();
+  for (let i = 0; i < nrm.length; i += 3) { const l = Math.hypot(nrm[i], nrm[i + 1], nrm[i + 2]) || 1; nrm[i] /= l; nrm[i + 1] /= l; nrm[i + 2] /= l; }
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
+  return g;
+}
+const prepFlat = (g: G): G => { g.deleteAttribute("uv"); const f = g.index ? g.toNonIndexed() : g; f.computeVertexNormals(); return f; };
+/** degradê vertical de `bot` a `top` entre -h e h */
+function paintY(g: G, bot: number, top: number, h: number): G {
+  const p = g.attributes.position, col = new Float32Array(p.count * 3), c = new THREE.Color(), b = new THREE.Color(bot), t = new THREE.Color(top);
+  for (let i = 0; i < p.count; i++) {
+    c.copy(b).lerp(t, Math.max(0, Math.min(1, (p.getY(i) + h) / (2 * h))));
+    col.set([c.r, c.g, c.b], i * 3);
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
 export const HEROES: Record<string, Spec> = {
   // ------------------------------------------------ heróis
   // Frostine modelada no Blender (M2-11; tools/blender/frostine.py, brief em docs/briefs/frostine.md): maga do gelo de vestido, sem
@@ -143,97 +195,27 @@ export const HEROES: Record<string, Spec> = {
       }, (t) => 0.009 * (1 - 0.7 * t), (_a, t, c) => c.copy(cCore).lerp(cCyan, ss(0.1, 0.6, t)), new THREE.Vector3(0.2, 0.3, 1)));
     }
   },
-  // Redesenho a partir do sprite (docs/ref/aurelius.png): mago velho e curvado, chapéu pontudo com a ponta caída para trás e fita dourada,
-  // nariz grande, sobrancelhas e barba brancas até a cintura, manto roxo até o chão com debrum dourado, faixa dourada, bolsa de couro
-  // e orbe arcano flutuando sobre a mão erguida. Medidas do sprite (altura 74 px): chapéu 22 px, barba 22 px, ombros 24 px, manto 40% mais largo na barra.
+  // Aurelius modelado no Blender (M2-11; tools/blender/aurelius.py, brief em docs/briefs/aurelius.md): mago velho de manto roxo,
+  // chapéu pontudo reto, barba até a cintura e grimório no quadril. Medidas e pose iguais às do script (tests/models.test.ts
+  // confere). Por código só o orbe arcano (casca de pedra rachada, núcleo aceso e estilhaços) sobre a mão direita erguida.
   aurelius: (b) => {
-    const PURPLE = 0x6a3fb0, PURPLE_D = 0x2e1a5a, PURPLE_L = 0x9068d8, GOLD_D = 0x9a6a1e, FACE = 0xdcae94, FACE_D = 0x9a6a5c;
-    const BEARD = 0xf4f4f8, BEARD_D = 0x9a9aac, HIDE = 0x6a3428, HIDE_D = 0x3a1a18, ORB = 0xc49aff;
-    const col = (hex: number) => new THREE.Color(hex);
-    const cFace = col(FACE), cFaceD = col(FACE_D), cBeard = col(BEARD), cBeardD = col(BEARD_D), cP = col(PURPLE), cPD = col(PURPLE_D), cPL = col(PURPLE_L), cGold = col(GOLD);
-    const HAND = 0.31;
-    b.form = "robed"; b.bulk = 1; b.style = "cast"; b.rough = 0.8; b.glowColor = 0xc890ff;
+    const CORE = 0xc050ff, CORE_D = 0x7018e0, SHARD = 0xc070ff, SHARD_D = 0x6a18c8, HAND = 0.31; // brilho pela cor do vértice
+    b.form = "robed"; b.bulk = 1; b.style = "cast"; b.rough = 0.8; b.glowColor = 0xc890ff; b.glowByVertex = true;
     b.lean = 0.16; b.armOut = 0.16;
-    b.poseR = [-1.0, -1.0]; b.poseL = [0.1, -0.6];
+    b.poseR = [-0.85, -1.75]; b.poseL = [0.1, -0.6]; // mão direita aberta na altura do ombro, palma para cima (sprite)
     b.dims = { hipY: 0.92, headY: 0.56, shoulderY: 0.45, shoulderX: 0.27, arm: 0.33, hipX: 0, thigh: 0.42 };
-
-    // ---- rosto velho: nariz grande, olhos pequenos sob sobrancelhas brancas e fartas (camada sem contorno)
-    b.add("head", at(sculpt(26, 20, (n, p) => {
-      const front = ss(0.3, 0.9, n.z);
-      const jaw = ss(0.05, -0.95, n.y);
-      p.set(
-        n.x * 0.152 * (1 - 0.22 * jaw),
-        n.y * 0.185,
-        n.z * 0.16 + 0.055 * bell(n.x, 0.13) * bell(n.y + 0.1, 0.17) * front - 0.012 * headMask.socket(n),
-      );
-    }, (n, c) => {
-      c.copy(cFaceD).lerp(cFace, ss(-0.9, 0.0, n.y) * ss(0.7, 0.2, n.y) * (0.75 + 0.25 * Math.max(0, n.z)));
-    }), 0, 0.2, 0));
-    for (const s of [-1, 1]) {
-      b.flat("head", at(stud(0.017, 0xf0ece4, 0xd0c8bc, 1.2, 0.6, 0.3), s * 0.058, 0.224, 0.143, 0, s * 0.3, 0));
-      b.flat("head", at(stud(0.01, 0x3a2a5a, 0x3a2a5a, 1, 1, 0.3), s * 0.058, 0.224, 0.149, 0, s * 0.3, 0));
-      b.flat("head", at(stud(0.03, BEARD, 0xc8c8d4, 1.5, 0.55, 0.5, 0), s * 0.064, 0.25, 0.15, 0, s * 0.3, s * 0.2));
-      b.flat("head", at(cone(0.036, 0.15, BEARD, 5, BEARD), s * 0.055, 0.118, 0.17, 0.25, 0, Math.PI + s * 0.95, 1, 1, 0.7));
-    }
-    // barba até a cintura, larga no queixo e em ponta, com mechas; cabelo branco caindo dos lados e atrás
-    b.add("head", at(sculpt(20, 16, (n, p) => {
-      const tip = ss(0.5, -1, n.y);
-      p.set(n.x * 0.165 * (1 - 0.7 * tip), n.y * 0.34 - 0.06 * Math.abs(Math.sin(n.x * 7)) * tip, n.z * 0.06 * (1 - 0.3 * tip) + 0.05 * tip * (1 - tip) * 2);
-    }, (n, c) => {
-      c.copy(cBeardD).lerp(cBeard, 0.3 + 0.7 * ss(-0.6, 0.6, n.z) * ss(-1, -0.3, n.y));
-      if (Math.sin(n.x * 16) > 0.5) c.multiplyScalar(0.82);
-    }), 0, -0.2, 0.125, 0.1));
-    b.add("head", at(sph(0.172, 0xd8d8e2, 1.05, 1.3, 0.95, BEARD_D), 0, 0.13, -0.04));
-
-    // ---- chapéu: aba mole, cone que sobe e cai para trás (tubo com raio que afina), fita dourada com fivela
-    b.add("head", sculpt(26, 8, (n, p) => {
-      const a = Math.atan2(n.x, n.z);
-      p.set(n.x * 0.35, 0.33 + n.y * 0.016 - 0.05 * n.x * n.x + 0.022 * Math.sin(a * 3 + 0.6) * Math.hypot(n.x, n.z), n.z * 0.35 + 0.01);
-    }, (n, c) => {
-      c.copy(n.y < -0.2 ? cPD : cP).lerp(cPL, n.y > 0 ? 0.45 * ss(0.5, 1, Math.hypot(n.x, n.z)) : 0);
-    }));
-    b.add("head", tubeMesh(14, 11, (t, o) => {
-      o.set(0.07 * t * t, 0.33 + 0.56 * t - 0.26 * t * t * t, -0.01 - 0.04 * t - 0.34 * t * t * t);
-    }, (t) => 0.19 * Math.pow(Math.max(0, 1 - t), 0.85) + 0.012, (a, t, c) => {
-      c.copy(cPD).lerp(cP, 0.4 + 0.6 * ss(0, 0.6, t)).lerp(cPL, 0.45 * Math.max(0, Math.sin(a)) * ss(0.1, 0.5, t));
-      if (Math.sin(t * 26) > 0.86) c.multiplyScalar(0.8); // rugas do feltro
-      if (t > 0.03 && t < 0.13) c.copy(cGold);
-    }));
-    b.add("head", at(bx(0.075, 0.07, 0.03, GOLD, GOLD_D), 0, 0.395, 0.185, -0.12), at(stud(0.02, PURPLE_L, PURPLE, 1, 1, 0.6, 0), 0, 0.395, 0.204));
-
-    // ---- tronco do manto com faixa dourada na frente e gola
-    const chest = lathe([[0.2, -0.08], [0.205, 0.0], [0.19, 0.12], [0.21, 0.3], [0.225, 0.42], [0.2, 0.5], [0.12, 0.56], [0.07, 0.6], [0, 0.61]], PURPLE, PURPLE_D, 14);
-    chest.scale(1.08, 1, 0.82);
-    const collar = edge(lathe([[0.1, 0.5], [0.14, 0.58], [0.13, 0.63]], PURPLE, PURPLE_D, 12), GOLD, 0.63);
-    b.add("torso", chest, collar, at(cyl(0.05, 0.055, 0.1, FACE_D, 8), 0, 0.6, 0));
-    b.add("torso", at(bx(0.085, 0.5, 0.02, GOLD, GOLD_D), 0, 0.16, 0.168, -0.07), at(bx(0.045, 0.5, 0.022, PURPLE_L, PURPLE), 0, 0.16, 0.172, -0.07));
-
-    // ---- mangas largas em sino com punho dourado, mãos
-    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
-      b.add(arm, stud(0.088, PURPLE, PURPLE_D), limb(0.085, 0.078, 0.31, PURPLE));
-      b.add(fore, edge(lathe([[0.135, -0.27], [0.13, -0.24], [0.1, -0.1], [0.08, 0.0], [0, 0.06]], PURPLE, PURPLE_D, 12), GOLD, -0.27));
-      b.add(fore, at(cyl(0.05, 0.055, 0.1, FACE, 8, FACE_D), 0, -0.24, 0));
-      b.add(fore, ...grp(fist(FACE, 0.055, s), 0, -HAND, 0.01));
-    }
-
-    // ---- faixa dourada na cintura, bolsa de couro com alça do lado esquerdo
-    const sash = lathe([[0.215, 0.02], [0.228, 0.06], [0.228, 0.13], [0.215, 0.17]], GOLD, GOLD_D, 14);
-    sash.scale(1.06, 1, 0.84);
-    b.add("hips", sash, at(bx(0.07, 0.09, 0.03, 0xf6dc7a, GOLD), 0.03, 0.095, 0.19));
-    b.add("hips", ...grp([
-      at(bx(0.16, 0.2, 0.08, HIDE, HIDE_D), 0, 0, 0), at(bx(0.17, 0.08, 0.085, 0x8a4a34, HIDE), 0, 0.07, 0.003), at(stud(0.018, GOLD, GOLD_D, 1, 1, 1, 0), 0, 0.03, 0.045),
-    ], -0.2, -0.14, 0.1, 0, -0.5, 0.08));
-    b.add("torso", at(bx(0.035, 0.62, 0.018, HIDE, HIDE_D), 0.0, 0.2, 0.175, -0.07, 0, -0.62));
-
-    // ---- saia do manto até o chão: pregas, painel mais claro na frente com debrum, barra dourada; sapatos aparecendo
-    b.add("skirt", edge(robeMesh({ color: PURPLE, shade: PURPLE_D, rTop: 0.21, rHem: 0.45, yTop: 0.12, yHem: -0.9, folds: 0.07, panel: { half: 0.24, color: PURPLE_L, trim: GOLD }, seg: 44, rings: 9 }), GOLD, -0.9));
-    b.add("skirt", at(torus(0.44, 0.022, GOLD), 0, -0.88, 0, 0, 0, 0, 1, 1, 0.85));
-    for (const s of [-1, 1]) b.add("skirt", at(sph(0.08, HIDE, 1, 0.6, 1.7, HIDE_D), s * 0.11, -0.9, 0.3));
-
-    // ---- orbe arcano flutuando sobre a mão direita: núcleo pequeno aceso dentro de dois aros finos
-    const orb: [number, number, number] = [0, -HAND - 0.2, 0.07];
-    b.lit("foreR", at(stud(0.062, ORB, ORB, 1, 1, 1, 2), ...orb));
-    b.lit("foreR", at(torus(0.12, 0.008, ORB), ...orb, 0.5, 0, 0.3), at(torus(0.135, 0.006, ORB), ...orb, -0.7, 0, 1.1));
+    addModel(b, "aurelius");
+    // orbe arcano solto sobre a palma erguida, na vertical do mundo (referência do usuário): esfera de pedra rachada com o núcleo
+    // roxo vazando pelas frestas e por um rombo na frente, e estilhaços de cristal aceso soltos em volta
+    const R = restArm(b, 1, HAND), Y = 0.24, OR = 0.13;
+    b.flat("foreR", ...hang([at(crackedOrb(OR, 0x3e3650, 0x7a7090, new THREE.Vector3(0.35, 0.05, 0.94).normalize()), 0, Y, 0)], R.inv, HAND));
+    const shard = (r: number, x: number, y: number, z: number, rx: number, rz: number): G =>
+      at(paintY(prepFlat(new THREE.TetrahedronGeometry(r)), SHARD_D, SHARD, r), x, Y + y, z, rx, 0.4, rz, 1, 1.8, 0.8);
+    b.lit("foreR", ...hang([
+      at(stud(OR * 0.94, CORE, CORE_D, 1, 1, 1, 2), 0, Y, 0),
+      shard(0.034, 0.17, 0.12, 0.04, 0.3, -0.6), shard(0.026, -0.16, 0.14, 0.06, -0.4, 0.7), shard(0.03, 0.05, 0.2, -0.1, 0.9, 0.2),
+      shard(0.02, -0.19, -0.02, 0.1, 0.2, 1.2), shard(0.022, 0.2, -0.04, -0.06, -0.8, -1.1), shard(0.016, -0.06, 0.24, 0.08, 0.5, -0.3),
+    ], R.inv, HAND));
   },
   // Redesenho a partir do sprite (docs/ref/ignis.png): lutador de base baixa, cabelo vermelho espetado com pontas em chama, gi preto sem
   // mangas aberto no peito, braços nus e fortes, faixa vermelha com pontas compridas, calça larga cinza e punho direito em chamas.
