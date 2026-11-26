@@ -221,17 +221,29 @@ def bake_ao(objs, strength=0.75, distance=0.12, samples=24):
 Q = 8192  # posição em int16: passo de 1/8192 (alcance de ±4 unidades)
 
 
-def export_parts(path, parts, pivots):
+REGIONS = {"fixed": 0, "primary": 1, "secondary": 2, "accent": 3}
+
+
+def region(obj, name):
+    """marca a peça com a região de cor que a skin troca (M2-11, para o M13-06): primary, secondary, accent; sem marca = fixed"""
+    obj["region"] = REGIONS[name]
+    return obj
+
+
+def export_parts(path, parts, pivots, meta=None):
     """Grava as malhas por osso para o jogo (lidas por src/game/chars/baked.ts). parts: {chave: [objetos]}, chave = 'osso'
     (sólido, com contorno), 'osso@flat' (sem contorno) ou 'osso@lit' (brilho). pivots: {osso: (x, y, z) no Blender}.
     Coordenadas convertidas para o three (x, z, -y), relativas ao pivô do osso; triângulos sem índice. Compactado:
-    posição int16 (/Q), normal int8 (/127), cor sRGB uint8."""
+    posição int16 (/Q), normal int8 (/127), cor sRGB uint8. Região de cor por vértice (uint8, ver `region`) só se alguma peça
+    tiver marca; meta (dims, forma) vai na chave "meta", para o teste conferir com a receita."""
     import array
     out = {"q": Q}
+    if meta:
+        out["meta"] = meta
     for key, objs in parts.items():
         bone = key.split("@")[0]
         px, py, pz = pivots[bone]
-        pos, nor, col = array.array("h"), array.array("b"), array.array("B")
+        pos, nor, col, reg = array.array("h"), array.array("b"), array.array("B"), array.array("B")
         for o in objs:
             dg = bpy.context.evaluated_depsgraph_get()
             ev = o.evaluated_get(dg)
@@ -239,6 +251,7 @@ def export_parts(path, parts, pivots):
             me.transform(o.matrix_world)
             me.calc_loop_triangles()
             attr = me.color_attributes.get("Col")
+            rg = int(o.get("region", 0))
             for tri in me.loop_triangles:
                 for li in tri.loops:
                     vi = me.loops[li].vertex_index
@@ -248,12 +261,15 @@ def export_parts(path, parts, pivots):
                     nor.extend(max(-127, min(127, round(v * 127))) for v in (n.x, n.z, -n.y))
                     c = attr.data[vi].color if attr else (0.5, 0.5, 0.5, 1)
                     col.extend(max(0, min(255, round(v * 255))) for v in c[:3])
+                    reg.append(rg)
             ev.to_mesh_clear()
         out[key] = {"n": len(pos) // 3, "position": base64.b64encode(pos.tobytes()).decode(),
                     "normal": base64.b64encode(nor.tobytes()).decode(), "color": base64.b64encode(col.tobytes()).decode()}
+        if any(reg):
+            out[key]["region"] = base64.b64encode(reg.tobytes()).decode()
     with open(path, "w") as f:
         json.dump(out, f)
-    return {k: v["n"] // 3 for k, v in out.items() if k != "q"}
+    return {k: v["n"] // 3 for k, v in out.items() if k not in ("q", "meta")}
 
 
 def review_setup(target, dist=1.2, yaw=20, pitch=8, res=640):

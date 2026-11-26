@@ -36,6 +36,10 @@ class Rig:
         """pivô do osso no Blender (x, y, z)"""
         return self.piv[bone]
 
+    def dims(self):
+        return {"hipY": self.hipY, "headY": self.headY, "shoulderY": self.shoulderY, "shoulderX": self.shoulderX,
+                "arm": self.arm, "hipX": self.hipX, "thigh": self.thigh}
+
     def dims_ts(self):
         return (f"{{ hipY: {self.hipY}, headY: {self.headY}, shoulderY: {self.shoulderY}, shoulderX: {self.shoulderX}, "
                 f"arm: {self.arm}, hipX: {self.hipX}, thigh: {self.thigh} }}")
@@ -65,7 +69,7 @@ def merge(*dicts):
     return parts
 
 
-def finish(name, rig, parts, args, ao=0.75, body_center=(0, 0, 0.85), body_dist=4.5, head_dist=1.4):
+def finish(name, rig, parts, args, ao=0.75, body_center=(0, 0, 0.85), body_dist=4.5, head_dist=1.4, form=None):
     """oclusão nas peças sólidas, exportação por osso, capturas de conferência (com 'review') e o .blend"""
     parts = {k: v for k, v in parts.items() if v}  # sem chave vazia (ex.: nada aceso na cabeça)
     # peça marcada com o["no_ao"] fica fora da oclusão: tubo cujos únicos vértices ficam dentro de outra peça (haste de osso
@@ -73,7 +77,9 @@ def finish(name, rig, parts, args, ao=0.75, body_center=(0, 0, 0.85), body_dist=
     solids = [o for k, v in parts.items() if "@" not in k for o in v if not o.get("no_ao")]
     bake_ao(solids, strength=ao, distance=0.1)
     pivots = {k.split("@")[0]: rig.P(k.split("@")[0]) for k in parts}
-    counts = export_parts(os.path.join(ROOT, "src", "game", "chars", "models", f"{name}.json"), parts, pivots)
+    # form dado = modelo novo (heróis, M2-11): grava dims e forma, que tests/models.test.ts confere com a receita
+    meta = {"dims": rig.dims(), "form": form} if form else None
+    counts = export_parts(os.path.join(ROOT, "src", "game", "chars", "models", f"{name}.json"), parts, pivots, meta)
     print("TRIS", sum(counts.values()), counts)
     if "review" in args:
         review_setup((0, 0, 0))

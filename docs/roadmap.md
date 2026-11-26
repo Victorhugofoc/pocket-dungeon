@@ -336,6 +336,7 @@ Uma tarefa `M` por herói, na ordem abaixo (do mais simples de corpo para o mais
 - Os heróis nunca passaram pelo Blender: ainda são primitivas de `kit.ts` em `cast-heroes.ts`; só inimigos e chefes têm `tools/blender/<id>.py`. Refazer cada um pelo método da seção 4 (D16): brief, sprite como fonte, medidas, script em `tools/blender/<id>.py`, `models/<id>.json`, receita só com esqueleto e postura, crítico cego antes de mostrar.
 - Cuidado: o herói é visto o tempo todo e tem animação de técnica e de spells; manter os pivôs e os ossos que `animate.ts` usa, para não quebrar as animações.
 - Pronto quando: os 9 vêm do Blender e o usuário aprova cada um.
+- **Combinado em 2026-11-25** (a `M14-09` fica parada na etapa 5, para depois): ordem Frostine; depois os de manto (Aurelius, Vesper, Seraph); depois os bípedes (Kaelen, Zephyr, Umbra, Ignis); Varok por último. (A) esqueleto igual ao da receita, conferido por `tests/models.test.ts` (o JSON grava `meta` com `dims` e forma); (B) regiões de cor por peça (`region(obj, "primary"|"secondary"|"accent")` em `kit.py`, lidas por `modelParts(id, recolor)`) para as skins do `M13-06` trocarem a cor sem refazer o modelo; (C) arma no Blender, o que brilha por código; (D) **até 3 rodadas do crítico, e depois de cada uma o usuário vê as capturas e a lista e decide se segue**.
 
 **M2-10 · Tela de seleção com os heróis novos** · P
 - Passos: a tela de título mostra o herói 3D girando (reaproveitar a prévia) em vez de só texto.
