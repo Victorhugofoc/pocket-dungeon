@@ -40,7 +40,7 @@ import { eventAvailable } from "../core/events";
 import { depthsHudHtml, depthsHudKey, depthsPanelHtml, depthsPerksHtml, depthsResultHtml } from "./depths-view";
 import { TIER_COLOR } from "./theme";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
-import { attackLine, barsHtml, masteryHtml } from "./heroselect";
+import { appearanceHtml, attackLine, barsHtml, HERO_TABS, masteryHtml, portraitBadgesHtml, type HeroTab } from "./heroselect";
 import { allowedLoadout, loadoutHero } from "../core/mastery";
 import { ALT_AUTOS } from "../data/mastery";
 import { codexDetailHtml, codexList, codexScreenHtml, type CodexFormat, type CodexView } from "./codex-view";
@@ -197,6 +197,9 @@ export class Ui {
   private selectedDifficulty: DifficultyId = "normal";
   private selectedSpell = "";
   private seedText = "";
+  /** M14-09: aba aberta na ficha do herói e a seed à mostra */
+  private heroTab: HeroTab = "overview";
+  private seedOpen = false;
   /** o teclado da tela de seleção (setas, 1 a 4, Enter, Esc), enquanto ela está aberta */
   private titleKeys: ((code: string) => void) | null = null;
   /** M13-04: o teclado do códex enquanto ele está aberto */
@@ -393,17 +396,25 @@ export class Ui {
         const tip = lk ? `Locked · ${lockText(id)}` : `${d.name} · ${d.title}`;
         return `<button class="hs-portrait ${id === h.id ? "sel" : ""} ${lk ? "locked" : ""}" data-hero="${id}" style="--hc:${hex(d.color)};--i:${i}" title="${tip}">
           <span class="face"><img src="${lk ? faces[id].locked : faces[id].face}" alt="">${lk ? `<i class="lock">🔒</i>` : ""}</span><span class="nm">${lk ? "???" : d.name}</span>
+          ${lk ? `<small class="hs-why">${lockText(id)}</small>` : portraitBadgesHtml(ach.medals[id] ?? 0, ach.mastery[id] ?? 0)}
           ${isNew(ach, "hero", id) ? `<em class="new">NEW</em>` : ""}</button>`;
       }).join("");
-      const info = locked ? `<p class="note">This hero is still locked.</p>` : `
-        <div class="hs-role">${h.identity}</div>
-        ${barsHtml(h.id)}
-        <div class="section">Attack</div><p class="hs-line">${hk !== h && lo.auto ? `<b>${ALT_AUTOS[h.id].name}</b> · ` : ""}${attackLine(hk)}</p>
-        ${heroKit(hk, hk.technique.cooldown)}
-        ${masteryHtml(h.id, ach.mastery[h.id] ?? 0, lo, TUNING.unlockAll)}
-        ${best.length || medal ? `<div class="section">Records</div>
-        <ul class="hs-rec">${best.join("")}${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}${
-          ach.depths[h.id] && (ach.depths[h.id].best || ach.depths[h.id].marks) ? `<li class="medal">Depths ${ach.depths[h.id].best || "—"} won · ${ach.depths[h.id].marks} Marks</li>` : ""}</ul>` : ""}`;
+      // M14-09: a ficha em abas (Q e E trocam); a aba fica a mesma ao trocar de herói
+      const depthsRec = ach.depths[h.id] && (ach.depths[h.id].best || ach.depths[h.id].marks)
+        ? `<li class="medal">Depths ${ach.depths[h.id].best || "—"} won · ${ach.depths[h.id].marks} Marks</li>` : "";
+      const tabBody: Record<HeroTab, string> = {
+        overview: `<div class="hs-role">${h.identity}</div>${barsHtml(h.id)}
+          <div class="section">Attack</div><p class="hs-line">${hk !== h && lo.auto ? `<b>${ALT_AUTOS[h.id].name}</b> · ` : ""}${attackLine(hk)}</p>
+          <div class="section">Technique</div><p class="hs-line"><b class="kit-name">${hk.technique.name}</b>${hk.technique.text}</p>`,
+        kit: heroKit(hk, hk.technique.cooldown),
+        mastery: masteryHtml(h.id, ach.mastery[h.id] ?? 0, lo, TUNING.unlockAll),
+        records: best.length || medal || depthsRec
+          ? `<ul class="hs-rec">${best.join("")}${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}${depthsRec}</ul>`
+          : `<p class="note">No runs with ${h.name} yet.</p>`,
+      };
+      const tabs = `<nav class="hs-tabs"><i class="key">Q</i>${HERO_TABS.map((t) =>
+        `<button class="${t.id === this.heroTab ? "sel" : ""}" data-tab="${t.id}">${t.name}</button>`).join("")}<i class="key">E</i></nav>`;
+      const info = locked ? `<p class="note">This hero is still locked.</p>` : `${tabs}<div class="hs-tab">${tabBody[this.heroTab]}</div>`;
       // M13-02 (run_setup.lua, D-222): as Depths abrem por herói depois de vencer na Hard, um nível por vez
       const dOpen = locked ? 0 : unlockedDepths(ach.depths, h.id, (ach.medals[h.id] ?? 0) >= 3);
       if (depthsLevel(this.selectedDifficulty) > dOpen) this.selectedDifficulty = dOpen > 0 ? `depths${dOpen}` as DifficultyId : "hard";
@@ -422,7 +433,12 @@ export class Ui {
       // M13-02 parte 2 (depths_setup.lua): as vantagens ficam ao lado, com as Marcas do herói
       const perks = dCur ? depthsPerksHtml(ach.depths, h.id, confirmPerk) : "";
       const spells = h.startingSpells.map((id, i) => `<button class="${id === this.selectedSpell ? "sel" : ""}" data-spell="${id}"
-        title="${SPELL_TEXT[id]}">${iconHtml(spellIconUrl(id), 28)}<b class="sn">${spellName(id)}</b><kbd>${i + 1}</kbd></button>`).join("");
+        title="${SPELL_TEXT[id]}">${iconHtml(spellIconUrl(id), 36)}<b class="sn">${spellName(id)}</b><i class="key">${i + 1}</i></button>`).join("");
+      // M14-09: uma linha do que a escolha muda, embaixo de cada grupo
+      const dd = DIFFICULTIES[this.selectedDifficulty];
+      const diffDesc = dCur ? "" : `<p class="hs-desc">${DIFFICULTY_TEXT[this.selectedDifficulty]} <span>Enemy HP ×${dd.enemyHp.toFixed(2)} · damage ×${dd.enemyDamage.toFixed(2)} · rewards ×${dd.reward.toFixed(2)}</span></p>`;
+      const spellDesc = `<p class="hs-desc">${SPELL_TEXT[this.selectedSpell as SpellId] ?? ""}</p>`;
+      const seedShown = this.seedOpen || this.seedText !== "" || seedErr !== "";
       panel.innerHTML = `
         <header class="hs-top">
           <div><h1>DUNGEON REIGN</h1><p class="tag">${records}</p></div>
@@ -437,27 +453,26 @@ export class Ui {
           <div class="hs-stage ${locked ? "locked" : ""}" style="--hc:${hex(h.color)}">
             <div class="hs-name"><h2>${locked ? "Locked" : h.name}</h2><p>${locked ? "" : h.title}</p></div>
             <div class="hs-floor" data-r="stage"></div>
-            ${locked ? `<p class="hs-lock">Unlock: ${lockText(h.id)}</p>` : `<div class="hs-look"><div class="section">Appearance</div>
-              <button class="sel" title="The hero's own look">Default</button>
-              <button disabled title="Hero skins: coming later">Skins · soon</button>
-              <button disabled title="Founder wings and cloaks: coming later">Founder · soon</button></div>`}
+            ${locked ? `<p class="hs-lock">Unlock: ${lockText(h.id)}</p>` : appearanceHtml(faces[h.id].face, medal, ach.depths[h.id]?.best ?? 0)}
           </div>
           <div class="hs-info" style="--hc:${hex(h.color)}">${perks}${info}</div>
         </div>
         <footer class="hs-setup ${locked ? "off" : ""}" style="--hc:${hex(h.color)}">
-          <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div>${depthsRow}</div>
+          <div class="hs-group"><div class="section">Difficulty</div><div class="hs-pills">${diffs}</div>${depthsRow}${diffDesc}</div>
           <div class="hs-group"><div class="section">Starting spell <small>· others come from the shop and upgrades</small></div>
-            <div class="hs-spells">${spells}</div></div>
-          <div class="hs-group"><div class="section">Seed</div>
+            <div class="hs-spells">${spells}</div>${spellDesc}</div>
+          <div class="hs-group hs-seed"><div class="section">Seed</div>${seedShown ? `
             <input class="seed" data-r="seed" maxlength="24" placeholder="Random" value="${this.seedText}" spellcheck="false"
               title="Same seed = same map, rooms, relics and bosses. Paste a run's 7-letter code or type any word. Empty = random.">
-            ${seedErr ? `<p class="bad">${seedErr}</p>` : ""}</div>
+            ${seedErr ? `<p class="bad">${seedErr}</p>` : ""}` : `<button data-act="seed" title="Same seed = same map, rooms, relics and bosses">Set a seed</button>`}</div>
           <div class="hs-go"><button class="primary ${confirming ? "danger" : ""}" data-act="go" ${locked ? "disabled" : ""}>${
             confirming ? "Ends your saved run · click to confirm" : "Start the run"}</button></div>
         </footer>
-        <p class="hs-keys">Arrows: hero · drag: turn · 1-4: starting spell · Enter: start · Esc: cancel</p>`;
+        <p class="hs-keys"><i class="key">←→↑↓</i> hero <i class="key">Q</i><i class="key">E</i> tabs <i class="key">1-4</i> starting spell <i class="key">Enter</i> start · drag the hero to turn</p>`;
       this.game.stage.show(panel.querySelector<HTMLElement>("[data-r=stage]")!, h.id, locked);
-      const input = panel.querySelector<HTMLInputElement>("[data-r=seed]")!;
+      const input = panel.querySelector<HTMLInputElement>("[data-r=seed]");
+      if (!input) return;
+      if (this.seedOpen && !this.seedText) input.focus();
       input.oninput = () => (this.seedText = input.value.toUpperCase());
       input.onkeydown = (e) => {
         e.stopPropagation();
@@ -534,13 +549,21 @@ export class Ui {
         this.game.saveAchievements();
         return render();
       }
+      const tab = t.closest<HTMLElement>("[data-tab]")?.dataset.tab as HeroTab | undefined;
+      if (tab) {
+        this.heroTab = tab;
+        return render();
+      }
       const spell = t.closest<HTMLElement>("[data-spell]")?.dataset.spell;
       if (spell) {
         this.selectedSpell = spell;
         return render();
       }
       const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
-      if (act === "runlog") {
+      if (act === "seed") {
+        this.seedOpen = true;
+        render();
+      } else if (act === "runlog") {
         const n = downloadRunLog(this.storage);
         this.toast(`Run log exported (${n} runs)`, "#9be4ff");
       } else if (act === "continue" && save) {
@@ -558,6 +581,11 @@ export class Ui {
       const n = HERO_ORDER.length;
       const step: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 };
       if (step[k] !== undefined) return select(HERO_ORDER[(i + step[k] + n) % n]);
+      if ((k === "KeyQ" || k === "KeyE") && open(this.selectedHero)) {
+        const t = HERO_TABS.findIndex((x) => x.id === this.heroTab);
+        this.heroTab = HERO_TABS[(t + (k === "KeyE" ? 1 : HERO_TABS.length - 1)) % HERO_TABS.length].id;
+        return render();
+      }
       const num = /^(?:Digit|Numpad)([1-4])$/.exec(k);
       if (num) {
         const id = HEROES[this.selectedHero].startingSpells[Number(num[1]) - 1];

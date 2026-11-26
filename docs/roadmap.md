@@ -842,7 +842,7 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
   7. Status (I): 20 atributos numa lista só, sem grupos nem destaque do que mudou; sinergias em 10 px.
   8. Painéis abrem sem transição (só o título anima); botão e preço sem estado de "não dá" além da cor.
   9. Fonte do sistema em tudo, inclusive títulos: sem identidade de jogo.
-- **Plano (combinado em 2026-11-25):** fonte do sistema (títulos em caixa alta espaçada, sem fonte de fora). Etapas, uma por vez com captura: 1 base (escala em rem, tokens, moldura, carta, botão, tecla, HUD apagado atrás dos painéis; **feita em 2026-11-25**), 2 tela de herói e aparência (pedido do usuário no mesmo dia: refazer a escolha de campeão e de skin; melhorias listadas para ele escolher), 3 cartas de nível, relíquia e evolução com 1/2/3, 4 HUD, 5 loja com compra por número, 6 tela I agrupada, 7 pausa e resultado, 8 códex e Depths.
+- **Plano (combinado em 2026-11-25):** fonte do sistema (títulos em caixa alta espaçada, sem fonte de fora). Etapas, uma por vez com captura: 1 base (escala em rem, tokens, moldura, carta, botão, tecla, HUD apagado atrás dos painéis; **feita em 2026-11-25**), 2 tela de herói e aparência (pedido do usuário no mesmo dia: refazer a escolha de campeão e de skin; ele escolheu A aparência, B abas, C retratos, D rodapé; **feita em 2026-11-25**), 3 cartas de nível, relíquia e evolução com 1/2/3, 4 HUD, 5 loja com compra por número, 6 tela I agrupada, 7 pausa e resultado, 8 códex e Depths.
 
 
 **M14-10 · Ícones do original em toda a interface** · M [proposta, pedido do usuário em 2026-11-24; amplia a D19]

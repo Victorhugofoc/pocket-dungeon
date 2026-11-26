@@ -6,6 +6,7 @@ import { HEROES, HERO_ORDER, type HeroDef } from "../data/heroes";
 import { masteryInfo, masteryOpen, type Loadout } from "../core/mastery";
 import { ALT_AUTOS, ALT_TECHNIQUE, MASTERY } from "../data/mastery";
 import { TECHNIQUES } from "../data/techniques";
+import { heroSkins, skinLockText } from "../core/skins";
 
 /** Uma barra: o valor do herói e a fração do maior dos 9 (0 a 1). */
 export interface HeroBar {
@@ -97,4 +98,43 @@ export function masteryHtml(id: string, points: number, pick: Loadout, all: bool
       ${row("auto", "Attack", "Default", h.weaponName, alt.name, alt.text, MASTERY.autoLevel)}
       ${row("technique", "Technique", h.technique.name, h.technique.text, tech.name, tech.text, MASTERY.techniqueLevel)}
     </div>`;
+}
+
+// ---------------------------------------------------------------- M14-09 etapa 2: aparência, retratos e abas
+
+/** Abas da ficha do herói (Q e E trocam). */
+export const HERO_TABS = [
+  { id: "overview", name: "Overview" },
+  { id: "kit", name: "Kit" },
+  { id: "mastery", name: "Mastery" },
+  { id: "records", name: "Records" },
+] as const;
+export type HeroTab = (typeof HERO_TABS)[number]["id"];
+
+const MEDAL_COLOR = ["", "#7ee08a", "#9be4ff", "#ff7a6a"];
+const MEDAL_NAME = ["", "Easy", "Normal", "Hard"];
+
+/** Selo do retrato: medalhas (3 pontos, Easy a Hard) e o nível de maestria. */
+export function portraitBadgesHtml(medal: number, points: number): string {
+  const lv = masteryInfo(points).level;
+  const pips = [1, 2, 3].map((m) => `<i class="${medal >= m ? "on" : ""}" style="--mc:${MEDAL_COLOR[m]}"></i>`).join("");
+  const tip = `${medal ? `Won on ${MEDAL_NAME[medal]}` : "No win yet"} · Mastery ${lv}`;
+  return `<span class="hs-badges" title="${tip}"><span class="hs-medals">${pips}</span><b>M${lv}</b></span>`;
+}
+
+/**
+ * A fileira de aparência no pé do palco: as 6 skins (o rosto do herói com o anel da skin) e o Founder.
+ * Só a Default se veste por enquanto: a arte de cada skin é o `M13-06` e o Founder o `M13-07` (fase 2).
+ */
+export function appearanceHtml(face: string, medal: number, depthsBest: number): string {
+  const tiles = heroSkins(medal, depthsBest).map(({ skin, open }) => {
+    const sel = skin.id === "default";
+    const state = sel ? "Equipped" : open ? "Unlocked · look comes later" : skinLockText(skin);
+    return `<button class="hs-skin ${sel ? "sel" : ""} ${open ? "" : "locked"}" style="--sc:${skin.color}" ${sel ? "" : "disabled"}
+      title="${skin.name} · ${state}"><span class="th"><img src="${face}" alt="">${open ? "" : `<i class="lock">🔒</i>`}</span>
+      <b>${skin.name}</b><small>${sel ? "Equipped" : open ? "Soon" : skinLockText(skin)}</small></button>`;
+  }).join("");
+  return `<div class="hs-look"><div class="section">Appearance</div><div class="hs-skins">${tiles}
+    <button class="hs-skin founder" disabled title="Founder effect: wings, cloaks and auras on top of any skin · comes later">
+      <span class="th">✦</span><b>Founder</b><small>Soon</small></button></div></div>`;
 }

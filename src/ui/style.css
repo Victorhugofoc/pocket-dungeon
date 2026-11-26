@@ -239,11 +239,45 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 }
 
 /* aparência (skins M13-06, Founder M13-07): espaço reservado no pé do palco */
-.hs-look { position: absolute; left: 0; right: 0; bottom: 12px; display: flex; justify-content: center; align-items: center; gap: 6px; z-index: 1; font-size: 0.85em; }
-.hs-look .section { margin: 0 6px 0 0; }
-.hs-look button { padding: 4px 12px; font-size: 1em; border-radius: 999px; background: #0d0f17cc; }
-.hs-look button.sel { border-color: var(--hc); color: var(--hc); }
-.hs-look button:disabled { opacity: 0.55; cursor: default; }
+/* M14-09 etapa 2: aparência no pé do palco. As 6 skins (rosto com o anel da skin) e o Founder; só a Default se veste até o M13-06 */
+.hs-look { position: absolute; left: 0; right: 0; bottom: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 1; font-size: 0.82em; pointer-events: none; }
+.hs-look .section { margin: 0; text-shadow: 0 1px 3px #000; }
+.hs-skins { display: flex; gap: 6px; pointer-events: auto; padding: 6px 8px; border-radius: 12px; background: #0b0c13b3; border: 1px solid #ffffff14; backdrop-filter: blur(4px); }
+.hs-skin { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 5.6em; padding: 5px 2px 4px; border-radius: 9px; background: transparent; border: 1px solid transparent; }
+.hs-skin .th { position: relative; width: 2.9em; height: 2.9em; border-radius: 50%; overflow: hidden; display: grid; place-items: center;
+  box-shadow: 0 0 0 2px var(--sc, #555a70), inset 0 0 0 1px #0008; background: #0d0f17; color: var(--gold); font-size: 1.3em; }
+.hs-skin .th img { width: 100%; height: 100%; display: block; }
+.hs-skin .th .lock { position: absolute; inset: 0; display: grid; place-items: center; font-style: normal; font-size: 0.75em; background: #0009; }
+.hs-skin b { font-size: 0.95em; color: var(--text); font-weight: 600; }
+.hs-skin small { font-size: 0.82em; color: var(--muted); white-space: nowrap; }
+.hs-skin.sel { border-color: var(--hc); background: color-mix(in srgb, var(--hc) 14%, transparent); }
+.hs-skin.sel small { color: var(--hc); }
+.hs-skin:disabled { opacity: 1; cursor: default; }
+.hs-skin.locked .th img { filter: grayscale(1) brightness(0.5); }
+.hs-skin.locked b { color: var(--muted); }
+.hs-skin.founder .th { box-shadow: 0 0 0 2px #ffd34d88; }
+/* retratos: medalhas e maestria; o trancado diz o que falta */
+.hs-badges { display: flex; align-items: center; gap: 6px; font-size: 0.72em; }
+.hs-medals { display: flex; gap: 3px; }
+.hs-medals i { width: 0.75em; height: 0.75em; border-radius: 50%; border: 1px solid #5a6078; }
+.hs-medals i.on { background: var(--mc); border-color: var(--mc); box-shadow: 0 0 5px var(--mc); }
+.hs-badges b { color: var(--hc); font-weight: 700; letter-spacing: 0.5px; }
+.hs-why { font-size: 0.68em; color: var(--muted); line-height: 1.2; text-align: center; padding: 0 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* ficha em abas */
+.hs-tabs { display: flex; align-items: center; gap: 4px; margin: -2px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.hs-tabs button { flex: 1; padding: 6px 4px; font-size: 0.9em; background: transparent; border-color: transparent; color: var(--muted); }
+.hs-tabs button.sel { color: var(--hc); border-color: color-mix(in srgb, var(--hc) 60%, transparent); background: color-mix(in srgb, var(--hc) 12%, transparent); }
+.hs-tabs .key { font-size: 0.7em; }
+.hs-tab { animation: hs-fade 0.2s ease-out both; }
+/* rodapé: uma linha do que a escolha muda; spells em carta com a tecla */
+.hs-desc { margin: 6px 0 0; font-size: 0.82em; color: var(--text-2); max-width: 46em; line-height: 1.35; }
+.hs-desc span { color: var(--muted); white-space: nowrap; }
+.hs-spells button { padding: 6px 30px 6px 8px; gap: 8px; }
+.hs-spells button .key { position: absolute; top: 4px; right: 4px; font-size: 0.68em; }
+.hs-spells button .sn { font-size: 1em; }
+.hs-seed button { width: 100%; color: var(--muted); }
+.hs-keys .key { margin: 0 2px 0 8px; font-size: 0.85em; }
+.hs-keys .key + .key { margin-left: 0; }
 
 /* transições: a tela entra em cascata; trocar de herói renova o nome e a ficha */
 @keyframes hs-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
