@@ -39,7 +39,9 @@ import { eventCardsHtml, eventHudHtml, eventHudKey, eventPanelHtml, gateExtraHtm
 import { eventAvailable } from "../core/events";
 import { depthsHudHtml, depthsHudKey, depthsPanelHtml, depthsPerksHtml, depthsResultHtml } from "./depths-view";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
-import { attackLine, barsHtml } from "./heroselect";
+import { attackLine, barsHtml, masteryHtml } from "./heroselect";
+import { allowedLoadout, loadoutHero } from "../core/mastery";
+import { ALT_AUTOS } from "../data/mastery";
 import { codexDetailHtml, codexList, codexScreenHtml, type CodexFormat, type CodexView } from "./codex-view";
 import { CODEX_TABS, codexOpened, type CodexTab } from "../core/codex";
 
@@ -116,7 +118,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", html = ""):
 }
 
 /** Passiva e técnica do herói (escolha de herói e pausa); `cooldown` em s, já com os bônus quando houver. */
-type RunSetup = Pick<NewRunOptions, "heroId" | "difficultyId" | "startingSpell">;
+type RunSetup = Pick<NewRunOptions, "heroId" | "difficultyId" | "startingSpell" | "loadout">;
 
 /** Cor da carta de cada dificuldade. */
 const DIFF_COLOR: Record<DifficultyId, string> = { easy: "#7ee08a", normal: "#9be4ff", hard: "#ff7a6a",
@@ -377,6 +379,9 @@ export class Ui {
         return b ? [`<li><b>${DIFFICULTIES[d].name}</b> wave ${b.wave}${b.victory ? " · victory" : ""}</li>`] : [];
       });
       const medal = ach.medals[h.id] ?? 0;
+      // M21-11: as alternativas da maestria escolhidas (sem o que ainda está trancado)
+      const lo = allowedLoadout(h.id, ach.loadouts[h.id], ach.mastery[h.id] ?? 0, TUNING.unlockAll);
+      const hk = loadoutHero(h.id, lo);
       const confirming = this.confirmNew === h.id;
       const records = rec.runs
         ? `${rec.runs} runs · ${rec.wins} wins · best wave ${rec.highestWave}${rec.bestEndless ? ` · endless to wave ${rec.bestEndless}` : ""} · ${rec.kills} kills · ${achievementCount(ach)} of ${ACHIEVEMENTS.length} achievements`
@@ -393,8 +398,9 @@ export class Ui {
       const info = locked ? `<p class="note">This hero is still locked.</p>` : `
         <div class="hs-role">${h.identity}</div>
         ${barsHtml(h.id)}
-        <div class="section">Attack</div><p class="hs-line">${attackLine(h)}</p>
-        ${heroKit(h, h.technique.cooldown)}
+        <div class="section">Attack</div><p class="hs-line">${hk !== h && lo.auto ? `<b>${ALT_AUTOS[h.id].name}</b> · ` : ""}${attackLine(hk)}</p>
+        ${heroKit(hk, hk.technique.cooldown)}
+        ${masteryHtml(h.id, ach.mastery[h.id] ?? 0, lo, TUNING.unlockAll)}
         ${best.length || medal ? `<div class="section">Records</div>
         <ul class="hs-rec">${best.join("")}${medal ? `<li class="medal">Medal: won on ${MEDAL[medal]}</li>` : ""}${
           ach.depths[h.id] && (ach.depths[h.id].best || ach.depths[h.id].marks) ? `<li class="medal">Depths ${ach.depths[h.id].best || "—"} won · ${ach.depths[h.id].marks} Marks</li>` : ""}</ul>` : ""}`;
@@ -485,7 +491,8 @@ export class Ui {
       }
       this.confirmNew = "";
       this.titleKeys = null;
-      this.newRunWith({ heroId: h.id, difficultyId: this.selectedDifficulty, startingSpell: this.selectedSpell },
+      const loadout = allowedLoadout(h.id, ach.loadouts[h.id], ach.mastery[h.id] ?? 0, TUNING.unlockAll);
+      this.newRunWith({ heroId: h.id, difficultyId: this.selectedDifficulty, startingSpell: this.selectedSpell, loadout },
         code ? decodeSeed(code)! : undefined);
     };
     render();
@@ -518,6 +525,13 @@ export class Ui {
       const diff = t.closest<HTMLElement>("[data-diff]")?.dataset.diff;
       if (diff) {
         this.selectedDifficulty = diff as DifficultyId;
+        return render();
+      }
+      const mb = t.closest<HTMLElement>("[data-mastery]");
+      if (mb && !(mb as HTMLButtonElement).disabled) {
+        const kind = mb.dataset.mastery as "auto" | "technique";
+        ach.loadouts[this.selectedHero] = { ...ach.loadouts[this.selectedHero], [kind]: mb.dataset.on === "1" };
+        this.game.saveAchievements();
         return render();
       }
       const spell = t.closest<HTMLElement>("[data-spell]")?.dataset.spell;
@@ -1563,7 +1577,7 @@ export class Ui {
     g.ach.recordKills = rec.kills;
     g.saveAchievements();
     const best = rec.best[`${run.heroId}/${run.difficultyId}`];
-    const setup: RunSetup = { heroId: run.heroId, difficultyId: run.difficultyId, startingSpell: run.startingSpell };
+    const setup: RunSetup = { heroId: run.heroId, difficultyId: run.difficultyId, startingSpell: run.startingSpell, loadout: run.loadout };
     const s = run.statistics;
     const identity = buildIdentity(run.tags);
     const n = (v: number) => Math.round(v).toLocaleString("en-US");
