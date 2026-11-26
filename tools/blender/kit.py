@@ -112,6 +112,23 @@ def ball(name, co, size, rot=(0, 0, 0), seg=(16, 10)):
     return new_mesh(name, bm)
 
 
+def soften(parts):
+    """sombreado suave em todas as peças, menos as de `flat_shade` (chapadas de propósito): tubo e bola saem facetados sem isso"""
+    for objs in parts.values():
+        for o in objs:
+            if not o.get("facets"):
+                for p in o.data.polygons:
+                    p.use_smooth = True
+
+
+def sball(*a, **k):
+    """`ball` com sombreado suave: a bola comum sai facetada de perto (olho, gema, conta)"""
+    o = ball(*a, **k)
+    for p in o.data.polygons:
+        p.use_smooth = True
+    return o
+
+
 def cone(name, base, tip, r, seg=6):
     bm = bmesh.new()
     base, tip = Vector(base), Vector(tip)
@@ -150,8 +167,10 @@ def apply_mods(obj):
 
 
 def flat_shade(obj):
+    """faces chapadas de propósito (caixa, estrela, pedra talhada): `check_finish` não conta como faceta"""
     for p in obj.data.polygons:
         p.use_smooth = False
+    obj["facets"] = True
     return obj
 
 
@@ -221,17 +240,29 @@ def bake_ao(objs, strength=0.75, distance=0.12, samples=24):
 Q = 8192  # posição em int16: passo de 1/8192 (alcance de ±4 unidades)
 
 
-def export_parts(path, parts, pivots):
+REGIONS = {"fixed": 0, "primary": 1, "secondary": 2, "accent": 3}
+
+
+def region(obj, name):
+    """marca a peça com a região de cor que a skin troca (M2-11, para o M13-06): primary, secondary, accent; sem marca = fixed"""
+    obj["region"] = REGIONS[name]
+    return obj
+
+
+def export_parts(path, parts, pivots, meta=None):
     """Grava as malhas por osso para o jogo (lidas por src/game/chars/baked.ts). parts: {chave: [objetos]}, chave = 'osso'
     (sólido, com contorno), 'osso@flat' (sem contorno) ou 'osso@lit' (brilho). pivots: {osso: (x, y, z) no Blender}.
     Coordenadas convertidas para o three (x, z, -y), relativas ao pivô do osso; triângulos sem índice. Compactado:
-    posição int16 (/Q), normal int8 (/127), cor sRGB uint8."""
+    posição int16 (/Q), normal int8 (/127), cor sRGB uint8. Região de cor por vértice (uint8, ver `region`) só se alguma peça
+    tiver marca; meta (dims, forma) vai na chave "meta", para o teste conferir com a receita."""
     import array
     out = {"q": Q}
+    if meta:
+        out["meta"] = meta
     for key, objs in parts.items():
         bone = key.split("@")[0]
         px, py, pz = pivots[bone]
-        pos, nor, col = array.array("h"), array.array("b"), array.array("B")
+        pos, nor, col, reg = array.array("h"), array.array("b"), array.array("B"), array.array("B")
         for o in objs:
             dg = bpy.context.evaluated_depsgraph_get()
             ev = o.evaluated_get(dg)
@@ -239,6 +270,7 @@ def export_parts(path, parts, pivots):
             me.transform(o.matrix_world)
             me.calc_loop_triangles()
             attr = me.color_attributes.get("Col")
+            rg = int(o.get("region", 0))
             for tri in me.loop_triangles:
                 for li in tri.loops:
                     vi = me.loops[li].vertex_index
@@ -248,12 +280,82 @@ def export_parts(path, parts, pivots):
                     nor.extend(max(-127, min(127, round(v * 127))) for v in (n.x, n.z, -n.y))
                     c = attr.data[vi].color if attr else (0.5, 0.5, 0.5, 1)
                     col.extend(max(0, min(255, round(v * 255))) for v in c[:3])
+                    reg.append(rg)
             ev.to_mesh_clear()
         out[key] = {"n": len(pos) // 3, "position": base64.b64encode(pos.tobytes()).decode(),
                     "normal": base64.b64encode(nor.tobytes()).decode(), "color": base64.b64encode(col.tobytes()).decode()}
+        if any(reg):
+            out[key]["region"] = base64.b64encode(reg.tobytes()).decode()
     with open(path, "w") as f:
         json.dump(out, f)
-    return {k: v["n"] // 3 for k, v in out.items() if k != "q"}
+    return {k: v["n"] // 3 for k, v in out.items() if k not in ("q", "meta")}
+
+
+CHECK_VERBOSE = False
+
+
+def check_finish(parts, budget=None, head_share=None, top=12):
+    """Conferência de acabamento (M2-11, 2026-11-26), impressa no fim do script; só avisa, não para nada.
+    - SOBREPOSICAO: pares de peças do mesmo osso, uma delas com contorno, cujas malhas se cruzam (broche atravessando a aba).
+      Lista as maiores e todas com peça pequena. Encaixe proposital também aparece: ler a lista e conferir só o que não devia
+      estar ali. o["embed"] = True tira a peça da lista.
+    - DOBRA: arestas côncavas fundas (> 40°) em peça com contorno. Ali a casca do contorno vaza para a frente e vira risco
+      preto (nariz e rosto, barba e bochecha). Saídas: alisar a dobra, ou levar a peça menor para '@flat'.
+    - FACETA: arestas convexas com mais de 28° entre as faces (fora as peças de `flat_shade`, chapadas de propósito): a peça
+      sai poligonal de perto (bola sem sombreado suave, poucos gomos, redução forte demais). Saídas: `sball`, mais gomos,
+      `target` maior.
+    - ORCAMENTO: total acima de `budget`, ou a cabeça (head + head@flat) abaixo de `head_share` do total."""
+    from mathutils.bvhtree import BVHTree
+    dg = bpy.context.evaluated_depsgraph_get()
+    items, tris = [], {}
+    for key, objs in parts.items():
+        for o in objs:
+            bm = bmesh.new()
+            bm.from_object(o, dg)
+            bm.transform(o.matrix_world)
+            bm.normal_update()
+            items.append((key, o, bm))
+            tris[key] = tris.get(key, 0) + sum(len(f.verts) - 2 for f in bm.faces)
+    trees = [(k, o, BVHTree.FromBMesh(bm), max(o.dimensions)) for k, o, bm in items if "@lit" not in k and not o.get("embed")]
+    over = []
+    for i in range(len(trees)):
+        ki, oi, ti, si = trees[i]
+        for kj, oj, tj, sj in trees[i + 1:]:
+            # só no mesmo osso (de ossos diferentes, a pose de repouso não é a do jogo) e com ao menos uma peça de contorno
+            # (camadas sem contorno, como as do olho, se sobrepõem de propósito)
+            if ki.split("@")[0] != kj.split("@")[0] or ("@" in ki and "@" in kj):
+                continue
+            n = len(ti.overlap(tj))
+            if n:
+                over.append((n, f"{ki}:{oi.name}", f"{kj}:{oj.name}", si, sj))
+    # as maiores (quase sempre encaixe proposital) e, sempre, as que envolvem peça pequena (broche, gema, estrela): é ali que
+    # o cruzamento costuma ser acidente e vira pixel preto de perto
+    big = sorted(over, reverse=True)[:top]
+    small = [x for x in over if x not in big and min(x[3], x[4]) < 0.12]
+    for n, a, b, _, _ in big + small:
+        print(f"SOBREPOSICAO {a} x {b}: {n} pares de triângulos")
+    for key, o, bm in items:
+        crease = sum(1 for e in bm.edges if len(e.link_faces) == 2 and not e.is_convex and e.calc_face_angle(0) > math.radians(50))             if "@" not in key else 0
+        inner = [e for e in bm.edges if len(e.link_faces) == 2]
+        sharp = sum(1 for e in inner if e.is_convex and math.radians(30) < e.calc_face_angle(0) < math.radians(75)) / max(1, len(inner))   # acima de 75° é borda de propósito (tampa de tubo, aba)
+        size = max(o.dimensions)
+        flat = sum(1 for f in bm.faces if not f.smooth) if not o.get("facets") else 0
+        if CHECK_VERBOSE:
+            print(f"  {key}:{o.name} dobra={crease} quina={sharp:.0%} tam={size:.2f} chapada={flat}")
+        if crease >= 3:
+            print(f"DOBRA {key}:{o.name}: {crease} arestas côncavas fundas (risco do contorno)")
+        if flat:
+            print(f"FACETA {key}:{o.name}: {flat} faces sem sombreado suave (usar sball / smooth)")
+        elif size > 0.1 and sharp > 0.25 and not o.get("facets"):
+            print(f"FACETA {key}:{o.name}: {sharp:.0%} das arestas com quina (poucos gomos ou redução forte)")
+        bm.free()
+    total = sum(tris.values())
+    if budget and total > budget:
+        print(f"ORCAMENTO {total} triângulos, acima de {budget}")
+    if head_share:
+        hs = (tris.get("head", 0) + tris.get("head@flat", 0)) / max(1, total)
+        if hs < head_share:
+            print(f"ORCAMENTO cabeça com {hs:.0%} dos triângulos, abaixo de {head_share:.0%}")
 
 
 def review_setup(target, dist=1.2, yaw=20, pitch=8, res=640):

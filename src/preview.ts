@@ -198,12 +198,16 @@ async function shot(name: string, set: { anim?: string; yaw?: number; view?: str
 
 /** As poses fixas que o crítico cego recebe (ver docs/critic.md). Grava `.shots/<prefix>-<pose>.png` para cada uma e devolve os nomes.
  * Só o personagem principal aparece, menos na câmera do jogo, onde o Varok fica ao lado para dar escala. */
-const CRITIC_POSES: [string, { anim: string; yaw: number; view: string; freeze?: number; face?: boolean }][] = [
+/** `near`: captura de acabamento bem de perto (fração da altura como distância), para riscos do contorno, facetas e peças se
+ * atravessando, que a distância normal esconde; `face` mira o rosto, senão a altura `lookFrac` do corpo. */
+const CRITIC_POSES: [string, { anim: string; yaw: number; view: string; freeze?: number; face?: boolean; near?: number; lookFrac?: number }][] = [
   ["front", { anim: "idle", yaw: 0, view: "close" }],
   ["three-quarter", { anim: "idle", yaw: 35, view: "close" }],
   ["side", { anim: "idle", yaw: 90, view: "close" }],
   ["back", { anim: "idle", yaw: 180, view: "close" }],
   ["face", { anim: "idle", yaw: 15, view: "close", face: true }],
+  ["face-close", { anim: "idle", yaw: 10, view: "close", freeze: 0.1, face: true, near: 0.42 }],
+  ["detail", { anim: "idle", yaw: 35, view: "close", freeze: 0.1, near: 1.1, lookFrac: 0.55 }],
   ["attack", { anim: "attack", yaw: 35, view: "close", freeze: 0.9 }],
   ["game", { anim: "idle", yaw: 20, view: "game" }],
 ];
@@ -217,6 +221,13 @@ function faceY(a: Actor, h: number): number {
   const top = new THREE.Box3().setFromObject(a.rig.root).max.y;
   return Math.min(h * 0.88, top - h * 0.12);
 }
+/** altura do rosto para a captura bem de perto: pelo osso da cabeça (o topo do modelo engana com chapéu alto) */
+function nearFaceY(a: Actor, h: number): number {
+  const hd = a.rig.char?.bones.head;
+  if (!hd) return faceY(a, h);
+  a.rig.root.updateMatrixWorld(true);
+  return hd.getWorldPosition(new THREE.Vector3()).y + h * 0.05;
+}
 async function criticShots(prefix: string): Promise<string[]> {
   const lead = actors[0];
   const h = lead.rig.height ?? 4.8;
@@ -226,7 +237,8 @@ async function criticShots(prefix: string): Promise<string[]> {
     const name = `${prefix}-${pose}`;
     await shot(name, {
       anim: p.anim, yaw: p.yaw, view: p.view, freeze: p.freeze ?? null,
-      dist: p.face ? h * (lead.rig.char?.form === "slime" ? 2.4 : lead.rig.char?.form === "hydra" ? 1.7 : 1.1) : h * 3.2, lookY: p.face ? faceY(lead, h) : undefined,
+      dist: p.near ? h * p.near : p.face ? h * (lead.rig.char?.form === "slime" ? 2.4 : lead.rig.char?.form === "hydra" ? 1.7 : 1.1) : h * 3.2,
+      lookY: p.face ? (p.near ? nearFaceY(lead, h) : faceY(lead, h)) : p.lookFrac ? h * p.lookFrac : undefined,
     });
     names.push(name);
   }

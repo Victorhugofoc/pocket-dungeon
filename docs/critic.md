@@ -7,7 +7,7 @@ Vale para personagens (M1, M2, M3, M9, M10) e para zonas (marco M18). O usuário
 ## Rotina
 
 1. Gerar as capturas fixas.
-   - Personagem: `npm run dev`, abrir `/preview.html?a=<id>` e rodar no console `await __preview.criticShots("critic-<id>")`. Grava em `.shots/` as poses `front`, `three-quarter`, `side`, `back`, `face`, `attack` e `game` (câmera do jogo, com o Varok ao lado para escala).
+   - Personagem: `npm run dev`, abrir `/preview.html?a=<id>` e rodar no console `await __preview.criticShots("critic-<id>")`. Grava em `.shots/` as poses `front`, `three-quarter`, `side`, `back`, `face`, `face-close` e `detail` (acabamento bem de perto: rosto e meio do corpo), `attack` e `game` (câmera do jogo, com o Varok ao lado para escala).
    - Zona: `npm run dev`, abrir `/zone.html?zone=<id>` e rodar no console `await __zone.criticShots("zone-<id>")`. Grava em `.shots/` as poses `campfire`, `middle`, `dense` (mata mais densa), `arena`, `low` (câmera baixa, cerca de 30°) e `far` (zoom 2×), em 1280×720, e devolve draw calls e triângulos de cada uma. Seed fixa (`?seed=`, padrão 1), sem inimigos; o herói fica parado no centro e o chefe na arena.
 2. Chamar o subagente (ferramenta Agent) com o texto da seção abaixo, trocando `<...>`. Passar só caminhos de imagem. Não explicar o que mudou nem o que se espera dele.
 3. Corrigir o que veio como **grave** e **médio**, gerar as capturas de novo e repetir com um subagente **novo** (o anterior já conhece a versão velha).
@@ -23,6 +23,7 @@ Primeira volta completa (Vesper, 2026-11-14, seis críticos): a maior gravidade 
 - Peça fina vista de perfil vira "risco quebrado" para ele. Asa, lâmina e fita precisam de volume (lente achatada com contorno), não de chapa.
 - Listra pintada por vértice só sai reta se a borda seguir as linhas da malha (no `sculpt`, a latitude de `n.y`). Faixa diagonal sai serrilhada.
 - **Ele erra fato em luz sutil**: na sombra de nuvens (`M18-02`) disse que copas e personagens não escureciam, e a medida dos pixels mostrou que escureciam. Quando ele afirmar que algo "não recebe" luz ou sombra, medir antes de mexer (média de cor num quadrado da captura com e sem o efeito); o que ele percebe continua valendo como sintoma de leitura.
+- **Acabamento (2026-11-26, Aurelius):** as capturas normais escondiam riscos do contorno nas dobras (nariz e rosto, barba e bochecha), facetas e peças se atravessando, e o usuário achou tudo isso de perto. Daí as poses `face-close` e `detail` e a lista de acabamento no texto do subagente; o `finish` do Blender também lista sobreposições e facetas (ver `tools/blender/README.md`).
 - Parar quando sobrar só "médio" de gosto e mostrar ao usuário. Insistir até zerar os médios gasta rodadas sem ganho claro.
 
 ## Texto para o subagente (personagem)
@@ -34,7 +35,7 @@ Regras: use a ferramenta Read SÓ nos arquivos de imagem listados. Não abra nen
 
 Referência (o design a seguir; sprite de pixel art, quadro parado): <caminho de docs/ref/<id>.png>
 Capturas do modelo 3D: <caminhos de .shots/critic-<id>-*.png>
-(front, three-quarter, side, back = corpo inteiro; face = rosto de perto; attack = meio do golpe; game = câmera real do jogo, o personagem é o da esquerda, o da direita é outro herói só para escala)
+(front, three-quarter, side, back = corpo inteiro; face = rosto de perto; face-close e detail = acabamento bem de perto (rosto e meio do corpo); attack = meio do golpe; game = câmera real do jogo, o personagem é o da esquerda, o da direita é outro herói só para escala)
 Decisões fixas (não apontar como defeito): <lista, ou "nenhuma">
 
 Responda em português:
@@ -43,6 +44,11 @@ Responda em português:
    - grave: quebra a leitura do personagem, foge do sprite numa peça que o identifica, parece quebrado (peça solta, atravessando, buraco, borrão, artefato preto), ou expressão errada.
    - médio: proporção ou cor visivelmente diferente do sprite, peça que parece colada, silhueta confusa na câmera do jogo, aspecto de boneco de brinquedo.
    - menor: acabamento.
+   Nas capturas face-close e detail, conferir peça por peça o acabamento e tratar como **médio** (grave se estiver no rosto):
+   - risco ou traço preto no meio de uma superfície (contorno vazando numa dobra ou entre peças);
+   - facetas visíveis em peça que deveria ser lisa (olho, nariz, bola, faixa);
+   - peça atravessando outra ou enterrada pela metade; vão entre peças que deveriam estar unidas;
+   - ponta cortada reta em peça orgânica (sobrancelha, mecha, bigode); faixa clara ou escura sem motivo sobre a pele.
 3. Uma linha final: "Maior gravidade: grave|médio|menor|nenhum".
 Seja exigente e específico. Não elogie.
 ```
