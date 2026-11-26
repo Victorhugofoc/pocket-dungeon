@@ -832,6 +832,17 @@ Decidido com o usuário em 2026-11-14, depois de ver o Abyssal Garden (cena subm
 **M14-09 · Pente-fino de UI/UX** · G [pedido do usuário, 2026-11-22: "everything there can be improved"]
 - Passos: varrer cada tela (título, seleção, HUD, melhorias de nível, portões, loja, relíquias, status (I), pausa, resultado, conquistas, DEV Grimoire fora) com captura e listar os problemas: hierarquia, legibilidade a 1080p e 1440p, consistência (botões, molduras, cores de raridade, fontes), resposta ao clique e ao teclado, transições, tempo para entender cada escolha. Propor um sistema visual só (tokens de cor, tipografia, moldura desenhada por código) e passar as telas para ele, uma por vez. Absorve as partes de forma do `M14-02` a `M14-04`.
 - Pronto quando: a lista de problemas está resolvida e o usuário aprova as telas.
+- **Levantamento (2026-11-25, 1920×1080, painel do navegador + contagem de fontes pelo console):**
+  1. Sem escala de interface: tudo em px fixo; a 1080p domina texto de 10–12 px (status I: 86 de 125 linhas ≤ 12 px; relíquia: 22 de 32) e a 1440p encolhe mais.
+  2. Escolhas sem teclado: nível, relíquia e evolução não aceitam 1/2/3 (o evento aceita); a loja não compra por número; nenhuma carta mostra a tecla.
+  3. Painéis pequenos para a tela (nível 820 px de 1920) e cartas com o corpo em 12 px; muito espaço vazio.
+  4. O HUD inteiro continua aceso atrás de todo painel (nível, loja, resultado), disputando a atenção.
+  5. HUD pequeno: barra de vida 22 px, espaços de 54 px, teclas em 10 px, ajuda sob o minimapa em 11 px, texto do canto em 12 px.
+  6. Inconsistência: títulos de carta ora em caixa alta (ARCANE TOME), ora não (Iceball); raridade só por um rótulo pequeno e pela borda; 36 estilos soltos no `ui.ts`; cores por tela.
+  7. Status (I): 20 atributos numa lista só, sem grupos nem destaque do que mudou; sinergias em 10 px.
+  8. Painéis abrem sem transição (só o título anima); botão e preço sem estado de "não dá" além da cor.
+  9. Fonte do sistema em tudo, inclusive títulos: sem identidade de jogo.
+- **Plano (combinado em 2026-11-25):** fonte do sistema (títulos em caixa alta espaçada, sem fonte de fora). Etapas, uma por vez com captura: 1 base (escala em rem, tokens, moldura, carta, botão, tecla, HUD apagado atrás dos painéis; **feita em 2026-11-25**), 2 tela de herói e aparência (pedido do usuário no mesmo dia: refazer a escolha de campeão e de skin; melhorias listadas para ele escolher), 3 cartas de nível, relíquia e evolução com 1/2/3, 4 HUD, 5 loja com compra por número, 6 tela I agrupada, 7 pausa e resultado, 8 códex e Depths.
 
 
 **M14-10 · Ícones do original em toda a interface** · M [proposta, pedido do usuário em 2026-11-24; amplia a D19]

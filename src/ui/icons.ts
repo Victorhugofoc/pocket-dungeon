@@ -24,8 +24,9 @@ export const upgradeIconUrl = (id: string): string | undefined => UPGRADE[id];
 export const uiIconUrl = (name: string): string | undefined => UI[name];
 
 /** `<img>` em pixel art ampliado; vazio se não houver o ícone. */
+/** M14-09: o tamanho vem em px da base de 14 e vira rem, para crescer com a escala da interface. */
 export function iconHtml(url: string | undefined, size: number, cls = "ricon"): string {
-  return url ? `<img class="${cls}" src="${url}" width="${size}" height="${size}" alt="" draggable="false">` : "";
+  return url ? `<img class="${cls}" src="${url}" width="${size}" height="${size}" style="--ic:${+(size / 14).toFixed(3)}rem" alt="" draggable="false">` : "";
 }
 
 /** O ícone de um espaço de spell: a forma evoluída quando houver, senão a spell (ou a técnica). */
@@ -39,5 +40,5 @@ export function slotIconUrl(id: string, evolution?: string | null): string | und
  */
 export function modifierIconHtml(spellId: string, size: number): string {
   const img = iconHtml(spellIconUrl(spellId) ?? techniqueIconUrl(spellId), size, "ricon big");
-  return img ? `<span class="mod-icon" style="--s:${size}px">${img}<i class="mod-badge">+</i></span>` : "";
+  return img ? `<span class="mod-icon" style="--s:${+(size / 14).toFixed(3)}rem">${img}<i class="mod-badge">+</i></span>` : "";
 }

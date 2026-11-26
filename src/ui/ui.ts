@@ -38,6 +38,7 @@ import { challengeHudHtml, challengeHudKey, challengePanelHtml, daringOpen } fro
 import { eventCardsHtml, eventHudHtml, eventHudKey, eventPanelHtml, gateExtraHtml, omenGateHtml, pactConfirmHtml } from "./events-view";
 import { eventAvailable } from "../core/events";
 import { depthsHudHtml, depthsHudKey, depthsPanelHtml, depthsPerksHtml, depthsResultHtml } from "./depths-view";
+import { TIER_COLOR } from "./theme";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { attackLine, barsHtml, masteryHtml } from "./heroselect";
 import { allowedLoadout, loadoutHero } from "../core/mastery";
@@ -65,7 +66,6 @@ const RELIC_STATUS: Record<string, { label: string; color: string; tip: string }
 };
 const RELIC_RARITY: Record<string, string> = { uncommon: "Uncommon", rare: "Rare", epic: "Epic", boss: "Boss", evolved: "Evolved" };
 const TIER_LABEL: Record<UpgradeTier, string> = { common: "Common", rare: "Rare", epic: "Epic" };
-const TIER_COLOR: Record<UpgradeTier, string> = { common: "#c9c4b8", rare: "#4fa3ff", epic: "#b36bff" };
 /** Nome dos atributos de lá que as melhorias oferecidas usam (o original diz "Auto Damage"; aqui vale para todo o dano). */
 const UPGRADE_LABEL: Record<string, string> = {
   damageFlat: "Damage", attackSpeedPct: "Attack Speed", autoDamagePct: "Damage", critChance: "Crit Chance",
@@ -818,7 +818,7 @@ export class Ui {
     const banked = g.run.lootBank.length;
     r.bank.classList.toggle("hidden", banked <= 0);
     if (banked > 0) r.bank.textContent = `2x ×${banked}`;
-    r.boss.style.top = "64px";
+    r.boss.style.top = "4.6rem";
     const cards = g.mapCards;
     const hint = g.nearPortal ? "E — go on to the next zone"
       : g.phase === "walk" && g.playerAlive && g.detourHint ? g.detourHint
@@ -1136,7 +1136,7 @@ export class Ui {
   private showTip(html: string, ev: MouseEvent): void {
     this.tip.innerHTML = html;
     this.tip.classList.remove("hidden");
-    const w = 262;
+    const w = this.tip.offsetWidth + 12;
     const hgt = this.tip.offsetHeight;
     this.tip.style.left = `${Math.min(window.innerWidth - w, ev.clientX + 16)}px`;
     this.tip.style.top = `${Math.max(4, Math.min(window.innerHeight - hgt - 4, ev.clientY + 12))}px`;
@@ -1149,7 +1149,7 @@ export class Ui {
     const o = g.eventOffer;
     if (!o) return;
     const panel = this.open("event", "event");
-    panel.style.width = "min(860px, 96vw)";
+    panel.style.width = "min(61.43rem, 96vw)";
     panel.innerHTML = `<h2>Event</h2><p class="sub">Choose 1 of 3 (keys 1–3). "This wave" lasts for the wave this gate leads to.</p>
       <div class="cards">${eventCardsHtml(g.run, o.ids)}</div>
       <div class="row end"><button data-act="back">Back to the map (Esc)</button></div>`;
@@ -1178,7 +1178,7 @@ export class Ui {
     const o = g.pactOffer;
     if (!o) return;
     const panel = this.open("pact", "pact");
-    panel.style.width = "min(760px, 96vw)";
+    panel.style.width = "min(54.29rem, 96vw)";
     panel.innerHTML = `<h2>Risk Pact</h2><p class="sub">A pact is a commitment: it stays for the rest of the run.</p>
       ${pactConfirmHtml(g.run, o.id)}
       <div class="row end"><button data-act="back">Back to the map (Esc)</button><button class="primary" data-act="accept">Accept pact (Enter)</button></div>`;
@@ -1202,7 +1202,7 @@ export class Ui {
   // ---------------------------------------------------------------- relíquia / pausa / morte
   private showRelicChoice(ids: string[], pick: (id: string) => void, title = "Boss defeated!", ban?: RelicBan, reroll?: RelicReroll): void {
     const panel = this.overlayKind === "relic" ? (this.overlay!.firstChild as HTMLElement) : this.open("relic", "relic");
-    panel.style.width = "min(820px, 96vw)";
+    panel.style.width = "min(58.57rem, 96vw)";
     // D-197: a relíquia que evolui uma spell equipada (com a spell no nível 5)
     const wanted = wantedRelics(this.game.run);
     // D-148: banir tira a relíquia da partida e põe outra da mesma fonte no lugar (2 por partida)
@@ -1250,7 +1250,7 @@ export class Ui {
     const v = g.shopVisit;
     if (!v) return;
     const panel = this.overlayKind === "shop" ? (this.overlay!.firstChild as HTMLElement) : this.open("shop", "shop");
-    panel.style.width = "min(980px, 96vw)";
+    panel.style.width = "min(70.0rem, 96vw)";
     const run = g.run;
     const title = v.auto === "preboss" ? "Pre-boss shop: get ready for the next wave"
       : v.auto === "champion" ? "Champion shop: opens before the map" : "Magic Shop";
@@ -1299,7 +1299,7 @@ export class Ui {
     const L = g.levelUp;
     if (!L) return;
     const panel = this.open("levelup", "levelup");
-    panel.style.width = "min(820px, 96vw)";
+    panel.style.width = "min(58.57rem, 96vw)";
     const cost = g.levelRerollCost();
     const left = rerollsLeft(L.rerolls);
     const can = left > 0 && g.run.gold >= cost;
@@ -1332,7 +1332,7 @@ export class Ui {
     const offer = g.evolutionOffer;
     if (!offer) return;
     const panel = this.open("evolution", "evolution");
-    panel.style.width = "min(820px, 96vw)";
+    panel.style.width = "min(58.57rem, 96vw)";
     panel.innerHTML = `<h2>Spell evolution</h2><p class="sub">Evolve a spell.</p>
       <div class="cards">${offer.map((o, i) => {
         const evo = EVOLUTIONS[o.evoId];
@@ -1362,7 +1362,7 @@ export class Ui {
     const offer = g.relicEvoOffer;
     if (!offer) return;
     const panel = this.open("relic-evolution", "relic-evolution");
-    panel.style.width = "min(820px, 96vw)";
+    panel.style.width = "min(58.57rem, 96vw)";
     panel.innerHTML = `<h2>Relic evolution</h2><p class="sub">Two relics become one. The components are consumed.</p>
       <div class="cards relics">${offer.map((id, i) => {
         const d = RELICS[id];

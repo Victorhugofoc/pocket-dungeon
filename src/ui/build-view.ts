@@ -11,9 +11,7 @@ import { RELIC_STACK } from "../data/relics";
 import { iconHtml, relicIconUrl } from "./icons";
 
 /** Cor da moldura por raridade (a carta e a fileira de relíquias da tela I). */
-export const RARITY_COLOR: Record<RelicRarity, string> = {
-  uncommon: "#6fd36a", rare: "#4fa3ff", epic: "#b36bff", boss: "#ff8a3d", evolved: "#ffd34d",
-};
+export { RARITY_COLOR } from "./theme";
 
 /** Ícone da relíquia em pixel art ampliado (vazio se não houver ícone). */
 export function relicIconHtml(id: string, size: number, cls = "ricon"): string {
