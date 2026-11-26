@@ -104,6 +104,31 @@ def tube(name, pts, radii, seg=10, squash=(1.0, 1.0), cap=True, twist=0.0, ref=N
     return new_mesh(name, bm)
 
 
+def loop_tube(name, pts, radius, ref, seg=6, squash=(1.0, 1.0)):
+    """tubo fechado (anel) ao longo de pts, sem repetir o primeiro ponto: o último anel liga no primeiro, então não há
+    emenda nem ponta aberta. ref é a normal do plano do contorno; nas quinas a seção cresce no plano (meia-esquadria)
+    para a borda não afinar nem se cruzar por dentro"""
+    bm = bmesh.new()
+    pts = [Vector(p) for p in pts]
+    n = len(pts)
+    r = Vector(ref).normalized()
+    rings = []
+    for i, p in enumerate(pts):
+        a, b = (p - pts[i - 1]).normalized(), (pts[(i + 1) % n] - p).normalized()
+        t = (a + b).normalized()
+        u = t.cross(r).normalized()                 # no plano, perpendicular à bissetriz
+        v = u.cross(t).normalized()                 # fora do plano
+        miter = 1.0 / max(0.5, abs(u.dot(b.cross(r).normalized())))
+        rings.append([bm.verts.new(p + u * math.cos(2 * math.pi * k / seg) * radius * squash[0] * miter
+                                   + v * math.sin(2 * math.pi * k / seg) * radius * squash[1]) for k in range(seg)])
+    for i in range(n):
+        ra, rb = rings[i], rings[(i + 1) % n]
+        for k in range(seg):
+            bm.faces.new((ra[k], ra[(k + 1) % seg], rb[(k + 1) % seg], rb[k]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return new_mesh(name, bm)
+
+
 def ball(name, co, size, rot=(0, 0, 0), seg=(16, 10)):
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(bm, u_segments=seg[0], v_segments=seg[1], radius=1.0)

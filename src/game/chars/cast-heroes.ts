@@ -665,96 +665,15 @@ export const HEROES: Record<string, Spec> = {
     b.add("foreR", ...grp(knife(), 0, -HAND, 0.01, -0.35));
     b.add("foreL", ...grp(knife(), 0, -HAND, 0.01, -0.5, 0, 0));
   },
-  // Redesenho a partir do sprite (docs/ref/seraph.png): paladino ereto de placa branca com debrum dourado, elmo fechado, espada erguida e escudo grande.
-  // Medidas do sprite (altura 65 px): elmo 13 px, ombros 25 px, quadril a 43% da altura, espada de 36 px, escudo de 22 por 32 px.
+  // Seraph modelado no Blender (M2-11; tools/blender/seraph.py, brief em docs/briefs/seraph.md): paladino de placa branca com
+  // debrum dourado, elmo fechado com asas, lenço e tabardo azuis, capa azul, espada erguida e escudo grande. Medidas e pose iguais
+  // às do script; o escudo também existe sozinho em models/seraph_shield.json (para o arremesso do M5-09).
   seraph: (b) => {
-    const WHITE = 0xf1f4f9, WHITE_M = 0xc2c9d6, WHITE_D = 0x8790a4, GOLD_D = 0xa87a1e, BLUE = 0x4f8fdc, BLUE_D = 0x24488a, DARK = 0x1a2030, BLADE = 0xe3eaf4;
-    const col = (hex: number) => new THREE.Color(hex);
-    const cW = col(WHITE), cWM = col(WHITE_M), cWD = col(WHITE_D), cGold = col(GOLD), cGoldD = col(GOLD_D);
-    const HAND = 0.33;
     b.bulk = 1.1; b.style = "throwL"; b.rough = 0.45; b.glowColor = GOLD;
     b.lean = 0.04; b.crouch = 0.1; b.armOut = 0.16;
     b.poseR = [0.2, -1.8]; b.poseL = [-0.45, -1.15];
     b.dims = { hipY: 0.95, headY: 0.6, shoulderY: 0.48, shoulderX: 0.31, arm: 0.34, hipX: 0.14, thigh: 0.44 };
-    const plate = (r: number) => dome(r, WHITE, WHITE_M, GOLD);
-
-    // ---- elmo fechado: viseira em bico com fenda dos olhos e respiros, crista e gola douradas, asas para trás
-    b.add("head", at(sculpt(28, 20, (n, p) => {
-      const beak = ss(0.3, 0.95, n.z) * bell(n.y + 0.1, 0.45) * bell(n.x, 0.5);
-      p.set(n.x * 0.2 * (1 - 0.25 * beak), n.y * 0.235 + 0.015 * bell(n.x, 0.12) * ss(0, 0.7, n.y), n.z * 0.215 + 0.07 * beak);
-    }, (n, c) => {
-      c.copy(cWD).lerp(cWM, ss(-0.9, -0.1, n.y)).lerp(cW, ss(-0.2, 0.6, n.y));
-      if (Math.abs(n.y + 0.62) < 0.09 || (Math.abs(n.x) < 0.09 && n.y > 0.2)) c.copy(cGold);
-    }), 0, 0.2, 0));
-    for (const s of [-1, 1]) {
-      // fenda dos olhos e respiros da viseira, como peças escuras encaixadas na malha
-      b.add("head", at(bx(0.11, 0.034, 0.05, DARK, DARK), s * 0.075, 0.235, 0.185, 0, s * 0.6, 0));
-      for (let i = 0; i < 3; i++) b.add("head", at(bx(0.016, 0.07, 0.04, DARK, DARK), s * (0.035 + i * 0.035), 0.13, 0.245 - i * 0.022, 0, s * 0.5, 0));
-      for (const [len, y, tilt] of [[0.36, 0.36, -0.75], [0.26, 0.28, -1.05]] as const) {
-        const wing = cone(0.075, len, WHITE, 6, GOLD);
-        wing.scale(0.3, 1, 1);
-        b.add("head", at(wing, s * 0.2, y, -0.1, tilt, 0, -s * 0.3));
-      }
-    }
-
-    // ---- couraça em lâminas com debrum dourado, lenço azul e emblema
-    const cuirass = edge(lathe([[0.17, -0.08], [0.2, -0.05], [0.19, 0.06], [0.21, 0.07], [0.2, 0.17], [0.225, 0.18], [0.26, 0.32], [0.275, 0.43], [0.245, 0.52], [0.16, 0.59], [0.1, 0.63], [0, 0.64]], WHITE, WHITE_D, 16), GOLD, 0.07, 0.18);
-    cuirass.scale(1.08, 1, 0.82);
-    const scarf = lathe([[0.15, 0.53], [0.2, 0.58], [0.185, 0.65], [0.12, 0.69]], BLUE, BLUE_D, 12);
-    scarf.scale(1.05, 1, 0.92);
-    b.add("torso", cuirass, scarf, at(stud(0.05, GOLD, GOLD_D, 1, 1.3, 0.5, 0), 0, 0.37, 0.215));
-
-    // ---- ombreiras de duas lâminas, cotoveleira dourada, braçal e manopla
-    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
-      b.add(arm, at(plate(0.17), s * 0.02, 0.05, 0, 0, 0, -s * 0.35), at(plate(0.145), s * 0.06, -0.05, 0, 0, 0, -s * 1.0));
-      b.add(arm, limb(0.085, 0.072, 0.32, WHITE_M));
-      b.add(fore, at(stud(0.072, GOLD, GOLD_D), 0, 0, -0.02));
-      b.add(fore, edge(lathe([[0.065, -0.27], [0.076, -0.24], [0.088, -0.1], [0.09, -0.02], [0.06, 0.04], [0, 0.07]], WHITE, WHITE_M, 10), GOLD, -0.27));
-      b.add(fore, ...grp(fist(WHITE_M, 0.062, s), 0, -HAND, 0.01));
-    }
-
-    // ---- quadril: saiote de lâminas, cinto dourado e tabardo azul até o joelho
-    const fauld = edge(lathe([[0.27, -0.15], [0.257, -0.07], [0.267, -0.065], [0.245, 0.02], [0.255, 0.025], [0.225, 0.1]], WHITE, WHITE_M, 16), GOLD, -0.15, -0.065, 0.025);
-    fauld.scale(1.06, 1, 0.84);
-    b.add("hips", at(sph(0.21, WHITE_D, 1.05, 0.7, 0.84), 0, 0, 0), fauld);
-    b.add("hips", at(cyl(0.243, 0.243, 0.07, GOLD, 16, GOLD_D), 0, 0.1, 0, 0, 0, 0, 1, 1, 0.84));
-    b.add("skirt", at(capeMesh({ color: BLUE, shade: BLUE_D, half: [0.8, 0.62], rTop: 0.23, rHem: 0.28, len: 0.6, folds: 0.04, tatter: 0.03, nu: 8, nt: 5 }), 0, 0.04, 0.2, 0, Math.PI, 0));
-
-    // ---- pernas: coxote, joelheira dourada, greva e sabato
-    for (const [th, sh, s] of [["thighL", "shinL", -1], ["thighR", "shinR", 1]] as const) {
-      b.add(th, limb(0.115, 0.09, 0.42, WHITE_M, 0.05));
-      b.add(th, at(plate(0.125), s * 0.02, -0.2, 0.03, Math.PI - 0.25, 0, 0, 1, 1.5, 0.9));
-      b.add(sh, at(stud(0.085, GOLD, GOLD_D), 0, 0, 0.035));
-      b.add(sh, limb(0.09, 0.072, 0.36, WHITE, 0.18), at(sph(0.09, WHITE, 1.05, 0.7, 1.9, WHITE_D), 0, -0.42, 0.075));
-    }
-
-    // ---- capa azul até a panturrilha
-    b.add("cape", at(capeMesh({ color: BLUE, shade: BLUE_D, half: [1.2, 0.8], rTop: 0.28, rHem: 0.5, len: 1.25, depth: 0.8, folds: 0.07, tatter: 0.04 }), 0, 0.04, -0.02));
-
-    // ---- espada erguida na vertical do mundo
-    const R = restArm(b, 1, HAND), L = restArm(b, -1, HAND);
-    const tip = cone(0.06, 0.14, BLADE, 4, BLADE);
-    tip.rotateY(Math.PI / 4).scale(1, 1, 0.37);
-    const sword: G[] = [
-      at(cyl(0.022, 0.022, 0.2, LEATHER, 6), 0, 0, 0), at(stud(0.04, GOLD, GOLD_D, 1, 1, 1, 0), 0, -0.13, 0),
-      at(bx(0.3, 0.045, 0.06, GOLD, GOLD_D), 0, 0.12, 0),
-      at(bx(0.085, 1.05, 0.022, BLADE, 0xaab6c8), 0, 0.665, 0), at(bx(0.02, 1.0, 0.03, 0xaab6c8, 0x8794a8), 0, 0.64, 0),
-      at(tip, 0, 1.26, 0),
-    ];
-    b.add("foreR", ...hang(grp(sword, 0, 0, 0, -0.12, 0, -0.22), R.inv, HAND));
-
-    // ---- escudo de cavaleiro: campo branco, borda e cruz douradas, levemente curvo
-    const half = (v: number) => 0.3 * (v < 0.3 ? 1 : Math.sqrt(Math.max(0, 1 - Math.pow((v - 0.3) / 0.7, 2.2))));
-    const shield = plateMesh(10, 12, (u, v, p) => {
-      const x = u * half(v);
-      p.set(x, 0.36 - v * 0.8, -1.6 * x * x);
-    }, (u, v, c) => {
-      const x = u * half(v);
-      const rim = Math.abs(u) > 0.8 || v < 0.07 || v > 0.9;
-      const cross = Math.abs(x) < 0.04 || Math.abs(v - 0.3) < 0.045;
-      c.copy(rim ? cGoldD : cross ? cGold : cW);
-    }, WHITE_D, 0.03);
-    b.add("foreL", ...hang([at(shield, 0.04, 0.02, 0.1, 0, -0.12, 0), at(stud(0.06, GOLD, GOLD_D, 1, 1, 0.5), 0.03, 0.14, 0.125)], L.inv, HAND));
+    addModel(b, "seraph");
   },
   // Vesper modelada no Blender (M2-11; tools/blender/vesper.py, brief em docs/briefs/vesper.md): bruxa-vespa curvada de manto escuro,
   // capuz listrado com antenas, asas, abdômen de vespa atrás e cajado com caveira. Medidas e pose iguais às do script
