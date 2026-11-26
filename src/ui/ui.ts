@@ -13,7 +13,7 @@ import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unl
 import { ACHIEVEMENTS } from "../data/achievements";
 import { formatStat, stackChance, STAT_KEYS, type FinalStats, type StatBlock } from "../core/stats";
 import {
-  AURA_SPIKE_TEXT, EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
+  AURA_SPIKE_TEXT, EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_SCHOOL, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
 } from "../data/spells";
 import { wantedRelics } from "../core/evolution";
 import { effectsFor, rerollsLeft, type UpgradeTier } from "../core/levelup";
@@ -38,7 +38,7 @@ import { challengeHudHtml, challengeHudKey, challengePanelHtml, daringOpen } fro
 import { eventCardsHtml, eventHudHtml, eventHudKey, eventPanelHtml, gateExtraHtml, omenGateHtml, pactConfirmHtml } from "./events-view";
 import { eventAvailable } from "../core/events";
 import { depthsHudHtml, depthsHudKey, depthsPanelHtml, depthsPerksHtml, depthsResultHtml } from "./depths-view";
-import { TIER_COLOR } from "./theme";
+import { SCHOOL_COLOR, TIER_COLOR } from "./theme";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { appearanceHtml, attackLine, barsHtml, HERO_TABS, masteryHtml, portraitBadgesHtml, type HeroTab } from "./heroselect";
 import { allowedLoadout, loadoutHero } from "../core/mastery";
@@ -204,6 +204,11 @@ export class Ui {
   private toasts!: HTMLElement;
   private mapCtx!: CanvasRenderingContext2D;
   private frameN = 0;
+  /** M14-09 (etapa 4): o rastro do dano na barra de vida (frações da vida máxima) */
+  private hpTrail = 1;
+  private hpLast = 1;
+  private hpHold = 0;
+  private hpT = 0;
   private selectedHero: string = HERO_ORDER[0];
   private confirmNew = "";
   private selectedDifficulty: DifficultyId = "normal";
@@ -680,17 +685,21 @@ export class Ui {
       <div id="toasts"></div>
       <div class="hud-bottom">
         <div class="relic-row" data-r="relicRow"></div>
-        <div class="skills">
-          <div class="level-badge"><div><small>LEVEL</small><span data-r="level"></span></div></div>
-          <div class="skill"><kbd>LMB</kbd>${iconHtml(uiIconUrl("sword"), 36, "ricon sk")}</div>
-          <div class="skill-wrap"><div class="skill big" data-r="techBox"><kbd>RMB</kbd><span data-r="techIcon"></span><div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div></div>
-            <small class="skill-name" data-r="techName"></small></div>
-          ${[0, 1].map((i) => `<div class="skill-wrap"><div class="skill spell" data-r="spBox${i}"><kbd>${i + 1}</kbd><span data-r="spIcon${i}"></span><div class="cd" data-r="spCd${i}"></div><div class="cdn" data-r="spN${i}"></div></div>
-            <small class="skill-name" data-r="spName${i}"></small></div>`).join("")}
-          <div class="skill"><kbd>SPACE</kbd>💨<div class="cd" data-r="dashCd"></div></div>
+        <div class="hud-plate">
+          <div class="skills">
+            <div class="skill basic" title="Basic attack — hold left click">${iconHtml(uiIconUrl("sword"), 32, "ricon sk")}<span class="key">LMB</span></div>
+            <div class="skill big" data-r="techBox"><span data-r="techIcon"></span><div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div><span class="key">RMB</span></div>
+            ${[0, 1].map((i) => `<div class="skill spell" data-r="spBox${i}"><span data-r="spIcon${i}"></span><div class="cd" data-r="spCd${i}"></div><div class="cdn" data-r="spN${i}"></div><span class="key">${i + 1}</span></div>`).join("")}
+            <div class="skill dash" data-r="dashBox" title="Dodge roll — brief invulnerability">${iconHtml(upgradeIconUrl("evasive_footwork"), 32, "ricon sk")}<div class="cd" data-r="dashCd"></div><span class="key">SPACE</span></div>
+          </div>
+          <div class="vitals">
+            <div class="level-gem" title="Level"><span data-r="level"></span></div>
+            <div class="vitals-bars">
+              <div class="bar hp" data-r="hpBar"><b data-r="hpTrail"></b><i data-r="hpFill"></i><span data-r="hpText"></span></div>
+              <div class="bar xp" data-r="xpBar"><i data-r="xpFill"></i></div>
+            </div>
+          </div>
         </div>
-        <div class="bar"><i data-r="hpFill"></i><span data-r="hpText"></span></div>
-        <div class="bar xp"><i data-r="xpFill"></i></div>
       </div>`;
     this.hud.querySelectorAll<HTMLElement>("[data-r]").forEach((e) => (this.r[e.dataset.r!] = e));
     this.toasts = this.hud.querySelector("#toasts")!;
@@ -742,7 +751,28 @@ export class Ui {
     }).join("");
   }
 
-  /** Espaços de spell nas teclas 1 e 2: ícone, nível, recarga e o aviso de spell que não saiu. */
+  /**
+   * M14-09 (etapa 4): recarga radial de um espaço do HUD. `--f` é a fração que falta (o `conic-gradient` do CSS);
+   * quando volta a zero, o espaço brilha uma vez (`.flash`).
+   */
+  private setCooldown(box: HTMLElement, cdEl: HTMLElement, nEl: HTMLElement | null, cd: number, max: number, usable = true): void {
+    const f = cd > 0 ? Math.min(1, cd / Math.max(1e-6, max)) : 0;
+    cdEl.style.setProperty("--f", f.toFixed(3));
+    if (nEl) nEl.textContent = cd > 0 ? cd.toFixed(cd < 3 ? 1 : 0) : "";
+    const ready = usable && cd <= 0;
+    const was = box.classList.contains("ready");
+    box.classList.toggle("ready", ready);
+    if (ready && !was && box.dataset.seen) {
+      box.classList.remove("flash");
+      void box.offsetWidth;
+      box.classList.add("flash");
+      clearTimeout(Number(box.dataset.flashT));
+      box.dataset.flashT = String(setTimeout(() => box.classList.remove("flash"), TUNING.ui.readyFlashMs));
+    }
+    box.dataset.seen = "1";
+  }
+
+  /** Espaços de spell nas teclas 1 e 2: ícone, aro na cor da escola, recarga e o aviso de spell que não saiu. */
   private updateSpellHud(): void {
     const g = this.game;
     const r = this.r;
@@ -750,25 +780,19 @@ export class Ui {
       const slot = g.run.spells[i];
       const st = g.spells.stats[i];
       const box = r[`spBox${i}`];
-      box.classList.toggle("empty", !slot);
-      const name = slot ? `${spellName(slot.id)} ${slot.level}` : "";
-      const iconKey = slot ? `${slot.id}:${slot.evolution ?? ""}` : "";
-      if (r[`spIcon${i}`].dataset.k !== iconKey) {
-        r[`spIcon${i}`].dataset.k = iconKey;
-        r[`spIcon${i}`].innerHTML = slot ? iconHtml(slotIconUrl(slot.id, slot.evolution), 36, "ricon sk") : "";
-      }
-      if (r[`spName${i}`].textContent !== name) {
-        r[`spName${i}`].textContent = name;
+      const iconKey = slot ? `${slot.id}:${slot.evolution ?? ""}:${slot.level}` : "";
+      if (box.dataset.k !== iconKey) {
+        box.dataset.k = iconKey;
+        box.classList.toggle("empty", !slot);
+        r[`spIcon${i}`].innerHTML = slot ? iconHtml(slotIconUrl(slot.id, slot.evolution), 32, "ricon sk") + `<em class="lv">${slot.level}</em>` : `<em class="plus">+</em>`;
+        const school = slot && isSpellKey(slot.id) ? SPELL_SCHOOL[slot.id] : "";
+        box.style.setProperty("--sc", SCHOOL_COLOR[school] ?? "var(--line)");
         box.title = slot && isSpellKey(slot.id)
-          ? `${spellName(slot.id)} — ${SPELL_TEXT[slot.id]}${AURA_SPIKE_TEXT[slot.id] ? ` Aura: casts itself. ${AURA_SPIKE_TEXT[slot.id]}` : ""}`
-          : "Empty spell slot";
+          ? `${spellName(slot.id)} ${slot.level} — ${SPELL_TEXT[slot.id]}${AURA_SPIKE_TEXT[slot.id] ? ` Aura: casts itself. ${AURA_SPIKE_TEXT[slot.id]}` : ""}`
+          : slot ? `${spellName(slot.id)} ${slot.level}` : "Empty spell slot";
         box.classList.toggle("aura", !!slot && !!AURA_SPIKE_TEXT[slot.id]);
       }
-      const cd = g.spells.keyCooldown(i);
-      const max = st?.cooldown ?? 1;
-      r[`spCd${i}`].style.height = `${Math.min(1, cd / max) * 100}%`;
-      r[`spN${i}`].textContent = cd > 0 ? cd.toFixed(cd < 3 ? 1 : 0) : "";
-      box.classList.toggle("ready", !!slot && cd <= 0);
+      this.setCooldown(box, r[`spCd${i}`], r[`spN${i}`], g.spells.keyCooldown(i), st?.cooldown ?? 1, !!slot);
       box.classList.toggle("no-target", (g.spells.noTarget[i] ?? 0) > 0);
     }
   }
@@ -821,6 +845,39 @@ export class Ui {
     box.innerHTML = depthsHudHtml(g.run) + eventHudHtml(g.run);
   }
 
+  /**
+   * M14-09 (etapa 4): vida com rastro do dano recente (`hpTrail` espera um pouco e encolhe até a vida atual),
+   * pulso com vida baixa, nível no losango e XP na linha fina embaixo.
+   */
+  private updateVitals(): void {
+    const g = this.game;
+    const r = this.r;
+    const p = g.player;
+    const max = Math.max(1, g.stats.maxHp);
+    const hp = Math.max(0, Math.min(1, p.hp / max));
+    const now = performance.now() / 1000;
+    const dt = Math.min(0.1, now - (this.hpT || now));
+    this.hpT = now;
+    if (hp >= this.hpTrail) {
+      this.hpTrail = hp;
+      this.hpHold = 0;
+    } else if (hp < this.hpLast) {
+      this.hpHold = TUNING.ui.hpTrailHold;
+    } else if (this.hpHold > 0) {
+      this.hpHold -= dt;
+    } else {
+      this.hpTrail = Math.max(hp, this.hpTrail - TUNING.ui.hpTrailRate * dt);
+    }
+    this.hpLast = hp;
+    r.hpFill.style.width = `${hp * 100}%`;
+    r.hpTrail.style.width = `${this.hpTrail * 100}%`;
+    r.hpText.textContent = `${Math.ceil(p.hp)} / ${g.stats.maxHp}`;
+    r.hpBar.classList.toggle("low", hp > 0 && hp < TUNING.ui.lowHp);
+    r.xpFill.style.width = `${Math.min(100, (g.run.xp / g.run.xpToNext) * 100)}%`;
+    r.xpBar.title = `XP ${Math.floor(g.run.xp)} / ${g.run.xpToNext}`;
+    r.level.textContent = String(g.run.level);
+  }
+
   private updateHud(): void {
     const g = this.game;
     if (!g.started) return;
@@ -833,29 +890,24 @@ export class Ui {
     const r = this.r;
     this.updateZoneFade();
     this.updateArrows();
-    r.hpFill.style.width = `${(p.hp / s.maxHp) * 100}%`;
-    r.hpText.textContent = `${Math.ceil(p.hp)} / ${s.maxHp}`;
-    r.xpFill.style.width = `${Math.min(100, (g.run.xp / g.run.xpToNext) * 100)}%`;
-    r.level.textContent = String(g.run.level);
+    this.updateVitals();
     const tc = Math.max(0, p.techCd);
-    r.techCd.style.height = `${(tc / p.techMax) * 100}%`;
-    r.techN.textContent = tc > 0 ? tc.toFixed(tc < 3 ? 1 : 0) : "";
-    r.techBox.classList.toggle("ready", tc <= 0);
+    this.setCooldown(r.techBox, r.techCd, r.techN, tc, p.techMax);
     // nível 5: a técnica evoluída passa a mostrar o nome e o texto da evolução
     const evo = g.tech?.evolved ? TECHNIQUES[g.hero.technique.id]?.evolution : undefined;
     const tn = evo?.name ?? g.hero.technique.name;
-    if (r.techName.textContent !== tn) {
-      r.techName.textContent = tn;
-      r.techIcon.innerHTML = iconHtml(techniqueIconUrl(g.hero.technique.id), 44, "ricon sk");
+    if (r.techBox.dataset.k !== tn) {
+      r.techBox.dataset.k = tn;
+      r.techIcon.innerHTML = iconHtml(techniqueIconUrl(g.hero.technique.id), 38, "ricon sk");
       r.techBox.title = `${tn} — ${evo?.text ?? g.hero.technique.text}`;
     }
     this.updateSpellHud();
     this.updateRelicRow();
-    r.dashCd.style.height = `${(Math.max(0, p.dashCd) / TUNING.hero.dashCooldown) * 100}%`;
+    this.setCooldown(r.dashBox, r.dashCd, null, Math.max(0, p.dashCd), TUNING.hero.dashCooldown);
     const pend = g.run.pendingLevelUps;
     r.points.classList.toggle("hidden", pend <= 0);
     r.points.textContent = `+${pend} upgrade${pend > 1 ? "s" : ""} at the end of the wave`;
-    (this.hud.querySelector("#vignette") as HTMLElement).style.opacity = String(Math.max(p.hurtT * 0.6, p.hp / s.maxHp < 0.25 ? 0.35 : 0));
+    (this.hud.querySelector("#vignette") as HTMLElement).style.opacity = String(Math.max(p.hurtT * 0.6, p.hp / s.maxHp < TUNING.ui.lowHp ? 0.35 : 0));
     const boss = g.boss;
     const showBoss = !!boss && g.bossEngaged && !boss.dead;
     r.boss.classList.toggle("hidden", !showBoss);
