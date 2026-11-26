@@ -77,23 +77,58 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 #arrows i.foe { left: -0.7143rem; top: -0.5714rem; width: 1.5rem; height: 1.1429rem; background: #e0453f; filter: drop-shadow(0 0 3px #000); animation: none; opacity: 0.85; }
 #arrows i.champion { left: -1rem; top: -0.7857rem; width: 2rem; height: 1.5714rem; background: #ffc83d; filter: drop-shadow(0 0 0.3571rem #ff9a1a); animation: none; }
 #vignette { position: absolute; inset: 0; box-shadow: inset 0 0 12.8571rem 4.2857rem rgba(200, 20, 20, 0.9); opacity: 0; }
-.hud-bottom { position: absolute; left: 50%; bottom: 1.2857rem; transform: translateX(-50%); width: min(40rem, 92vw); display: flex;
+/* M14-09 (etapa 4): a barra de baixo numa placa só, com a moldura dos painéis */
+.hud-bottom { position: absolute; left: 50%; bottom: 1rem; transform: translateX(-50%); width: min(27rem, 92vw); display: flex;
   flex-direction: column; gap: 0.4286rem; align-items: center; }
+.hud-plate { position: relative; width: 100%; display: flex; flex-direction: column; gap: 0.55rem; padding: 0.6rem 0.8rem 0.65rem;
+  background: linear-gradient(rgba(24, 26, 38, 0.9), rgba(12, 13, 20, 0.92)); border: 1px solid var(--frame); border-radius: 0.6rem;
+  outline: 1px solid color-mix(in srgb, var(--frame) 45%, transparent); outline-offset: -0.3rem; box-shadow: 0 0.4rem 1.4rem rgba(0, 0, 0, 0.55); }
 .bar { position: relative; width: 100%; height: 1.5714rem; background: rgba(10, 10, 16, 0.8); border: 1px solid #000; border-radius: 0.4286rem; overflow: hidden; }
 .bar > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--hp); transition: width 0.12s; }
 .bar > span { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 700; font-size: 0.8571rem; text-shadow: 0 1px 2px #000; }
-.bar.xp { height: 0.5714rem; }
-.bar.xp > i { background: var(--xp); }
-.skills { display: flex; gap: 0.7143rem; align-items: flex-end; }
-.skill { position: relative; width: 3.8571rem; height: 3.8571rem; background: rgba(16, 18, 28, 0.88); border: 2px solid var(--line); border-radius: 0.7143rem;
-  display: grid; place-items: center; font-size: 1.5714rem; overflow: hidden; }
-.skill.big { width: 4.5714rem; height: 4.5714rem; font-size: 1.8571rem; border-color: var(--gold); }
-.skill kbd { position: absolute; left: 3px; top: 2px; font: 700 0.8571rem/1 system-ui; color: var(--muted); }
-.skill .cd { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.72); }
-.skill .cdn { position: absolute; inset: 0; display: grid; place-items: center; font-size: 1.1429rem; font-weight: 800; text-shadow: 0 1px 2px #000; }
-.level-badge { min-width: 3.8571rem; height: 3.8571rem; border-radius: 50%; background: #241c08; border: 2px solid var(--gold); display: grid;
-  place-items: center; color: var(--gold); font-weight: 800; font-size: 1.2857rem; line-height: 1; text-align: center; }
-.level-badge small { display: block; font-size: 0.8571rem; color: var(--muted); font-weight: 600; }
+/* vida: moldura, rastro do dano, marcas a cada 25%, número maior, pulso com vida baixa */
+.vitals { display: flex; align-items: center; gap: 0.6rem; }
+.vitals-bars { flex: 1; display: flex; flex-direction: column; gap: 0.25rem; }
+.bar.hp { height: 1.6rem; border: 1px solid var(--frame-hi); border-radius: 0.35rem; background: #0b0b12;
+  box-shadow: inset 0 0 0 1px #000, 0 0 0 1px #000; }
+.bar.hp > i { background: linear-gradient(#ff6a5e, var(--hp) 55%, #a8251f); transition: none; }
+.bar.hp > b { position: absolute; left: 0; top: 0; bottom: 0; background: #ffd2a8; opacity: 0.6; }
+.bar.hp::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent calc(25% - 1px), rgba(0, 0, 0, 0.55) 0 calc(25% + 1px), transparent 0 calc(50% - 1px),
+    rgba(0, 0, 0, 0.55) 0 calc(50% + 1px), transparent 0 calc(75% - 1px), rgba(0, 0, 0, 0.55) 0 calc(75% + 1px), transparent 0),
+    linear-gradient(rgba(255, 255, 255, 0.18), transparent 45%); }
+.bar.hp > span { z-index: 1; font-size: var(--fs-m); font-weight: 800; letter-spacing: 0.02em; text-shadow: 0 0 3px #000, 0 1px 0 #000; }
+.bar.hp.low { animation: hp-low 0.9s ease-in-out infinite; }
+@keyframes hp-low { 50% { border-color: #ff5a4a; box-shadow: inset 0 0 0 1px #000, 0 0 0.6rem rgba(255, 70, 60, 0.75); } }
+/* XP: linha fina sob a vida */
+.bar.xp { height: 0.28rem; border: 0; border-radius: 0.2rem; background: rgba(122, 107, 255, 0.16); }
+.bar.xp > i { background: linear-gradient(90deg, #9a8cff, var(--xp)); box-shadow: 0 0 0.35rem var(--xp); }
+/* nível num losango */
+.level-gem { flex: none; width: 2.4rem; height: 2.4rem; display: grid; place-items: center; margin: 0 0.15rem; transform: rotate(45deg);
+  background: linear-gradient(135deg, #3a2c0c, #1a1406); border: 2px solid var(--gold); border-radius: 0.3rem; box-shadow: 0 0 0.6rem -0.1rem rgba(255, 200, 61, 0.6); }
+.level-gem span { transform: rotate(-45deg); color: var(--gold); font-weight: 800; font-size: var(--fs-l); line-height: 1; text-shadow: 0 1px 2px #000; }
+/* espaços iguais; a técnica um pouco maior; aro na cor da escola; chip da tecla no canto */
+.skills { display: flex; gap: 0.55rem; align-items: flex-end; justify-content: center; }
+.skill { --sc: var(--line); position: relative; width: 3.5rem; height: 3.5rem; background: radial-gradient(circle at 50% 35%, #232739, #0e1019 75%);
+  border: 2px solid color-mix(in srgb, var(--sc) 70%, #000); border-radius: 0.55rem; display: grid; place-items: center; overflow: hidden;
+  box-shadow: inset 0 0 0 1px #000, inset 0 -0.5rem 0.8rem rgba(0, 0, 0, 0.45); transition: box-shadow 0.15s, border-color 0.15s; }
+.skill.big { --sc: var(--gold); width: 4rem; height: 4rem; }
+.skill.basic, .skill.dash { --sc: #6b7290; }
+.skill > .key { position: absolute; right: 2px; bottom: 2px; z-index: 3; font-size: 0.68rem; height: 1.45em; min-width: 1.45em; padding: 0 0.3em; opacity: 0.92; }
+.skill .lv { position: absolute; left: 3px; top: 2px; z-index: 3; font: 800 0.72rem/1 system-ui; font-style: normal; color: var(--sc); text-shadow: 0 1px 2px #000, 0 0 2px #000; }
+/* recarga radial: a parte escura é o que falta, gira no sentido do relógio */
+.skill .cd { position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: conic-gradient(from 0deg, transparent calc((1 - var(--f, 0)) * 360deg), rgba(0, 0, 0, 0.74) 0); }
+.skill .cdn { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; font-size: var(--fs-l); font-weight: 800; text-shadow: 0 0 3px #000, 0 1px 0 #000; }
+.skill.ready { border-color: var(--sc); box-shadow: inset 0 0 0 1px #000, 0 0 0.55rem color-mix(in srgb, var(--sc) 55%, transparent); }
+.skill.flash::before { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, var(--sc) 70%, #fff), transparent 70%); animation: skill-flash 0.42s ease-out forwards; }
+@keyframes skill-flash { from { opacity: 0.9; transform: scale(0.6); } to { opacity: 0; transform: scale(1.25); } }
+.skill.spell.empty { border: 2px dashed #3f455e; background: rgba(14, 16, 24, 0.6); box-shadow: none; }
+.skill .plus { font-style: normal; font-size: 1.6rem; font-weight: 300; color: #4a5070; }
+.skill.spell.no-target { border-color: var(--bad); }
+.skill.spell.aura { border-style: dashed; }
+.skill.spell.aura.ready { border-style: solid; }
 .hud-top-left { position: absolute; left: 1.1429rem; top: 1rem; text-shadow: 0 1px 3px #000; }
 .hud-top-left h2 { font-size: 1.4286rem; }
 .hud-top-left p { margin: 2px 0 0; color: #d0d4e4; font-size: 0.8571rem; }
@@ -373,7 +408,7 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 /* M14-10: ícones do original em toda a interface */
 .icon-card { text-align: center; }
 .ricon.sk { position: absolute; inset: 0; margin: auto; pointer-events: none; }
-.skill.big .ricon.sk { width: 3.1429rem; height: 3.1429rem; }
+.skill.big .ricon.sk { width: 2.7143rem; height: 2.7143rem; }
 .hs-spells button .ricon { flex: none; }
 .spell-row.with-icon { align-items: flex-start; }
 .mod-icon { position: relative; display: block; width: var(--s); height: var(--s); margin: 0 auto 0.5714rem; }
@@ -424,15 +459,6 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .kit-row p { margin: 3px 0 0; color: #cfd3e2; }
 .kit-name { font-weight: 800; color: #fff; margin-right: 0.5714rem; }
 .kit-meta { color: var(--muted); font-size: 0.8571rem; }
-.skill-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.skill-name { font: 700 0.8571rem/1 system-ui; color: var(--gold); text-shadow: 0 1px 2px #000; white-space: nowrap; }
-.skill.spell { font-size: 1.7143rem; display: grid; place-items: center; }
-.skill.spell.ready { border-color: #9fd0ff; box-shadow: 0 0 0.5714rem rgba(140, 200, 255, 0.45); }
-.skill.spell.empty { opacity: 0.4; }
-.skill.spell.no-target { border-color: var(--bad); }
-.skill.spell.aura { border-style: dashed; }
-.skill.spell.aura.ready { border-style: solid; border-color: #ffe066; box-shadow: 0 0 0.5714rem rgba(255, 224, 102, 0.45); }
-.skill.big.ready { box-shadow: 0 0 0.7143rem rgba(255, 210, 90, 0.55); }
 
 /* ondas (M20-02) */
 #wavebar { position: absolute; left: 50%; top: 1rem; transform: translateX(-50%); display: flex; gap: 0.8571rem; align-items: baseline;
@@ -634,3 +660,36 @@ input.seed:focus { outline: none; border-color: var(--gold); }
 @keyframes card-pick { 0% { transform: translateY(-3px); } 45% { transform: scale(1.05); box-shadow: 0 0 0 2px var(--cc, var(--gold)), 0 0 2.2rem -0.2rem var(--cc, var(--gold)); }
   100% { transform: scale(1.03); box-shadow: 0 0 0 2px var(--cc, var(--gold)), 0 0 1.4rem -0.4rem var(--cc, var(--gold)); } }
 @media (prefers-reduced-motion: reduce) { .overlay .cards > .card, .overlay .cards > .card.picked { animation: none; } }
+/* M14-09 (etapa 5): loja. Ouro no canto, compra pelo botão de preço, carta comprada com selo, só a oferta nova entra animada */
+#shop .panel > h2 { padding-right: 9rem; }
+.shop-lv { cursor: help; border-bottom: 1px dotted currentColor; }
+.shop-gold { position: absolute; top: 1.1rem; right: 1.4rem; display: flex; align-items: center; gap: 0.45rem; padding: 0.3rem 0.85rem 0.3rem 0.55rem;
+  background: var(--s0); border: 1px solid var(--frame); border-radius: 999px; box-shadow: inset 0 0 0.6rem rgba(255, 200, 61, 0.12); }
+.shop-gold b { font-size: var(--fs-xl); font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; min-width: 2.5ch; text-align: right; transition: color 0.2s; }
+.shop-gold.down b { color: #ffe9a8; }
+.shop-gold.shake { animation: gold-shake 0.4s ease-in-out; border-color: var(--bad); }
+.shop-gold.shake b { color: var(--bad); }
+@keyframes gold-shake { 20%, 60% { transform: translateX(-0.3rem); } 40%, 80% { transform: translateX(0.3rem); } }
+.ricon.coin { display: inline-block; vertical-align: -0.2em; margin-right: 0.25em; }
+.cards.shop .card { cursor: default; }
+.cards.shop .card .ricon.big { margin: 0.2rem auto 0.4rem; }
+.card .lv-step { font-size: var(--fs-l); color: var(--text-2); }
+.card .lv-step b { color: var(--cc); }
+.card .buy { margin-top: auto; align-self: stretch; display: flex; align-items: center; justify-content: center; gap: 0.2rem; flex-wrap: wrap;
+  padding: 0.5rem 0.8rem; font-weight: 800; font-size: var(--fs-l); color: #1a1408; background: linear-gradient(#ffd75e, #e0a92a); border: 1px solid #ffe9a8; }
+.card-foot + .buy { margin-top: 0.7rem; }
+.card .buy:hover { background: linear-gradient(#ffe38a, #efb93e); border-color: #fff3c4; }
+.card .buy.no { color: var(--bad); background: var(--s0); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.card .buy.no:hover { background: var(--s0); border-color: var(--bad); }
+.card .buy small { flex-basis: 100%; font-size: var(--fs-xs); font-weight: 600; opacity: 0.85; }
+.card div.buy { background: none; border: 1px dashed var(--line); color: var(--muted); font-size: var(--fs-m); font-weight: 700; border-radius: 0.5714rem; }
+.card div.buy.why { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+.card.bought { opacity: 0.6; }
+.card.bought::after { content: "Bought"; position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%) rotate(-10deg); padding: 0.2rem 1rem;
+  font: 800 var(--fs-xl)/1.2 system-ui; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cc); border: 2px solid var(--cc); border-radius: 0.4rem;
+  background: rgba(10, 11, 18, 0.75); pointer-events: none; }
+.overlay .cards > .card.bought.just-bought { animation: card-pick 0.26s var(--ease) both; }
+.card.bought.just-bought::after { animation: stamp 0.3s var(--ease) both; }
+@keyframes stamp { from { opacity: 0; transform: translate(-50%, -50%) rotate(-10deg) scale(1.6); } to { opacity: 1; transform: translate(-50%, -50%) rotate(-10deg) scale(1); } }
+.overlay .cards > .card.no-in { animation: none; }
+button.no { color: var(--bad); }

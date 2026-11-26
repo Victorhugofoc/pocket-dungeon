@@ -13,7 +13,7 @@ import { achievementCount, isNew, isOpen, isSecret, markFreshSeen, progress, unl
 import { ACHIEVEMENTS } from "../data/achievements";
 import { formatStat, stackChance, STAT_KEYS, type FinalStats, type StatBlock } from "../core/stats";
 import {
-  AURA_SPIKE_TEXT, EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
+  AURA_SPIKE_TEXT, EVOLUTIONS, MAX_SPELLS, SPELL_MAX_LEVEL, SPELL_ORDER, SPELL_SCHOOL, SPELL_TEXT, SPELLS, modifierCounts, modifierText, type EvolutionDef, type SpellId,
 } from "../data/spells";
 import { wantedRelics } from "../core/evolution";
 import { effectsFor, rerollsLeft, type UpgradeTier } from "../core/levelup";
@@ -38,7 +38,7 @@ import { challengeHudHtml, challengeHudKey, challengePanelHtml, daringOpen } fro
 import { eventCardsHtml, eventHudHtml, eventHudKey, eventPanelHtml, gateExtraHtml, omenGateHtml, pactConfirmHtml } from "./events-view";
 import { eventAvailable } from "../core/events";
 import { depthsHudHtml, depthsHudKey, depthsPanelHtml, depthsPerksHtml, depthsResultHtml } from "./depths-view";
-import { TIER_COLOR } from "./theme";
+import { SCHOOL_COLOR, TIER_COLOR } from "./theme";
 import { buildPanelHtml, RARITY_COLOR, relicEvolutionChangeHtml, relicGroupName, relicIconHtml, relicRecipeHtml, relicStackHtml, synergyCardHtml, tagListHtml } from "./build-view";
 import { appearanceHtml, attackLine, barsHtml, HERO_TABS, masteryHtml, portraitBadgesHtml, type HeroTab } from "./heroselect";
 import { allowedLoadout, loadoutHero } from "../core/mastery";
@@ -204,6 +204,14 @@ export class Ui {
   private toasts!: HTMLElement;
   private mapCtx!: CanvasRenderingContext2D;
   private frameN = 0;
+  /** M14-09 (etapa 4): o rastro do dano na barra de vida (frações da vida máxima) */
+  private hpTrail = 1;
+  private hpLast = 1;
+  private hpHold = 0;
+  private hpT = 0;
+  /** M14-09 (etapa 5): o ouro mostrado no canto da loja, que conta até o valor da partida */
+  private shopGoldShown = 0;
+  private shopGoldRaf = 0;
   private selectedHero: string = HERO_ORDER[0];
   private confirmNew = "";
   private selectedDifficulty: DifficultyId = "normal";
@@ -270,7 +278,7 @@ export class Ui {
     this.game.paused = true;
     this.game.input.reset();
     // M14-09 (C): a escolha por carta abre no meio da luta; clique e tecla esperam as cartas entrarem
-    if (CARD_KINDS.includes(kind)) {
+    if (CARD_KINDS.includes(kind) || kind === "shop") {
       ov.classList.add("arming");
       window.setTimeout(() => ov.classList.remove("arming"), TUNING.ui.cardArmMs);
     }
@@ -314,8 +322,15 @@ export class Ui {
     const k = e.code;
     // a loja: Esc sai, R troca as ofertas (shop.lua); o resto fica preso como nas outras escolhas
     if (this.overlayKind === "shop") {
-      if (k === "Escape") this.leaveShop();
-      else if (k === "KeyR") this.game.rerollShop();
+      if (k === "Escape") return this.leaveShop();
+      if (this.overlay?.classList.contains("arming")) return;
+      // M14-09 (etapa 5): 1..4 compram a oferta, R troca
+      const num = /^(?:Digit|Numpad)([1-9])$/.exec(k);
+      if (num && this.game.shopVisit?.offers[Number(num[1]) - 1]) this.buyShopOffer(Number(num[1]) - 1);
+      else if (k === "KeyR") {
+        const why = this.game.rerollShop();
+        if (why) this.shopRefused(why);
+      }
       return;
     }
     if (this.overlayKind === "event") {
@@ -680,17 +695,21 @@ export class Ui {
       <div id="toasts"></div>
       <div class="hud-bottom">
         <div class="relic-row" data-r="relicRow"></div>
-        <div class="skills">
-          <div class="level-badge"><div><small>LEVEL</small><span data-r="level"></span></div></div>
-          <div class="skill"><kbd>LMB</kbd>${iconHtml(uiIconUrl("sword"), 36, "ricon sk")}</div>
-          <div class="skill-wrap"><div class="skill big" data-r="techBox"><kbd>RMB</kbd><span data-r="techIcon"></span><div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div></div>
-            <small class="skill-name" data-r="techName"></small></div>
-          ${[0, 1].map((i) => `<div class="skill-wrap"><div class="skill spell" data-r="spBox${i}"><kbd>${i + 1}</kbd><span data-r="spIcon${i}"></span><div class="cd" data-r="spCd${i}"></div><div class="cdn" data-r="spN${i}"></div></div>
-            <small class="skill-name" data-r="spName${i}"></small></div>`).join("")}
-          <div class="skill"><kbd>SPACE</kbd>💨<div class="cd" data-r="dashCd"></div></div>
+        <div class="hud-plate">
+          <div class="skills">
+            <div class="skill basic" title="Basic attack — hold left click">${iconHtml(uiIconUrl("sword"), 32, "ricon sk")}<span class="key">LMB</span></div>
+            <div class="skill big" data-r="techBox"><span data-r="techIcon"></span><div class="cd" data-r="techCd"></div><div class="cdn" data-r="techN"></div><span class="key">RMB</span></div>
+            ${[0, 1].map((i) => `<div class="skill spell" data-r="spBox${i}"><span data-r="spIcon${i}"></span><div class="cd" data-r="spCd${i}"></div><div class="cdn" data-r="spN${i}"></div><span class="key">${i + 1}</span></div>`).join("")}
+            <div class="skill dash" data-r="dashBox" title="Dodge roll — brief invulnerability">${iconHtml(upgradeIconUrl("evasive_footwork"), 32, "ricon sk")}<div class="cd" data-r="dashCd"></div><span class="key">SPACE</span></div>
+          </div>
+          <div class="vitals">
+            <div class="level-gem" title="Level"><span data-r="level"></span></div>
+            <div class="vitals-bars">
+              <div class="bar hp" data-r="hpBar"><b data-r="hpTrail"></b><i data-r="hpFill"></i><span data-r="hpText"></span></div>
+              <div class="bar xp" data-r="xpBar"><i data-r="xpFill"></i></div>
+            </div>
+          </div>
         </div>
-        <div class="bar"><i data-r="hpFill"></i><span data-r="hpText"></span></div>
-        <div class="bar xp"><i data-r="xpFill"></i></div>
       </div>`;
     this.hud.querySelectorAll<HTMLElement>("[data-r]").forEach((e) => (this.r[e.dataset.r!] = e));
     this.toasts = this.hud.querySelector("#toasts")!;
@@ -742,7 +761,28 @@ export class Ui {
     }).join("");
   }
 
-  /** Espaços de spell nas teclas 1 e 2: ícone, nível, recarga e o aviso de spell que não saiu. */
+  /**
+   * M14-09 (etapa 4): recarga radial de um espaço do HUD. `--f` é a fração que falta (o `conic-gradient` do CSS);
+   * quando volta a zero, o espaço brilha uma vez (`.flash`).
+   */
+  private setCooldown(box: HTMLElement, cdEl: HTMLElement, nEl: HTMLElement | null, cd: number, max: number, usable = true): void {
+    const f = cd > 0 ? Math.min(1, cd / Math.max(1e-6, max)) : 0;
+    cdEl.style.setProperty("--f", f.toFixed(3));
+    if (nEl) nEl.textContent = cd > 0 ? cd.toFixed(cd < 3 ? 1 : 0) : "";
+    const ready = usable && cd <= 0;
+    const was = box.classList.contains("ready");
+    box.classList.toggle("ready", ready);
+    if (ready && !was && box.dataset.seen) {
+      box.classList.remove("flash");
+      void box.offsetWidth;
+      box.classList.add("flash");
+      clearTimeout(Number(box.dataset.flashT));
+      box.dataset.flashT = String(setTimeout(() => box.classList.remove("flash"), TUNING.ui.readyFlashMs));
+    }
+    box.dataset.seen = "1";
+  }
+
+  /** Espaços de spell nas teclas 1 e 2: ícone, aro na cor da escola, recarga e o aviso de spell que não saiu. */
   private updateSpellHud(): void {
     const g = this.game;
     const r = this.r;
@@ -750,25 +790,19 @@ export class Ui {
       const slot = g.run.spells[i];
       const st = g.spells.stats[i];
       const box = r[`spBox${i}`];
-      box.classList.toggle("empty", !slot);
-      const name = slot ? `${spellName(slot.id)} ${slot.level}` : "";
-      const iconKey = slot ? `${slot.id}:${slot.evolution ?? ""}` : "";
-      if (r[`spIcon${i}`].dataset.k !== iconKey) {
-        r[`spIcon${i}`].dataset.k = iconKey;
-        r[`spIcon${i}`].innerHTML = slot ? iconHtml(slotIconUrl(slot.id, slot.evolution), 36, "ricon sk") : "";
-      }
-      if (r[`spName${i}`].textContent !== name) {
-        r[`spName${i}`].textContent = name;
+      const iconKey = slot ? `${slot.id}:${slot.evolution ?? ""}:${slot.level}` : "";
+      if (box.dataset.k !== iconKey) {
+        box.dataset.k = iconKey;
+        box.classList.toggle("empty", !slot);
+        r[`spIcon${i}`].innerHTML = slot ? iconHtml(slotIconUrl(slot.id, slot.evolution), 32, "ricon sk") + `<em class="lv">${slot.level}</em>` : `<em class="plus">+</em>`;
+        const school = slot && isSpellKey(slot.id) ? SPELL_SCHOOL[slot.id] : "";
+        box.style.setProperty("--sc", SCHOOL_COLOR[school] ?? "var(--line)");
         box.title = slot && isSpellKey(slot.id)
-          ? `${spellName(slot.id)} — ${SPELL_TEXT[slot.id]}${AURA_SPIKE_TEXT[slot.id] ? ` Aura: casts itself. ${AURA_SPIKE_TEXT[slot.id]}` : ""}`
-          : "Empty spell slot";
+          ? `${spellName(slot.id)} ${slot.level} — ${SPELL_TEXT[slot.id]}${AURA_SPIKE_TEXT[slot.id] ? ` Aura: casts itself. ${AURA_SPIKE_TEXT[slot.id]}` : ""}`
+          : slot ? `${spellName(slot.id)} ${slot.level}` : "Empty spell slot";
         box.classList.toggle("aura", !!slot && !!AURA_SPIKE_TEXT[slot.id]);
       }
-      const cd = g.spells.keyCooldown(i);
-      const max = st?.cooldown ?? 1;
-      r[`spCd${i}`].style.height = `${Math.min(1, cd / max) * 100}%`;
-      r[`spN${i}`].textContent = cd > 0 ? cd.toFixed(cd < 3 ? 1 : 0) : "";
-      box.classList.toggle("ready", !!slot && cd <= 0);
+      this.setCooldown(box, r[`spCd${i}`], r[`spN${i}`], g.spells.keyCooldown(i), st?.cooldown ?? 1, !!slot);
       box.classList.toggle("no-target", (g.spells.noTarget[i] ?? 0) > 0);
     }
   }
@@ -821,6 +855,39 @@ export class Ui {
     box.innerHTML = depthsHudHtml(g.run) + eventHudHtml(g.run);
   }
 
+  /**
+   * M14-09 (etapa 4): vida com rastro do dano recente (`hpTrail` espera um pouco e encolhe até a vida atual),
+   * pulso com vida baixa, nível no losango e XP na linha fina embaixo.
+   */
+  private updateVitals(): void {
+    const g = this.game;
+    const r = this.r;
+    const p = g.player;
+    const max = Math.max(1, g.stats.maxHp);
+    const hp = Math.max(0, Math.min(1, p.hp / max));
+    const now = performance.now() / 1000;
+    const dt = Math.min(0.1, now - (this.hpT || now));
+    this.hpT = now;
+    if (hp >= this.hpTrail) {
+      this.hpTrail = hp;
+      this.hpHold = 0;
+    } else if (hp < this.hpLast) {
+      this.hpHold = TUNING.ui.hpTrailHold;
+    } else if (this.hpHold > 0) {
+      this.hpHold -= dt;
+    } else {
+      this.hpTrail = Math.max(hp, this.hpTrail - TUNING.ui.hpTrailRate * dt);
+    }
+    this.hpLast = hp;
+    r.hpFill.style.width = `${hp * 100}%`;
+    r.hpTrail.style.width = `${this.hpTrail * 100}%`;
+    r.hpText.textContent = `${Math.ceil(p.hp)} / ${g.stats.maxHp}`;
+    r.hpBar.classList.toggle("low", hp > 0 && hp < TUNING.ui.lowHp);
+    r.xpFill.style.width = `${Math.min(100, (g.run.xp / g.run.xpToNext) * 100)}%`;
+    r.xpBar.title = `XP ${Math.floor(g.run.xp)} / ${g.run.xpToNext}`;
+    r.level.textContent = String(g.run.level);
+  }
+
   private updateHud(): void {
     const g = this.game;
     if (!g.started) return;
@@ -833,29 +900,24 @@ export class Ui {
     const r = this.r;
     this.updateZoneFade();
     this.updateArrows();
-    r.hpFill.style.width = `${(p.hp / s.maxHp) * 100}%`;
-    r.hpText.textContent = `${Math.ceil(p.hp)} / ${s.maxHp}`;
-    r.xpFill.style.width = `${Math.min(100, (g.run.xp / g.run.xpToNext) * 100)}%`;
-    r.level.textContent = String(g.run.level);
+    this.updateVitals();
     const tc = Math.max(0, p.techCd);
-    r.techCd.style.height = `${(tc / p.techMax) * 100}%`;
-    r.techN.textContent = tc > 0 ? tc.toFixed(tc < 3 ? 1 : 0) : "";
-    r.techBox.classList.toggle("ready", tc <= 0);
+    this.setCooldown(r.techBox, r.techCd, r.techN, tc, p.techMax);
     // nível 5: a técnica evoluída passa a mostrar o nome e o texto da evolução
     const evo = g.tech?.evolved ? TECHNIQUES[g.hero.technique.id]?.evolution : undefined;
     const tn = evo?.name ?? g.hero.technique.name;
-    if (r.techName.textContent !== tn) {
-      r.techName.textContent = tn;
-      r.techIcon.innerHTML = iconHtml(techniqueIconUrl(g.hero.technique.id), 44, "ricon sk");
+    if (r.techBox.dataset.k !== tn) {
+      r.techBox.dataset.k = tn;
+      r.techIcon.innerHTML = iconHtml(techniqueIconUrl(g.hero.technique.id), 38, "ricon sk");
       r.techBox.title = `${tn} — ${evo?.text ?? g.hero.technique.text}`;
     }
     this.updateSpellHud();
     this.updateRelicRow();
-    r.dashCd.style.height = `${(Math.max(0, p.dashCd) / TUNING.hero.dashCooldown) * 100}%`;
+    this.setCooldown(r.dashBox, r.dashCd, null, Math.max(0, p.dashCd), TUNING.hero.dashCooldown);
     const pend = g.run.pendingLevelUps;
     r.points.classList.toggle("hidden", pend <= 0);
     r.points.textContent = `+${pend} upgrade${pend > 1 ? "s" : ""} at the end of the wave`;
-    (this.hud.querySelector("#vignette") as HTMLElement).style.opacity = String(Math.max(p.hurtT * 0.6, p.hp / s.maxHp < 0.25 ? 0.35 : 0));
+    (this.hud.querySelector("#vignette") as HTMLElement).style.opacity = String(Math.max(p.hurtT * 0.6, p.hp / s.maxHp < TUNING.ui.lowHp ? 0.35 : 0));
     const boss = g.boss;
     const showBoss = !!boss && g.bossEngaged && !boss.dead;
     r.boss.classList.toggle("hidden", !showBoss);
@@ -1312,48 +1374,114 @@ export class Ui {
     };
   }
 
-  /** Magic Shop (shop.lua): 3 ofertas mais a relíquia, preço, motivo da oferta inválida, comprar, trocar, sair. */
+  /**
+   * Magic Shop (shop.lua): 3 ofertas mais a relíquia, preço, motivo da oferta inválida, comprar, trocar, sair.
+   * M14-09 (etapa 5): compra pelo botão de preço ou por 1..4; ao mudar (compra, troca, banimento) só a carta que mudou
+   * é redesenhada, e só a oferta nova entra animada; o ouro no canto conta até o valor novo.
+   */
   private showShop(): void {
     const g = this.game;
     const v = g.shopVisit;
     if (!v) return;
-    const panel = this.overlayKind === "shop" ? (this.overlay!.firstChild as HTMLElement) : this.open("shop", "shop");
-    panel.style.width = "min(70.0rem, 96vw)";
     const run = g.run;
-    const title = v.auto === "preboss" ? "Pre-boss shop: get ready for the next wave"
-      : v.auto === "champion" ? "Champion shop: opens before the map" : "Magic Shop";
     const reroll = rerollCost(v, run.freeRerolls);
-    panel.innerHTML = `<h2>Magic Shop <small>Lv ${v.level}</small></h2>
-      <p class="sub">${title} · <b class="gold">${run.gold} gold</b></p>
-      <div class="cards shop">${v.offers.map((o, i) => shopOfferHtml(g, o, i)).join("")}</div>
-      <div class="row end">
-        <button data-act="reroll" ${run.gold >= reroll ? "" : "disabled"}>Reroll (R) — ${reroll ? `${reroll} gold` : "free"}</button>
-        <button data-act="leave">Leave shop (Esc)</button>
-      </div>`;
-    panel.onclick = (ev) => {
-      const t = ev.target as HTMLElement;
-      if (t.closest("[data-act=leave]")) return this.leaveShop();
-      if (t.closest("[data-act=reroll]")) {
-        g.rerollShop();
-        return;
-      }
-      const bi = t.closest<HTMLElement>("[data-ban]")?.dataset.ban;
-      if (bi !== undefined) {
-        if (g.banShopRelic(Number(bi))) this.toast("Relic banned for the rest of the run", "#ffd34d");
-        return;
-      }
-      const i = t.closest<HTMLElement>("[data-offer]")?.dataset.offer;
-      if (i === undefined) return;
-      const reason = g.buyShop(Number(i));
-      if (reason) this.toast(reason, "#ff7a6a");
+    const fresh = this.overlayKind !== "shop";
+    const panel = fresh ? this.open("shop", "shop") : (this.overlay!.firstChild as HTMLElement);
+    if (fresh) {
+      panel.style.width = "min(70.0rem, 96vw)";
+      const title = v.auto === "preboss" ? "Pre-boss shop: get ready for the next wave"
+        : v.auto === "champion" ? "Champion shop: opens before the map" : "Spend gold on spells, items and relics";
+      panel.innerHTML = `<div class="shop-gold">${iconHtml(uiIconUrl("coin"), 22, "ricon")}<b>${run.gold}</b></div>
+        <h2>Magic Shop <small class="shop-lv" title="Shop level ${v.level}: rises every 5 waves. Higher levels raise the prices.">Lv ${v.level}</small></h2>
+        <p class="sub">${title}</p>
+        <div class="cards shop"></div>
+        <div class="row end"><button data-act="reroll"></button><button data-act="leave">Leave <i class="key">Esc</i></button></div>`;
+      this.shopGoldShown = run.gold;
+      panel.onclick = (ev) => {
+        const t = ev.target as HTMLElement;
+        if (t.closest("[data-act=leave]")) return this.leaveShop();
+        if (t.closest("[data-act=reroll]")) {
+          const why = g.rerollShop();
+          if (why) this.shopRefused(why);
+          return;
+        }
+        const bi = t.closest<HTMLElement>("[data-ban]")?.dataset.ban;
+        if (bi !== undefined) {
+          if (g.banShopRelic(Number(bi))) this.toast("Relic banned for the rest of the run", "#ffd34d");
+          return;
+        }
+        const i = t.closest<HTMLElement>("[data-buy]")?.dataset.buy;
+        if (i !== undefined) this.buyShopOffer(Number(i));
+      };
+      panel.onmousemove = (ev) => {
+        const card = (ev.target as HTMLElement).closest<HTMLElement>("[data-offer]");
+        const o = card ? v.offers[Number(card.dataset.offer)] : undefined;
+        const html = o ? shopOfferTip(g, o) : "";
+        if (html) return this.showTip(html, ev);
+        this.tip.classList.add("hidden");
+      };
+    }
+    // só as cartas que mudaram; oferta nova (troca, banimento) entra animada, a mesma oferta não
+    const box = panel.querySelector<HTMLElement>(".cards.shop")!;
+    v.offers.forEach((o, i) => {
+      const html = shopOfferHtml(g, o, i);
+      const id = `${o.kind}:${o.spell ?? ""}:${o.modifier ?? ""}:${o.relic ?? ""}`;
+      const old = box.children[i] as HTMLElement | undefined;
+      if (old && old.dataset.h === html) return;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      const card = tmp.firstElementChild as HTMLElement;
+      card.dataset.h = html;
+      card.dataset.id = id;
+      if (old) {
+        if (old.dataset.id === id) card.classList.add("no-in");
+        if (o.bought && !old.classList.contains("bought")) card.classList.add("just-bought");
+        old.replaceWith(card);
+      } else box.append(card);
+    });
+    while (box.children.length > v.offers.length) box.lastElementChild!.remove();
+    const rb = panel.querySelector<HTMLButtonElement>("[data-act=reroll]")!;
+    rb.innerHTML = `Reroll <i class="key">R</i> · ${reroll ? `${iconHtml(uiIconUrl("coin"), 14, "ricon coin")}${reroll}` : "free"}`;
+    rb.classList.toggle("no", run.gold < reroll);
+    this.countShopGold(run.gold);
+  }
+
+  /** M14-09 (etapa 5): compra pela tecla ou pelo botão; a recusa por falta de ouro sacode o ouro do canto. */
+  private buyShopOffer(i: number): void {
+    const why = this.game.buyShop(i);
+    if (why) this.shopRefused(why);
+  }
+
+  private shopRefused(why: string): void {
+    this.toast(why, "#ff7a6a");
+    if (!/gold/i.test(why)) return;
+    const gold = this.overlay?.querySelector<HTMLElement>(".shop-gold");
+    if (!gold) return;
+    gold.classList.remove("shake");
+    void gold.offsetWidth;
+    gold.classList.add("shake");
+  }
+
+  /** o ouro do canto conta do valor mostrado até o atual em `TUNING.ui.shopGoldMs` */
+  private countShopGold(to: number): void {
+    const el = this.overlay?.querySelector<HTMLElement>(".shop-gold b");
+    if (!el) return;
+    const from = this.shopGoldShown;
+    this.shopGoldShown = to;
+    cancelAnimationFrame(this.shopGoldRaf);
+    if (from === to) {
+      el.textContent = String(to);
+      return;
+    }
+    el.parentElement!.classList.toggle("down", to < from);
+    const t0 = performance.now();
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / TUNING.ui.shopGoldMs);
+      el.textContent = String(Math.round(from + (to - from) * (1 - (1 - k) ** 3)));
+      if (k < 1) this.shopGoldRaf = requestAnimationFrame(step);
+      else el.parentElement!.classList.remove("down");
     };
-    panel.onmousemove = (ev) => {
-      const card = (ev.target as HTMLElement).closest<HTMLElement>("[data-offer]");
-      const o = card ? v.offers[Number(card.dataset.offer)] : undefined;
-      const html = o ? shopOfferTip(g, o) : "";
-      if (html) return this.showTip(html, ev);
-      this.tip.classList.add("hidden");
-    };
+    step();
   }
 
   private leaveShop(): void {
@@ -1765,39 +1893,41 @@ function requiresText(tags: Readonly<Record<string, number>>, requires: Record<s
 function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
   const ev = evaluateOffer(g.run, g.shopVisit!, o);
   const slot = g.run.spells.find((s) => s.id === o.spell);
-  let meta = "", name = "", body = "", color = "#ffd34d", icon = "";
+  let meta = "", name = "", body = "", foot = "", color = "#ffd34d", icon = "";
   const tech = o.kind === "spell_upgrade" && o.spell === g.run.technique.id ? TECHNIQUES[o.spell] : undefined;
   if (tech) {
-    // S19 (D-252): a técnica sobe de nível na loja; no nível 5 vira a evolução
-    const lv = g.run.technique.level;
+    // S19 (D-252): a técnica sobe de nível na loja; no nível 5 vira a evolução. Comprada, mostra o nível que levou.
+    const lv = g.run.technique.level - (o.bought ? 1 : 0);
     meta = "Technique upgrade";
     name = tech.name;
     icon = iconHtml(techniqueIconUrl(o.spell!), 56, "ricon big");
-    body = `<p>Lv ${lv} → ${Math.min(lv + 1, TECH_MAX_LEVEL)}</p>`;
+    body = `<p class="lv-step">Lv ${lv} → <b>${Math.min(lv + 1, TECH_MAX_LEVEL)}</b></p>`;
     const ms = tech.milestones.find((m) => m.level === lv + 1);
-    if (lv + 1 === TECH_MAX_LEVEL) body += `<p class="evo">EVOLVES ${tech.evolution.name}: ${tech.evolution.text}</p>`;
-    else if (ms) body += `<p class="evo">Lv${ms.level} ${ms.id}: ${ms.text}</p>`;
+    if (lv + 1 === TECH_MAX_LEVEL) body += `<p class="evo">Evolves into ${tech.evolution.name}: ${tech.evolution.text}</p>`;
+    else if (ms) body += `<p class="evo">Lv${ms.level} ${displayName(ms.id)}: ${ms.text}</p>`;
     color = "#7ad94a";
   } else if (o.kind === "spell_upgrade") {
+    const lv = (slot?.level ?? 1) - (o.bought ? 1 : 0);
     meta = "Spell upgrade";
     name = spellName(o.spell!);
     icon = iconHtml(slotIconUrl(o.spell!, slot?.evolution), 56, "ricon big");
-    body = slot ? `<p>Lv ${slot.level} → ${Math.min(slot.level + 1, SPELL_MAX_LEVEL)}</p>` : "";
-    const ms = isSpellKey(o.spell!) && slot ? SPELLS[o.spell!].milestones.find((m) => m.level === slot.level + 1) : undefined;
-    if (ms) body += `<p class="evo">Lv${ms.level} ${ms.id}: ${ms.text}</p>`;
+    body = slot ? `<p class="lv-step">Lv ${lv} → <b>${Math.min(lv + 1, SPELL_MAX_LEVEL)}</b></p>` : "";
+    const ms = isSpellKey(o.spell!) && slot ? SPELLS[o.spell!].milestones.find((m) => m.level === lv + 1) : undefined;
+    if (ms) body += `<p class="evo">Lv${ms.level} ${displayName(ms.id)}: ${ms.text}</p>`;
     color = "#7ad94a";
   } else if (o.kind === "spell_modifier") {
     const m = isSpellKey(o.spell!) ? SPELLS[o.spell!].modifiers.find((x) => x.id === o.modifier) : undefined;
-    meta = `${spellName(o.spell!)} modifier (shop)`;
+    meta = `${spellName(o.spell!)} modifier`;
     icon = modifierIconHtml(o.spell!, 56);
-    name = m?.name ?? prettyId(o.modifier!);
+    name = displayName(m?.name ?? prettyId(o.modifier!));
     body = `<p>${isSpellKey(o.spell!) ? modifierText(o.spell!, o.modifier!, slot?.evolution ?? null) : ""}</p>`;
     color = "#4fa3ff";
   } else if (o.kind === "new_spell") {
     meta = "New spell";
     name = spellName(o.spell!);
     icon = iconHtml(spellIconUrl(o.spell!), 56, "ricon big");
-    body = `<p class="note">Takes a free spell slot, starts at Lv 1.</p>`;
+    body = isSpellKey(o.spell!) ? `<p>${SPELL_TEXT[o.spell!]}</p>` : "";
+    foot = `<p class="note">Takes a free spell slot, starts at Lv 1.</p>`;
     color = "#b36bff";
   } else if (o.kind === "relic") {
     const d = RELICS[o.relic!];
@@ -1808,28 +1938,30 @@ function shopOfferHtml(g: Game, o: ShopOffer, i: number): string {
     icon = relicIconHtml(d.id, 56, "ricon big");
     body = relicLines(d);
     const has = !o.bought && g.run.relics.includes(d.id);
-    if (!o.bought) body += relicStackHtml(d.id, g.run.relics);
+    if (!o.bought) foot += relicStackHtml(d.id, g.run.relics);
     const evo = wantedRelics(g.run)[o.relic!];
-    if (evo && !has) body += `<p class="evo">EVOLVES ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
-    if (!o.bought && !has) body += relicRecipeHtml(d.id, g.run.relics);
-    if (!o.bought && !has) body += synergyCardHtml(g.run.tags, d.tags, g.run.buildEvolutions);
+    if (evo && !has) foot += `<p class="evo">Evolves ${spellName(evo)} (spell at Lv ${SPELL_MAX_LEVEL})</p>`;
+    if (!o.bought && !has) foot += relicRecipeHtml(d.id, g.run.relics);
+    if (!o.bought && !has) foot += synergyCardHtml(g.run.tags, d.tags, g.run.buildEvolutions);
     const left = relicBansLeft(g.run);
-    if (!o.bought) body += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
+    if (!o.bought) foot += `<button class="ban" data-ban="${i}" ${left > 0 ? "" : "disabled"}>Ban the relic · ${left}</button>`;
     color = RARITY_COLOR[d.rarity];
   } else {
     const item = SHOP_ITEMS[o.kind];
     meta = "Item";
-    name = item.name;
+    name = displayName(item.name);
     // shop.lua: Vitality com o coração, Arcane Tome com o ícone do Arcane Power, a arma com a espada
     icon = iconHtml(o.kind === "vitality" ? uiIconUrl("heart") : o.kind === "arcane_tome" ? upgradeIconUrl("arcane_power") : uiIconUrl("sword"), 56, "ricon big");
     body = `<p>${item.text}</p>`;
   }
+  // M14-09 (etapa 5, B): compra só pelo botão de preço; sem ouro ele fica vermelho (o clique sacode o ouro), inválida mostra o motivo
+  const coin = iconHtml(uiIconUrl("coin"), 16, "ricon coin");
   const afford = ev.cost !== null && g.run.gold >= ev.cost;
-  const price = o.bought ? `<div class="price done">Bought${o.paid ? ` · ${o.paid} gold` : ""}</div>`
-    : !ev.valid ? `<div class="price bad">${ev.reason}${ev.cost !== null ? ` · ${ev.cost} gold` : ""}</div>`
-    : `<div class="price${afford ? "" : " bad"}">${ev.cost} gold</div>`;
-  const off = o.bought || !ev.valid ? " off" : "";
-  return `<div class="card${off}" data-offer="${i}" style="--cc:${color}">${icon}<div class="meta">${meta}</div><h3>${name}</h3>${body}${price}</div>`;
+  const price = o.bought ? `<div class="buy done">Bought${o.paid ? ` · ${coin}${o.paid}` : ""}</div>`
+    : !ev.valid ? `<div class="buy why">${ev.reason}</div>`
+    : `<button class="buy${afford ? "" : " no"}" data-buy="${i}">${coin}<b>${ev.cost}</b>${afford ? "" : `<small>need ${ev.cost! - g.run.gold} more</small>`}</button>`;
+  const state = o.bought ? " bought" : !ev.valid ? " off" : "";
+  return `<div class="card${state}" data-offer="${i}" style="--cc:${color}">${cardKey(i)}<div class="meta rib">${meta}</div>${icon}<h3>${name}</h3>${body}${cardFoot(foot)}${price}</div>`;
 }
 
 /** Dica da oferta: a ficha da spell equipada (M6-08), ou os números da spell nova no nível 1. */
