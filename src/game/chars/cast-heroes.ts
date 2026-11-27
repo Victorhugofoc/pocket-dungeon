@@ -94,106 +94,32 @@ export const HEROES: Record<string, Spec> = {
     }
     b.lit("foreL", ...hang(grp(mini, 0, 0.16, 0), L.inv, HAND));
   },
-  // Redesenho a partir do sprite (docs/ref/kaelen.png): duelista esguio de cabelo claro revolto, casaco azul-marinho com debrum dourado,
-  // capa de forro vermelho e faísca ciano na mão. Medidas do sprite (altura 69 px): cabeça com cabelo 16 px, ombros com a capa 25 px, quadril a 41%.
+  // Kaelen modelado no Blender (M2-11; tools/blender/kaelen.py, brief em docs/briefs/kaelen.md): duelista esguio de cabelo branco
+  // revolto com uma mecha sobre o olho, casaco azul-marinho com debrum dourado e placas azul-claras, lenço vermelho e capa caída do
+  // lado direito com forro vermelho. Sem espada (usuário, 2026-11-26): mão direita aberta à frente, e por código só o raio sobre a
+  // palma (núcleo claro e arcos finos em zigue-zague; peça acesa grande vira borrão com o bloom). Medidas e pose iguais às do script.
   kaelen: (b) => {
-    const NAVY = 0x2c3f78, NAVY_D = 0x141c3c, NAVY_L = 0x4a66b0, TRIM = 0xe0a030, LINING = 0x7a1f2c, HAIR = 0xf0ead8, HAIR_D = 0xa39678;
-    const FACE = 0xe6b48c, FACE_D = 0xb88460, PANTS = 0x20253a, CYAN = 0x7feaff, BLADE = 0xdfe8f2, IRIS = 0x27407e;
-    const col = (hex: number) => new THREE.Color(hex);
-    const cFace = col(FACE), cFaceD = col(FACE_D), cBlush = col(0xe89a80), cHair = col(HAIR), cHairD = col(HAIR_D), cCyan = col(CYAN), cCore = col(0xf2fdff);
-    const HAND = 0.31;
-    b.bulk = 0.92; b.style = "swing"; b.rough = 0.7; b.glowColor = CYAN;
+    const CYAN = new THREE.Color(0x7feaff), CORE = new THREE.Color(0xf2fdff), HAND = 0.31;
+    b.bulk = 0.92; b.style = "swing"; b.rough = 0.7; b.glowColor = 0x7feaff;
     b.lean = 0.03; b.crouch = 0.08; b.armOut = 0.13;
-    b.poseR = [0.15, -0.7]; b.poseL = [-0.45, -1.75];
+    b.poseR = [-0.25, -1.15, 0, -0.15]; b.poseL = [0.08, -0.3];
     b.dims = { hipY: 0.95, headY: 0.58, shoulderY: 0.46, shoulderX: 0.27, arm: 0.33, hipX: 0.12, thigh: 0.44 };
-
-    // ---- rosto: malha única com queixo afinado, nariz e órbitas rasas. Olhos, sobrancelhas e boca vão na camada sem contorno
-    // (`flat`): com o contorno preto, peça pequena no rosto vira risco. Sobrancelha com a ponta de dentro mais baixa = decidido.
-    b.add("head", at(sculpt(32, 24, (n, p) => {
-      const front = ss(0.3, 0.9, n.z);
-      const jaw = ss(0.05, -0.95, n.y);
-      p.set(
-        n.x * 0.15 * (1 - 0.34 * jaw),
-        n.y * 0.19 - 0.012 * jaw * front,
-        n.z * 0.16 * (1 - 0.1 * jaw) + 0.02 * bell(n.x, 0.11) * bell(n.y + 0.12, 0.13) * front - 0.012 * headMask.socket(n) + 0.012 * bell(n.x, 0.3) * ss(-0.55, -0.9, n.y) * front,
-      );
-    }, (n, c) => {
-      c.copy(cFaceD).lerp(cFace, ss(-1, -0.1, n.y) * (0.8 + 0.2 * Math.max(0, n.z)));
-      c.lerp(cBlush, 0.35 * bell(Math.abs(n.x) - 0.5, 0.2) * bell(n.y + 0.2, 0.2) * ss(0.4, 0.8, n.z));
-    }), 0, 0.2, 0));
-    for (const s of [-1, 1]) {
-      b.flat("head", at(stud(0.027, 0xf6f3ec, 0xd9d3c6, 1.25, 1, 0.3, 0), s * 0.056, 0.228, 0.138, 0, s * 0.3, 0));
-      b.flat("head", at(stud(0.018, IRIS, IRIS, 1, 1.25, 0.3, 0), s * 0.056, 0.228, 0.146, 0, s * 0.3, 0));
-      b.flat("head", at(stud(0.006, 0xffffff, 0xffffff, 1, 1, 0.5, 0), s * 0.056 + 0.007, 0.238, 0.153));
-      b.flat("head", at(bx(0.062, 0.014, 0.014, HAIR_D, HAIR_D), s * 0.058, 0.268, 0.147, 0, s * 0.3, s * 0.24));
+    addModel(b, "kaelen");
+    // raio sobre a palma, na vertical do mundo: núcleo pequeno e seis arcos que saem dele para cima e para os lados
+    const R = restArm(b, 1, HAND);
+    const core = new THREE.Vector3(0, 0.12, 0.02);
+    const spark: G[] = [at(stud(0.055, 0xf2fdff, 0xf2fdff), core.x, core.y, core.z)];
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.05 + 0.3;
+      const dir = new THREE.Vector3(Math.cos(a) * 0.75, 0.55 + 0.35 * (i % 2), Math.sin(a) * 0.75).normalize();
+      const side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0.3)).normalize();
+      const len = 0.24 + (i % 3) * 0.08;
+      spark.push(tubeMesh(4, 8, (t, o) => {
+        const zig = (Math.abs(((t * 3.5 + i * 0.37) % 1) - 0.5) - 0.25) * 0.16 * Math.sin(Math.min(1, t) * Math.PI);
+        o.copy(core).addScaledVector(dir, t * len).addScaledVector(side, zig);
+      }, (t) => 0.019 * (1 - 0.7 * t), (_a, t, c) => c.copy(CORE).lerp(CYAN, ss(0.1, 0.6, t)), new THREE.Vector3(0.2, 0.3, 1)));
     }
-    b.flat("head", at(bx(0.04, 0.007, 0.01, 0x8a4a3c, 0x8a4a3c), 0.004, 0.118, 0.152, 0, 0, 0.12));
-    // ---- cabelo revolto: massa esculpida com a franja recortada sobre a testa e o volume jogado para trás, com gomos nas costas (mecha em cone fica parecendo chifre ou prego)
-    b.add("head", sculpt(32, 24, (n, p) => {
-      const hairline = 0.36 + 0.13 * Math.sin(n.x * 9 + 0.8) - 0.1 * ss(0.5, 0.9, Math.abs(n.x));
-      const face = ss(0.05, 0.35, n.z) * ss(hairline + 0.1, hairline - 0.06, n.y);
-      const nape = ss(-0.45, -0.8, n.y) * (n.z > -0.2 ? 1 : 0.3);
-      const top = ss(0.1, 0.9, n.y);
-      const tuft = Math.max(0, Math.sin(n.x * 5.5 + 0.9) * Math.sin(n.y * 6.5 + 0.4)) * ss(0.2, -0.5, n.z);
-      const k = (1.28 + 0.1 * Math.sin(n.x * 6 + n.y * 4) * Math.sin(n.z * 5 + 1) + 0.1 * top + 0.2 * tuft) * (1 - 0.36 * face) * (1 - 0.4 * nape);
-      p.set(n.x * 0.155 * k, n.y * 0.185 * k + 0.225, n.z * 0.165 * k - 0.012 - 0.035 * top);
-    }, (n, c) => {
-      c.copy(cHairD).lerp(cHair, ss(-0.7, 0.5, n.y));
-      if (Math.sin(n.x * 14 + n.z * 9) > 0.6) c.multiplyScalar(0.88);
-    }));
-
-    // ---- casaco: tronco esguio com debrum e botões, gola alta e pelerine curta sobre os ombros
-    const chest = lathe([[0.14, -0.08], [0.165, -0.04], [0.16, 0.1], [0.19, 0.3], [0.215, 0.42], [0.19, 0.5], [0.12, 0.56], [0.07, 0.6], [0, 0.61]], NAVY, NAVY_D, 14);
-    chest.scale(1.1, 1, 0.78);
-    const collar = edge(lathe([[0.095, 0.5], [0.125, 0.6], [0.135, 0.69]], NAVY, NAVY_D, 12), TRIM, 0.69);
-    collar.scale(1, 1, 0.9);
-    const capelet = edge(lathe([[0.33, -0.09], [0.335, -0.03], [0.28, 0.06], [0.2, 0.12], [0.14, 0.16]], NAVY, NAVY_D, 16), TRIM, -0.09);
-    capelet.scale(1, 1, 0.74);
-    b.add("torso", chest, collar, at(capelet, 0, 0.46, -0.01, 0.05), at(cyl(0.05, 0.055, 0.12, FACE, 8, FACE_D), 0, 0.6, 0));
-    b.add("torso", at(bx(0.028, 0.42, 0.02, TRIM, dk(TRIM)), 0.035, 0.15, 0.142, -0.07));
-    for (let i = 0; i < 3; i++) b.add("torso", at(stud(0.016, TRIM, dk(TRIM), 1, 1, 1, 0), -0.03, 0.04 + i * 0.11, 0.135 + i * 0.006));
-
-    // ---- braços: manga com punho dourado e mão
-    for (const [arm, fore, s] of [["armL", "foreL", -1], ["armR", "foreR", 1]] as const) {
-      b.add(arm, stud(0.085, NAVY, NAVY_D), limb(0.075, 0.062, 0.31, NAVY));
-      b.add(fore, edge(lathe([[0.07, -0.25], [0.072, -0.2], [0.06, -0.05], [0.062, 0.02], [0, 0.06]], NAVY, NAVY_D, 10), TRIM, -0.25));
-      b.add(fore, ...grp(fist(FACE, 0.055, s), 0, -HAND, 0.01));
-    }
-
-    // ---- quadril: cinto, aba do casaco aberta na frente com debrum
-    b.add("hips", at(sph(0.17, PANTS, 1.05, 0.75, 0.84), 0, 0, 0));
-    b.add("hips", at(cyl(0.188, 0.188, 0.06, LEATHER, 14), 0, 0.1, 0, 0, 0, 0, 1, 1, 0.82), at(bx(0.06, 0.06, 0.03, TRIM), 0, 0.1, 0.152));
-    b.add("skirt", robeMesh({ color: NAVY, shade: NAVY_D, rTop: 0.19, rHem: 0.275, yTop: 0.12, yHem: -0.34, folds: 0.03, panel: { half: 0.4, color: PANTS, trim: TRIM }, seg: 28, rings: 4 }));
-
-    // ---- pernas: calça escura e bota alta com dobra
-    for (const [th, sh] of [["thighL", "shinL"], ["thighR", "shinR"]] as const) {
-      b.add(th, limb(0.1, 0.078, 0.42, PANTS, 0.04));
-      b.add(sh, limb(0.085, 0.068, 0.36, NAVY, 0.15), at(cyl(0.088, 0.1, 0.07, NAVY_L, 10, NAVY), 0, -0.03, 0), at(sph(0.085, NAVY, 1, 0.7, 1.9, NAVY_D), 0, -0.42, 0.07));
-    }
-
-    // ---- capa azul-marinho com forro vermelho
-    b.add("cape", at(capeMesh({ color: NAVY, shade: NAVY_D, lining: LINING, half: [1.35, 1.15], rTop: 0.25, rHem: 0.5, len: 1.2, depth: 0.8, folds: 0.07, tatter: 0.03 }), 0, 0.02, -0.03));
-
-    // ---- lâmina fina em guarda baixa, com o fio aceso
-    const tip = cone(0.02, 0.1, BLADE, 4, BLADE);
-    tip.scale(1, 1, 0.45);
-    b.add("foreR", ...grp([
-      at(cyl(0.018, 0.018, 0.16, LEATHER, 6), 0, 0, 0), at(stud(0.03, TRIM, dk(TRIM), 1, 1, 1, 0), 0, 0.1, 0),
-      at(bx(0.17, 0.024, 0.04, TRIM, dk(TRIM)), 0, -0.08, 0), at(bx(0.03, 0.95, 0.012, BLADE, 0xaab6c8), 0, -0.565, 0), at(tip, 0, -1.09, 0, Math.PI),
-    ], 0, -HAND, 0, -0.5));
-    b.lit("foreR", ...grp([at(bx(0.009, 0.92, 0.018, CYAN, CYAN), 0, -0.56, 0)], 0, -HAND, 0, -0.5));
-    // ---- faísca na mão esquerda: núcleo pequeno e três arcos finos em zigue-zague (peça grande acesa vira um borrão com o bloom)
-    const core = new THREE.Vector3(0, -HAND - 0.03, 0.1);
-    b.lit("foreL", at(stud(0.022, 0xf2fdff, 0xf2fdff), core.x, core.y, core.z));
-    for (let i = 0; i < 5; i++) {
-      const a = i * 1.26 + 0.4;
-      const dir = new THREE.Vector3(Math.cos(a) * 0.8, Math.sin(a) * 0.8, 0.3 - (i % 3) * 0.3).normalize();
-      const side = new THREE.Vector3(-dir.y, dir.x, 0).normalize();
-      b.lit("foreL", tubeMesh(4, 7, (t, o) => {
-        const zig = (Math.abs(((t * 3.5 + i * 0.37) % 1) - 0.5) - 0.25) * 0.2 * Math.sin(Math.min(1, t) * Math.PI);
-        o.copy(core).addScaledVector(dir, t * (0.1 + (i % 3) * 0.035)).addScaledVector(side, zig);
-      }, (t) => 0.009 * (1 - 0.7 * t), (_a, t, c) => c.copy(cCore).lerp(cCyan, ss(0.1, 0.6, t)), new THREE.Vector3(0.2, 0.3, 1)));
-    }
+    b.lit("foreR", ...hang(spark, R.inv, HAND));
   },
   // Aurelius modelado no Blender (M2-11; tools/blender/aurelius.py, brief em docs/briefs/aurelius.md): mago velho de manto roxo,
   // chapéu pontudo reto, barba até a cintura e grimório no quadril. Medidas e pose iguais às do script (tests/models.test.ts
