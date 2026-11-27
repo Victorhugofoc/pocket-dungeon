@@ -182,6 +182,34 @@ def smooth(obj, iters=0, factor=0.5, decimate=None, target=None):
     return obj
 
 
+def remesh(obj, target, iters=2, factor=0.5):
+    """refaz a malha em triângulos de tamanho uniforme (voxel) perto de `target` triângulos, e suaviza. A redução por colapso
+    do `smooth(target=)` deixa triângulos compridos e tortos que, em superfície curva e lisa (rosto, cabelo), aparecem como
+    planos; aqui o tamanho do voxel sai da área: cada voxel vira um quadrado na superfície, dois triângulos."""
+    area = sum(p.area for p in obj.data.polygons)
+    m = obj.modifiers.new("remesh", "REMESH")
+    m.mode = "VOXEL"
+    m.voxel_size = math.sqrt(2.0 * area / target)
+    m.adaptivity = 0.0
+    m.use_smooth_shade = True
+    for _ in range(3):   # o voxel corta a superfície em ângulo e sai mais denso que a conta da área: corrige pela contagem
+        dg = bpy.context.evaluated_depsgraph_get()
+        n = 2 * len(obj.evaluated_get(dg).data.polygons)
+        if abs(n - target) < 0.04 * target:
+            break
+        m.voxel_size *= math.sqrt(n / target)
+    apply_mods(obj)
+    if iters:
+        s = obj.modifiers.new("smooth", "SMOOTH")
+        s.iterations, s.factor = iters, factor
+    tri = obj.modifiers.new("tri", "TRIANGULATE")
+    tri.quad_method = "SHORTEST_DIAGONAL"
+    apply_mods(obj)
+    for p in obj.data.polygons:
+        p.use_smooth = True
+    return obj
+
+
 def apply_mods(obj):
     dg = bpy.context.evaluated_depsgraph_get()
     me = bpy.data.meshes.new_from_object(obj.evaluated_get(dg))
