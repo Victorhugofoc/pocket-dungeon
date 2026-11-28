@@ -1291,8 +1291,17 @@ export class Game {
     const s = this.stats;
     const n = patternCounts(this.hero.style, s.coneShot, s.doubleShot);
     const icicle = this.hero.frost === true && this.icicle.take();
+    const hand = this.gunHand();
     autoPattern(n.cone, n.double, angle).forEach((sh, i) =>
-      this.firePlayer(sh.angle, a, dmg, 1, { styled: true, side: sh.side, fan: sh.fan, icicle: icicle && i === 0 }));
+      this.firePlayer(sh.angle, a, dmg, 1, { styled: true, side: sh.side + hand, fan: sh.fan, icicle: icicle && i === 0 }));
+  }
+
+  /** M2-11: deslocamento lateral do tiro para a mão que disparou (Zephyr, estilo "dual": o braço alterna a cada tiro, par = direita) */
+  private gunHand(): number {
+    const side = this.hero.gunSide;
+    const shot = this.player.rig?.char?.shot;
+    if (!side || shot === undefined) return 0;
+    return shot % 2 === 0 ? side : -side;
   }
 
   /**
@@ -3530,9 +3539,10 @@ export class Game {
         const lib = this.fx.lib;
         const mx = p.x + Math.sin(p.facing) * 0.9;
         const mz = p.z + Math.cos(p.facing) * 0.9;
+        if (p.rig) nextShot(p.rig); // antes dos tiros: a rajada sai da mão que o braço ergue (gunHand)
         for (let k = 1; k <= n; k++) {
           const ang = p.facing + (k - (n + 1) / 2) * spread;
-          this.firePlayer(ang, fanAuto, T.damage, rangeMult);
+          this.firePlayer(ang, fanAuto, T.damage, rangeMult, { side: this.gunHand() });
           const pr = this.projectiles[this.projectiles.length - 1];
           pr.push = 0.85;
           pr.dmgSource = this.hero.technique.id;
@@ -3546,7 +3556,6 @@ export class Game {
           }
         }
         p.attackAnim = 0;
-        if (p.rig) nextShot(p.rig);
         this.audio.play("shoot");
         lib.burst(mx, 1.2, mz, { radius: 1.3, color: TECH_FX.gun, core: TECH_FX.gunCore, rays: 6, sparks: 16, light: 1.8, dur: 0.16, wave: 0, power: 0.9 });
         for (let i = 0; i < 3; i++) {
