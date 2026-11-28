@@ -71,6 +71,8 @@ export interface HeroDef {
   auto: AutoAttack;
   /** H8: a forma do ataque e como Double, Cone, Pierce e Heavy Shot viram coisa do herói (`data/autostyle.ts`) */
   style: AutoStyle;
+  /** M2-11: herói de duas armas (Zephyr): o tiro sai deste tanto para o lado da mão que disparou (o braço alterna a cada tiro) */
+  gunSide?: number;
   technique: Technique;
   /** as 4 spells que o herói pode escolher para começar (characters.lua `startingSpells`, mesma ordem) */
   startingSpells: readonly SpellId[];
@@ -164,6 +166,7 @@ export const HEROES: Record<string, HeroDef> = {
     color: 0xe6b366, accent: 0x8a5a2b, weapon: "guns", weaponName: "Revolvers",
     stats: { autoDamagePct: 0.38, attackSpeedPct: 0.16, critChance: 0.10, moveSpeedPct: 0.08, spellDamagePct: -0.05, maxHpPct: 0.20, armor: 16 },
     style: "gunslinger",
+    gunSide: 0.3,
     auto: { kind: "projectile", rate: 2.6, damage: 0.8, range: 16, speed: 42, color: 0xffe9b0,
       ricochet: 1, ricochetDamage: 0.7, size: 0.8 },
     technique: tech("fan_the_hammer"),
